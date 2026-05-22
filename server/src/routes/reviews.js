@@ -25,6 +25,7 @@ const POST_BODY = {
     attachments: { type: "array", items: ATTACHMENT_ITEM, maxItems: 10 },
     authorName: { type: "string", minLength: 1, maxLength: 100 },
     parentId: { type: "string", format: "uuid" },
+    visibility: { type: "string", enum: ["public", "internal", "admin"] },
   },
   additionalProperties: false,
 };
@@ -43,9 +44,10 @@ function validateAttachmentsSize(attachments) {
   return null;
 }
 
-// 公开展示: 不返回 hidden,不返回完整 deletion 元数据
+// 公开展示: 过滤 hidden + visibility != "public"
 function publicShape(r) {
   if (r.hidden) return null;
+  if (r.visibility !== "public") return null;  // internal / admin 评论公开访客看不到
   return {
     id: r.id,
     candidateId: r.candidateId,
@@ -53,8 +55,9 @@ function publicShape(r) {
     authorRole: r.authorRole,
     authorAvatar: r.authorAvatar,
     via: r.via,
+    visibility: r.visibility,
     parentId: r.parentId,
-    content: r.deletedAt ? "" : r.content,  // 删除后不返回内容,前端显示 "已删除"
+    content: r.deletedAt ? "" : r.content,
     attachments: r.deletedAt ? [] : (r.attachments || []),
     deletedAt: r.deletedAt,
     deleteRequested: r.deleteRequested,
@@ -62,9 +65,10 @@ function publicShape(r) {
   };
 }
 
-// 内部 admin/普通用户视图: 同样不返回隐藏的(除非 admin)
+// 内部视图: 普通登录用户能看 public + internal; admin 能看全部
 function internalShape(r, isAdmin) {
   if (!isAdmin && r.hidden) return null;
+  if (!isAdmin && r.visibility === "admin") return null;  // 普通登录用户看不到 admin-only
   return {
     id: r.id,
     candidateId: r.candidateId,
@@ -73,6 +77,7 @@ function internalShape(r, isAdmin) {
     authorAvatar: r.authorAvatar,
     userId: r.userId,
     via: r.via,
+    visibility: r.visibility,
     shareToken: r.shareToken,
     parentId: r.parentId,
     content: r.deletedAt ? "" : r.content,
@@ -118,6 +123,11 @@ export default async function reviewsRoutes(app) {
       }
 
       const user = await internal.prisma.user.findUnique({ where: { id: req.user.sub } });
+      // 内部用户可选 public/internal/admin 三种,但只有 ADMIN 才能发 admin-only
+      let visibility = req.body.visibility || "public";
+      if (visibility === "admin" && req.user.role !== "ADMIN") {
+        visibility = "internal";  // 非 admin 发 admin-only 自动降级为 internal
+      }
       const review = await internal.prisma.review.create({
         data: {
           candidateId: req.params.id,
@@ -126,6 +136,7 @@ export default async function reviewsRoutes(app) {
           authorAvatar: user?.avatar || null,
           userId: user?.id || null,
           via: "internal",
+          visibility,
           parentId: req.body.parentId || null,
           content: req.body.content,
           attachments: req.body.attachments || [],
@@ -229,12 +240,14 @@ export default async function reviewsRoutes(app) {
     const sizeErr = validateAttachmentsSize(req.body.attachments);
     if (sizeErr) return reply.code(400).send(sizeErr);
 
+    // 公开访客只能发 public 评论 (默认 public 也可显式传 public, 其他值忽略)
     const review = await app.prisma.review.create({
       data: {
         candidateId: link.candidateId,
         authorName: req.body.authorName.trim().slice(0, 100),
         authorRole: "外部招聘官",
         via: "public",
+        visibility: "public",
         shareToken: link.token,
         parentId: req.body.parentId || null,
         content: req.body.content,

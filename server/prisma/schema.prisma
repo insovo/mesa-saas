@@ -220,8 +220,11 @@ model Review {
   userId       String?   @map("user_id") @db.Uuid
   user         User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
 
-  via          String    @default("internal")   // "internal" | "public"
+  via          String    @default("internal")   // 提交渠道: "internal" | "public"
   shareToken   String?   @map("share_token")    // 公开提交时记录是经哪个 share token
+
+  // 可见范围: "public"(全员) | "internal"(仅登录账号) | "admin"(仅 ADMIN)
+  visibility   String    @default("public")
 
   content      String    @db.Text               // ≤500 字符
   // attachments: [{ type: "image"|"file"|"link", name, url, size?, contentType? }]

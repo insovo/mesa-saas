@@ -988,6 +988,21 @@ function ReviewsCard({ reviews, candidate, me, isAdmin, onAdd, onReply, updateRe
   );
 }
 
+function VisibilityChip({ visibility }) {
+  if (!visibility || visibility === "public") return null;
+  const map = {
+    internal: { label: "仅登录账号可见", icon: "lock", bg: "bg-blue-50", fg: "text-blue-700" },
+    admin: { label: "仅管理员可见", icon: "shield", bg: "bg-purple-50", fg: "text-purple-700" },
+  };
+  const m = map[visibility];
+  if (!m) return null;
+  return (
+    <span className={`ml-2 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-bold ${m.bg} ${m.fg}`}>
+      <I name={m.icon} size={10} /> {m.label}
+    </span>
+  );
+}
+
 function ReviewItem({ review, replies = [], candidate, me, isAdmin, onReply, updateReview, isReply = false }) {
   const isMine = me?.id && review.userId === me.id;
   const canRequestDelete = !review.deletedAt && (isMine || isAdmin);
@@ -1034,17 +1049,18 @@ function ReviewItem({ review, replies = [], candidate, me, isAdmin, onReply, upd
   }
 
   const headerLeft = (
-    <p className={`text-sm font-bold ${review.deletedAt ? "text-gray-500" : "text-navy-700"}`}>
-      {review.authorName}
-      {review.authorRole && <span className="ml-2 text-[10px] text-gray-700 font-medium">{review.authorRole}</span>}
+    <p className={`text-sm font-bold flex items-center gap-1 flex-wrap ${review.deletedAt ? "text-gray-500" : "text-navy-700"}`}>
+      <span>{review.authorName}</span>
+      {review.authorRole && <span className="text-[10px] text-gray-700 font-medium ml-1">{review.authorRole}</span>}
       {review.via === "public" && (
-        <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 font-bold">外部</span>
+        <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 font-bold">外部</span>
       )}
+      <VisibilityChip visibility={review.visibility} />
       {review.hidden && (
-        <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-700 font-bold">已隐藏</span>
+        <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-700 font-bold">已隐藏</span>
       )}
       {pendingDelete && (
-        <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold">待审核删除</span>
+        <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold">待审核删除</span>
       )}
     </p>
   );
@@ -1144,14 +1160,18 @@ function ReviewModal({ open, onClose, candidate, replyTo, onCreated }) {
   const [content, setContent] = useState("");
   const [linkInput, setLinkInput] = useState("");
   const [attachments, setAttachments] = useState([]);
+  const [visibility, setVisibility] = useState("public");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const me = (() => { try { return JSON.parse(localStorage.getItem("mesa.user") || "null"); } catch { return null; } })();
+  const isAdmin = me?.role === "ADMIN";
 
   useEffect(() => {
     if (!open) {
       setContent("");
       setLinkInput("");
       setAttachments([]);
+      setVisibility("public");
     }
   }, [open]);
 
@@ -1209,7 +1229,7 @@ function ReviewModal({ open, onClose, candidate, replyTo, onCreated }) {
     if (!content.trim()) return toast("请输入评价内容", "error");
     setSaving(true);
     try {
-      const body = { content: content.trim(), attachments };
+      const body = { content: content.trim(), attachments, visibility };
       if (replyTo?.id) body.parentId = replyTo.id;
       const r = await resources.reviews.create(candidate.id, body);
       onCreated(r);
@@ -1217,6 +1237,13 @@ function ReviewModal({ open, onClose, candidate, replyTo, onCreated }) {
     } catch (e) { toast(e.response?.data?.message || "添加失败", "error"); }
     finally { setSaving(false); }
   }
+
+  // 可见范围选项
+  const VIS_OPTIONS = [
+    { v: "public", label: "全员可见", desc: "登录账号 + 公开页访客都能看", icon: "globe" },
+    { v: "internal", label: "仅登录账号可见", desc: "经分享链接访问的人看不到", icon: "lock" },
+    ...(isAdmin ? [{ v: "admin", label: "仅管理员可见", desc: "其他登录账号也看不到", icon: "shield" }] : []),
+  ];
 
   return (
     <Modal open={open} onClose={onClose} maxWidth="max-w-xl">
@@ -1248,6 +1275,36 @@ function ReviewModal({ open, onClose, candidate, replyTo, onCreated }) {
           <p className={`text-[11px] mt-1.5 ${content.length >= 500 ? "text-red-500" : "text-gray-600"}`}>
             {content.length} / 500 字符
           </p>
+        </div>
+
+        {/* 可见范围 */}
+        <div>
+          <p className="text-xs font-bold text-gray-700 uppercase mb-2 flex items-center gap-1.5">
+            <I name="eye" size={12} /> 可见范围
+          </p>
+          <div className="space-y-1.5">
+            {VIS_OPTIONS.map((o) => (
+              <button
+                key={o.v}
+                onClick={() => setVisibility(o.v)}
+                disabled={saving}
+                className={`w-full text-left p-2.5 rounded-xl border-2 transition flex items-start gap-3
+                  ${visibility === o.v ? "border-brand bg-brand-50" : "border-gray-200 hover:border-gray-300"}`}
+              >
+                <span className={`mt-0.5 w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0
+                  ${visibility === o.v ? "border-brand bg-brand" : "border-gray-300"}`}>
+                  {visibility === o.v && <span className="w-1.5 h-1.5 rounded-full bg-white"></span>}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-navy-700 flex items-center gap-1.5">
+                    <I name={o.icon} size={12} className="text-brand" />
+                    {o.label}
+                  </p>
+                  <p className="text-[11px] text-gray-700 mt-0.5">{o.desc}</p>
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* 附件 */}
