@@ -112,6 +112,45 @@ export default async function candidatesRoutes(app) {
     }
   });
 
+  // ─── 备注 ──────────────────────────────────────────────────
+  app.get("/:id/notes", async (req) => {
+    const notes = await app.prisma.candidateNote.findMany({
+      where: { candidateId: req.params.id },
+      orderBy: { createdAt: "desc" },
+    });
+    return { notes };
+  });
+
+  app.post("/:id/notes", {
+    schema: {
+      body: {
+        type: "object",
+        required: ["content"],
+        properties: { content: { type: "string", minLength: 1, maxLength: 5000 } },
+      },
+    },
+  }, async (req, reply) => {
+    const note = await app.prisma.candidateNote.create({
+      data: {
+        candidateId: req.params.id,
+        content: req.body.content,
+        authorId: req.user.sub,
+        authorName: req.user.email,
+      },
+    });
+    return reply.code(201).send({ note });
+  });
+
+  app.delete("/:id/notes/:noteId", async (req, reply) => {
+    try {
+      await app.prisma.candidateNote.delete({ where: { id: req.params.noteId } });
+      return reply.code(204).send();
+    } catch (err) {
+      if (err.code === "P2025") return reply.code(404).send({ error: "not_found" });
+      throw err;
+    }
+  });
+
   // Delete
   app.delete("/:id", async (req, reply) => {
     const { id } = req.params;

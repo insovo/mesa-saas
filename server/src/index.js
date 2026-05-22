@@ -15,6 +15,7 @@ import dashboardRoutes from "./routes/dashboard.js";
 import storageRoutes from "./routes/storage.js";
 import resumesRoutes from "./routes/resumes.js";
 import systemRoutes from "./routes/system.js";
+import shareRoutes from "./routes/share.js";
 
 const requiredEnv = ["DATABASE_URL", "JWT_SECRET", "WEB_ORIGIN"];
 for (const key of requiredEnv) {
@@ -56,6 +57,8 @@ await app.register(dashboardRoutes, { prefix: "/api/dashboard" });
 await app.register(storageRoutes, { prefix: "/api/storage" });
 await app.register(resumesRoutes, { prefix: "/api/resumes" });
 await app.register(systemRoutes, { prefix: "/api/system" });
+// share 路由分两部分: admin 在 /api/candidates/:id/share,公开在 /api/public/share/:token
+await app.register(shareRoutes, { prefix: "/api" });
 
 app.setErrorHandler((err, req, reply) => {
   const status = err.statusCode || 500;

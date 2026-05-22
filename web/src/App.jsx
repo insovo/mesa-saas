@@ -16,6 +16,7 @@ import NewHire from "./pages/NewHire.jsx";
 import Departments from "./pages/Departments.jsx";
 import Interviews from "./pages/Interviews.jsx";
 import Reports from "./pages/Reports.jsx";
+import SharedCandidate from "./pages/SharedCandidate.jsx";
 
 export default function App() {
   const navigate = useNavigate();
@@ -29,6 +30,8 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      {/* 公开候选人分享页 — 不在 AuthGuard 内 */}
+      <Route path="/share/:token" element={<SharedCandidate />} />
       <Route
         element={
           <AuthGuard>

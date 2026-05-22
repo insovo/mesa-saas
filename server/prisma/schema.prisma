@@ -83,6 +83,8 @@ model Candidate {
 
   interviews        Interview[]
   employee          Employee?
+  notes             CandidateNote[]
+  shareLinks        ShareLink[]
 
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
@@ -195,6 +197,40 @@ model Employee {
   @@index([stage])
   @@index([jobId])
   @@map("employees")
+}
+
+// 候选人备注 — 详情页时间线显示
+model CandidateNote {
+  id          String    @id @default(uuid()) @db.Uuid
+  candidateId String    @map("candidate_id") @db.Uuid
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  content     String    @db.Text
+  authorId    String?   @map("author_id") @db.Uuid
+  authorName  String?   @map("author_name")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([candidateId])
+  @@map("candidate_notes")
+}
+
+// 分享给招聘官的公开链接
+// token 是不可猜的 UUID,公开页只能通过 token 访问对应候选人
+// expiresAt = null 表示无限期,否则到期后接口返回 410
+model ShareLink {
+  id           String    @id @default(uuid()) @db.Uuid
+  token        String    @unique  // 用于公开 URL
+  candidateId  String    @map("candidate_id") @db.Uuid
+  candidate    Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  expiresAt    DateTime? @map("expires_at")  // null = 无限期
+  createdBy    String?   @map("created_by") @db.Uuid
+  viewCount    Int       @default(0) @map("view_count")
+  lastViewedAt DateTime? @map("last_viewed_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@index([candidateId])
+  @@index([token])
+  @@map("share_links")
 }
 
 // 系统级 KV 设置 — 仅 admin 可读写

@@ -79,4 +79,15 @@ export const resources = {
   dashboard: {
     overview: () => api.get("/dashboard/overview").then((r) => r.data),
   },
+  notes: {
+    list: (candidateId) => api.get(`/candidates/${candidateId}/notes`).then((r) => r.data.notes),
+    create: (candidateId, content) => api.post(`/candidates/${candidateId}/notes`, { content }).then((r) => r.data.note),
+    remove: (candidateId, noteId) => api.delete(`/candidates/${candidateId}/notes/${noteId}`),
+  },
+  share: {
+    get: (candidateId) => api.get(`/candidates/${candidateId}/share`).then((r) => r.data.link),
+    create: (candidateId, duration) => api.post(`/candidates/${candidateId}/share`, { duration }).then((r) => r.data.link),
+    update: (candidateId, duration) => api.patch(`/candidates/${candidateId}/share`, { duration }).then((r) => r.data.link),
+    remove: (candidateId) => api.delete(`/candidates/${candidateId}/share`),
+  },
 };

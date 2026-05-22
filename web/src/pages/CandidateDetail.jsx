@@ -4,6 +4,7 @@ import { api, resources, LONG_TIMEOUT } from "../lib/api.js";
 import {
   Card,
   Button,
+  Input,
   Avatar,
   StatusPill,
   AiBadge,
@@ -12,9 +13,10 @@ import {
   I,
   LoadingBlock,
   Empty,
+  Modal,
   toast,
 } from "../components/Primitives.jsx";
-import { STATUS_ORDER } from "../lib/constants.js";
+import { STATUS_ORDER, STATUS_TONE, INTERVIEW_ROUNDS } from "../lib/constants.js";
 
 function fmtDate(iso) {
   if (!iso) return "—";
@@ -104,6 +106,13 @@ export default function CandidateDetail() {
   const [matchingJobId, setMatchingJobId] = useState("");
   const [matching, setMatching] = useState(false);
 
+  // 备注 / 面试 / 分享 弹窗
+  const [notes, setNotes] = useState([]);
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [interviewOpen, setInterviewOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [statusOpen, setStatusOpen] = useState(false);
+
   async function load() {
     try {
       setC(await resources.candidates.detail(id));
@@ -117,6 +126,24 @@ export default function CandidateDetail() {
     resources.jobs.list({ take: 200 }).then((d) => setJobs(d.items || [])).catch(() => {});
     // eslint-disable-next-line
   }, [id]);
+
+  // 候选人 id 拿到后,拉备注列表
+  useEffect(() => {
+    if (!c?.id) return;
+    resources.notes.list(c.id).then(setNotes).catch(() => {});
+  }, [c?.id]);
+
+  async function changeStatus(newStatus) {
+    setStatusOpen(false);
+    if (!c || newStatus === c.status) return;
+    try {
+      const updated = await resources.candidates.update(c.id, { status: newStatus });
+      setC(updated);
+      toast(`状态改为 ${newStatus}`, "success");
+    } catch (e) {
+      toast(e.response?.data?.message || "更新失败", "error");
+    }
+  }
 
   async function runJdMatch() {
     if (!matchingJobId || !c?.id) return toast("请选 JD", "error");
@@ -175,7 +202,30 @@ export default function CandidateDetail() {
             <div className="flex items-center gap-2 md:gap-3 flex-wrap">
               <h1 className="text-2xl md:text-3xl font-bold text-navy-700">{c.name}</h1>
               {c.parser && <AiBadge parser={c.parser} confidence={c.parserConfidence} />}
-              <StatusPill status={c.status} size="md" />
+              {/* 状态药丸 — 点击弹 dropdown 修改 */}
+              <div className="relative">
+                <button onClick={() => setStatusOpen((v) => !v)} className="cursor-pointer hover:ring-2 hover:ring-brand/30 rounded-full transition" title="点击修改阶段">
+                  <StatusPill status={c.status} size="md" />
+                </button>
+                {statusOpen && (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => setStatusOpen(false)} />
+                    <div className="absolute top-full left-0 mt-1 z-40 bg-white rounded-xl shadow-card p-1.5 min-w-[140px]">
+                      {STATUS_ORDER.map((s) => (
+                        <button
+                          key={s}
+                          onClick={() => changeStatus(s)}
+                          className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2 hover:bg-lightPrimary ${s === c.status ? "bg-lightPrimary font-bold" : ""}`}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full" style={{ background: STATUS_TONE[s]?.dot || "#A3AED0" }}></span>
+                          {s}
+                          {s === c.status && <I name="check" size={14} className="ml-auto text-brand" />}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
             <p className="text-xs md:text-sm text-gray-700 mt-2">
               {[c.education, c.school, c.major, `${c.yearsExp || 0} 年经验`, c.location].filter(Boolean).join(" · ")}
@@ -210,14 +260,18 @@ export default function CandidateDetail() {
             <span className="hidden sm:inline">推进到下一阶段</span>
             <span className="sm:hidden">推进</span>
           </Button>
-          <Button variant="ghost" icon={<I name="message-square" size={14} />} className="hidden md:inline-flex">
-            添加备注
+          <Button variant="ghost" onClick={() => setNoteOpen(true)} icon={<I name="message-square" size={14} />}>
+            <span className="hidden sm:inline">添加备注</span>
+            <span className="sm:hidden">备注</span>
           </Button>
-          <Button variant="ghost" icon={<I name="calendar-plus" size={14} />}>
+          <Button variant="ghost" onClick={() => setInterviewOpen(true)} icon={<I name="calendar-plus" size={14} />}>
             <span className="hidden sm:inline">安排面试</span>
             <span className="sm:hidden">面试</span>
           </Button>
-          <Button variant="ghost" icon={<I name="share-2" size={14} />} className="hidden md:inline-flex">分享给招聘官</Button>
+          <Button variant="ghost" onClick={() => setShareOpen(true)} icon={<I name="share-2" size={14} />}>
+            <span className="hidden sm:inline">分享给招聘官</span>
+            <span className="sm:hidden">分享</span>
+          </Button>
           <div className="flex-1"></div>
           <Button variant="danger" onClick={onDelete} icon={<I name="trash-2" size={14} />}>
             <span className="hidden sm:inline">删除候选人</span>
@@ -225,6 +279,55 @@ export default function CandidateDetail() {
           </Button>
         </div>
       </Card>
+
+      {/* 备注时间线 */}
+      {notes.length > 0 && (
+        <Card className="p-5 md:p-6">
+          <h3 className="title-card flex items-center gap-2">
+            <I name="message-square" size={18} className="text-brand" />
+            备注 ({notes.length})
+          </h3>
+          <ul className="mt-4 space-y-3">
+            {notes.map((n) => (
+              <li key={n.id} className="flex gap-3 p-3 rounded-xl bg-lightPrimary group">
+                <div className="w-8 h-8 rounded-full bg-brand-gradient text-white flex items-center justify-center shrink-0 text-xs font-bold">
+                  {(n.authorName || "?").slice(0, 1).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs text-gray-700">
+                      <span className="font-bold">{n.authorName || "匿名"}</span> · {new Date(n.createdAt).toLocaleString("zh-CN")}
+                    </p>
+                    <button
+                      onClick={async () => {
+                        if (!confirm("删除这条备注?")) return;
+                        try {
+                          await resources.notes.remove(c.id, n.id);
+                          setNotes((prev) => prev.filter((x) => x.id !== n.id));
+                          toast("已删除", "success");
+                        } catch (err) { toast(err.message, "error"); }
+                      }}
+                      className="opacity-0 group-hover:opacity-100 text-red-500 hover:bg-red-50 w-6 h-6 rounded flex items-center justify-center"
+                    >
+                      <I name="trash-2" size={12} />
+                    </button>
+                  </div>
+                  <p className="text-sm text-navy-700 mt-1 whitespace-pre-wrap">{n.content}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
+      {/* === 添加备注 Modal === */}
+      <NoteModal open={noteOpen} onClose={() => setNoteOpen(false)} candidate={c} onCreated={(n) => { setNotes((p) => [n, ...p]); setNoteOpen(false); }} />
+
+      {/* === 安排面试 Modal === */}
+      <InterviewModal open={interviewOpen} onClose={() => setInterviewOpen(false)} candidate={c} jobs={jobs} />
+
+      {/* === 分享 Modal === */}
+      <ShareModal open={shareOpen} onClose={() => setShareOpen(false)} candidate={c} />
 
       {/* === AI 解析简报(纯文本,HR 友好)=== */}
       {c.aiSummary && (
@@ -366,5 +469,324 @@ export default function CandidateDetail() {
         </Link>
       </div>
     </div>
+  );
+}
+
+// ════════════════════════════════════════════════
+// 子组件: 备注 / 面试 / 分享 Modal
+// ════════════════════════════════════════════════
+
+function NoteModal({ open, onClose, candidate, onCreated }) {
+  const [content, setContent] = useState("");
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { if (!open) setContent(""); }, [open]);
+
+  async function submit() {
+    if (!content.trim()) return toast("请输入内容", "error");
+    setSaving(true);
+    try {
+      const n = await resources.notes.create(candidate.id, content.trim());
+      onCreated(n);
+      toast("已添加备注", "success");
+    } catch (e) { toast(e.response?.data?.message || "添加失败", "error"); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} maxWidth="max-w-lg">
+      <div className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold text-navy-700 flex items-center gap-2">
+            <I name="message-square" size={18} className="text-brand" />
+            添加备注
+          </h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-navy-700"><I name="x" size={20} /></button>
+        </div>
+        <textarea
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          rows={6}
+          placeholder="备注内容(如:候选人在二面表现出色,沟通能力突出...)"
+          className="w-full p-3 rounded-xl border border-gray-200 text-sm text-navy-700 outline-none focus:border-brand resize-none"
+          disabled={saving}
+        />
+        <p className="text-xs text-gray-600 mt-1.5">{content.length} / 5000</p>
+        <div className="flex justify-end gap-2 mt-4">
+          <Button variant="ghost" onClick={onClose} disabled={saving}>取消</Button>
+          <Button onClick={submit} disabled={saving || !content.trim()} icon={<I name={saving ? "loader" : "check"} size={12} className={saving ? "animate-spin" : ""} />}>
+            {saving ? "保存中" : "保存"}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function InterviewModal({ open, onClose, candidate, jobs }) {
+  const [jobId, setJobId] = useState("");
+  const [round, setRound] = useState("一面");
+  const [mode, setMode] = useState("线下");
+  const [scheduledAt, setScheduledAt] = useState("");
+  const [interviewer, setInterviewer] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setJobId(candidate?.jobId || "");
+    setScheduledAt(new Date(Date.now() + 86400000).toISOString().slice(0, 16));  // 默认明天此时
+  }, [open, candidate?.jobId]);
+
+  async function submit() {
+    if (!scheduledAt) return toast("请选时间", "error");
+    setSaving(true);
+    try {
+      const job = jobs.find((j) => j.id === jobId);
+      await resources.interviews.create({
+        candidateId: candidate.id,
+        candidateName: candidate.name,
+        jobId: jobId || undefined,
+        jobTitle: job?.title || candidate.appliedFor,
+        round,
+        mode,
+        status: "已安排",
+        scheduledAt: new Date(scheduledAt).toISOString(),
+        interviewer: interviewer || undefined,
+      });
+      toast("面试已安排", "success");
+      onClose();
+    } catch (e) { toast(e.response?.data?.message || "保存失败", "error"); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} maxWidth="max-w-lg">
+      <div className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold text-navy-700 flex items-center gap-2">
+            <I name="calendar-plus" size={18} className="text-brand" />
+            安排面试 — {candidate?.name}
+          </h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-navy-700"><I name="x" size={20} /></button>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2">
+            <label className="text-sm text-navy-700 font-bold ml-3 block mb-2">关联岗位</label>
+            <select value={jobId} onChange={(e) => setJobId(e.target.value)} className="w-full h-11 rounded-xl border border-gray-200 px-3 text-sm outline-none focus:border-brand bg-white">
+              <option value="">— 无 / 候选人简历推断岗位 —</option>
+              {jobs.map((j) => <option key={j.id} value={j.id}>{j.title}{j.dept ? ` · ${j.dept}` : ""}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-sm text-navy-700 font-bold ml-3 block mb-2">轮次</label>
+            <select value={round} onChange={(e) => setRound(e.target.value)} className="w-full h-11 rounded-xl border border-gray-200 px-3 text-sm outline-none focus:border-brand bg-white">
+              {INTERVIEW_ROUNDS.map((r) => <option key={r}>{r}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-sm text-navy-700 font-bold ml-3 block mb-2">方式</label>
+            <select value={mode} onChange={(e) => setMode(e.target.value)} className="w-full h-11 rounded-xl border border-gray-200 px-3 text-sm outline-none focus:border-brand bg-white">
+              <option>线下</option><option>视频</option><option>电话</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-sm text-navy-700 font-bold ml-3 block mb-2">时间</label>
+            <input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} className="w-full h-11 rounded-xl border border-gray-200 px-3 text-sm outline-none focus:border-brand" />
+          </div>
+          <Input label="面试官" value={interviewer} onChange={(e) => setInterviewer(e.target.value)} placeholder="如 王浩" />
+        </div>
+        <div className="flex justify-end gap-2 mt-5">
+          <Button variant="ghost" onClick={onClose} disabled={saving}>取消</Button>
+          <Button onClick={submit} disabled={saving} icon={<I name={saving ? "loader" : "calendar-check"} size={12} className={saving ? "animate-spin" : ""} />}>
+            {saving ? "保存中" : "安排"}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function ShareModal({ open, onClose, candidate }) {
+  const [link, setLink] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [duration, setDuration] = useState("3d");
+  const [custom, setCustom] = useState({ n: 7, unit: "d" });
+  const [showCustom, setShowCustom] = useState(false);
+
+  useEffect(() => {
+    if (!open || !candidate?.id) return;
+    setLoading(true);
+    resources.share.get(candidate.id).then(setLink).catch(() => setLink(null)).finally(() => setLoading(false));
+  }, [open, candidate?.id]);
+
+  const PRESETS = [
+    { v: "1d", l: "1 天" },
+    { v: "3d", l: "3 天 (推荐)" },
+    { v: "7d", l: "1 周" },
+    { v: "30d", l: "1 个月" },
+    { v: "forever", l: "无限期" },
+  ];
+
+  function effectiveDuration() {
+    return showCustom ? `${custom.n}${custom.unit}` : duration;
+  }
+
+  async function generate() {
+    setLoading(true);
+    try {
+      const l = await resources.share.create(candidate.id, effectiveDuration());
+      setLink(l);
+      toast(link ? "已重新生成链接" : "已生成分享链接", "success");
+    } catch (e) { toast(e.response?.data?.message || "生成失败", "error"); }
+    finally { setLoading(false); }
+  }
+
+  async function changeDuration() {
+    if (!link) return;
+    setLoading(true);
+    try {
+      const l = await resources.share.update(candidate.id, effectiveDuration());
+      setLink(l);
+      toast("已修改有效期", "success");
+    } catch (e) { toast(e.response?.data?.message || "修改失败", "error"); }
+    finally { setLoading(false); }
+  }
+
+  async function destroy() {
+    if (!confirm("删除当前链接? 已分享的链接将立刻失效。")) return;
+    setLoading(true);
+    try {
+      await resources.share.remove(candidate.id);
+      setLink(null);
+      toast("已删除", "success");
+    } catch (e) { toast(e.response?.data?.message || "删除失败", "error"); }
+    finally { setLoading(false); }
+  }
+
+  const publicUrl = link ? `${window.location.origin}/share/${link.token}` : "";
+
+  function copy() {
+    navigator.clipboard.writeText(publicUrl).then(() => toast("链接已复制到剪贴板", "success"));
+  }
+
+  function fmtExpires() {
+    if (!link?.expiresAt) return "无限期";
+    const d = new Date(link.expiresAt);
+    const now = Date.now();
+    if (d.getTime() < now) return "已过期";
+    const hrs = Math.round((d.getTime() - now) / 3600000);
+    if (hrs < 24) return `${hrs} 小时后过期`;
+    return `${Math.round(hrs / 24)} 天后过期 · ${d.toLocaleString("zh-CN")}`;
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} maxWidth="max-w-xl">
+      <div className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold text-navy-700 flex items-center gap-2">
+            <I name="share-2" size={18} className="text-brand" />
+            分享给招聘官 — {candidate?.name}
+          </h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-navy-700"><I name="x" size={20} /></button>
+        </div>
+
+        {/* 已有链接 */}
+        {link ? (
+          <div className="space-y-4">
+            <div className="p-4 bg-green-50 rounded-xl border border-green-100">
+              <p className="text-xs font-bold text-green-800 mb-2 flex items-center gap-1.5">
+                <I name="check-circle-2" size={14} /> 当前分享链接
+              </p>
+              <div className="flex items-center gap-2 bg-white rounded-lg p-2">
+                <code className="flex-1 text-xs font-mono text-navy-700 truncate">{publicUrl}</code>
+                <Button size="sm" onClick={copy} icon={<I name="copy" size={12} />}>复制</Button>
+              </div>
+              <div className="flex items-center gap-4 mt-2 text-[11px] text-gray-700">
+                <span className="flex items-center gap-1"><I name="clock" size={11} /> {fmtExpires()}</span>
+                <span className="flex items-center gap-1"><I name="eye" size={11} /> 已访问 {link.viewCount} 次</span>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-bold text-gray-700 uppercase mb-2">修改有效期</p>
+              <DurationPicker {...{ duration, setDuration, custom, setCustom, showCustom, setShowCustom, PRESETS }} />
+              <div className="flex gap-2 mt-3">
+                <Button variant="ghost" onClick={destroy} disabled={loading} icon={<I name="trash-2" size={12} />}>删除链接</Button>
+                <div className="flex-1" />
+                <Button variant="ghost" onClick={generate} disabled={loading} icon={<I name="rotate-ccw" size={12} />}>重新生成</Button>
+                <Button onClick={changeDuration} disabled={loading} icon={<I name={loading ? "loader" : "check"} size={12} className={loading ? "animate-spin" : ""} />}>
+                  仅改有效期
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : loading ? (
+          <div className="py-10 text-center text-gray-700 text-sm">
+            <I name="loader" size={16} className="animate-spin inline mr-2" />加载中...
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-700">生成一个 <strong>公开链接</strong>(无须登录),只能看到这位候选人的简报,不暴露其他页面信息。链接过期后立即失效。</p>
+            <div>
+              <p className="text-xs font-bold text-gray-700 uppercase mb-2">有效期</p>
+              <DurationPicker {...{ duration, setDuration, custom, setCustom, showCustom, setShowCustom, PRESETS }} />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={onClose}>取消</Button>
+              <Button onClick={generate} disabled={loading} icon={<I name={loading ? "loader" : "share-2"} size={12} className={loading ? "animate-spin" : ""} />}>
+                {loading ? "生成中" : "生成链接"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+function DurationPicker({ duration, setDuration, custom, setCustom, showCustom, setShowCustom, PRESETS }) {
+  return (
+    <>
+      <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+        {PRESETS.map((p) => (
+          <button
+            key={p.v}
+            onClick={() => { setDuration(p.v); setShowCustom(false); }}
+            className={`px-3 py-2 rounded-lg text-xs font-bold transition border-2
+              ${!showCustom && duration === p.v ? "border-brand bg-brand-50 text-brand" : "border-gray-200 hover:border-gray-300 text-gray-700"}`}
+          >
+            {p.l}
+          </button>
+        ))}
+        <button
+          onClick={() => setShowCustom(true)}
+          className={`px-3 py-2 rounded-lg text-xs font-bold transition border-2
+            ${showCustom ? "border-brand bg-brand-50 text-brand" : "border-gray-200 hover:border-gray-300 text-gray-700"}`}
+        >
+          自定义
+        </button>
+      </div>
+      {showCustom && (
+        <div className="mt-2 flex items-center gap-2">
+          <input
+            type="number"
+            min="1"
+            value={custom.n}
+            onChange={(e) => setCustom({ ...custom, n: Math.max(1, parseInt(e.target.value, 10) || 1) })}
+            className="flex-1 h-10 rounded-lg border border-gray-200 px-3 text-sm text-navy-700 outline-none focus:border-brand"
+          />
+          <select
+            value={custom.unit}
+            onChange={(e) => setCustom({ ...custom, unit: e.target.value })}
+            className="h-10 rounded-lg border border-gray-200 px-2 text-sm text-navy-700 outline-none focus:border-brand bg-white"
+          >
+            <option value="s">秒</option>
+            <option value="m">分钟</option>
+            <option value="h">小时</option>
+            <option value="d">天</option>
+          </select>
+          <span className="text-[11px] text-gray-600">60s ~ 30 天</span>
+        </div>
+      )}
+    </>
   );
 }
