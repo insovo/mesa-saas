@@ -611,12 +611,21 @@ function ShareModal({ open, onClose, candidate }) {
   const [duration, setDuration] = useState("3d");
   const [custom, setCustom] = useState({ n: 7, unit: "d" });
   const [showCustom, setShowCustom] = useState(false);
+  const [nowTick, setNowTick] = useState(Date.now());
 
   useEffect(() => {
     if (!open || !candidate?.id) return;
     setLoading(true);
     resources.share.get(candidate.id).then(setLink).catch(() => setLink(null)).finally(() => setLoading(false));
   }, [open, candidate?.id]);
+
+  // 实时倒计时: 链接未过期时每秒 tick 一次, 已过期时停止
+  useEffect(() => {
+    if (!open || !link?.expiresAt) return;
+    const tick = () => setNowTick(Date.now());
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [open, link?.expiresAt]);
 
   const PRESETS = [
     { v: "1d", l: "1 天" },
@@ -668,14 +677,30 @@ function ShareModal({ open, onClose, candidate }) {
     navigator.clipboard.writeText(publicUrl).then(() => toast("链接已复制到剪贴板", "success"));
   }
 
+  // 精细化剩余时间 / 已过期时间
+  // 返回 { text, tone, expired }
+  //   tone = "green"(>1h) / "amber"(<=1h 未过期) / "red"(已过期)
   function fmtExpires() {
-    if (!link?.expiresAt) return "无限期";
+    if (!link?.expiresAt) return { text: "永久有效", tone: "green", expired: false };
     const d = new Date(link.expiresAt);
-    const now = Date.now();
-    if (d.getTime() < now) return "已过期";
-    const hrs = Math.round((d.getTime() - now) / 3600000);
-    if (hrs < 24) return `${hrs} 小时后过期`;
-    return `${Math.round(hrs / 24)} 天后过期 · ${d.toLocaleString("zh-CN")}`;
+    const diffMs = d.getTime() - nowTick;
+    const expired = diffMs <= 0;
+    const abs = Math.abs(diffMs);
+    const days = Math.floor(abs / 86400000);
+    const hours = Math.floor((abs % 86400000) / 3600000);
+    const minutes = Math.floor((abs % 3600000) / 60000);
+    const seconds = Math.floor((abs % 60000) / 1000);
+    let parts = [];
+    if (days > 0) parts.push(`${days} 天`);
+    if (hours > 0 || days > 0) parts.push(`${hours} 小时`);
+    if (days === 0) {
+      parts.push(`${minutes} 分`);
+      if (days === 0 && hours === 0) parts.push(`${seconds} 秒`);
+    }
+    const span = parts.join(" ");
+    if (expired) return { text: `已过期 ${span}`, tone: "red", expired: true };
+    if (days === 0 && hours === 0) return { text: `剩余 ${span}`, tone: "amber", expired: false };
+    return { text: `剩余 ${span}`, tone: "green", expired: false };
   }
 
   return (
@@ -691,19 +716,43 @@ function ShareModal({ open, onClose, candidate }) {
 
         {/* 已有链接 */}
         {link ? (
+          (() => {
+            const exp = fmtExpires();
+            const wrap = exp.tone === "red" ? "bg-red-50 border-red-200" : exp.tone === "amber" ? "bg-amber-50 border-amber-200" : "bg-green-50 border-green-100";
+            const head = exp.tone === "red" ? "text-red-700" : exp.tone === "amber" ? "text-amber-800" : "text-green-800";
+            const headIcon = exp.tone === "red" ? "alert-circle" : exp.tone === "amber" ? "clock" : "check-circle-2";
+            const expColor = exp.tone === "red" ? "text-red-700 font-bold" : exp.tone === "amber" ? "text-amber-700 font-bold" : "text-green-700 font-bold";
+            return (
           <div className="space-y-4">
-            <div className="p-4 bg-green-50 rounded-xl border border-green-100">
-              <p className="text-xs font-bold text-green-800 mb-2 flex items-center gap-1.5">
-                <I name="check-circle-2" size={14} /> 当前分享链接
-              </p>
+            <div className={`p-4 rounded-xl border ${wrap}`}>
+              <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                <p className={`text-xs font-bold flex items-center gap-1.5 ${head}`}>
+                  <I name={headIcon} size={14} /> {exp.expired ? "链接已过期" : "当前分享链接"}
+                </p>
+                {/* 剩余/已过期 时间显著显示 */}
+                <span className={`text-xs ${expColor} flex items-center gap-1`}>
+                  <I name="hourglass" size={12} /> {exp.text}
+                </span>
+              </div>
               <div className="flex items-center gap-2 bg-white rounded-lg p-2">
                 <code className="flex-1 text-xs font-mono text-navy-700 truncate">{publicUrl}</code>
-                <Button size="sm" onClick={copy} icon={<I name="copy" size={12} />}>复制</Button>
+                <Button size="sm" onClick={copy} icon={<I name="copy" size={12} />} disabled={exp.expired}>
+                  复制
+                </Button>
               </div>
               <div className="flex items-center gap-4 mt-2 text-[11px] text-gray-700">
-                <span className="flex items-center gap-1"><I name="clock" size={11} /> {fmtExpires()}</span>
+                <span className="flex items-center gap-1">
+                  <I name="calendar" size={11} />
+                  {link.expiresAt ? `到期 ${new Date(link.expiresAt).toLocaleString("zh-CN")}` : "永久有效"}
+                </span>
                 <span className="flex items-center gap-1"><I name="eye" size={11} /> 已访问 {link.viewCount} 次</span>
               </div>
+              {exp.expired && (
+                <p className="text-[11px] text-red-600 mt-2 flex items-start gap-1.5">
+                  <I name="info" size={11} className="mt-0.5 shrink-0" />
+                  访问者打开链接会看到 "链接已过期" 错误页。请使用下方「重新生成」获取新链接,或「仅改有效期」延长当前链接。
+                </p>
+              )}
             </div>
 
             <div>
@@ -719,6 +768,8 @@ function ShareModal({ open, onClose, candidate }) {
               </div>
             </div>
           </div>
+            );
+          })()
         ) : loading ? (
           <div className="py-10 text-center text-gray-700 text-sm">
             <I name="loader" size={16} className="animate-spin inline mr-2" />加载中...
