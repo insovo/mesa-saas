@@ -109,6 +109,26 @@ services:
     networks:
       - mesa-net
 
+  # === 监控 · Uptime Kuma ===
+  # 容器内监听 3001,通过 frontend Nginx 反代到 monitor.insovo.top 暴露。
+  # 不直接映射宿主机端口,流量必须经 nginx → cloudflare 出。
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: mesa-uptime
+    restart: unless-stopped
+    volumes:
+      - mesa_uptime_data:/app/data
+    expose:
+      - "3001"
+    networks:
+      - mesa-net
+    healthcheck:
+      test: ["CMD", "node", "extra/healthcheck.js"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
 networks:
   mesa-net:
     driver: bridge
@@ -116,3 +136,4 @@ networks:
 volumes:
   mesa_pg_prod_data:
   mesa_redis_prod_data:
+  mesa_uptime_data:
