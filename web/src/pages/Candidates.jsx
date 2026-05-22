@@ -126,9 +126,9 @@ export default function Candidates() {
       </Card>
 
       {/* 工具栏 */}
-      <Card className="p-6">
-        <div className="flex flex-wrap items-center gap-3 mb-5">
-          <div className="flex-1 min-w-[240px] flex items-center bg-lightPrimary rounded-xl pl-4 h-11">
+      <Card className="p-4 md:p-6">
+        <div className="flex flex-wrap items-center gap-2 md:gap-3 mb-4 md:mb-5">
+          <div className="flex-1 min-w-[160px] md:min-w-[240px] flex items-center bg-lightPrimary rounded-xl pl-4 h-11">
             <I name="search" size={16} className="text-gray-400" />
             <input
               value={q}
@@ -138,9 +138,12 @@ export default function Candidates() {
               className="flex-1 ml-3 bg-transparent outline-none text-sm text-navy-700 placeholder:text-gray-400"
             />
           </div>
-          <Button variant="ghost" onClick={load} icon={<I name="refresh-cw" size={14} />}>刷新</Button>
+          <Button variant="ghost" onClick={load} icon={<I name="refresh-cw" size={14} />}>
+            <span className="hidden sm:inline">刷新</span>
+          </Button>
           <Button onClick={() => setCreateOpen(true)} icon={<I name="user-plus" size={16} />}>
-            新建候选人
+            <span className="hidden sm:inline">新建候选人</span>
+            <span className="sm:hidden">新建</span>
           </Button>
         </div>
 
@@ -153,60 +156,92 @@ export default function Candidates() {
         ) : (
           <ul className="divide-y divide-gray-200">
             {items.map((c) => (
-              <li key={c.id} className="py-4 flex items-center gap-4 group">
-                <Avatar name={c.name} animal={c.animal} size={48} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Link
-                      to={`/candidates/${c.externalId || c.id}`}
-                      className="text-base font-bold text-navy-700 hover:text-brand"
-                    >
-                      {c.name}
-                    </Link>
+              <li key={c.id} className="py-4 group">
+                {/* === 桌面端: 单行 horizontal === */}
+                <div className="hidden md:flex items-center gap-4">
+                  <Avatar name={c.name} animal={c.animal} size={48} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Link to={`/candidates/${c.externalId || c.id}`} className="text-base font-bold text-navy-700 hover:text-brand">
+                        {c.name}
+                      </Link>
+                      {c.parser && <AiBadge parser={c.parser} confidence={c.parserConfidence} />}
+                    </div>
+                    <p className="text-xs text-gray-700 mt-1 truncate">
+                      {[c.education, c.school, c.major, c.location, c.yearsExp != null ? `${c.yearsExp} 年经验` : null].filter(Boolean).join(" · ")}
+                    </p>
+                    <div className="flex gap-1.5 mt-2 flex-wrap">
+                      {(c.tags || []).slice(0, 5).map((t) => <Tag key={t}>{t}</Tag>)}
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end gap-1 w-[160px] shrink-0">
+                    <p className="text-xs text-gray-700">应聘岗位</p>
+                    <p className="text-sm font-bold text-navy-700 truncate w-full text-right">{c.appliedFor || "—"}</p>
+                  </div>
+                  {c.jdMatch != null ? (
+                    <MatchRing value={c.jdMatch} size={56} stroke={6} />
+                  ) : (
+                    <div className="w-14 h-14 flex flex-col items-center justify-center text-[10px] text-gray-400">
+                      <I name="link-2-off" size={16} />
+                      <span className="mt-0.5">未关联</span>
+                    </div>
+                  )}
+                  <div className="flex flex-col items-end gap-2 w-[110px] shrink-0">
+                    <StatusPill status={c.status || "待筛选"} />
+                    <span className="text-[11px] text-gray-600">{c.source || "—"}</span>
+                  </div>
+                  <div className="opacity-0 group-hover:opacity-100 transition flex flex-col gap-1">
+                    <button onClick={() => navigate(`/candidates/${c.externalId || c.id}`)} className="w-8 h-8 rounded-full bg-lightPrimary text-gray-700 hover:text-brand flex items-center justify-center" title="查看详情">
+                      <I name="arrow-right" size={14} />
+                    </button>
+                    <button onClick={() => onDelete(c.id, c.name)} className="w-8 h-8 rounded-full bg-red-50 text-red-500 hover:bg-red-100 flex items-center justify-center" title="删除">
+                      <I name="trash-2" size={14} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* === 移动端: 卡片式 stack === */}
+                <Link to={`/candidates/${c.externalId || c.id}`} className="md:hidden block active:bg-lightPrimary -mx-2 px-2 py-1 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <Avatar name={c.name} animal={c.animal} size={44} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-base font-bold text-navy-700">{c.name}</span>
+                        <StatusPill status={c.status || "待筛选"} />
+                      </div>
+                      <p className="text-[11px] text-gray-700 mt-1 line-clamp-2">
+                        {[c.education, c.school, c.major].filter(Boolean).join(" · ")}
+                      </p>
+                      <p className="text-[11px] text-gray-700 mt-0.5">
+                        {[c.location, c.yearsExp != null ? `${c.yearsExp} 年经验` : null, c.source].filter(Boolean).join(" · ") || "—"}
+                      </p>
+                    </div>
+                    {c.jdMatch != null ? (
+                      <MatchRing value={c.jdMatch} size={48} stroke={5} />
+                    ) : (
+                      <div className="w-12 shrink-0 text-center text-[10px] text-gray-400">
+                        <I name="link-2-off" size={14} className="inline" />
+                        <p className="mt-0.5">未关联</p>
+                      </div>
+                    )}
+                  </div>
+                  {/* tags row */}
+                  {((c.tags || []).length > 0) && (
+                    <div className="flex gap-1.5 mt-2.5 flex-wrap pl-[56px]">
+                      {(c.tags || []).slice(0, 4).map((t) => <Tag key={t}>{t}</Tag>)}
+                      {(c.tags || []).length > 4 && <span className="text-[10px] text-gray-600">+{c.tags.length - 4}</span>}
+                    </div>
+                  )}
+                  {/* 应聘岗位 + AI badge */}
+                  <div className="flex items-center gap-2 mt-2 pl-[56px] flex-wrap">
+                    {c.appliedFor && (
+                      <span className="text-[11px] text-gray-700 inline-flex items-center gap-1">
+                        <I name="briefcase" size={10} /> {c.appliedFor}
+                      </span>
+                    )}
                     {c.parser && <AiBadge parser={c.parser} confidence={c.parserConfidence} />}
                   </div>
-                  <p className="text-xs text-gray-700 mt-1 truncate">
-                    {[c.education, c.school, c.major, c.location, c.yearsExp != null ? `${c.yearsExp} 年经验` : null]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </p>
-                  <div className="flex gap-1.5 mt-2 flex-wrap">
-                    {(c.tags || []).slice(0, 5).map((t) => (
-                      <Tag key={t}>{t}</Tag>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="hidden md:flex flex-col items-end gap-1 w-[180px] shrink-0">
-                  <p className="text-xs text-gray-700">应聘岗位</p>
-                  <p className="text-sm font-bold text-navy-700 truncate w-full text-right">
-                    {c.appliedFor || "—"}
-                  </p>
-                </div>
-
-                <MatchRing value={c.jdMatch || 0} size={56} stroke={6} />
-
-                <div className="flex flex-col items-end gap-2 w-[110px] shrink-0">
-                  <StatusPill status={c.status || "待筛选"} />
-                  <span className="text-[11px] text-gray-600">{c.source || "—"}</span>
-                </div>
-
-                <div className="opacity-0 group-hover:opacity-100 transition flex flex-col gap-1">
-                  <button
-                    onClick={() => navigate(`/candidates/${c.externalId || c.id}`)}
-                    className="w-8 h-8 rounded-full bg-lightPrimary text-gray-700 hover:text-brand flex items-center justify-center"
-                    title="查看详情"
-                  >
-                    <I name="arrow-right" size={14} />
-                  </button>
-                  <button
-                    onClick={() => onDelete(c.id, c.name)}
-                    className="w-8 h-8 rounded-full bg-red-50 text-red-500 hover:bg-red-100 flex items-center justify-center"
-                    title="删除"
-                  >
-                    <I name="trash-2" size={14} />
-                  </button>
-                </div>
+                </Link>
               </li>
             ))}
           </ul>

@@ -80,34 +80,51 @@ export default function Staff() {
         ) : (
           <ul className="divide-y divide-gray-200">
             {items.map((e) => (
-              <li key={e.id} className="py-4 flex items-center gap-4 group">
-                <Avatar name={e.name} animal={e.animal} src={e.avatar} size={48} />
-                <div className="min-w-0 flex-1">
-                  <Link
-                    to={`/staff/${e.externalId || e.id}`}
-                    className="text-base font-bold text-navy-700 hover:text-brand"
-                  >
-                    {e.name}
-                  </Link>
-                  <p className="text-xs text-gray-700 mt-1 truncate">
-                    {[e.appliedFor, e.dept, e.level, e.workLocation].filter(Boolean).join(" · ")}
-                  </p>
-                  <div className="flex gap-1.5 mt-2 flex-wrap">
-                    {(e.tags || []).slice(0, 4).map((t) => (
-                      <Tag key={t}>{t}</Tag>
-                    ))}
+              <li key={e.id} className="py-4 group">
+                {/* 桌面端: 单行 */}
+                <div className="hidden md:flex items-center gap-4">
+                  <Avatar name={e.name} animal={e.animal} src={e.avatar} size={48} />
+                  <div className="min-w-0 flex-1">
+                    <Link to={`/staff/${e.externalId || e.id}`} className="text-base font-bold text-navy-700 hover:text-brand">
+                      {e.name}
+                    </Link>
+                    <p className="text-xs text-gray-700 mt-1 truncate">
+                      {[e.appliedFor, e.dept, e.level, e.workLocation].filter(Boolean).join(" · ")}
+                    </p>
+                    <div className="flex gap-1.5 mt-2 flex-wrap">
+                      {(e.tags || []).slice(0, 4).map((t) => <Tag key={t}>{t}</Tag>)}
+                    </div>
                   </div>
-                </div>
-                <div className="hidden md:block w-[140px] text-right text-xs text-gray-700">
-                  <p>HRBP · {e.hrbp || "—"}</p>
-                  <p className="mt-1">主管 · {e.directManager || "—"}</p>
-                </div>
-                <StagePill stage={e.stage || "待入职"} />
-                <button className="opacity-0 group-hover:opacity-100 transition w-8 h-8 rounded-full bg-lightPrimary text-gray-700 hover:text-brand flex items-center justify-center">
-                  <Link to={`/staff/${e.externalId || e.id}`}>
+                  <div className="w-[140px] text-right text-xs text-gray-700 shrink-0">
+                    <p>HRBP · {e.hrbp || "—"}</p>
+                    <p className="mt-1">主管 · {e.directManager || "—"}</p>
+                  </div>
+                  <StagePill stage={e.stage || "待入职"} />
+                  <Link to={`/staff/${e.externalId || e.id}`} className="opacity-0 group-hover:opacity-100 transition w-8 h-8 rounded-full bg-lightPrimary text-gray-700 hover:text-brand flex items-center justify-center">
                     <I name="arrow-right" size={14} />
                   </Link>
-                </button>
+                </div>
+
+                {/* 移动端: 卡片式 stack */}
+                <Link to={`/staff/${e.externalId || e.id}`} className="md:hidden block active:bg-lightPrimary -mx-2 px-2 py-1 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <Avatar name={e.name} animal={e.animal} src={e.avatar} size={44} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-base font-bold text-navy-700">{e.name}</span>
+                        <StagePill stage={e.stage || "待入职"} />
+                      </div>
+                      <p className="text-[11px] text-gray-700 mt-1">{[e.appliedFor, e.dept].filter(Boolean).join(" · ")}</p>
+                      <p className="text-[11px] text-gray-700 mt-0.5">{[e.level, e.workLocation].filter(Boolean).join(" · ") || "—"}</p>
+                    </div>
+                  </div>
+                  {((e.tags || []).length > 0) && (
+                    <div className="flex gap-1.5 mt-2 flex-wrap pl-[56px]">
+                      {(e.tags || []).slice(0, 3).map((t) => <Tag key={t}>{t}</Tag>)}
+                    </div>
+                  )}
+                  <p className="text-[11px] text-gray-600 mt-1.5 pl-[56px]">HRBP · {e.hrbp || "—"} / 主管 · {e.directManager || "—"}</p>
+                </Link>
               </li>
             ))}
           </ul>
