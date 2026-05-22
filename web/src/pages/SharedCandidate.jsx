@@ -37,6 +37,7 @@ export default function SharedCandidate() {
   const [reviews, setReviews] = useState([]);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [replyTo, setReplyTo] = useState(null);
+  const [selectedIds, setSelectedIds] = useState([]);
 
   useEffect(() => {
     axios.get(`/api/public/share/${token}`)
@@ -251,18 +252,35 @@ export default function SharedCandidate() {
             });
             if (tree.length === 0) return <Empty icon="message-circle" title="还没有评价" desc="点击「添加评价」给候选人留下你的反馈" />;
             return (
-              <ul className="space-y-4">
-                {tree.map((r) => (
-                  <PublicReviewItem
-                    key={r.id}
-                    review={r}
-                    replies={repliesByParent[r.id] || []}
-                    token={token}
-                    onReply={(parent) => { setReplyTo(parent); setReviewOpen(true); }}
-                    updateReview={(rr) => setReviews((p) => p.map((x) => x.id === rr.id ? rr : x))}
-                  />
-                ))}
-              </ul>
+              <>
+                <ul className="space-y-4">
+                  {tree.map((r) => (
+                    <PublicReviewItem
+                      key={r.id}
+                      review={r}
+                      replies={repliesByParent[r.id] || []}
+                      token={token}
+                      selectedIds={selectedIds}
+                      toggleSelect={(id) => setSelectedIds((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id])}
+                      onReply={(parent) => { setReplyTo(parent); setReviewOpen(true); }}
+                      updateReview={(rr) => setReviews((p) => p.map((x) => x.id === rr.id ? rr : x))}
+                    />
+                  ))}
+                </ul>
+                {selectedIds.length > 0 && (
+                  <div className="mt-3 p-2.5 rounded-xl bg-brand-50 border border-brand/30 flex items-center gap-2">
+                    <span className="text-xs font-bold text-brand">已选 {selectedIds.length} 条</span>
+                    <div className="flex-1" />
+                    <Button size="sm" variant="ghost" onClick={() => setSelectedIds([])}>清空</Button>
+                    <Button size="sm" onClick={() => {
+                      const targets = reviews.filter((r) => selectedIds.includes(r.id) && !r.deletedAt);
+                      if (targets.length === 0) return;
+                      setReplyTo({ ...targets[0], _bulk: targets });
+                      setReviewOpen(true);
+                    }} icon={<I name="reply" size={12} />}>批量回复</Button>
+                  </div>
+                )}
+              </>
             );
           })()}
         </Card>
@@ -290,10 +308,12 @@ function fmtTime(iso) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-function PublicReviewItem({ review, replies = [], token, onReply, updateReview, isReply = false }) {
+function PublicReviewItem({ review, replies = [], token, onReply, updateReview, isReply = false, selectedIds = [], toggleSelect }) {
   const [askName, setAskName] = useState("");
   const [showAsk, setShowAsk] = useState(false);
   const pendingDelete = !!review.deleteRequested && !review.deletedAt;
+  const isSelected = selectedIds.includes(review.id);
+  const canSelect = !isReply && !review.deletedAt && toggleSelect;
 
   async function requestDelete() {
     const name = askName.trim();
@@ -308,8 +328,17 @@ function PublicReviewItem({ review, replies = [], token, onReply, updateReview, 
   }
 
   return (
-    <li>
-      <div className="flex items-start gap-3">
+    <li className={`rounded-lg transition ${isSelected ? "bg-brand-50 -mx-2 px-2" : ""}`}>
+      <div className="flex items-start gap-2">
+        {canSelect && (
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={() => toggleSelect(review.id)}
+            className="mt-2 w-3.5 h-3.5 accent-brand cursor-pointer shrink-0"
+            title="选中以批量回复"
+          />
+        )}
         <Avatar name={review.authorName} src={review.authorAvatar} size={isReply ? 28 : 32} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -327,6 +356,11 @@ function PublicReviewItem({ review, replies = [], token, onReply, updateReview, 
               <I name="clock" size={11} /> {fmtTime(review.createdAt)}
             </span>
           </div>
+          {(review.referencedIds || []).length > 1 && (
+            <p className="text-[10px] text-gray-600 mt-0.5 flex items-center gap-1">
+              <I name="quote" size={10} /> 引用 {review.referencedIds.length} 条评价
+            </p>
+          )}
           {review.deletedAt ? (
             <p className="text-sm text-gray-400 italic mt-1 line-through">[已删除]</p>
           ) : (
@@ -338,14 +372,14 @@ function PublicReviewItem({ review, replies = [], token, onReply, updateReview, 
             </div>
           )}
           {!review.deletedAt && (
-            <div className="flex items-center gap-3 mt-2 text-[11px]">
+            <div className="flex items-center gap-3 mt-2 pt-1.5 border-t border-gray-100 text-[11px]">
               {!isReply && (
-                <button onClick={() => onReply(review)} className="text-brand hover:underline font-medium flex items-center gap-1">
+                <button onClick={() => onReply(review)} className="text-brand hover:bg-brand-50 px-2 py-0.5 rounded font-medium flex items-center gap-1">
                   <I name="reply" size={10} /> 回复
                 </button>
               )}
               {review.via === "public" && !pendingDelete && (
-                <button onClick={() => setShowAsk((v) => !v)} className="text-gray-700 hover:text-red-500">请求删除</button>
+                <button onClick={() => setShowAsk((v) => !v)} className="text-gray-700 hover:text-red-500 hover:bg-red-50 px-2 py-0.5 rounded">请求删除</button>
               )}
             </div>
           )}
@@ -365,7 +399,7 @@ function PublicReviewItem({ review, replies = [], token, onReply, updateReview, 
       </div>
       {replies.length > 0 && (
         <ul className="mt-3 ml-9 pl-3 border-l-2 border-gray-100 space-y-3">
-          {replies.map((rp) => (
+          {replies.slice().reverse().map((rp) => (
             <PublicReviewItem key={rp.id} review={rp} token={token} onReply={onReply} updateReview={updateReview} isReply />
           ))}
         </ul>
@@ -399,6 +433,8 @@ function PublicAttachmentChip({ a, token }) {
   );
 }
 
+const SAVED_NAMES_KEY = "mesa.public.review.names";
+
 function PublicReviewModal({ open, onClose, candidate, token, replyTo, onCreated }) {
   const [authorName, setAuthorName] = useState("");
   const [content, setContent] = useState("");
@@ -406,15 +442,37 @@ function PublicReviewModal({ open, onClose, candidate, token, replyTo, onCreated
   const [attachments, setAttachments] = useState([]);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [savedNames, setSavedNames] = useState([]);
+
+  const bulk = replyTo?._bulk;
+  const isBulkReply = Array.isArray(bulk) && bulk.length > 1;
 
   useEffect(() => {
     if (!open) {
-      setAuthorName("");
       setContent("");
       setLinkInput("");
       setAttachments([]);
+      // 不清空 authorName, 这样多次发评论不用重复输入
+    } else {
+      // 打开时读历史姓名
+      try {
+        const arr = JSON.parse(localStorage.getItem(SAVED_NAMES_KEY) || "[]");
+        if (Array.isArray(arr)) {
+          setSavedNames(arr);
+          if (!authorName && arr.length > 0) setAuthorName(arr[0]);
+        }
+      } catch { /* ignore */ }
     }
+    // eslint-disable-next-line
   }, [open]);
+
+  function rememberName(name) {
+    try {
+      const arr = JSON.parse(localStorage.getItem(SAVED_NAMES_KEY) || "[]");
+      const next = [name, ...arr.filter((n) => n !== name)].slice(0, 5);
+      localStorage.setItem(SAVED_NAMES_KEY, JSON.stringify(next));
+    } catch { /* ignore */ }
+  }
 
   const totalSize = attachments.reduce((s, a) => s + (a.size || 0), 0);
   const MAX_TOTAL = 30 * 1024 * 1024;
@@ -456,8 +514,14 @@ function PublicReviewModal({ open, onClose, candidate, token, replyTo, onCreated
     setSaving(true);
     try {
       const body = { authorName: authorName.trim(), content: content.trim(), attachments };
-      if (replyTo?.id) body.parentId = replyTo.id;
+      if (isBulkReply) {
+        body.referencedIds = bulk.map((b) => b.id);
+        body.parentId = bulk[0].id;
+      } else if (replyTo?.id) {
+        body.parentId = replyTo.id;
+      }
       const { data } = await axios.post(`/api/public/share/${token}/reviews`, body);
+      rememberName(authorName.trim());
       onCreated(data.review);
       toast(replyTo ? "已回复" : "评价已发布", "success");
     } catch (e) { toast(e.response?.data?.message || "发布失败", "error"); }
@@ -491,6 +555,21 @@ function PublicReviewModal({ open, onClose, candidate, token, replyTo, onCreated
             className="w-full h-11 px-3 rounded-xl border border-gray-200 text-sm text-navy-700 outline-none focus:border-brand"
             disabled={saving}
           />
+          {savedNames.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              <span className="text-[11px] text-gray-600 self-center mr-1">历史:</span>
+              {savedNames.map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setAuthorName(n)}
+                  className={`text-[11px] px-2 py-0.5 rounded-full transition ${authorName === n ? "bg-brand text-white" : "bg-lightPrimary text-gray-700 hover:bg-gray-200"}`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div>

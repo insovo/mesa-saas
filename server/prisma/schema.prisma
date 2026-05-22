@@ -230,10 +230,14 @@ model Review {
   // attachments: [{ type: "image"|"file"|"link", name, url, size?, contentType? }]
   attachments  Json      @default("[]")
 
-  // 回复 — 1 级嵌套
+  // 回复 — 1 级嵌套(主父亲, 兼容旧数据)
   parentId     String?   @map("parent_id") @db.Uuid
   parent       Review?   @relation("ReviewParent", fields: [parentId], references: [id], onDelete: SetNull)
   replies      Review[]  @relation("ReviewParent")
+
+  // 批量回复时记录额外引用的多条评价 id (JSON 数组), 至少 1 个 = parentId
+  // 单次回复时此字段可为 [] 或 [parentId]
+  referencedIds Json     @default("[]") @map("referenced_ids")
 
   // 删除流: 普通作者只能"请求删除",admin 批准后才真删除(deletedAt 标记 soft-delete)
   deletedAt           DateTime? @map("deleted_at")

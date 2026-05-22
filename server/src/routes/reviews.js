@@ -25,6 +25,7 @@ const POST_BODY = {
     attachments: { type: "array", items: ATTACHMENT_ITEM, maxItems: 10 },
     authorName: { type: "string", minLength: 1, maxLength: 100 },
     parentId: { type: "string", format: "uuid" },
+    referencedIds: { type: "array", items: { type: "string", format: "uuid" }, maxItems: 50 },
     visibility: { type: "string", enum: ["public", "internal", "admin"] },
   },
   additionalProperties: false,
@@ -57,6 +58,7 @@ function publicShape(r) {
     via: r.via,
     visibility: r.visibility,
     parentId: r.parentId,
+    referencedIds: r.referencedIds || [],
     content: r.deletedAt ? "" : r.content,
     attachments: r.deletedAt ? [] : (r.attachments || []),
     deletedAt: r.deletedAt,
@@ -80,6 +82,7 @@ function internalShape(r, isAdmin) {
     visibility: r.visibility,
     shareToken: r.shareToken,
     parentId: r.parentId,
+    referencedIds: r.referencedIds || [],
     content: r.deletedAt ? "" : r.content,
     attachments: r.deletedAt ? [] : (r.attachments || []),
     hidden: r.hidden,
@@ -100,7 +103,7 @@ export default async function reviewsRoutes(app) {
       const isAdmin = req.user.role === "ADMIN";
       const reviews = await internal.prisma.review.findMany({
         where: { candidateId: req.params.id },
-        orderBy: { createdAt: "asc" },  // 正序便于 thread
+        orderBy: { createdAt: "desc" },  // 倒序 — 最新在前
       });
       return { reviews: reviews.map((r) => internalShape(r, isAdmin)).filter(Boolean) };
     });
@@ -123,10 +126,18 @@ export default async function reviewsRoutes(app) {
       }
 
       const user = await internal.prisma.user.findUnique({ where: { id: req.user.sub } });
-      // 内部用户可选 public/internal/admin 三种,但只有 ADMIN 才能发 admin-only
       let visibility = req.body.visibility || "public";
       if (visibility === "admin" && req.user.role !== "ADMIN") {
-        visibility = "internal";  // 非 admin 发 admin-only 自动降级为 internal
+        visibility = "internal";
+      }
+      // referencedIds 校验同 candidate
+      const refIds = Array.isArray(req.body.referencedIds) ? req.body.referencedIds : [];
+      if (refIds.length > 0) {
+        const refs = await internal.prisma.review.findMany({
+          where: { id: { in: refIds }, candidateId: req.params.id },
+          select: { id: true },
+        });
+        if (refs.length !== refIds.length) return reply.code(400).send({ error: "bad_reference_ids" });
       }
       const review = await internal.prisma.review.create({
         data: {
@@ -137,7 +148,8 @@ export default async function reviewsRoutes(app) {
           userId: user?.id || null,
           via: "internal",
           visibility,
-          parentId: req.body.parentId || null,
+          parentId: req.body.parentId || (refIds[0] || null),
+          referencedIds: refIds,
           content: req.body.content,
           attachments: req.body.attachments || [],
         },
@@ -219,7 +231,7 @@ export default async function reviewsRoutes(app) {
 
     const reviews = await app.prisma.review.findMany({
       where: { candidateId: link.candidateId },
-      orderBy: { createdAt: "asc" },
+      orderBy: { createdAt: "desc" },  // 倒序
     });
     return { reviews: reviews.map(publicShape).filter(Boolean) };
   });
@@ -241,6 +253,14 @@ export default async function reviewsRoutes(app) {
     if (sizeErr) return reply.code(400).send(sizeErr);
 
     // 公开访客只能发 public 评论 (默认 public 也可显式传 public, 其他值忽略)
+    const refIds = Array.isArray(req.body.referencedIds) ? req.body.referencedIds : [];
+    if (refIds.length > 0) {
+      const refs = await app.prisma.review.findMany({
+        where: { id: { in: refIds }, candidateId: link.candidateId, visibility: "public" },
+        select: { id: true },
+      });
+      if (refs.length !== refIds.length) return reply.code(400).send({ error: "bad_reference_ids" });
+    }
     const review = await app.prisma.review.create({
       data: {
         candidateId: link.candidateId,
@@ -249,7 +269,8 @@ export default async function reviewsRoutes(app) {
         via: "public",
         visibility: "public",
         shareToken: link.token,
-        parentId: req.body.parentId || null,
+        parentId: req.body.parentId || (refIds[0] || null),
+        referencedIds: refIds,
         content: req.body.content,
         attachments: req.body.attachments || [],
       },

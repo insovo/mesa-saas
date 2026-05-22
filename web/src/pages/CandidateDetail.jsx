@@ -360,8 +360,11 @@ export default function CandidateDetail() {
         </Card>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
-        {/* === AI 核心技能 / 风险 / 亮点 === */}
+      {/* === 主体: 左 3 列 + 右 sticky 评价栏 === */}
+      <div className="flex flex-col xl:flex-row gap-4 md:gap-5">
+        <div className="flex-1 min-w-0 space-y-4 md:space-y-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
+            {/* === AI 核心技能 / 风险 / 亮点 === */}
         <Card className="p-5 md:p-6">
           <h3 className="title-card flex items-center gap-2">
             <I name="sparkles" size={18} className="text-brand" />
@@ -433,61 +436,67 @@ export default function CandidateDetail() {
           )}
         </Card>
 
-        {/* === 评价 === */}
-        <ReviewsCard
-          reviews={reviews}
-          candidate={c}
-          me={me}
-          isAdmin={isAdmin}
-          onAdd={() => { setReplyTo(null); setReviewOpen(true); }}
-          onReply={(r) => { setReplyTo(r); setReviewOpen(true); }}
-          updateReview={(r) => setReviews((prev) => prev.map((x) => x.id === r.id ? r : x))}
-        />
-      </div>
+          </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-5">
-        <Card className="p-5 md:p-6">
-          <h3 className="title-card">工作经历</h3>
-          {(!c.experience || c.experience.length === 0) ? (
-            <Empty title="暂无工作经历" />
-          ) : (
-            <ul className="mt-4 space-y-4">
-              {c.experience.map((e, i) => (
-                <li key={i} className="border-l-2 border-brand pl-4 relative">
-                  <span className="absolute -left-[5px] top-1 w-2 h-2 rounded-full bg-brand"></span>
-                  <p className="text-xs text-gray-600">{e.period}</p>
-                  <p className="text-sm font-bold text-navy-700 mt-0.5">{e.company}</p>
-                  <p className="text-xs text-gray-700">{e.title}</p>
-                  {e.summary && <p className="text-xs text-gray-700 mt-1">{e.summary}</p>}
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-5">
+            <Card className="p-5 md:p-6">
+              <h3 className="title-card">工作经历</h3>
+              {(!c.experience || c.experience.length === 0) ? (
+                <Empty title="暂无工作经历" />
+              ) : (
+                <ul className="mt-4 space-y-4">
+                  {c.experience.map((e, i) => (
+                    <li key={i} className="border-l-2 border-brand pl-4 relative">
+                      <span className="absolute -left-[5px] top-1 w-2 h-2 rounded-full bg-brand"></span>
+                      <p className="text-xs text-gray-600">{e.period}</p>
+                      <p className="text-sm font-bold text-navy-700 mt-0.5">{e.company}</p>
+                      <p className="text-xs text-gray-700">{e.title}</p>
+                      {e.summary && <p className="text-xs text-gray-700 mt-1">{e.summary}</p>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
+            <Card className="p-5 md:p-6">
+              <h3 className="title-card">教育背景</h3>
+              {(!c.educationHistory || c.educationHistory.length === 0) ? (
+                <Empty title="暂无教育背景" />
+              ) : (
+                <ul className="mt-4 space-y-4">
+                  {c.educationHistory.map((e, i) => (
+                    <li key={i} className="border-l-2 border-gray-300 pl-4 relative">
+                      <span className="absolute -left-[5px] top-1 w-2 h-2 rounded-full bg-gray-400"></span>
+                      <p className="text-xs text-gray-600">{e.period}</p>
+                      <p className="text-sm font-bold text-navy-700 mt-0.5">{e.school}</p>
+                      <p className="text-xs text-gray-700">{e.major} · {e.degree}</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {c.attachment && (
+                <div className="mt-6 pt-4 border-t border-gray-200 flex items-center gap-2 text-xs text-gray-700">
+                  <I name="paperclip" size={14} />
+                  {c.attachment}
+                </div>
+              )}
+            </Card>
+          </div>
+        </div>
 
-        <Card className="p-5 md:p-6">
-          <h3 className="title-card">教育背景</h3>
-          {(!c.educationHistory || c.educationHistory.length === 0) ? (
-            <Empty title="暂无教育背景" />
-          ) : (
-            <ul className="mt-4 space-y-4">
-              {c.educationHistory.map((e, i) => (
-                <li key={i} className="border-l-2 border-gray-300 pl-4 relative">
-                  <span className="absolute -left-[5px] top-1 w-2 h-2 rounded-full bg-gray-400"></span>
-                  <p className="text-xs text-gray-600">{e.period}</p>
-                  <p className="text-sm font-bold text-navy-700 mt-0.5">{e.school}</p>
-                  <p className="text-xs text-gray-700">{e.major} · {e.degree}</p>
-                </li>
-              ))}
-            </ul>
-          )}
-          {c.attachment && (
-            <div className="mt-6 pt-4 border-t border-gray-200 flex items-center gap-2 text-xs text-gray-700">
-              <I name="paperclip" size={14} />
-              {c.attachment}
-            </div>
-          )}
-        </Card>
+        {/* === 右侧 sticky 评价栏 === */}
+        <aside className="w-full xl:w-[380px] shrink-0">
+          <div className="xl:sticky xl:top-[100px]">
+            <ReviewsCard
+              reviews={reviews}
+              candidate={c}
+              me={me}
+              isAdmin={isAdmin}
+              onAdd={() => { setReplyTo(null); setReviewOpen(true); }}
+              onReply={(r) => { setReplyTo(r); setReviewOpen(true); }}
+              updateReview={(r) => setReviews((prev) => prev.map((x) => x.id === r.id ? r : x))}
+            />
+          </div>
+        </aside>
       </div>
 
       <div>
@@ -940,13 +949,29 @@ function fmtReviewTime(iso) {
 }
 
 function ReviewsCard({ reviews, candidate, me, isAdmin, onAdd, onReply, updateReview }) {
-  // 把 review 列表组成 thread: 把 replies 挂到对应的 parent 下
-  const tree = reviews.filter((r) => !r.parentId);
+  // 树形结构: parent 倒序(最新在最上),replies 正序在父下方
+  const tree = reviews.filter((r) => !r.parentId);  // 已 desc 排序
   const repliesByParent = {};
   reviews.filter((r) => r.parentId).forEach((r) => {
     (repliesByParent[r.parentId] = repliesByParent[r.parentId] || []).push(r);
   });
+  // replies 内部按时间正序展示(早回复在上,晚回复在下)
+  Object.keys(repliesByParent).forEach((k) => repliesByParent[k].reverse());
+
   const visibleCount = reviews.filter((r) => !r.deletedAt).length;
+
+  // 多选状态
+  const [selectedIds, setSelectedIds] = useState([]);
+  function toggleSelect(id) {
+    setSelectedIds((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]);
+  }
+  function clearSelected() { setSelectedIds([]); }
+  function bulkReply() {
+    const targets = reviews.filter((r) => selectedIds.includes(r.id) && !r.deletedAt);
+    if (targets.length === 0) return;
+    // onReply 期望单个 review,我们用第一个作为 parentId,把全部传过去
+    onReply({ ...targets[0], _bulk: targets });
+  }
 
   return (
     <Card className="p-5 md:p-6">
@@ -961,7 +986,7 @@ function ReviewsCard({ reviews, candidate, me, isAdmin, onAdd, onReply, updateRe
       {tree.length === 0 ? (
         <p className="text-xs text-gray-700 py-2">还没有评价 · 点下方按钮添加第一条</p>
       ) : (
-        <ul className="space-y-4">
+        <ul className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
           {tree.map((r) => (
             <ReviewItem
               key={r.id}
@@ -972,9 +997,21 @@ function ReviewsCard({ reviews, candidate, me, isAdmin, onAdd, onReply, updateRe
               isAdmin={isAdmin}
               onReply={onReply}
               updateReview={updateReview}
+              selectedIds={selectedIds}
+              toggleSelect={toggleSelect}
             />
           ))}
         </ul>
+      )}
+
+      {/* 批量操作浮层 */}
+      {selectedIds.length > 0 && (
+        <div className="mt-3 p-2.5 rounded-xl bg-brand-50 border border-brand/30 flex items-center gap-2">
+          <span className="text-xs font-bold text-brand">已选 {selectedIds.length} 条</span>
+          <div className="flex-1" />
+          <Button size="sm" variant="ghost" onClick={clearSelected}>清空</Button>
+          <Button size="sm" onClick={bulkReply} icon={<I name="reply" size={12} />}>批量回复</Button>
+        </div>
       )}
 
       <button
@@ -1003,7 +1040,7 @@ function VisibilityChip({ visibility }) {
   );
 }
 
-function ReviewItem({ review, replies = [], candidate, me, isAdmin, onReply, updateReview, isReply = false }) {
+function ReviewItem({ review, replies = [], candidate, me, isAdmin, onReply, updateReview, isReply = false, selectedIds = [], toggleSelect }) {
   const isMine = me?.id && review.userId === me.id;
   const canRequestDelete = !review.deletedAt && (isMine || isAdmin);
   const pendingDelete = !!review.deleteRequested && !review.deletedAt;
@@ -1065,9 +1102,22 @@ function ReviewItem({ review, replies = [], candidate, me, isAdmin, onReply, upd
     </p>
   );
 
+  const isSelected = selectedIds.includes(review.id);
+  const canSelect = !isReply && !review.deletedAt && toggleSelect;
+
   return (
-    <li className="group">
-      <div className="flex items-start gap-3">
+    <li className={`group rounded-lg transition ${isSelected ? "bg-brand-50 -mx-2 px-2" : ""}`}>
+      <div className="flex items-start gap-2">
+        {/* 多选 checkbox (仅顶级评价) */}
+        {canSelect && (
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={() => toggleSelect(review.id)}
+            className="mt-2 w-3.5 h-3.5 accent-brand cursor-pointer shrink-0"
+            title="选中以批量回复"
+          />
+        )}
         <Avatar name={review.authorName} src={review.authorAvatar} size={isReply ? 28 : 32} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -1076,6 +1126,12 @@ function ReviewItem({ review, replies = [], candidate, me, isAdmin, onReply, upd
               <I name="clock" size={11} /> {fmtReviewTime(review.createdAt)}
             </span>
           </div>
+          {/* 批量引用提示(如果当前评价是回复多条) */}
+          {!review.deletedAt && (review.referencedIds || []).length > 1 && (
+            <p className="text-[10px] text-gray-600 mt-0.5 flex items-center gap-1">
+              <I name="quote" size={10} /> 引用 {review.referencedIds.length} 条评价
+            </p>
+          )}
           {review.deletedAt ? (
             <p className="text-sm text-gray-400 italic mt-1 line-through">[已删除]</p>
           ) : (
@@ -1086,28 +1142,28 @@ function ReviewItem({ review, replies = [], candidate, me, isAdmin, onReply, upd
               {review.attachments.map((a, i) => <AttachmentChip key={i} a={a} candidate={candidate} />)}
             </div>
           )}
-          {/* 操作行 */}
+          {/* 操作行 — 独立到底部, 与评论内容分离 */}
           {!review.deletedAt && (
-            <div className="flex items-center gap-3 mt-2 text-[11px]">
+            <div className="flex items-center gap-3 mt-2 pt-1.5 border-t border-gray-100 text-[11px]">
               {!isReply && (
-                <button onClick={() => onReply(review)} className="text-brand hover:underline font-medium flex items-center gap-1">
+                <button onClick={() => onReply(review)} className="text-brand hover:bg-brand-50 px-2 py-0.5 rounded font-medium flex items-center gap-1">
                   <I name="reply" size={10} /> 回复
                 </button>
               )}
               {pendingDelete && isAdmin && (
                 <>
-                  <button onClick={approveDelete} className="text-red-600 hover:underline font-medium">批准删除</button>
-                  <button onClick={rejectDelete} className="text-gray-700 hover:underline">拒绝</button>
+                  <button onClick={approveDelete} className="text-red-600 hover:bg-red-50 px-2 py-0.5 rounded font-medium">批准删除</button>
+                  <button onClick={rejectDelete} className="text-gray-700 hover:bg-lightPrimary px-2 py-0.5 rounded">拒绝</button>
                 </>
               )}
               {!pendingDelete && canRequestDelete && !isAdmin && (
-                <button onClick={requestDelete} className="text-gray-700 hover:text-red-500">请求删除</button>
+                <button onClick={requestDelete} className="text-gray-700 hover:text-red-500 hover:bg-red-50 px-2 py-0.5 rounded">请求删除</button>
               )}
               {isAdmin && !pendingDelete && (
-                <button onClick={adminDelete} className="text-red-500 hover:underline">删除</button>
+                <button onClick={adminDelete} className="text-red-500 hover:bg-red-50 px-2 py-0.5 rounded">删除</button>
               )}
               {isAdmin && (
-                <button onClick={toggleHide} className="text-gray-700 hover:underline">
+                <button onClick={toggleHide} className="text-gray-700 hover:bg-lightPrimary px-2 py-0.5 rounded">
                   {review.hidden ? "取消隐藏" : "隐藏"}
                 </button>
               )}
@@ -1225,12 +1281,21 @@ function ReviewModal({ open, onClose, candidate, replyTo, onCreated }) {
     setAttachments((p) => p.filter((_, i) => i !== idx));
   }
 
+  // 批量回复目标 (replyTo._bulk 是数组)
+  const bulk = replyTo?._bulk;
+  const isBulkReply = Array.isArray(bulk) && bulk.length > 1;
+
   async function submit() {
     if (!content.trim()) return toast("请输入评价内容", "error");
     setSaving(true);
     try {
       const body = { content: content.trim(), attachments, visibility };
-      if (replyTo?.id) body.parentId = replyTo.id;
+      if (isBulkReply) {
+        body.referencedIds = bulk.map((b) => b.id);
+        body.parentId = bulk[0].id;
+      } else if (replyTo?.id) {
+        body.parentId = replyTo.id;
+      }
       const r = await resources.reviews.create(candidate.id, body);
       onCreated(r);
       toast(replyTo ? "已回复" : "评价已添加", "success");
@@ -1251,15 +1316,28 @@ function ReviewModal({ open, onClose, candidate, replyTo, onCreated }) {
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-bold text-navy-700 flex items-center gap-2">
             <I name={replyTo ? "reply" : "message-circle"} size={18} className="text-brand" />
-            {replyTo ? `回复 ${replyTo.authorName}` : `添加评价 — ${candidate?.name}`}
+            {isBulkReply ? `批量回复 ${bulk.length} 条` : replyTo ? `回复 ${replyTo.authorName}` : `添加评价 — ${candidate?.name}`}
           </h3>
           <button onClick={onClose} className="text-gray-400 hover:text-navy-700"><I name="x" size={20} /></button>
         </div>
 
-        {replyTo && (
+        {replyTo && !isBulkReply && (
           <div className="p-3 rounded-xl bg-lightPrimary border-l-4 border-brand">
             <p className="text-[11px] font-bold text-gray-700">引用 {replyTo.authorName} 的评价:</p>
             <p className="text-xs text-gray-700 mt-1 line-clamp-2">{replyTo.content}</p>
+          </div>
+        )}
+        {isBulkReply && (
+          <div className="p-3 rounded-xl bg-brand-50 border-l-4 border-brand max-h-[180px] overflow-y-auto">
+            <p className="text-[11px] font-bold text-gray-700 mb-2">批量引用 {bulk.length} 条评价:</p>
+            <ul className="space-y-1.5">
+              {bulk.map((r) => (
+                <li key={r.id} className="text-xs">
+                  <span className="font-bold text-navy-700">{r.authorName}:</span>{" "}
+                  <span className="text-gray-700">{(r.content || "").slice(0, 80)}{r.content?.length > 80 ? "..." : ""}</span>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 
