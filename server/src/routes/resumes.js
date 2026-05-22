@@ -182,14 +182,17 @@ export default async function resumesRoutes(app) {
       });
     }
 
-    // 持久化到 candidate(更新 jdMatch / risks / highlights / appliedFor)
+    // 持久化到 candidate
+    // appliedFor 强制改为新 JD 的 title(否则切 JD 后头部还是旧应聘岗位,与 risks/highlights 不一致)
+    // jobId 也跟着更新,这样下次 load 时 jdMatchCard 能正确反映"当前关联的 JD"
     const updated = await app.prisma.candidate.update({
       where: { id: candidateId },
       data: {
         jdMatch: match.jdMatch ?? null,
         risks: Array.isArray(match.risks) ? match.risks : [],
         highlights: Array.isArray(match.highlights) ? match.highlights : [],
-        appliedFor: candidate.appliedFor || job.title,
+        appliedFor: job.title,
+        jobId,
       },
     });
 

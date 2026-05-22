@@ -262,10 +262,17 @@ export default function CandidateDetail() {
         </Card>
 
         <Card className="p-5 md:p-6">
-          <h3 className="title-card flex items-center gap-2">
-            <I name="alert-triangle" size={18} className="text-amber-500" />
-            风险与缺项
-          </h3>
+          <div className="flex items-start justify-between gap-2 mb-1">
+            <h3 className="title-card flex items-center gap-2">
+              <I name="alert-triangle" size={18} className="text-amber-500" />
+              风险与缺项
+            </h3>
+            {c.jdMatch != null && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-bold shrink-0">
+                基于 {c.appliedFor || "JD"} 评估
+              </span>
+            )}
+          </div>
           {(c.risks || []).length === 0 ? (
             <Empty title="未识别显著风险" />
           ) : (
@@ -281,10 +288,17 @@ export default function CandidateDetail() {
         </Card>
 
         <Card className="p-5 md:p-6">
-          <h3 className="title-card flex items-center gap-2">
-            <I name="trophy" size={18} className="text-green-500" />
-            亮点
-          </h3>
+          <div className="flex items-start justify-between gap-2 mb-1">
+            <h3 className="title-card flex items-center gap-2">
+              <I name="trophy" size={18} className="text-green-500" />
+              亮点
+            </h3>
+            {c.jdMatch != null && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-50 text-green-700 font-bold shrink-0">
+                基于 {c.appliedFor || "JD"} 评估
+              </span>
+            )}
+          </div>
           {(c.highlights || []).length === 0 ? (
             <Empty title="暂无亮点" />
           ) : (
