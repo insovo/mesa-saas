@@ -9,10 +9,14 @@
 
 services:
   frontend:
+    # 双源镜像策略:
+    #   - CI 推送到 GHCR(由 .github/workflows/deploy.yml 完成)
+    #   - VPS 上 docker compose pull 即可拉取
+    #   - 本地无 GHCR 凭证时,docker compose up --build 走 build 块
+    image: ${WEB_IMAGE:-ghcr.io/insovo/mesa-web:latest}
     build:
       context: ./web
       dockerfile: Dockerfile
-    image: mesa-web:latest
     container_name: mesa-web
     restart: unless-stopped
     depends_on:
@@ -29,10 +33,10 @@ services:
       - mesa-net
 
   backend:
+    image: ${SERVER_IMAGE:-ghcr.io/insovo/mesa-server:latest}
     build:
       context: ./server
       dockerfile: Dockerfile
-    image: mesa-server:latest
     container_name: mesa-server
     restart: unless-stopped
     depends_on:
