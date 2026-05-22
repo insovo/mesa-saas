@@ -34,19 +34,22 @@ async function streamToBuffer(stream) {
 export default async function resumesRoutes(app) {
   app.addHook("preHandler", app.authenticate);
 
-  app.get("/llm-status", async () => ({
-    provider: "kimi",
-    model: process.env.KIMI_MODEL || "moonshot-v1-32k",
-    configured: isKimiConfigured(),
-    mode: "system",
-    availableModels: AVAILABLE_MODELS,
-  }));
+  app.get("/llm-status", async () => {
+    const { getEffective, SETTING_KEYS } = await import("../lib/settings.js");
+    return {
+      provider: "kimi",
+      model: (await getEffective(SETTING_KEYS.KIMI_MODEL)) || "moonshot-v1-32k",
+      configured: await isKimiConfigured(),
+      mode: "system",
+      availableModels: AVAILABLE_MODELS,
+    };
+  });
 
   app.post("/parse", { schema: { body: PARSE_BODY } }, async (req, reply) => {
     if (!app.r2) {
       return reply.code(503).send({ error: "r2_not_configured", message: "R2 凭证未配置,无法读取简历" });
     }
-    if (!isKimiConfigured()) {
+    if (!(await isKimiConfigured())) {
       return reply.code(503).send({ error: "kimi_not_configured", message: "KIMI_API_KEY 未配置" });
     }
 

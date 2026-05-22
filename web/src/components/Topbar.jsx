@@ -48,11 +48,11 @@ export default function Topbar() {
   const title = pageTitleFor(location.pathname);
 
   return (
-    <header className="sticky top-0 z-30 bg-lightPrimary/80 backdrop-blur-sm">
-      <div className="flex items-center gap-4 px-8 pt-7 pb-5">
+    <header className="sticky top-0 z-20 bg-lightPrimary/80 backdrop-blur-sm">
+      <div className="flex items-center gap-4 px-4 md:px-8 pt-7 pb-5 pl-16 md:pl-8">
         <div className="min-w-0 flex-1">
           <p className="text-xs font-medium text-gray-700">MESA Recruit · 招聘工作台</p>
-          <h1 className="title-page mt-1">{title}</h1>
+          <h1 className="title-page mt-1 text-[22px] md:text-page-title">{title}</h1>
         </div>
 
         <div className="hidden md:flex items-center bg-white rounded-full shadow-card pl-5 pr-2 h-[60px] w-[420px]">
@@ -63,11 +63,11 @@ export default function Topbar() {
           />
         </div>
 
-        <div className="flex items-center gap-3">
-          <button className="w-11 h-11 rounded-full bg-white shadow-card flex items-center justify-center text-gray-700 hover:text-brand transition">
+        <div className="flex items-center gap-2 md:gap-3">
+          <button className="hidden sm:flex w-11 h-11 rounded-full bg-white shadow-card items-center justify-center text-gray-700 hover:text-brand transition">
             <I name="bell" size={18} />
           </button>
-          <button className="w-11 h-11 rounded-full bg-white shadow-card flex items-center justify-center text-gray-700 hover:text-brand transition">
+          <button className="hidden sm:flex w-11 h-11 rounded-full bg-white shadow-card items-center justify-center text-gray-700 hover:text-brand transition">
             <I name="moon" size={18} />
           </button>
 

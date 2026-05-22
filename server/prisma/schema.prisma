@@ -189,6 +189,20 @@ model Employee {
   @@map("employees")
 }
 
+// 系统级 KV 设置 — 仅 admin 可读写
+// 用于覆盖 .env 默认值,例如 kimi.api_key / kimi.model
+// value 字段: 当 encrypted=true 时存 base64(iv:authTag:ciphertext) — AES-256-GCM
+model SystemSetting {
+  key        String   @id              // "kimi.api_key", "kimi.model", ...
+  value      String                    // 加密或明文,看 encrypted 字段
+  encrypted  Boolean  @default(false)
+  updatedBy  String?  @map("updated_by") @db.Uuid
+  updatedAt  DateTime @updatedAt        @map("updated_at")
+  createdAt  DateTime @default(now())  @map("created_at")
+
+  @@map("system_settings")
+}
+
 model Interview {
   id              String    @id @default(uuid()) @db.Uuid
   externalId      String?   @unique @map("external_id")

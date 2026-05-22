@@ -1,8 +1,11 @@
-// MESA Recruit · 左侧导航 + LLM Key 状态
+// MESA Recruit · 左侧导航
+//   - 桌面端: 268px 宽全展开 / 80px 仅图标收起态
+//   - 移动端 (<md): 抽屉模式,默认隐藏,汉堡按钮唤起
+//   - 含 LLM 状态卡 (点开 modal 切换模型 + admin 改 key)
 
 import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { I, Modal, Button } from "./Primitives.jsx";
+import { I, Modal, Button, toast } from "./Primitives.jsx";
 import { api } from "../lib/api.js";
 
 const ITEMS = [
@@ -22,44 +25,150 @@ const PROVIDER_LABELS = {
   deepseek: "DeepSeek",
 };
 
-export default function Sidebar({ user }) {
+const COLLAPSED_KEY = "mesa.sidebar.collapsed";
+
+export default function Sidebar({ user, mobileOpen = false, onMobileClose, collapsed, onToggleCollapsed }) {
   const location = useLocation();
   const isAdmin = user?.role === "ADMIN";
   const items = ITEMS.filter((it) => !it.adminOnly || isAdmin);
   const [llm, setLlm] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem("mesa.llm.model") || "");
+  const [adminSettings, setAdminSettings] = useState(null);
+  const [editingKey, setEditingKey] = useState(false);
+  const [pendingKey, setPendingKey] = useState("");
+  const [savingKey, setSavingKey] = useState(false);
 
   useEffect(() => {
     api.get("/resumes/llm-status").then((r) => {
       setLlm(r.data);
-      // 没有本地偏好时,默认跟系统 model
       if (!selectedModel && r.data?.model) setSelectedModel(r.data.model);
     }).catch(() => setLlm({ configured: false }));
     // eslint-disable-next-line
   }, []);
+
+  // admin 打开 modal 时拉 settings
+  useEffect(() => {
+    if (!modalOpen || !isAdmin) return;
+    api.get("/system/settings").then((r) => setAdminSettings(r.data.items)).catch(() => setAdminSettings([]));
+  }, [modalOpen, isAdmin]);
 
   function onPickModel(modelId) {
     setSelectedModel(modelId);
     localStorage.setItem("mesa.llm.model", modelId);
   }
 
+  async function refreshLlmStatus() {
+    const r = await api.get("/resumes/llm-status");
+    setLlm(r.data);
+    const r2 = await api.get("/system/settings");
+    setAdminSettings(r2.data.items);
+  }
+
+  async function saveKimiKey() {
+    if (!pendingKey || pendingKey.length < 10) {
+      toast("Key 至少 10 字符", "error");
+      return;
+    }
+    setSavingKey(true);
+    try {
+      await api.put("/system/settings/kimi.api_key", { value: pendingKey });
+      toast("Kimi API Key 已加密保存", "success");
+      setPendingKey("");
+      setEditingKey(false);
+      await refreshLlmStatus();
+    } catch (e) {
+      toast(e.response?.data?.message || "保存失败", "error");
+    } finally {
+      setSavingKey(false);
+    }
+  }
+
+  async function deleteKimiKey() {
+    if (!confirm("回退到 .env 的 KIMI_API_KEY 配置?")) return;
+    try {
+      await api.delete("/system/settings/kimi.api_key");
+      toast("已删除 DB 中的 key,回退到 env fallback", "success");
+      await refreshLlmStatus();
+    } catch (e) {
+      toast(e.response?.data?.message || "删除失败", "error");
+    }
+  }
+
+  async function saveSystemModel(modelId) {
+    try {
+      await api.put("/system/settings/kimi.model", { value: modelId });
+      toast(`系统默认模型已改为 ${modelId}`, "success");
+      await refreshLlmStatus();
+    } catch (e) {
+      toast(e.response?.data?.message || "保存失败", "error");
+    }
+  }
+
+  async function testKey() {
+    try {
+      const { data } = await api.post("/system/settings/kimi.api_key/test");
+      toast(`✓ Key 可用 · ${data.modelsCount} 个模型可访问`, "success");
+    } catch (e) {
+      toast(e.response?.data?.message || "探活失败", "error");
+    }
+  }
+
   const ready = !!llm?.configured;
-  const chipClass = ready
-    ? "bg-green-100 text-green-700"
-    : "bg-amber-100 text-amber-700";
+  const chipClass = ready ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700";
   const chipLabel = ready ? "已就绪" : "待配置";
 
+  const keyRow = adminSettings?.find((s) => s.key === "kimi.api_key");
+  const modelRow = adminSettings?.find((s) => s.key === "kimi.model");
+
+  // === 渲染 ===
   return (
     <>
-      <aside className="w-[268px] bg-white shrink-0 min-h-screen flex flex-col pb-8 shadow-sidebar">
-        <div className="mx-[40px] mt-[44px] flex items-center">
-          <span className="text-[24px] uppercase text-navy-700 tracking-tight"
-                style={{ fontFamily: "Poppins, sans-serif", fontWeight: 700 }}>
-            MESA <span style={{ fontWeight: 500 }}>RECRUIT</span>
-          </span>
+      {/* 移动端遮罩 */}
+      {mobileOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-40 bg-navy-900/40 backdrop-blur-sm"
+          onClick={onMobileClose}
+        />
+      )}
+
+      <aside
+        className={`
+          bg-white shrink-0 min-h-screen flex flex-col pb-8 shadow-sidebar transition-all duration-200
+          fixed md:sticky top-0 z-50 md:z-30
+          ${collapsed ? "md:w-[80px]" : "md:w-[268px]"}
+          ${mobileOpen ? "translate-x-0 w-[268px]" : "-translate-x-full md:translate-x-0 w-[268px]"}
+        `}
+      >
+        {/* 头部 · logo + 收起按钮 */}
+        <div className="flex items-center justify-between px-6 pt-9 md:pt-11">
+          {!collapsed ? (
+            <span
+              className="text-[22px] md:text-[24px] uppercase text-navy-700 tracking-tight"
+              style={{ fontFamily: "Poppins, sans-serif", fontWeight: 700 }}
+            >
+              MESA <span style={{ fontWeight: 500 }}>RECRUIT</span>
+            </span>
+          ) : (
+            <span className="text-[22px] text-brand font-bold mx-auto" style={{ fontFamily: "Poppins" }}>M</span>
+          )}
+          {/* 桌面端收起按钮 */}
+          <button
+            onClick={onToggleCollapsed}
+            className="hidden md:inline-flex w-8 h-8 rounded-full bg-lightPrimary hover:bg-gray-200 items-center justify-center text-gray-700 hover:text-brand transition"
+            title={collapsed ? "展开侧边栏" : "收起侧边栏"}
+          >
+            <I name={collapsed ? "chevron-right" : "chevron-left"} size={16} />
+          </button>
+          {/* 移动端关闭按钮 */}
+          <button
+            onClick={onMobileClose}
+            className="md:hidden w-8 h-8 rounded-full bg-lightPrimary flex items-center justify-center text-gray-700"
+          >
+            <I name="x" size={16} />
+          </button>
         </div>
-        <div className="mt-[42px] mb-6 h-px bg-gray-200"></div>
+        <div className="mt-9 mb-5 h-px bg-gray-200 mx-6"></div>
 
         <nav className="flex-1">
           <ul>
@@ -70,17 +179,24 @@ export default function Sidebar({ user }) {
                   : location.pathname.startsWith(it.to);
               return (
                 <li key={it.to} className="relative">
-                  <NavLink to={it.to} className="my-[3px] flex w-full items-center px-9 py-2 text-left">
+                  <NavLink
+                    to={it.to}
+                    onClick={onMobileClose}
+                    className={`my-[3px] flex w-full items-center text-left ${collapsed ? "md:justify-center md:px-0 px-9 py-2" : "px-9 py-2"}`}
+                    title={collapsed ? it.label : undefined}
+                  >
                     <span className="flex items-center justify-center"
                           style={{ width: 22, height: 22, color: isActive ? "#422AFB" : "#A3AED0" }}>
                       <I name={it.icon} size={20} strokeWidth={isActive ? 2.4 : 2} />
                     </span>
-                    <span className={`ml-4 text-sm ${isActive ? "font-bold text-navy-700" : "font-medium text-gray-700"}`}>
-                      {it.label}
-                    </span>
+                    {!collapsed && (
+                      <span className={`ml-4 text-sm whitespace-nowrap ${isActive ? "font-bold text-navy-700" : "font-medium text-gray-700"}`}>
+                        {it.label}
+                      </span>
+                    )}
                   </NavLink>
                   {isActive && <div className="absolute right-0 top-1/2 -translate-y-1/2 h-9 w-1 rounded-l-lg bg-brand"></div>}
-                  {it.adminOnly && (
+                  {!collapsed && it.adminOnly && (
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-5 h-5 rounded-md bg-brand-50 text-brand"
                           title="仅管理员可见">
                       <I name="shield-check" size={10} />
@@ -91,22 +207,36 @@ export default function Sidebar({ user }) {
             })}
           </ul>
 
-          <div className="mt-7 mx-9 h-px bg-gray-200"></div>
-          <div className="px-9 mt-5 mb-3 text-[11px] tracking-wide font-bold text-gray-600">AI 配置</div>
+          {!collapsed && (
+            <>
+              <div className="mt-7 mx-9 h-px bg-gray-200"></div>
+              <div className="px-9 mt-5 mb-3 text-[11px] tracking-wide font-bold text-gray-600">AI 配置</div>
+            </>
+          )}
           <button
             onClick={() => setModalOpen(true)}
-            className="mx-7 px-3 py-2 rounded-xl bg-lightPrimary flex items-center gap-2 w-[calc(100%-3.5rem)] hover:ring-2 hover:ring-brand/20 transition"
+            className={`
+              ${collapsed ? "md:mx-3 md:px-2 md:py-2 md:justify-center" : "mx-7 px-3 py-2"}
+              rounded-xl bg-lightPrimary flex items-center gap-2 hover:ring-2 hover:ring-brand/20 transition
+            `}
+            title={collapsed ? "LLM 配置" : undefined}
+            style={collapsed ? {} : { width: "calc(100% - 3.5rem)" }}
           >
             <I name="key-round" size={16} className="text-brand" />
-            <span className="text-sm font-bold text-navy-700">LLM Key</span>
-            <span className={`ml-auto text-[10px] px-2 py-0.5 rounded-full font-bold ${chipClass}`}>{chipLabel}</span>
+            {!collapsed && (
+              <>
+                <span className="text-sm font-bold text-navy-700">LLM Key</span>
+                <span className={`ml-auto text-[10px] px-2 py-0.5 rounded-full font-bold ${chipClass}`}>{chipLabel}</span>
+              </>
+            )}
           </button>
         </nav>
       </aside>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} maxWidth="max-w-md">
-        <div className="p-7">
-          <div className="flex items-center justify-between mb-5">
+      {/* === LLM 配置 Modal === */}
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} maxWidth="max-w-lg">
+        <div className="p-7 space-y-5">
+          <div className="flex items-center justify-between">
             <h3 className="text-xl font-bold text-navy-700 flex items-center gap-2">
               <I name="key-round" size={20} className="text-brand" />
               LLM 配置
@@ -121,19 +251,19 @@ export default function Sidebar({ user }) {
               <I name="loader" size={16} className="animate-spin inline mr-2" />加载中...
             </div>
           ) : (
-            <div className="space-y-4">
+            <>
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div className="p-3 bg-lightPrimary rounded-xl">
                   <p className="text-xs text-gray-700">服务商</p>
-                  <p className="font-bold text-navy-700 mt-1">{PROVIDER_LABELS[llm.provider] || llm.provider || "—"}</p>
+                  <p className="font-bold text-navy-700 mt-1">{PROVIDER_LABELS[llm.provider] || llm.provider}</p>
                 </div>
                 <div className="p-3 bg-lightPrimary rounded-xl">
                   <p className="text-xs text-gray-700">系统默认模型</p>
-                  <p className="font-bold text-navy-700 mt-1 text-xs">{llm.model || "—"}</p>
+                  <p className="font-bold text-navy-700 mt-1 text-xs">{llm.model}</p>
                 </div>
                 <div className="p-3 bg-lightPrimary rounded-xl">
                   <p className="text-xs text-gray-700">模式</p>
-                  <p className="font-bold text-navy-700 mt-1">{llm.mode === "system" ? "系统统一" : "用户自带"}</p>
+                  <p className="font-bold text-navy-700 mt-1">系统统一</p>
                 </div>
                 <div className="p-3 bg-lightPrimary rounded-xl">
                   <p className="text-xs text-gray-700">状态</p>
@@ -143,19 +273,97 @@ export default function Sidebar({ user }) {
                 </div>
               </div>
 
-              {/* 模型选择(用户级偏好,存 localStorage)*/}
+              {/* === Admin only · 系统 Key 编辑 === */}
+              {isAdmin && (
+                <div className="border-2 border-amber-100 bg-amber-50 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <I name="shield-check" size={16} className="text-amber-700" />
+                    <p className="text-sm font-bold text-amber-900">管理员设置 (仅 ADMIN 角色可见)</p>
+                  </div>
+
+                  {/* Kimi API Key */}
+                  <div>
+                    <p className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-1.5">Kimi API Key</p>
+                    {!editingKey ? (
+                      <div className="flex items-center gap-2 p-3 bg-white rounded-lg">
+                        <code className="font-mono text-xs text-gray-700 flex-1 truncate">
+                          {keyRow?.maskedValue || "(未配置)"}
+                        </code>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-lightPrimary text-gray-700 font-bold">
+                          {keyRow?.source === "db" ? "DB" : keyRow?.source === "env" ? "env" : "无"}
+                        </span>
+                        <Button size="sm" variant="ghost" onClick={() => setEditingKey(true)} icon={<I name="pencil" size={12} />}>
+                          编辑
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={testKey} icon={<I name="activity" size={12} />}>
+                          测试
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <input
+                          type="password"
+                          autoFocus
+                          placeholder="sk-... (写入 DB 时 AES-256-GCM 加密)"
+                          value={pendingKey}
+                          onChange={(e) => setPendingKey(e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border border-amber-300 text-sm font-mono outline-none focus:border-amber-500 bg-white"
+                          disabled={savingKey}
+                        />
+                        <div className="flex justify-end gap-2">
+                          <Button size="sm" variant="ghost" onClick={() => { setEditingKey(false); setPendingKey(""); }} disabled={savingKey}>
+                            取消
+                          </Button>
+                          <Button size="sm" onClick={saveKimiKey} disabled={savingKey} icon={<I name={savingKey ? "loader" : "check"} size={12} className={savingKey ? "animate-spin" : ""} />}>
+                            {savingKey ? "保存中" : "加密保存"}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                    {keyRow?.source === "db" && (
+                      <button onClick={deleteKimiKey} className="text-[11px] text-gray-600 hover:text-red-500 mt-1.5 inline-flex items-center gap-1">
+                        <I name="trash-2" size={11} /> 删除 DB 中的 key,回退到 .env 配置
+                      </button>
+                    )}
+                  </div>
+
+                  {/* 系统默认模型 (admin 改) */}
+                  <div>
+                    <p className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-1.5">系统默认模型</p>
+                    <div className="flex items-center gap-2 p-3 bg-white rounded-lg">
+                      <select
+                        value={modelRow?.maskedValue || llm.model}
+                        onChange={(e) => saveSystemModel(e.target.value)}
+                        className="flex-1 bg-transparent text-sm text-navy-700 outline-none cursor-pointer"
+                      >
+                        {(llm.availableModels || []).map((m) => (
+                          <option key={m.id} value={m.id}>{m.label}</option>
+                        ))}
+                      </select>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-lightPrimary text-gray-700 font-bold">
+                        {modelRow?.source === "db" ? "DB" : "env"}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-gray-600 mt-1">
+                      影响所有未在下方设置个人偏好的用户
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* 个人偏好(任何用户) */}
               {ready && llm.availableModels?.length > 0 && (
                 <div>
-                  <p className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-2">解析模型 · 当前选择</p>
-                  <div className="space-y-1.5">
+                  <p className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-2">个人解析模型偏好</p>
+                  <div className="space-y-1.5 max-h-[220px] overflow-y-auto pr-1">
                     {llm.availableModels.map((m) => {
                       const checked = selectedModel === m.id;
-                      const isDefault = m.id === llm.model;
+                      const isSysDefault = m.id === llm.model;
                       return (
                         <button
                           key={m.id}
                           onClick={() => onPickModel(m.id)}
-                          className={`w-full text-left p-3 rounded-xl border-2 transition flex items-start gap-3
+                          className={`w-full text-left p-2.5 rounded-xl border-2 transition flex items-start gap-3
                             ${checked ? "border-brand bg-brand-50" : "border-gray-200 hover:border-gray-300 bg-white"}`}
                         >
                           <span className={`mt-0.5 w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0
@@ -165,7 +373,7 @@ export default function Sidebar({ user }) {
                           <div className="min-w-0 flex-1">
                             <p className="text-sm font-bold text-navy-700 flex items-center gap-2">
                               {m.label}
-                              {isDefault && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-lightPrimary text-gray-700">系统默认</span>}
+                              {isSysDefault && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-lightPrimary text-gray-700">系统默认</span>}
                             </p>
                             <p className="text-[11px] text-gray-700 mt-0.5">{m.desc}</p>
                           </div>
@@ -174,43 +382,20 @@ export default function Sidebar({ user }) {
                     })}
                   </div>
                   <p className="text-[11px] text-gray-600 mt-2">
-                    选择仅对你本人下次上传生效 · 存储在浏览器 localStorage
+                    选择仅对你本人下次上传生效 · 存浏览器 localStorage
                   </p>
                 </div>
               )}
 
-              {ready ? (
-                <div className="p-3 rounded-xl bg-green-50 border border-green-100 text-xs text-green-800">
-                  <p className="font-bold mb-1 flex items-center gap-1.5">
-                    <I name="check-circle-2" size={14} /> 系统已配置 Kimi API Key
-                  </p>
-                  <p>所有用户共享 — 在「简历收件箱」上传即可触发 AI 解析。Key 由运维持有,本 UI 不显示具体值。</p>
-                </div>
-              ) : (
-                <div className="p-3 rounded-xl bg-amber-50 border border-amber-100 text-xs text-amber-800">
-                  <p className="font-bold mb-1 flex items-center gap-1.5">
-                    <I name="alert-triangle" size={14} /> Key 未配置
-                  </p>
-                  <p>简历上传仍可入库,但不会触发 AI 字段抽取。请联系运维在 VPS <code className="font-mono">.env</code> 写入 <code className="font-mono">KIMI_API_KEY</code> 后重启 backend。</p>
-                </div>
-              )}
-
-              <div className="text-xs text-gray-600 pt-2 border-t border-gray-200">
-                <p className="mb-1.5"><strong>未来扩展</strong> — 多租户场景下,每个用户可在此处填自己的 Key 覆盖系统 Key:</p>
-                <ul className="list-disc list-inside space-y-0.5 text-gray-500">
-                  <li>用户级 Key 加密存于 DB,前端不回显明文</li>
-                  <li>解析请求按当前用户路由到对应 Key</li>
-                  <li>系统 Key 始终作为 fallback</li>
-                </ul>
-              </div>
-
-              <div className="flex justify-end gap-3 pt-2">
+              <div className="flex justify-end gap-3 pt-2 border-t border-gray-200">
                 <Button variant="ghost" onClick={() => setModalOpen(false)}>关闭</Button>
               </div>
-            </div>
+            </>
           )}
         </div>
       </Modal>
     </>
   );
 }
+
+export { COLLAPSED_KEY };

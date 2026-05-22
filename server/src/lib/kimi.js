@@ -7,8 +7,16 @@
 //   2. moonshot-v1-32k 模型对中文简历理解强,32k context 足够一份长简历
 //   3. 兼容 OpenAI Chat Completions 格式,JSON Schema 强约束输出
 
+import { getEffective, SETTING_KEYS } from "./settings.js";
+
 const KIMI_BASE_URL = process.env.KIMI_BASE_URL || "https://api.moonshot.cn/v1";
-const KIMI_MODEL = process.env.KIMI_MODEL || "moonshot-v1-32k";
+
+async function effectiveApiKey() {
+  return (await getEffective(SETTING_KEYS.KIMI_API_KEY)) || "";
+}
+async function effectiveModel() {
+  return (await getEffective(SETTING_KEYS.KIMI_MODEL)) || "moonshot-v1-32k";
+}
 
 // 可用模型清单(对前端展示用,后端不强校验)
 // 见 https://platform.moonshot.cn/docs/intro/pricing
@@ -58,14 +66,15 @@ JSON 字段要求(中文值优先,无信息时用 null 或空数组):
 - experience / educationHistory 按时间倒序`;
 
 async function kimiRequest(path, options = {}) {
-  if (!process.env.KIMI_API_KEY || process.env.KIMI_API_KEY.startsWith("__")) {
+  const apiKey = await effectiveApiKey();
+  if (!apiKey || apiKey.startsWith("__")) {
     throw Object.assign(new Error("KIMI_API_KEY not configured"), { statusCode: 503, code: "kimi_not_configured" });
   }
   const url = `${KIMI_BASE_URL}${path}`;
   const res = await fetch(url, {
     ...options,
     headers: {
-      Authorization: `Bearer ${process.env.KIMI_API_KEY}`,
+      Authorization: `Bearer ${apiKey}`,
       ...(options.headers || {}),
     },
   });
@@ -100,8 +109,9 @@ export async function parseResume({ buffer, filename, contentType, model }) {
   // 2) 拿提取后的文本作为 system 消息附件
   const extractedText = await getFileContent(file.id);
 
-  // 3) 调 chat 让 Kimi 输出 JSON(model 可由调用方指定,否则用 env 默认)
-  const useModel = (model && model.startsWith("moonshot") || model === "kimi-latest") ? model : KIMI_MODEL;
+  // 3) 调 chat 让 Kimi 输出 JSON(model 可由调用方指定,否则走 setting 默认)
+  const defaultModel = await effectiveModel();
+  const useModel = (model && (model.startsWith("moonshot") || model === "kimi-latest")) ? model : defaultModel;
   const chatRes = await kimiRequest("/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -140,6 +150,24 @@ export async function parseResume({ buffer, filename, contentType, model }) {
   };
 }
 
-export function isKimiConfigured() {
-  return !!process.env.KIMI_API_KEY && !process.env.KIMI_API_KEY.startsWith("__");
+export async function isKimiConfigured() {
+  const key = await effectiveApiKey();
+  return !!key && !key.startsWith("__");
+}
+
+export async function getActiveModel() {
+  return effectiveModel();
+}
+
+// 探活: 用 list 模型的 endpoint 或 1-token 探针
+// 通过 chat completion 发一个最小请求,验证 key 是否真的能用
+export async function ping(apiKey, model = "moonshot-v1-8k") {
+  const url = `${KIMI_BASE_URL}/models`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${apiKey}` } });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw Object.assign(new Error(`Kimi ping ${res.status}: ${body.slice(0, 200)}`), { statusCode: res.status });
+  }
+  const data = await res.json();
+  return { ok: true, modelsCount: Array.isArray(data?.data) ? data.data.length : 0 };
 }
