@@ -1,0 +1,77 @@
+import axios from "axios";
+import { getToken, clearAuth } from "./auth.js";
+
+// Axios 实例 — 所有请求都从这里出口。
+//   - 请求拦截器: 自动附 Authorization Bearer
+//   - 响应拦截器: 401 自动清登录 → 跳 /login
+export const api = axios.create({
+  baseURL: "/api",
+  timeout: 15000,
+});
+
+api.interceptors.request.use((config) => {
+  const token = getToken();
+  if (token) {
+    config.headers = config.headers || {};
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+let onUnauthorized = null;
+export function setUnauthorizedHandler(handler) {
+  onUnauthorized = handler;
+}
+
+api.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    const status = err.response?.status;
+    if (status === 401) {
+      clearAuth();
+      if (onUnauthorized) onUnauthorized();
+    }
+    return Promise.reject(err);
+  },
+);
+
+// 资源便捷方法 — 把常用 CRUD 收口,页面直接调用。
+export const resources = {
+  candidates: {
+    list: (params) => api.get("/candidates", { params }).then((r) => r.data),
+    detail: (id) => api.get(`/candidates/${id}`).then((r) => r.data.candidate),
+    create: (data) => api.post("/candidates", data).then((r) => r.data.candidate),
+    update: (id, data) => api.patch(`/candidates/${id}`, data).then((r) => r.data.candidate),
+    remove: (id) => api.delete(`/candidates/${id}`),
+  },
+  jobs: {
+    list: (params) => api.get("/jobs", { params }).then((r) => r.data),
+    detail: (id) => api.get(`/jobs/${id}`).then((r) => r.data.job),
+    create: (data) => api.post("/jobs", data).then((r) => r.data.job),
+    update: (id, data) => api.patch(`/jobs/${id}`, data).then((r) => r.data.job),
+    remove: (id) => api.delete(`/jobs/${id}`),
+  },
+  employees: {
+    list: (params) => api.get("/employees", { params }).then((r) => r.data),
+    detail: (id) => api.get(`/employees/${id}`).then((r) => r.data.employee),
+    create: (data) => api.post("/employees", data).then((r) => r.data.employee),
+    update: (id, data) => api.patch(`/employees/${id}`, data).then((r) => r.data.employee),
+    remove: (id) => api.delete(`/employees/${id}`),
+  },
+  departments: {
+    list: () => api.get("/departments").then((r) => r.data),
+    detail: (id) => api.get(`/departments/${id}`).then((r) => r.data.department),
+    create: (data) => api.post("/departments", data).then((r) => r.data.department),
+    update: (id, data) => api.patch(`/departments/${id}`, data).then((r) => r.data.department),
+    remove: (id) => api.delete(`/departments/${id}`),
+  },
+  interviews: {
+    list: (params) => api.get("/interviews", { params }).then((r) => r.data),
+    create: (data) => api.post("/interviews", data).then((r) => r.data.interview),
+    update: (id, data) => api.patch(`/interviews/${id}`, data).then((r) => r.data.interview),
+    remove: (id) => api.delete(`/interviews/${id}`),
+  },
+  dashboard: {
+    overview: () => api.get("/dashboard/overview").then((r) => r.data),
+  },
+};

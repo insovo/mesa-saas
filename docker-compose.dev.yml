@@ -1,0 +1,47 @@
+# 仅用于本地开发(阶段①):起 PostgreSQL + Redis
+# 端口绑 127.0.0.1,严禁映射到 0.0.0.0(避免公网暴露)
+# 生产环境的 compose 文件是阶段③ 的产物,不要混用
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: mesa-pg-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: mesa
+      POSTGRES_USER: mesa
+      POSTGRES_PASSWORD: mesa_dev_only
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - mesa_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mesa -d mesa"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: mesa-redis-dev
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --save
+      - "60 1"
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - mesa_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  mesa_pg_data:
+  mesa_redis_data:

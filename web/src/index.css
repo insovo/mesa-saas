@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ================================================================
+   MESA Recruit — Design Tokens
+   迁自 colors_and_type.css(项目根),与 ui_kits/mesa-recruit 对齐。
+   ================================================================ */
+
+:root {
+  --brand-500: #422AFB;
+  --brand-600: #3311DB;
+  --brand-700: #2111A5;
+  --navy-700: #1B254B;
+  --light-primary: #F4F7FE;
+  --gray-400: #A0AEC0;
+  --gray-500: #ADB5BD;
+  --gray-600: #A3AED0;
+  --gray-700: #707EAE;
+  --border-default: #E9ECEF;
+  --shadow-card: 14px 17px 40px 4px rgba(112, 144, 176, 0.08);
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  font-family: "DM Sans", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  color: var(--navy-700);
+  background: var(--light-primary);
+  font-feature-settings: 'kern';
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.2px;
+}
+
+.font-accent {
+  font-family: "Gill Sans Nova", "DM Sans", Georgia, serif;
+  font-style: italic;
+  font-weight: 500;
+}
+
+/* Scrollbars — subtle, brand-tinted */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(163, 174, 208, 0.35);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(112, 126, 174, 0.6);
+}
+
+/* Page title */
+.title-page {
+  font-size: 33px;
+  font-weight: 700;
+  color: var(--navy-700);
+  letter-spacing: -0.5px;
+  line-height: 1.2;
+}
+.title-card {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--navy-700);
+}
+.title-section {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--gray-600);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Match ring keyframe — used by Primitives.MatchRing */
+@keyframes mesa-ring-grow {
+  from { stroke-dashoffset: var(--ring-dash); }
+  to { stroke-dashoffset: var(--ring-final); }
+}

@@ -1,0 +1,252 @@
+/* ================================================================
+   MESA Recruit — Design Tokens
+   Color + Type variables lifted directly from MESA/tailwind.config.js
+   and MESA/src/index.css. Use these vars instead of hard-coding.
+   ================================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Poppins:wght@400;500;600;700;800&display=swap');
+
+/* Brand accent face — supplied by user. Single weight/style only. */
+@font-face {
+  font-family: 'Gill Sans Nova';
+  src: url('fonts/gill-sans-nova-medium-italic.ttf') format('truetype');
+  font-weight: 500;
+  font-style: italic;
+  font-display: swap;
+}
+
+:root {
+  /* ---------- Brand (purple/indigo) ---------- */
+  --brand-50:  #E9E3FF;
+  --brand-100: #C0B8FE;
+  --brand-200: #A195FD;
+  --brand-300: #8171FC;
+  --brand-400: #7551FF;
+  --brand-500: #422AFB;  /* primary */
+  --brand-600: #3311DB;  /* hover */
+  --brand-700: #2111A5;  /* active */
+  --brand-800: #190793;
+  --brand-900: #11047A;
+
+  --brand-linear: #868CFF;     /* top of brand gradient */
+  --blue-secondary: #4318FF;
+  --brand-gradient: linear-gradient(180deg, #868CFF 0%, #422AFB 100%);
+  --brand-gradient-card: linear-gradient(135deg, #868CFF 0%, #432CF3 50%, #422AFB 100%);
+
+  /* ---------- Navy (text + dark surfaces) ---------- */
+  --navy-50:  #D0DCFB;
+  --navy-100: #AAC0FE;
+  --navy-200: #A3B9F8;
+  --navy-300: #728FEA;
+  --navy-400: #3652BA;
+  --navy-500: #1B3BBB;
+  --navy-600: #24388A;
+  --navy-700: #1B254B;  /* primary text */
+  --navy-800: #111C44;  /* dark mode card */
+  --navy-900: #0B1437;  /* dark mode page */
+
+  /* ---------- Neutrals ---------- */
+  --white:         #FFFFFF;
+  --light-primary: #F4F7FE;  /* page background, search chip */
+  --gray-50:  #F8F9FA;
+  --gray-100: #EDF2F7;
+  --gray-200: #E9ECEF;
+  --gray-300: #CBD5E0;
+  --gray-400: #A0AEC0;
+  --gray-500: #ADB5BD;
+  --gray-600: #A3AED0;  /* secondary text */
+  --gray-700: #707EAE;
+  --gray-800: #252F40;
+  --gray-900: #1B2559;
+
+  /* ---------- Semantic ---------- */
+  --green-500:  #22C55E;
+  --green-100:  #DCFCE7;
+  --red-500:    #F53939;
+  --red-100:    #FEE2E2;
+  --amber-500:  #F59E0B;
+  --amber-100:  #FEF3C7;
+  --blue-500:   #3B82F6;
+  --blue-100:   #DBEAFE;
+  --orange-500: #F97316;
+  --teal-500:   #14B8A6;
+  --pink-500:   #FF0080;
+
+  /* ---------- Shadow ---------- */
+  --shadow-500: rgba(112, 144, 176, 0.08);
+  --shadow-card: 14px 17px 40px 4px rgba(112, 144, 176, 0.08);
+  --shadow-card-dark: none;
+  --shadow-xl: 0 20px 25px -5px rgba(112, 144, 176, 0.10), 0 10px 10px -5px rgba(112, 144, 176, 0.04);
+  --shadow-inset: inset 0 18px 22px rgba(112, 144, 176, 0.08);
+
+  /* ---------- Radii ---------- */
+  --radius-sm: 8px;
+  --radius-md: 12px;   /* rounded-xl, inputs/buttons */
+  --radius-lg: 16px;
+  --radius-card: 20px; /* rounded-[20px], signature card */
+  --radius-pill: 999px;
+
+  /* ---------- Spacing (4px grid) ---------- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-14: 56px;
+
+  /* ---------- Type ---------- */
+  --font-body: 'DM Sans', system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-display: 'Poppins', system-ui, -apple-system, sans-serif;
+  --font-accent: 'Gill Sans Nova', 'DM Sans', Georgia, serif; /* italic-only — for taglines / quotes */
+
+  --text-xs:   12px;
+  --text-sm:   14px;
+  --text-base: 16px;
+  --text-lg:   18px;
+  --text-xl:   20px;
+  --text-2xl:  24px;
+  --text-3xl:  30px;
+  --text-4xl:  33px;   /* navbar page title */
+  --text-5xl:  36px;
+
+  --font-weight-regular: 400;
+  --font-weight-medium:  500;
+  --font-weight-bold:    700;
+
+  --letter-spacing-tight: -0.5px;
+  --line-height-tight: 1.2;
+  --line-height-base: 1.5;
+
+  /* ---------- Semantic role vars ---------- */
+  --bg-page:        var(--light-primary);
+  --bg-card:        var(--white);
+  --bg-chip:        var(--light-primary);
+  --bg-input:       transparent;
+
+  --fg-primary:     var(--navy-700);
+  --fg-secondary:   var(--gray-600);
+  --fg-tertiary:    var(--gray-500);
+  --fg-on-brand:    var(--white);
+
+  --border-default: var(--gray-200);
+  --border-input:   var(--gray-200);
+
+  --accent:         var(--brand-500);
+  --accent-hover:   var(--brand-600);
+  --accent-active:  var(--brand-700);
+}
+
+/* Dark mode (matches MESA's `body.dark`) */
+body.dark, .dark {
+  --bg-page:    var(--navy-900);
+  --bg-card:    var(--navy-800);
+  --bg-chip:    var(--navy-700);
+  --fg-primary: var(--white);
+  --fg-secondary: var(--gray-600);
+  --border-default: rgba(255, 255, 255, 0.10);
+  --shadow-card: none;
+}
+
+/* ================================================================
+   Base + semantic type classes
+   ================================================================ */
+
+html, body {
+  font-family: var(--font-body);
+  font-feature-settings: 'kern';
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: var(--letter-spacing-tight);
+  color: var(--fg-primary);
+  background: var(--bg-page);
+}
+
+.font-display { font-family: var(--font-display); }
+.font-body    { font-family: var(--font-body); }
+.font-accent  { font-family: var(--font-accent); font-style: italic; font-weight: 500; }
+
+/* Headings — MESA uses bold navy-700 throughout */
+h1, .h1 {
+  font-size: var(--text-4xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--fg-primary);
+  line-height: var(--line-height-tight);
+  letter-spacing: var(--letter-spacing-tight);
+}
+h2, .h2 {
+  font-size: var(--text-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--fg-primary);
+  line-height: var(--line-height-tight);
+}
+h3, .h3 {
+  font-size: var(--text-xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--fg-primary);
+}
+h4, .h4 {
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--fg-primary);
+}
+
+.title-page {           /* sticky navbar title (33px bold) */
+  font-size: var(--text-4xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--fg-primary);
+  letter-spacing: var(--letter-spacing-tight);
+}
+.title-card {           /* "Check Table" — bold navy-700, 20px */
+  font-size: var(--text-xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--fg-primary);
+}
+.title-section {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-bold);
+  color: var(--gray-600);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.text-body {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--fg-primary);
+}
+.text-secondary {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--fg-secondary);
+}
+.text-meta {
+  font-size: var(--text-xs);
+  color: var(--fg-tertiary);
+}
+.text-label {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-bold);
+  color: var(--fg-primary);
+}
+
+.wordmark {
+  font-family: var(--font-display);
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0;
+  font-size: 26px;
+}
+.wordmark .light { font-weight: var(--font-weight-medium); }
+
+/* Utility surfaces */
+.card {
+  background: var(--bg-card);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+.card-flat {
+  background: var(--bg-card);
+  border-radius: var(--radius-card);
+}

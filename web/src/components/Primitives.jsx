@@ -1,0 +1,351 @@
+// MESA Recruit · 共享原子组件
+// 迁自 ui_kits/mesa-recruit/Primitives.jsx,改为 ESM 导出,图标用 lucide-react。
+
+import { useEffect, useState } from "react";
+import * as Lucide from "lucide-react";
+import { STATUS_TONE, HIRE_STAGE_TONE, TASK_STATUS_TONE, URGENCY_TONE } from "../lib/constants.js";
+
+// === Icon ===========================================================
+// 兼容 ui_kits 里 <I name="xxx" /> 的写法。
+// lucide-react 用 PascalCase 命名(如 LayoutDashboard);这里把 kebab-case 自动转过去。
+function pascal(name) {
+  return name.split("-").map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join("");
+}
+
+export function I({ name, size = 18, strokeWidth = 2, className = "", ...rest }) {
+  const Icon = Lucide[pascal(name)] || Lucide.HelpCircle;
+  return <Icon size={size} strokeWidth={strokeWidth} className={className} {...rest} />;
+}
+
+// === Card ===========================================================
+export function Card({ children, className = "", extra = "", as: As = "div", ...rest }) {
+  return (
+    <As
+      className={`relative flex flex-col rounded-card bg-white bg-clip-border shadow-card ${className} ${extra}`}
+      {...rest}
+    >
+      {children}
+    </As>
+  );
+}
+
+// === Button =========================================================
+const BTN_SIZES = {
+  sm: "h-9 px-4 text-sm rounded-xl gap-1.5",
+  md: "h-11 px-5 text-sm rounded-xl gap-2",
+  lg: "h-12 px-6 text-base rounded-xl gap-2",
+};
+const BTN_VARIANTS = {
+  primary: "bg-brand text-white hover:bg-brand-hover active:bg-brand-active font-medium shadow-button",
+  secondary: "bg-lightPrimary text-navy-700 hover:bg-gray-200 font-medium",
+  ghost: "bg-transparent text-navy-700 hover:bg-lightPrimary border border-gray-200 font-medium",
+  danger: "bg-red-500 text-white hover:bg-red-600 active:bg-red-700 font-medium",
+  pill: "bg-brand text-white hover:bg-brand-hover font-medium rounded-full",
+};
+
+export function Button({
+  children,
+  variant = "primary",
+  size = "md",
+  icon,
+  className = "",
+  as: As = "button",
+  disabled,
+  ...rest
+}) {
+  return (
+    <As
+      disabled={disabled}
+      className={`inline-flex items-center justify-center transition-colors duration-200 ${BTN_SIZES[size]} ${BTN_VARIANTS[variant]} ${disabled ? "opacity-60 cursor-not-allowed" : ""} ${className}`}
+      {...rest}
+    >
+      {icon && <span className="inline-flex" style={{ lineHeight: 0 }}>{icon}</span>}
+      {children}
+    </As>
+  );
+}
+
+// === Input ==========================================================
+export function Input({
+  label, id, type = "text", placeholder, state, disabled, icon, value, onChange,
+  className = "", containerClassName = "", ...rest
+}) {
+  const stateCls = disabled
+    ? "!border-none !bg-gray-100"
+    : state === "error"
+    ? "border-red-500 text-red-500 placeholder:text-red-500"
+    : state === "success"
+    ? "border-green-500 text-green-500"
+    : "border-gray-200 text-navy-700";
+  return (
+    <div className={containerClassName}>
+      {label && (
+        <label htmlFor={id} className="text-sm text-navy-700 font-bold ml-3 block mb-2">
+          {label}
+        </label>
+      )}
+      <div className="relative">
+        {icon && (
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">{icon}</span>
+        )}
+        <input
+          disabled={disabled}
+          type={type}
+          id={id}
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+          className={`flex h-12 w-full items-center rounded-xl border bg-white/0 p-3 text-sm outline-none placeholder:text-gray-400 focus:border-brand transition-colors ${icon ? "pl-10" : ""} ${stateCls} ${className}`}
+          {...rest}
+        />
+      </div>
+    </div>
+  );
+}
+
+// === Avatar =========================================================
+const ANIMAL_EMOJI = {
+  dog: "🐶", cat: "🐱", rabbit: "🐰", bear: "🐻", bird: "🐦", fish: "🐠",
+  rat: "🐭", squirrel: "🐿️", turtle: "🐢", snail: "🐌", bug: "🐛", worm: "🪱",
+  pig: "🐷", duck: "🦆", panda: "🐼", fox: "🦊", monkey: "🐵", whale: "🐳",
+  cow: "🐮", tiger: "🐯", lion: "🦁",
+};
+
+export function Avatar({ name, animal, src, size = 40 }) {
+  const initials = (name || "?").trim().slice(0, 1);
+  const emoji = animal ? ANIMAL_EMOJI[animal] : null;
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt={name}
+        className="rounded-full object-cover bg-gray-100"
+        style={{ width: size, height: size }}
+      />
+    );
+  }
+  return (
+    <div
+      className="rounded-full bg-brand-gradient text-white flex items-center justify-center font-medium"
+      style={{ width: size, height: size, fontSize: size * 0.4 }}
+      title={name}
+    >
+      {emoji || initials}
+    </div>
+  );
+}
+
+// === Status Pill ====================================================
+export function StatusPill({ status, size = "sm" }) {
+  const tone = STATUS_TONE[status] || STATUS_TONE["待筛选"];
+  const sz = size === "sm" ? "px-3 py-1 text-[11px]" : "px-3.5 py-1.5 text-xs";
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full font-bold whitespace-nowrap ${sz}`}
+      style={{ background: tone.bg, color: tone.fg }}
+    >
+      <span className="w-1.5 h-1.5 rounded-full" style={{ background: tone.dot }}></span>
+      {status}
+    </span>
+  );
+}
+
+export function StagePill({ stage, size = "sm" }) {
+  const tone = HIRE_STAGE_TONE[stage] || HIRE_STAGE_TONE["待入职"];
+  const sz = size === "sm" ? "px-3 py-1 text-[11px]" : "px-3.5 py-1.5 text-xs";
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full font-bold whitespace-nowrap ${sz}`}
+      style={{ background: tone.bg, color: tone.fg }}
+    >
+      <span className="w-1.5 h-1.5 rounded-full" style={{ background: tone.dot }}></span>
+      {stage}
+    </span>
+  );
+}
+
+export function TaskStatusPill({ status }) {
+  const tone = TASK_STATUS_TONE[status] || TASK_STATUS_TONE["待开始"];
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-bold whitespace-nowrap"
+      style={{ background: tone.bg, color: tone.fg }}
+    >
+      <I name={tone.icon} size={11} strokeWidth={2.5} />
+      {status}
+    </span>
+  );
+}
+
+export function UrgencyChip({ urgency }) {
+  const tone = URGENCY_TONE[urgency] || URGENCY_TONE.mid;
+  return (
+    <span
+      className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold"
+      style={{ background: tone.bg, color: tone.fg }}
+    >
+      {tone.label}
+    </span>
+  );
+}
+
+// === AI Badge =======================================================
+export function AiBadge({ parser = "Kimi", confidence }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold text-white"
+      style={{ background: "linear-gradient(135deg,#868CFF 0%,#432CF3 50%,#422AFB 100%)" }}
+    >
+      <I name="sparkles" size={11} strokeWidth={2.5} />
+      {parser} 已解析
+      {confidence != null && <span className="opacity-80 font-medium">· {confidence}%</span>}
+    </span>
+  );
+}
+
+// === Match Ring =====================================================
+export function MatchRing({ value = 0, size = 56, stroke = 6, showLabel = true }) {
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const safe = Math.max(0, Math.min(100, value));
+  const offset = c - (c * safe) / 100;
+  const color = safe >= 85 ? "#22C55E" : safe >= 70 ? "#3B82F6" : safe >= 50 ? "#F59E0B" : "#F53939";
+  return (
+    <div className="relative inline-flex" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={r} stroke="#E9ECEF" strokeWidth={stroke} fill="none" />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          stroke={color}
+          strokeWidth={stroke}
+          fill="none"
+          strokeDasharray={c}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+          style={{ transition: "stroke-dashoffset 600ms ease" }}
+        />
+      </svg>
+      {showLabel && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="text-[13px] font-bold text-navy-700">{safe}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// === Tag ============================================================
+export function Tag({ children, tone = "default" }) {
+  const tones = {
+    default: "bg-lightPrimary text-gray-700",
+    brand: "bg-brand-50 text-brand-700",
+    success: "bg-green-100 text-green-700",
+    warning: "bg-amber-100 text-amber-700",
+    danger: "bg-red-100 text-red-700",
+  };
+  return (
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium ${tones[tone]}`}>
+      {children}
+    </span>
+  );
+}
+
+// === Widget (stat tile) =============================================
+export function Widget({ icon, label, value, accent = "#422AFB", subtitle }) {
+  return (
+    <Card className="p-5 flex items-center gap-4">
+      <div
+        className="flex items-center justify-center rounded-full shrink-0"
+        style={{ width: 56, height: 56, background: `${accent}15`, color: accent }}
+      >
+        <I name={icon} size={26} strokeWidth={2.2} />
+      </div>
+      <div className="min-w-0">
+        <p className="text-xs text-gray-700 font-medium uppercase tracking-wide truncate">{label}</p>
+        <p className="text-2xl font-bold text-navy-700 leading-tight mt-0.5">{value}</p>
+        {subtitle && <p className="text-xs text-gray-600 mt-0.5 truncate">{subtitle}</p>}
+      </div>
+    </Card>
+  );
+}
+
+// === Modal ==========================================================
+export function Modal({ open, onClose, children, maxWidth = "max-w-2xl" }) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => e.key === "Escape" && onClose();
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-navy-900/30 backdrop-blur-sm" onClick={onClose}></div>
+      <div className={`relative w-full ${maxWidth} bg-white rounded-card shadow-card max-h-[90vh] overflow-auto`}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// === Empty ==========================================================
+export function Empty({ icon = "inbox", title = "暂无数据", desc }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 text-gray-600">
+      <div className="w-14 h-14 rounded-full bg-lightPrimary flex items-center justify-center mb-3">
+        <I name={icon} size={28} className="text-gray-400" />
+      </div>
+      <p className="text-sm font-medium text-navy-700">{title}</p>
+      {desc && <p className="text-xs text-gray-600 mt-1">{desc}</p>}
+    </div>
+  );
+}
+
+// === Loading Block ==================================================
+export function LoadingBlock({ height = "h-32", label = "加载中..." }) {
+  return (
+    <div className={`${height} w-full rounded-card bg-white shadow-card flex items-center justify-center text-sm text-gray-700`}>
+      <I name="loader" size={16} className="animate-spin mr-2" />
+      {label}
+    </div>
+  );
+}
+
+// === Toast (lightweight) ============================================
+let toastSeq = 0;
+const toastListeners = new Set();
+
+export function toast(msg, type = "info") {
+  const id = ++toastSeq;
+  toastListeners.forEach((cb) => cb({ id, msg, type }));
+  return id;
+}
+
+export function ToastHost() {
+  const [items, setItems] = useState([]);
+  useEffect(() => {
+    const cb = (t) => {
+      setItems((prev) => [...prev, t]);
+      setTimeout(() => setItems((prev) => prev.filter((x) => x.id !== t.id)), 3500);
+    };
+    toastListeners.add(cb);
+    return () => toastListeners.delete(cb);
+  }, []);
+  return (
+    <div className="fixed bottom-6 right-6 z-[100] flex flex-col gap-2">
+      {items.map((t) => (
+        <div
+          key={t.id}
+          className={`px-4 py-3 rounded-xl shadow-card text-sm font-medium max-w-sm
+            ${t.type === "error" ? "bg-red-500 text-white" :
+              t.type === "success" ? "bg-green-500 text-white" :
+              "bg-navy-700 text-white"}`}
+        >
+          {t.msg}
+        </div>
+      ))}
+    </div>
+  );
+}

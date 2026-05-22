@@ -1,0 +1,92 @@
+# MESA Recruit · 生产部署流水线(阶段⑤.2)
+# 触发: 仅 main 分支 push 触发
+# 流程:
+#   1) 构建 server / web 镜像并推送到 GHCR
+#   2) SSH 连接生产 VPS 拉取最新镜像 + docker compose up -d 滚动升级
+# 前置: GitHub repo Secrets 需配置:
+#   - GHCR_TOKEN          (含 write:packages 权限的 PAT,或用默认 GITHUB_TOKEN)
+#   - VPS_HOST            生产 VPS 公网 IP / 域名
+#   - VPS_USER            SSH 用户(建议非 root)
+#   - VPS_SSH_KEY         私钥(PEM 格式,无密码或在 known_hosts 已加密)
+#   - VPS_DEPLOY_DIR      仓库克隆位置,例: /opt/mesa
+# .env 永远不进 CI,只在 VPS 本地的 /opt/mesa/.env
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAMESPACE: ${{ github.repository_owner }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        run: echo "tag=$(echo ${GITHUB_SHA} | head -c 8)" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Build & push server
+        uses: docker/build-push-action@v6
+        with:
+          context: ./server
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/mesa-server:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/mesa-server:${{ steps.meta.outputs.tag }}
+          cache-from: type=gha,scope=server
+          cache-to: type=gha,scope=server,mode=max
+
+      - name: Build & push web
+        uses: docker/build-push-action@v6
+        with:
+          context: ./web
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/mesa-web:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/mesa-web:${{ steps.meta.outputs.tag }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: ${{ vars.DEPLOY_ENABLED == 'true' }}  # 在 Repo Variables 里手动开关
+    steps:
+      - name: SSH deploy
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+            cd "${{ secrets.VPS_DEPLOY_DIR }}"
+            echo "[deploy] $(date +%F\ %T) pulling latest images..."
+            docker compose pull
+            echo "[deploy] applying compose..."
+            docker compose up -d --remove-orphans
+            echo "[deploy] pruning dangling images..."
+            docker image prune -f
+            echo "[deploy] done."

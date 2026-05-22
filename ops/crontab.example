@@ -1,0 +1,17 @@
+# MESA Recruit · 生产 VPS crontab 推荐配置
+# 部署步骤(在 VPS 上以 deploy 用户身份执行):
+#   crontab -l > /tmp/crontab.bak             # 备份当前
+#   crontab -e                                # 把下面内容粘进去
+#   crontab -l                                # 验证
+#
+# 时间为服务器本地时区,推荐设置为 Asia/Shanghai:
+#   sudo timedatectl set-timezone Asia/Shanghai
+
+# 每日凌晨 03:00 备份数据库到 Cloudflare R2
+0 3 * * * /opt/mesa/ops/backup.sh >> /var/log/mesa-backup.log 2>&1
+
+# 每周日凌晨 04:00 清理 docker 中残留的 dangling 镜像与卷,释放磁盘
+0 4 * * 0 /usr/bin/docker system prune -af >> /var/log/mesa-prune.log 2>&1
+
+# 每小时巡检容器健康,失败则尝试重启(可选 — 大部分场景 docker restart 策略已足够)
+# 0 * * * * /opt/mesa/ops/healthcheck.sh >> /var/log/mesa-health.log 2>&1

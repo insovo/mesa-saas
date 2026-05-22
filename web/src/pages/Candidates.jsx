@@ -1,0 +1,269 @@
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { resources } from "../lib/api.js";
+import {
+  Card,
+  Button,
+  Input,
+  StatusPill,
+  AiBadge,
+  MatchRing,
+  Avatar,
+  I,
+  Empty,
+  LoadingBlock,
+  Tag,
+  Modal,
+  toast,
+} from "../components/Primitives.jsx";
+import { STATUS_ORDER } from "../lib/constants.js";
+
+const EMPTY_FORM = {
+  name: "",
+  appliedFor: "",
+  status: "待筛选",
+  jdMatch: 0,
+  school: "",
+  source: "手动录入",
+  tags: "",
+};
+
+export default function Candidates() {
+  const navigate = useNavigate();
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [q, setQ] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [err, setErr] = useState("");
+
+  async function load() {
+    setLoading(true);
+    try {
+      const params = {};
+      if (q) params.q = q;
+      if (statusFilter) params.status = statusFilter;
+      const { items } = await resources.candidates.list(params);
+      setItems(items);
+    } catch (e) {
+      setErr(e.response?.data?.message || e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line
+  }, [statusFilter]);
+
+  async function onCreate(e) {
+    e.preventDefault();
+    if (!form.name) return;
+    try {
+      const payload = {
+        name: form.name,
+        appliedFor: form.appliedFor || null,
+        status: form.status || "待筛选",
+        jdMatch: Number(form.jdMatch) || 0,
+        school: form.school || null,
+        source: form.source || null,
+        tags: form.tags ? form.tags.split(/[,，\s]+/).filter(Boolean) : [],
+      };
+      await resources.candidates.create(payload);
+      setForm(EMPTY_FORM);
+      setCreateOpen(false);
+      toast("候选人已创建", "success");
+      load();
+    } catch (e) {
+      toast(e.response?.data?.message || "创建失败", "error");
+    }
+  }
+
+  async function onDelete(id, name) {
+    if (!confirm(`确定删除 ${name} 吗?`)) return;
+    try {
+      await resources.candidates.remove(id);
+      toast("已删除", "success");
+      load();
+    } catch (e) {
+      toast(e.response?.data?.message || "删除失败", "error");
+    }
+  }
+
+  const summary = useMemo(() => {
+    const buckets = {};
+    items.forEach((c) => {
+      const k = c.status || "待筛选";
+      buckets[k] = (buckets[k] || 0) + 1;
+    });
+    return STATUS_ORDER.map((s) => ({ status: s, count: buckets[s] || 0 }));
+  }, [items]);
+
+  return (
+    <div className="space-y-6">
+      {/* 状态分布快查 */}
+      <Card className="p-4 flex items-center justify-start gap-2 overflow-x-auto">
+        <button
+          onClick={() => setStatusFilter("")}
+          className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition
+            ${statusFilter === "" ? "bg-brand text-white" : "text-gray-700 hover:bg-lightPrimary"}`}
+        >
+          全部 · {items.length}
+        </button>
+        {summary.map((s) => (
+          <button
+            key={s.status}
+            onClick={() => setStatusFilter(statusFilter === s.status ? "" : s.status)}
+            className={`px-3 py-1.5 rounded-full whitespace-nowrap transition flex items-center gap-2
+              ${statusFilter === s.status ? "bg-lightPrimary ring-2 ring-brand/40" : "hover:bg-lightPrimary"}`}
+          >
+            <StatusPill status={s.status} />
+            <span className="text-xs font-bold text-navy-700">{s.count}</span>
+          </button>
+        ))}
+      </Card>
+
+      {/* 工具栏 */}
+      <Card className="p-6">
+        <div className="flex flex-wrap items-center gap-3 mb-5">
+          <div className="flex-1 min-w-[240px] flex items-center bg-lightPrimary rounded-xl pl-4 h-11">
+            <I name="search" size={16} className="text-gray-400" />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && load()}
+              placeholder="搜索姓名 / 学校 / 应聘岗位"
+              className="flex-1 ml-3 bg-transparent outline-none text-sm text-navy-700 placeholder:text-gray-400"
+            />
+          </div>
+          <Button variant="ghost" onClick={load} icon={<I name="refresh-cw" size={14} />}>刷新</Button>
+          <Button onClick={() => setCreateOpen(true)} icon={<I name="user-plus" size={16} />}>
+            新建候选人
+          </Button>
+        </div>
+
+        {err && <div className="text-sm text-red-500 bg-red-50 rounded-xl px-4 py-3 mb-4">{err}</div>}
+
+        {loading ? (
+          <LoadingBlock label="加载候选人..." height="h-40" />
+        ) : items.length === 0 ? (
+          <Empty title="还没有候选人" desc="点上方「新建候选人」开始" />
+        ) : (
+          <ul className="divide-y divide-gray-200">
+            {items.map((c) => (
+              <li key={c.id} className="py-4 flex items-center gap-4 group">
+                <Avatar name={c.name} animal={c.animal} size={48} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Link
+                      to={`/candidates/${c.externalId || c.id}`}
+                      className="text-base font-bold text-navy-700 hover:text-brand"
+                    >
+                      {c.name}
+                    </Link>
+                    {c.parser && <AiBadge parser={c.parser} confidence={c.parserConfidence} />}
+                  </div>
+                  <p className="text-xs text-gray-700 mt-1 truncate">
+                    {[c.education, c.school, c.major, c.location, c.yearsExp != null ? `${c.yearsExp} 年经验` : null]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                  <div className="flex gap-1.5 mt-2 flex-wrap">
+                    {(c.tags || []).slice(0, 5).map((t) => (
+                      <Tag key={t}>{t}</Tag>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="hidden md:flex flex-col items-end gap-1 w-[180px] shrink-0">
+                  <p className="text-xs text-gray-700">应聘岗位</p>
+                  <p className="text-sm font-bold text-navy-700 truncate w-full text-right">
+                    {c.appliedFor || "—"}
+                  </p>
+                </div>
+
+                <MatchRing value={c.jdMatch || 0} size={56} stroke={6} />
+
+                <div className="flex flex-col items-end gap-2 w-[110px] shrink-0">
+                  <StatusPill status={c.status || "待筛选"} />
+                  <span className="text-[11px] text-gray-600">{c.source || "—"}</span>
+                </div>
+
+                <div className="opacity-0 group-hover:opacity-100 transition flex flex-col gap-1">
+                  <button
+                    onClick={() => navigate(`/candidates/${c.externalId || c.id}`)}
+                    className="w-8 h-8 rounded-full bg-lightPrimary text-gray-700 hover:text-brand flex items-center justify-center"
+                    title="查看详情"
+                  >
+                    <I name="arrow-right" size={14} />
+                  </button>
+                  <button
+                    onClick={() => onDelete(c.id, c.name)}
+                    className="w-8 h-8 rounded-full bg-red-50 text-red-500 hover:bg-red-100 flex items-center justify-center"
+                    title="删除"
+                  >
+                    <I name="trash-2" size={14} />
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+
+      <Modal open={createOpen} onClose={() => setCreateOpen(false)}>
+        <form onSubmit={onCreate} className="p-8">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-xl font-bold text-navy-700">新建候选人</h3>
+            <button type="button" onClick={() => setCreateOpen(false)} className="text-gray-400 hover:text-navy-700">
+              <I name="x" size={20} />
+            </button>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="姓名 *" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+            <Input label="学校" value={form.school} onChange={(e) => setForm({ ...form, school: e.target.value })} />
+            <Input label="应聘岗位" value={form.appliedFor} onChange={(e) => setForm({ ...form, appliedFor: e.target.value })} />
+            <Input
+              label="JD 匹配度 (0-100)"
+              type="number"
+              min="0"
+              max="100"
+              value={form.jdMatch}
+              onChange={(e) => setForm({ ...form, jdMatch: e.target.value })}
+            />
+            <div>
+              <label className="text-sm text-navy-700 font-bold ml-3 block mb-2">状态</label>
+              <select
+                value={form.status}
+                onChange={(e) => setForm({ ...form, status: e.target.value })}
+                className="w-full h-12 rounded-xl border border-gray-200 px-3 text-sm text-navy-700 outline-none focus:border-brand"
+              >
+                {STATUS_ORDER.map((s) => (
+                  <option key={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+            <Input label="来源" value={form.source} onChange={(e) => setForm({ ...form, source: e.target.value })} />
+            <Input
+              label="标签 (逗号分隔)"
+              containerClassName="col-span-2"
+              value={form.tags}
+              onChange={(e) => setForm({ ...form, tags: e.target.value })}
+              placeholder="如: 海外项目, PMP, 8D"
+            />
+          </div>
+          <div className="flex justify-end gap-3 mt-8">
+            <Button type="button" variant="ghost" onClick={() => setCreateOpen(false)}>
+              取消
+            </Button>
+            <Button type="submit" icon={<I name="check" size={14} />}>
+              创建
+            </Button>
+          </div>
+        </form>
+      </Modal>
+    </div>
+  );
+}

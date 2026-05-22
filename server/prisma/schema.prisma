@@ -1,0 +1,219 @@
+// Prisma schema — Stage ① 全栈闭环
+// 字段映射 ui_kits/mesa-recruit/data.js 的 window.MESA_* 形状。
+// 新增字段请同步在 data.js 与前端消费方做对应处理。
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  RECRUITER
+  VIEWER
+}
+
+enum Urgency {
+  high
+  mid
+  low
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  name         String?
+  role         Role     @default(RECRUITER)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  candidates Candidate[] @relation("CandidateOwner")
+
+  @@index([email])
+  @@map("users")
+}
+
+model Candidate {
+  id                String   @id @default(uuid()) @db.Uuid
+  externalId        String?  @unique @map("external_id")
+
+  name              String
+  gender            String?
+  animal            String?
+  avatar            String?
+
+  education         String?
+  school            String?
+  major             String?
+  age               Int?
+  location          String?
+  yearsExp          Int?     @map("years_exp")
+  phone             String?
+  email             String?
+
+  appliedFor        String?  @map("applied_for")
+  jdMatch           Int?     @map("jd_match")
+  status            String?
+  source            String?
+  pushedAt          DateTime? @map("pushed_at")
+
+  parser            String?
+  parserConfidence  Int?     @map("parser_confidence")
+
+  tags              String[] @default([])
+  skills            String[] @default([])
+  risks             String[] @default([])
+  highlights        String[] @default([])
+  experience        Json     @default("[]")
+  educationHistory  Json     @default("[]") @map("education_history")
+  attachment        String?
+
+  ownerId           String?  @map("owner_id") @db.Uuid
+  owner             User?    @relation("CandidateOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  interviews        Interview[]
+  employee          Employee?
+
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@index([appliedFor])
+  @@index([status])
+  @@index([ownerId])
+  @@map("candidates")
+}
+
+model Job {
+  id          String   @id @default(uuid()) @db.Uuid
+  externalId  String?  @unique @map("external_id")
+  title       String
+  dept        String?
+  owner       String?
+  openings    Int      @default(1)
+  candidates  Int      @default(0)
+  level       String?
+  location    String?
+  urgency     Urgency  @default(mid)
+  status      String?  @default("招聘中")
+
+  interviews  Interview[]
+  employees   Employee[]
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([dept])
+  @@index([urgency])
+  @@map("jobs")
+}
+
+model Department {
+  id          String   @id @default(uuid()) @db.Uuid
+  externalId  String?  @unique @map("external_id")
+  name        String
+  code        String?
+  parentId    String?  @map("parent_id") @db.Uuid
+  parent      Department?  @relation("DeptParent", fields: [parentId], references: [id], onDelete: SetNull)
+  children    Department[] @relation("DeptParent")
+  head        String?
+  headcount   Int      @default(0)
+  openHc      Int      @default(0) @map("open_hc")
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([parentId])
+  @@map("departments")
+}
+
+model Employee {
+  id                  String    @id @default(uuid()) @db.Uuid
+  externalId          String?   @unique @map("external_id")
+
+  candidateId         String?   @unique @map("candidate_id") @db.Uuid
+  candidate           Candidate? @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+
+  name                String
+  gender              String?
+  animal              String?
+  avatar              String?
+  education           String?
+  school              String?
+  major               String?
+  age                 Int?
+  location            String?
+  yearsExp            Int?      @map("years_exp")
+  phone               String?
+  email               String?
+
+  appliedFor          String?   @map("applied_for")
+  jobId               String?   @map("job_id") @db.Uuid
+  job                 Job?      @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  dept                String?
+  jdOwner             String?   @map("jd_owner")
+  level               String?
+  workLocation        String?   @map("work_location")
+  jdMatch             Int?      @map("jd_match")
+
+  stage               String?
+  plannedHireDate     DateTime? @map("planned_hire_date")
+  actualHireDate      DateTime? @map("actual_hire_date")
+  probationEndDate    DateTime? @map("probation_end_date")
+  regularizeDate      DateTime? @map("regularize_date")
+  regularizeAdvice    String?   @map("regularize_advice")
+  hrbp                String?
+  directManager       String?   @map("direct_manager")
+
+  checklist           Json      @default("{}")
+  probation           Json      @default("{}")
+  events              Json      @default("[]")
+  riskItems           Json      @default("[]") @map("risk_items")
+
+  parser              String?
+  parserConfidence    Int?      @map("parser_confidence")
+  source              String?
+  attachment          String?
+  tags                String[]  @default([])
+
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  @@index([dept])
+  @@index([stage])
+  @@index([jobId])
+  @@map("employees")
+}
+
+model Interview {
+  id              String    @id @default(uuid()) @db.Uuid
+  externalId      String?   @unique @map("external_id")
+
+  candidateId     String?   @map("candidate_id") @db.Uuid
+  candidate       Candidate? @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+  candidateName   String?   @map("candidate_name")
+
+  jobId           String?   @map("job_id") @db.Uuid
+  job             Job?      @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  jobTitle        String?   @map("job_title")
+
+  round           String?
+  mode            String?
+  status          String?
+  recommendation  String?
+  scheduledAt     DateTime? @map("scheduled_at")
+  interviewer     String?
+  notes           String?
+
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@index([candidateId])
+  @@index([jobId])
+  @@index([status])
+  @@map("interviews")
+}

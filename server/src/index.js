@@ -1,0 +1,81 @@
+import "dotenv/config";
+import Fastify from "fastify";
+import prismaPlugin from "./plugins/prisma.js";
+import jwtPlugin from "./plugins/jwt.js";
+import corsPlugin from "./plugins/cors.js";
+import redisPlugin from "./plugins/redis.js";
+import r2Plugin from "./plugins/r2.js";
+import authRoutes from "./routes/auth.js";
+import candidatesRoutes from "./routes/candidates.js";
+import jobsRoutes from "./routes/jobs.js";
+import departmentsRoutes from "./routes/departments.js";
+import employeesRoutes from "./routes/employees.js";
+import interviewsRoutes from "./routes/interviews.js";
+import dashboardRoutes from "./routes/dashboard.js";
+import storageRoutes from "./routes/storage.js";
+
+const requiredEnv = ["DATABASE_URL", "JWT_SECRET", "WEB_ORIGIN"];
+for (const key of requiredEnv) {
+  if (!process.env[key] || process.env[key].startsWith("__REPLACE_")) {
+    console.error(`[boot] missing or placeholder env: ${key}. Copy .env.example to .env and fill in real values.`);
+    process.exit(1);
+  }
+}
+
+const app = Fastify({
+  logger: {
+    level: process.env.LOG_LEVEL || "info",
+    transport: process.env.NODE_ENV === "production" ? undefined : {
+      target: "pino-pretty",
+      options: { colorize: true, translateTime: "HH:MM:ss" },
+    },
+  },
+});
+
+await app.register(corsPlugin);
+await app.register(prismaPlugin);
+await app.register(redisPlugin);
+await app.register(r2Plugin);
+await app.register(jwtPlugin);
+
+app.get("/api/health", async () => ({
+  status: "ok",
+  service: "mesa-server",
+  uptime: process.uptime(),
+}));
+
+await app.register(authRoutes, { prefix: "/api/auth" });
+await app.register(candidatesRoutes, { prefix: "/api/candidates" });
+await app.register(jobsRoutes, { prefix: "/api/jobs" });
+await app.register(departmentsRoutes, { prefix: "/api/departments" });
+await app.register(employeesRoutes, { prefix: "/api/employees" });
+await app.register(interviewsRoutes, { prefix: "/api/interviews" });
+await app.register(dashboardRoutes, { prefix: "/api/dashboard" });
+await app.register(storageRoutes, { prefix: "/api/storage" });
+
+app.setErrorHandler((err, req, reply) => {
+  const status = err.statusCode || 500;
+  req.log.error({ err, url: req.url }, "request failed");
+  if (status >= 500) {
+    return reply.status(500).send({ error: "internal_server_error" });
+  }
+  return reply.status(status).send({ error: err.code || "request_error", message: err.message });
+});
+
+const port = Number(process.env.PORT) || 3001;
+const host = process.env.HOST || "127.0.0.1";
+
+try {
+  await app.listen({ host, port });
+} catch (err) {
+  app.log.fatal({ err }, "failed to start");
+  process.exit(1);
+}
+
+const shutdown = async (signal) => {
+  app.log.info(`${signal} received, closing...`);
+  await app.close();
+  process.exit(0);
+};
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
