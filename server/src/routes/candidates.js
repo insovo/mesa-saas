@@ -34,6 +34,7 @@ const CANDIDATE_BODY = {
     educationHistory: { type: "array" },
     attachment: { type: "string", maxLength: 500, nullable: true },
     aiSummary: { type: "string", maxLength: 50000, nullable: true },
+    jobId: { type: "string", format: "uuid", nullable: true },
   },
   additionalProperties: false,
 };

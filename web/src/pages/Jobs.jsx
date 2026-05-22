@@ -13,7 +13,7 @@ import {
   Tag,
 } from "../components/Primitives.jsx";
 
-const EMPTY_FORM = { title: "", dept: "", owner: "", openings: 1, candidates: 0, level: "", location: "", urgency: "mid" };
+const EMPTY_FORM = { title: "", dept: "", owner: "", openings: 1, candidates: 0, level: "", location: "", urgency: "mid", description: "" };
 
 export default function Jobs() {
   const [items, setItems] = useState([]);
@@ -61,6 +61,7 @@ export default function Jobs() {
       level: j.level || "",
       location: j.location || "",
       urgency: j.urgency || "mid",
+      description: j.description || "",
     });
     setCreateOpen(true);
   }
@@ -187,7 +188,7 @@ export default function Jobs() {
         )}
       </Card>
 
-      <Modal open={createOpen} onClose={() => setCreateOpen(false)}>
+      <Modal open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="max-w-3xl">
         <form onSubmit={onSubmit} className="p-8">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-xl font-bold text-navy-700">{editing ? "编辑岗位" : "新建岗位"}</h3>
@@ -214,6 +215,19 @@ export default function Jobs() {
                 <option value="mid">正常</option>
                 <option value="low">可缓</option>
               </select>
+            </div>
+            <div className="col-span-2">
+              <label className="text-sm text-navy-700 font-bold ml-3 block mb-2">JD 描述(用于 AI 匹配度评估)</label>
+              <textarea
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                rows={8}
+                placeholder="岗位职责 / 任职要求 / 加分项 ... 详细描述,LLM 评估候选人匹配度时会用此内容。可空但不建议。"
+                className="w-full p-3 rounded-xl border border-gray-200 text-sm text-navy-700 outline-none focus:border-brand resize-none"
+              />
+              <p className="text-[11px] text-gray-600 mt-1.5 ml-1">
+                {form.description.length} / 20,000 字符 · 建议至少 200 字让 AI 评估更准
+              </p>
             </div>
           </div>
           <div className="flex justify-end gap-3 mt-8">

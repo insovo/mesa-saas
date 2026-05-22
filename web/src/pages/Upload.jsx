@@ -22,9 +22,12 @@ export default function Upload() {
   const [parsing, setParsing] = useState(false);
   const [parsed, setParsed] = useState([]);
   const [llmStatus, setLlmStatus] = useState(null);
+  const [jobs, setJobs] = useState([]);
+  const [selectedJobId, setSelectedJobId] = useState("");  // 空字符串 = 不关联 JD
 
   useEffect(() => {
     api.get("/resumes/llm-status").then((r) => setLlmStatus(r.data)).catch(() => setLlmStatus({ configured: false }));
+    resources.jobs.list({ take: 200 }).then((d) => setJobs(d.items || [])).catch(() => setJobs([]));
   }, []);
 
   function onPick(e) {
@@ -56,15 +59,13 @@ export default function Upload() {
     if (r2Key && llmStatus?.configured) {
       try {
         const model = localStorage.getItem("mesa.llm.model") || llmStatus.model;
-        const { data } = await api.post(
-          "/resumes/parse",
-          {
-            key: r2Key,
-            contentType: file.type || "application/octet-stream",
-            model, // 让后端用用户选的模型;为空时后端用 KIMI_MODEL 默认值
-          },
-          { timeout: LONG_TIMEOUT },
-        );
+        const body = {
+          key: r2Key,
+          contentType: file.type || "application/octet-stream",
+          model,
+        };
+        if (selectedJobId) body.jobId = selectedJobId;  // 关联 JD → 后端二次评估
+        const { data } = await api.post("/resumes/parse", body, { timeout: LONG_TIMEOUT });
         parsedFields = data.candidate;
       } catch (e) {
         const msg = e.response?.data?.message || e.message;
@@ -138,6 +139,32 @@ export default function Upload() {
             </span>
           )}
         </div>
+      </Card>
+
+      {/* JD 关联选择(可选)*/}
+      <Card className="p-5">
+        <div className="flex items-center gap-3 mb-3">
+          <I name="link" size={16} className="text-brand" />
+          <p className="text-sm font-bold text-navy-700">关联岗位 JD (可选)</p>
+          <span className="text-[11px] text-gray-700">选了 → AI 会根据 JD 给候选人匹配度评估 · 不选 → 只做信息抽取</span>
+        </div>
+        <select
+          value={selectedJobId}
+          onChange={(e) => setSelectedJobId(e.target.value)}
+          className="w-full h-11 rounded-xl border border-gray-200 px-3 text-sm text-navy-700 outline-none focus:border-brand bg-white"
+        >
+          <option value="">— 不关联,只做信息抽取 —</option>
+          {jobs.map((j) => (
+            <option key={j.id} value={j.id}>
+              {j.title}{j.dept ? ` · ${j.dept}` : ""}{j.location ? ` · ${j.location}` : ""}{!j.description ? " ⚠️ 无 JD 描述,评估会不准" : ""}
+            </option>
+          ))}
+        </select>
+        {selectedJobId && !jobs.find(j => j.id === selectedJobId)?.description && (
+          <p className="text-[11px] text-amber-700 mt-2 flex items-center gap-1">
+            <I name="alert-triangle" size={11} /> 此岗位无 JD 描述,评估准确度会受影响 · 建议先去岗位页填 JD 描述
+          </p>
+        )}
       </Card>
 
       <Card className="p-8">

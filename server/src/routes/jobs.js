@@ -15,6 +15,7 @@ const JOB_BODY = {
     location: { type: "string", maxLength: 100, nullable: true },
     urgency: { type: "string", enum: ["high", "mid", "low"] },
     status: { type: "string", maxLength: 50, nullable: true },
+    description: { type: "string", maxLength: 20000, nullable: true },
   },
   additionalProperties: false,
 };

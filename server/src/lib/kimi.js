@@ -268,6 +268,64 @@ export async function parseResume({ buffer, filename, contentType, model }) {
   };
 }
 
+// ─── 二次评估: 给已有候选人匹配某个 JD ─────────────────────────
+// 输入: candidateSummary (已解析的纯文本简报) + jobDescription (JD 描述)
+// 输出: { jdMatch: 0-100, risks: [...], highlights: [...], matchReason: "..." }
+export async function matchAgainstJob({ candidateSummary, jobTitle, jobDescription, model }) {
+  const useModel = await pickModel(model);
+  const systemPrompt = `你是 MESA Recruit 的「候选人-岗位匹配评估」专家。
+基于下面给出的候选人简报和岗位 JD,输出严格 JSON,不要 Markdown 包裹,不要额外文字。
+
+JSON 结构:
+{
+  "jdMatch": 0-100 整数(综合匹配度),
+  "risks": ["相对此 JD 的风险/缺项, 3-6 条"],
+  "highlights": ["相对此 JD 的亮点, 3-6 条"],
+  "matchReason": "1-2 句话说明给出 jdMatch 分数的关键依据"
+}
+
+评估规则:
+1. 只参考给出的简报和 JD,不要凭空推测
+2. jdMatch 衡量维度: 行业匹配 / 核心技能匹配 / 工作年限匹配 / 学历匹配 / 关键经验
+3. risks 必须具体,例如:"候选人无 XX 经验, 但 JD 要求 5 年以上"
+4. highlights 也要具体, 突出 JD 看重的方面
+5. 若 JD 描述空白或太短(<50 字符), 在 matchReason 注明"JD 信息不足, 评估不准确"`;
+
+  const userMsg = `# 候选人简报
+${candidateSummary || "(未提供)"}
+
+# 岗位标题
+${jobTitle || "(未提供)"}
+
+# 岗位 JD 描述
+${jobDescription || "(未提供)"}`;
+
+  const res = await kimiRequest("/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: useModel,
+      temperature: 0.2,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userMsg },
+      ],
+    }),
+  });
+  const data = await res.json();
+  const raw = data?.choices?.[0]?.message?.content || "";
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    const m = raw.match(/\{[\s\S]*\}/);
+    if (!m) throw Object.assign(new Error("kimi match output unparseable"), { statusCode: 502 });
+    parsed = JSON.parse(m[0]);
+  }
+  return { ...parsed, _meta: { model: useModel, usage: data?.usage } };
+}
+
 export async function isKimiConfigured() {
   const key = await effectiveApiKey();
   return !!key && !key.startsWith("__");

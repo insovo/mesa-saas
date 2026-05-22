@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
-import { resources } from "../lib/api.js";
+import { api, resources, LONG_TIMEOUT } from "../lib/api.js";
 import {
   Card,
   Button,
@@ -27,6 +27,9 @@ export default function CandidateDetail() {
   const navigate = useNavigate();
   const [c, setC] = useState(null);
   const [err, setErr] = useState("");
+  const [jobs, setJobs] = useState([]);
+  const [matchingJobId, setMatchingJobId] = useState("");
+  const [matching, setMatching] = useState(false);
 
   async function load() {
     try {
@@ -38,8 +41,23 @@ export default function CandidateDetail() {
 
   useEffect(() => {
     load();
+    resources.jobs.list({ take: 200 }).then((d) => setJobs(d.items || [])).catch(() => {});
     // eslint-disable-next-line
   }, [id]);
+
+  async function runJdMatch() {
+    if (!matchingJobId || !c?.id) return toast("请选 JD", "error");
+    setMatching(true);
+    try {
+      const { data } = await api.post("/resumes/match", { candidateId: c.id, jobId: matchingJobId }, { timeout: LONG_TIMEOUT });
+      setC(data.candidate);
+      toast(`✓ 评估完成: JD 匹配度 ${data.candidate.jdMatch ?? "—"}`, "success");
+    } catch (e) {
+      toast(e.response?.data?.message || "评估失败", "error");
+    } finally {
+      setMatching(false);
+    }
+  }
 
   if (err) return <Card className="p-6 text-red-500 text-sm">{err}</Card>;
   if (!c) return <LoadingBlock label="加载候选人..." height="h-64" />;
@@ -99,10 +117,18 @@ export default function CandidateDetail() {
               <span className="flex items-center gap-1"><I name="link" size={12} /> {c.source || "—"}</span>
             </div>
           </div>
-          <div className="flex flex-col items-center gap-3">
-            <MatchRing value={c.jdMatch || 0} size={88} stroke={8} />
-            <p className="text-xs text-gray-700">JD 匹配度</p>
-          </div>
+          {c.jdMatch != null ? (
+            <div className="flex flex-col items-center gap-3">
+              <MatchRing value={c.jdMatch} size={88} stroke={8} />
+              <p className="text-xs text-gray-700">JD 匹配度</p>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-2 px-3 py-4 rounded-xl border-2 border-dashed border-gray-200 text-center w-[180px]">
+              <I name="link-2-off" size={20} className="text-gray-400" />
+              <p className="text-xs text-gray-700 font-medium">未关联 JD</p>
+              <p className="text-[11px] text-gray-600">下方可关联岗位<br/>触发 AI 评估</p>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-wrap gap-3 mt-6 pt-5 border-t border-gray-200">
@@ -121,6 +147,30 @@ export default function CandidateDetail() {
             删除候选人
           </Button>
         </div>
+      </Card>
+
+      {/* === 关联 JD · 触发匹配度评估 === */}
+      <Card className="p-5 flex flex-wrap items-center gap-3">
+        <I name="link" size={16} className="text-brand" />
+        <p className="text-sm font-bold text-navy-700">关联岗位 JD 评估</p>
+        <span className="text-xs text-gray-700">
+          {c.jdMatch != null ? `已关联评估 · 当前匹配度 ${c.jdMatch}` : "未关联 · 选 JD 后 AI 会根据简报和 JD 描述给评估"}
+        </span>
+        <select
+          value={matchingJobId}
+          onChange={(e) => setMatchingJobId(e.target.value)}
+          className="flex-1 min-w-[200px] h-10 rounded-xl border border-gray-200 px-3 text-sm text-navy-700 outline-none focus:border-brand bg-white"
+        >
+          <option value="">— 选一个 JD —</option>
+          {jobs.map((j) => (
+            <option key={j.id} value={j.id}>
+              {j.title}{j.dept ? ` · ${j.dept}` : ""}{!j.description ? " ⚠️ 无 JD 描述" : ""}
+            </option>
+          ))}
+        </select>
+        <Button onClick={runJdMatch} disabled={!matchingJobId || matching} icon={<I name={matching ? "loader" : "sparkles"} size={14} className={matching ? "animate-spin" : ""} />}>
+          {matching ? "评估中" : (c.jdMatch != null ? "重新评估" : "AI 评估")}
+        </Button>
       </Card>
 
       {/* === AI 解析简报(纯文本,HR 友好)=== */}

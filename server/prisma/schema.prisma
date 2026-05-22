@@ -77,6 +77,10 @@ model Candidate {
   ownerId           String?  @map("owner_id") @db.Uuid
   owner             User?    @relation("CandidateOwner", fields: [ownerId], references: [id], onDelete: SetNull)
 
+  // 关联的 JD(可选) — 设置后 jdMatch/risks/highlights 才有意义
+  jobId             String?  @map("job_id") @db.Uuid
+  job               Job?     @relation("CandidateJob", fields: [jobId], references: [id], onDelete: SetNull)
+
   interviews        Interview[]
   employee          Employee?
 
@@ -86,6 +90,7 @@ model Candidate {
   @@index([appliedFor])
   @@index([status])
   @@index([ownerId])
+  @@index([jobId])
   @@map("candidates")
 }
 
@@ -101,9 +106,11 @@ model Job {
   location    String?
   urgency     Urgency  @default(mid)
   status      String?  @default("招聘中")
+  description String?  @db.Text  // JD 详情(职责/要求/福利) — LLM 用作 JD 匹配度评估的素材
 
-  interviews  Interview[]
-  employees   Employee[]
+  interviews    Interview[]
+  employees     Employee[]
+  linkedCandidates Candidate[] @relation("CandidateJob")
 
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
