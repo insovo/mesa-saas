@@ -28,10 +28,21 @@ export default function Sidebar({ user }) {
   const items = ITEMS.filter((it) => !it.adminOnly || isAdmin);
   const [llm, setLlm] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem("mesa.llm.model") || "");
 
   useEffect(() => {
-    api.get("/resumes/llm-status").then((r) => setLlm(r.data)).catch(() => setLlm({ configured: false }));
+    api.get("/resumes/llm-status").then((r) => {
+      setLlm(r.data);
+      // 没有本地偏好时,默认跟系统 model
+      if (!selectedModel && r.data?.model) setSelectedModel(r.data.model);
+    }).catch(() => setLlm({ configured: false }));
+    // eslint-disable-next-line
   }, []);
+
+  function onPickModel(modelId) {
+    setSelectedModel(modelId);
+    localStorage.setItem("mesa.llm.model", modelId);
+  }
 
   const ready = !!llm?.configured;
   const chipClass = ready
@@ -117,7 +128,7 @@ export default function Sidebar({ user }) {
                   <p className="font-bold text-navy-700 mt-1">{PROVIDER_LABELS[llm.provider] || llm.provider || "—"}</p>
                 </div>
                 <div className="p-3 bg-lightPrimary rounded-xl">
-                  <p className="text-xs text-gray-700">模型</p>
+                  <p className="text-xs text-gray-700">系统默认模型</p>
                   <p className="font-bold text-navy-700 mt-1 text-xs">{llm.model || "—"}</p>
                 </div>
                 <div className="p-3 bg-lightPrimary rounded-xl">
@@ -131,6 +142,42 @@ export default function Sidebar({ user }) {
                   </p>
                 </div>
               </div>
+
+              {/* 模型选择(用户级偏好,存 localStorage)*/}
+              {ready && llm.availableModels?.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-2">解析模型 · 当前选择</p>
+                  <div className="space-y-1.5">
+                    {llm.availableModels.map((m) => {
+                      const checked = selectedModel === m.id;
+                      const isDefault = m.id === llm.model;
+                      return (
+                        <button
+                          key={m.id}
+                          onClick={() => onPickModel(m.id)}
+                          className={`w-full text-left p-3 rounded-xl border-2 transition flex items-start gap-3
+                            ${checked ? "border-brand bg-brand-50" : "border-gray-200 hover:border-gray-300 bg-white"}`}
+                        >
+                          <span className={`mt-0.5 w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0
+                            ${checked ? "border-brand bg-brand" : "border-gray-300"}`}>
+                            {checked && <span className="w-1.5 h-1.5 rounded-full bg-white"></span>}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-bold text-navy-700 flex items-center gap-2">
+                              {m.label}
+                              {isDefault && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-lightPrimary text-gray-700">系统默认</span>}
+                            </p>
+                            <p className="text-[11px] text-gray-700 mt-0.5">{m.desc}</p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[11px] text-gray-600 mt-2">
+                    选择仅对你本人下次上传生效 · 存储在浏览器 localStorage
+                  </p>
+                </div>
+              )}
 
               {ready ? (
                 <div className="p-3 rounded-xl bg-green-50 border border-green-100 text-xs text-green-800">

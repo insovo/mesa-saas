@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { Link } from "react-router-dom";
-import { api, resources } from "../lib/api.js";
+import { api, resources, LONG_TIMEOUT } from "../lib/api.js";
 import {
   Card, Button, I, Tag, AiBadge, toast, Empty, LoadingBlock, MatchRing, StatusPill,
 } from "../components/Primitives.jsx";
@@ -51,13 +51,20 @@ export default function Upload() {
     }
 
     // ── 2) 调 Kimi 解析(仅当 R2 上传成功 + Kimi 已配置)─
+    // ⚠️ timeout 120s — Kimi 解析 PDF/Word 实测 10-30s,Word/扫描件偶尔 60s+
     let parsedFields = null;
     if (r2Key && llmStatus?.configured) {
       try {
-        const { data } = await api.post("/resumes/parse", {
-          key: r2Key,
-          contentType: file.type || "application/octet-stream",
-        });
+        const model = localStorage.getItem("mesa.llm.model") || llmStatus.model;
+        const { data } = await api.post(
+          "/resumes/parse",
+          {
+            key: r2Key,
+            contentType: file.type || "application/octet-stream",
+            model, // 让后端用用户选的模型;为空时后端用 KIMI_MODEL 默认值
+          },
+          { timeout: LONG_TIMEOUT },
+        );
         parsedFields = data.candidate;
       } catch (e) {
         const msg = e.response?.data?.message || e.message;

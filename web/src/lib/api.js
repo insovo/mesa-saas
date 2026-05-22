@@ -4,10 +4,15 @@ import { getToken, clearAuth } from "./auth.js";
 // Axios 实例 — 所有请求都从这里出口。
 //   - 请求拦截器: 自动附 Authorization Bearer
 //   - 响应拦截器: 401 自动清登录 → 跳 /login
+//
+// 通用 timeout 15s。LLM 解析这类长任务在调用端用 api.post(url, body, { timeout: 120000 }) 覆盖。
 export const api = axios.create({
   baseURL: "/api",
   timeout: 15000,
 });
+
+// 长任务专用 timeout — Kimi 解析 .doc/.pdf 通常 10-30s,大文件 60s+
+export const LONG_TIMEOUT = 120000;
 
 api.interceptors.request.use((config) => {
   const token = getToken();

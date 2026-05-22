@@ -10,6 +10,16 @@
 const KIMI_BASE_URL = process.env.KIMI_BASE_URL || "https://api.moonshot.cn/v1";
 const KIMI_MODEL = process.env.KIMI_MODEL || "moonshot-v1-32k";
 
+// 可用模型清单(对前端展示用,后端不强校验)
+// 见 https://platform.moonshot.cn/docs/intro/pricing
+export const AVAILABLE_MODELS = [
+  { id: "moonshot-v1-8k",   label: "Moonshot v1 · 8K",   desc: "短简历最经济(~¥0.012/1k token)" },
+  { id: "moonshot-v1-32k",  label: "Moonshot v1 · 32K",  desc: "默认 · 平衡速度与上下文(~¥0.024/1k)" },
+  { id: "moonshot-v1-128k", label: "Moonshot v1 · 128K", desc: "超长简历或合并多份(~¥0.060/1k)" },
+  { id: "kimi-latest",      label: "Kimi Latest (auto)",  desc: "自动路由,支持视觉" },
+  { id: "moonshot-v1-auto", label: "Moonshot Auto",       desc: "按 token 数自动选 8k/32k/128k" },
+];
+
 // 让 LLM 输出严格对齐 Candidate schema 的 JSON
 // 字段映射 server/prisma/schema.prisma 的 Candidate 模型
 const SYSTEM_PROMPT = `你是 MESA Recruit 的简历解析助手。
@@ -83,19 +93,20 @@ export async function getFileContent(fileId) {
   return res.text();
 }
 
-export async function parseResume({ buffer, filename, contentType }) {
+export async function parseResume({ buffer, filename, contentType, model }) {
   // 1) 上传文件让 Kimi 提取文本
   const file = await uploadFile({ buffer, filename, contentType });
 
   // 2) 拿提取后的文本作为 system 消息附件
   const extractedText = await getFileContent(file.id);
 
-  // 3) 调 chat 让 Kimi 输出 JSON
+  // 3) 调 chat 让 Kimi 输出 JSON(model 可由调用方指定,否则用 env 默认)
+  const useModel = (model && model.startsWith("moonshot") || model === "kimi-latest") ? model : KIMI_MODEL;
   const chatRes = await kimiRequest("/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: KIMI_MODEL,
+      model: useModel,
       temperature: 0.1,
       response_format: { type: "json_object" },
       messages: [

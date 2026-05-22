@@ -6,7 +6,7 @@
 
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { Readable } from "node:stream";
-import { parseResume, isKimiConfigured } from "../lib/kimi.js";
+import { parseResume, isKimiConfigured, AVAILABLE_MODELS } from "../lib/kimi.js";
 
 const PARSE_BODY = {
   type: "object",
@@ -14,6 +14,7 @@ const PARSE_BODY = {
   properties: {
     key: { type: "string", minLength: 1, maxLength: 500 },
     contentType: { type: "string", maxLength: 100 },
+    model: { type: "string", maxLength: 100 },
   },
   additionalProperties: false,
 };
@@ -38,6 +39,7 @@ export default async function resumesRoutes(app) {
     model: process.env.KIMI_MODEL || "moonshot-v1-32k",
     configured: isKimiConfigured(),
     mode: "system",
+    availableModels: AVAILABLE_MODELS,
   }));
 
   app.post("/parse", { schema: { body: PARSE_BODY } }, async (req, reply) => {
@@ -48,7 +50,7 @@ export default async function resumesRoutes(app) {
       return reply.code(503).send({ error: "kimi_not_configured", message: "KIMI_API_KEY 未配置" });
     }
 
-    const { key, contentType } = req.body;
+    const { key, contentType, model } = req.body;
 
     // 1) 从 R2 拉文件
     let buffer;
@@ -73,6 +75,7 @@ export default async function resumesRoutes(app) {
         buffer,
         filename,
         contentType: contentType || "application/octet-stream",
+        model,  // 调用方传啥用啥,空则后端用 KIMI_MODEL 默认
       });
     } catch (err) {
       req.log.error({ err, key }, "kimi parse failed");
