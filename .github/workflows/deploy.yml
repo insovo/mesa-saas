@@ -76,18 +76,44 @@ jobs:
     steps:
       - name: SSH deploy
         uses: appleboy/ssh-action@v1.2.0
+        env:
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_TAG: ${{ needs.build-and-push.outputs.tag }}
+          REPO_URL: https://github.com/${{ github.repository }}.git
         with:
           host: ${{ secrets.VPS_HOST }}
           port: ${{ secrets.VPS_SSH_PORT || 22 }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          envs: GHCR_USER,GHCR_TOKEN,IMAGE_TAG,REPO_URL
           script: |
             set -e
             cd "${{ secrets.VPS_DEPLOY_DIR }}"
-            echo "[deploy] $(date +%F\ %T) pulling latest images..."
+
+            echo "[deploy] $(date +%F\ %T) syncing repo (preserves .env/web/certs untracked)..."
+            if [ ! -d .git ]; then
+              git init -b main
+              git remote add origin "$REPO_URL" || git remote set-url origin "$REPO_URL"
+            fi
+            git fetch --depth=1 origin main
+            git reset --hard origin/main
+
+            echo "[deploy] docker login ghcr.io..."
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+
+            echo "[deploy] pulling latest images (tag=$IMAGE_TAG)..."
             docker compose pull
+
             echo "[deploy] applying compose..."
             docker compose up -d --remove-orphans
+
+            echo "[deploy] verifying health..."
+            sleep 8
+            docker compose ps
+            docker compose exec -T frontend wget -qO- http://127.0.0.1/healthz | grep -q ok && echo "[deploy] healthcheck ok"
+
             echo "[deploy] pruning dangling images..."
             docker image prune -f
+            docker logout ghcr.io
             echo "[deploy] done."
