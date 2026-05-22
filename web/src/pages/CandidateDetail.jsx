@@ -24,6 +24,57 @@ function fmtDate(iso) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+// 浏览器通知 + 音效:有新评价(在用户接收权限范围内)时调用
+function notifyNewReviews(candidateName, newOnes) {
+  // 1) 桌面通知
+  try {
+    if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+      const first = newOnes[0];
+      const body = newOnes.length === 1
+        ? `${first.authorName}: ${(first.content || "").slice(0, 80)}`
+        : `${newOnes.length} 条新评价 (${newOnes.map((r) => r.authorName).slice(0, 3).join(", ")}...)`;
+      const n = new Notification(`${candidateName} 有新评价`, {
+        body,
+        icon: "/favicon.ico",
+        tag: `candidate-${first.candidateId}`,
+        renotify: true,
+      });
+      // 点击通知聚焦窗口
+      n.onclick = () => { window.focus(); n.close(); };
+    }
+  } catch { /* ignore */ }
+  // 2) 音效:Web Audio API 合成短音
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.connect(g);
+    g.connect(ctx.destination);
+    o.frequency.setValueAtTime(880, ctx.currentTime);  // A5
+    g.gain.setValueAtTime(0.001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+    o.start();
+    o.stop(ctx.currentTime + 0.3);
+    // 第二个高音 (清脆)
+    setTimeout(() => {
+      const o2 = ctx.createOscillator();
+      const g2 = ctx.createGain();
+      o2.connect(g2);
+      g2.connect(ctx.destination);
+      o2.frequency.setValueAtTime(1318.51, ctx.currentTime);  // E6
+      g2.gain.setValueAtTime(0.001, ctx.currentTime);
+      g2.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.01);
+      g2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+      o2.start();
+      o2.stop(ctx.currentTime + 0.3);
+      setTimeout(() => ctx.close().catch(() => {}), 500);
+    }, 120);
+  } catch { /* ignore */ }
+}
+
 // JD 匹配卡片 — 一直可点击切换 JD 触发评估
 function JdMatchCard({ candidate, jobs, matchingJobId, setMatchingJobId, matching, onRun }) {
   const [open, setOpen] = useState(false);
@@ -141,6 +192,37 @@ export default function CandidateDetail() {
     resources.notes.list(c.id).then(setNotes).catch(() => {});
     resources.reviews.list(c.id).then(setReviews).catch(() => {});
     resources.reviews.myVotes(c.id).then(setMyVotes).catch(() => {});
+  }, [c?.id]);
+
+  // 实时新评价通知 — 轮询每 15s 拉一次, 若有新评价(且权限内可见)→ 系统通知 + 声音
+  // 初次 mount 时建立基准集合, 后续只对新增的(且 id 不在基准里)触发通知
+  const lastReviewIdsRef = (function useRef() { const r = { current: new Set() }; return r; })();
+  useEffect(() => {
+    if (!c?.id) return;
+    let alive = true;
+    let timer = null;
+    // 初始化基准
+    lastReviewIdsRef.current = new Set(reviews.map((r) => r.id));
+    async function poll() {
+      try {
+        const fresh = await resources.reviews.list(c.id);
+        if (!alive) return;
+        const newOnes = fresh.filter((r) => !lastReviewIdsRef.current.has(r.id) && !r.deletedAt);
+        if (newOnes.length > 0 && lastReviewIdsRef.current.size > 0) {
+          // 触发桌面通知 (浏览器 Notification API + 音效)
+          notifyNewReviews(c.name, newOnes);
+        }
+        lastReviewIdsRef.current = new Set(fresh.map((r) => r.id));
+        setReviews(fresh);
+      } catch { /* ignore */ }
+    }
+    // 请求权限(浏览器要求用户交互后才能 request)
+    if (typeof Notification !== "undefined" && Notification.permission === "default") {
+      Notification.requestPermission().catch(() => {});
+    }
+    timer = setInterval(poll, 15000);
+    return () => { alive = false; clearInterval(timer); };
+    // eslint-disable-next-line
   }, [c?.id]);
 
   async function vote(reviewId, value) {
