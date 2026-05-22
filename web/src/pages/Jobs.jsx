@@ -172,7 +172,7 @@ export default function Jobs() {
                     <p className="text-lg font-bold text-green-600 mt-0.5">{j._count?.employees ?? 0}</p>
                   </div>
                 </div>
-                <div className="opacity-0 group-hover:opacity-100 transition absolute top-3 right-3 flex gap-1.5 bg-white/60 backdrop-blur-sm rounded-full p-1">
+                <div className="opacity-0 group-hover:opacity-100 transition absolute bottom-3 right-3 flex gap-1.5">
                   <button
                     onClick={() => openEdit(j)}
                     className="w-7 h-7 rounded-full bg-white text-gray-700 hover:text-brand hover:bg-lightPrimary flex items-center justify-center shadow-sm"

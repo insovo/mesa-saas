@@ -119,11 +119,11 @@ export default function Departments() {
                     <p className="text-lg font-bold text-amber-500 mt-0.5">{d.openHc}</p>
                   </div>
                 </div>
-                <div className="opacity-0 group-hover:opacity-100 transition absolute top-3 right-3 flex gap-1">
-                  <button onClick={() => openEdit(d)} className="w-7 h-7 rounded-full bg-white text-gray-700 hover:text-brand flex items-center justify-center">
+                <div className="opacity-0 group-hover:opacity-100 transition absolute bottom-3 right-3 flex gap-1.5">
+                  <button onClick={() => openEdit(d)} className="w-7 h-7 rounded-full bg-white text-gray-700 hover:text-brand flex items-center justify-center shadow-sm" title="编辑">
                     <I name="pencil" size={12} />
                   </button>
-                  <button onClick={() => onDelete(d)} className="w-7 h-7 rounded-full bg-white text-red-500 hover:bg-red-50 flex items-center justify-center">
+                  <button onClick={() => onDelete(d)} className="w-7 h-7 rounded-full bg-white text-red-500 hover:bg-red-50 flex items-center justify-center shadow-sm" title="删除">
                     <I name="trash-2" size={12} />
                   </button>
                 </div>
