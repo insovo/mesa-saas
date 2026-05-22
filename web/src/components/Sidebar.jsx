@@ -39,6 +39,12 @@ export default function Sidebar({ user, mobileOpen = false, onMobileClose, colla
   const [pendingKey, setPendingKey] = useState("");
   const [savingKey, setSavingKey] = useState(false);
 
+  // prompt 编辑(admin)
+  const [promptOpen, setPromptOpen] = useState(false);
+  const [promptText, setPromptText] = useState("");
+  const [promptLoading, setPromptLoading] = useState(false);
+  const [savingPrompt, setSavingPrompt] = useState(false);
+
   useEffect(() => {
     api.get("/resumes/llm-status").then((r) => {
       setLlm(r.data);
@@ -111,6 +117,51 @@ export default function Sidebar({ user, mobileOpen = false, onMobileClose, colla
       toast(`✓ Key 可用 · ${data.modelsCount} 个模型可访问`, "success");
     } catch (e) {
       toast(e.response?.data?.message || "探活失败", "error");
+    }
+  }
+
+  async function openPromptEditor() {
+    setPromptOpen(true);
+    setPromptLoading(true);
+    try {
+      const { data } = await api.get("/system/settings/kimi.prompt/full");
+      setPromptText(data.value || "");
+    } catch (e) {
+      toast(e.response?.data?.message || "拉取 prompt 失败", "error");
+    } finally {
+      setPromptLoading(false);
+    }
+  }
+
+  async function savePrompt() {
+    if (!promptText || promptText.length < 50) {
+      toast("Prompt 至少 50 字符", "error");
+      return;
+    }
+    setSavingPrompt(true);
+    try {
+      await api.put("/system/settings/kimi.prompt", { value: promptText });
+      toast("Prompt 已保存,下次解析生效", "success");
+      setPromptOpen(false);
+      await refreshLlmStatus();
+    } catch (e) {
+      toast(e.response?.data?.message || "保存失败", "error");
+    } finally {
+      setSavingPrompt(false);
+    }
+  }
+
+  async function resetPrompt() {
+    if (!confirm("回退到内置默认 prompt(删除 DB 中的自定义)?")) return;
+    try {
+      await api.delete("/system/settings/kimi.prompt");
+      toast("已回退到内置 prompt", "success");
+      // 重拉默认值
+      const { data } = await api.get("/system/settings/kimi.prompt/full");
+      setPromptText(data.value || "");
+      await refreshLlmStatus();
+    } catch (e) {
+      toast(e.response?.data?.message || "回退失败", "error");
     }
   }
 
@@ -345,7 +396,24 @@ export default function Sidebar({ user, mobileOpen = false, onMobileClose, colla
                       </span>
                     </div>
                     <p className="text-[11px] text-gray-600 mt-1">
-                      影响所有未在下方设置个人偏好的用户
+                      影响所有未在下方设置个人偏好的用户 · 共 {llm.availableModels?.length || 0} 个可用
+                    </p>
+                  </div>
+
+                  {/* 解析 Prompt (admin 改) */}
+                  <div>
+                    <p className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-1.5">解析 Prompt</p>
+                    <div className="flex items-center gap-2 p-3 bg-white rounded-lg">
+                      <I name="file-text" size={16} className="text-gray-400" />
+                      <span className="text-xs text-gray-700 flex-1">
+                        {adminSettings?.find(s => s.key === "kimi.prompt")?.source === "db" ? "已自定义" : "内置默认"}
+                      </span>
+                      <Button size="sm" variant="ghost" onClick={openPromptEditor} icon={<I name="pencil" size={12} />}>
+                        查看 / 编辑
+                      </Button>
+                    </div>
+                    <p className="text-[11px] text-gray-600 mt-1">
+                      系统级 · 影响所有用户的简历解析
                     </p>
                   </div>
                 </div>
@@ -389,6 +457,55 @@ export default function Sidebar({ user, mobileOpen = false, onMobileClose, colla
 
               <div className="flex justify-end gap-3 pt-2 border-t border-gray-200">
                 <Button variant="ghost" onClick={() => setModalOpen(false)}>关闭</Button>
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
+
+      {/* === Prompt 编辑 Modal (admin only) === */}
+      <Modal open={promptOpen} onClose={() => setPromptOpen(false)} maxWidth="max-w-4xl">
+        <div className="p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-bold text-navy-700 flex items-center gap-2">
+              <I name="file-text" size={18} className="text-brand" />
+              简历解析 Prompt 编辑器
+            </h3>
+            <button onClick={() => setPromptOpen(false)} className="text-gray-400 hover:text-navy-700">
+              <I name="x" size={20} />
+            </button>
+          </div>
+          <p className="text-xs text-gray-700">
+            修改 Kimi 系统提示词。系统会让 Kimi 输出 JSON,其中 <code>summary</code> 字段是 HR 友好的纯文本简报,其余字段填入 Candidate 列(用于列表/检索/匹配度)。<strong className="text-amber-700">保存后下次上传立即生效。</strong>
+          </p>
+          {promptLoading ? (
+            <div className="text-sm text-gray-700 py-12 text-center">
+              <I name="loader" size={16} className="animate-spin inline mr-2" />加载中...
+            </div>
+          ) : (
+            <>
+              <textarea
+                value={promptText}
+                onChange={(e) => setPromptText(e.target.value)}
+                className="w-full h-[480px] p-3 rounded-xl border-2 border-gray-200 font-mono text-xs leading-relaxed outline-none focus:border-brand resize-none"
+                disabled={savingPrompt}
+                spellCheck={false}
+              />
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-gray-600">
+                  {promptText.length} 字符 · 上限 20,000
+                </p>
+                <div className="flex gap-2">
+                  <Button variant="ghost" onClick={resetPrompt} icon={<I name="rotate-ccw" size={12} />}>
+                    回退默认
+                  </Button>
+                  <Button variant="ghost" onClick={() => setPromptOpen(false)} disabled={savingPrompt}>
+                    取消
+                  </Button>
+                  <Button onClick={savePrompt} disabled={savingPrompt} icon={<I name={savingPrompt ? "loader" : "check"} size={12} className={savingPrompt ? "animate-spin" : ""} />}>
+                    {savingPrompt ? "保存中" : "保存"}
+                  </Button>
+                </div>
               </div>
             </>
           )}

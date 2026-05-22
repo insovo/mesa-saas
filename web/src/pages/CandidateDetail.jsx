@@ -123,6 +123,20 @@ export default function CandidateDetail() {
         </div>
       </Card>
 
+      {/* === AI 解析简报(纯文本,HR 友好)=== */}
+      {c.aiSummary && (
+        <Card className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="title-card flex items-center gap-2">
+              <I name="file-text" size={18} className="text-brand" />
+              AI 简历简报
+            </h3>
+            <AiBadge parser={c.parser || "Kimi"} confidence={c.parserConfidence} />
+          </div>
+          <pre className="whitespace-pre-wrap text-sm font-mono text-navy-700 bg-lightPrimary rounded-xl p-4 max-h-[420px] overflow-y-auto leading-relaxed">{c.aiSummary}</pre>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* === AI 核心技能 / 风险 / 亮点 === */}
         <Card className="p-6">

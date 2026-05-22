@@ -1,11 +1,9 @@
 // Kimi (Moonshot AI) API 客户端
-// 文档: https://platform.moonshot.cn/docs/api/files
-// 流程: uploadFile(buffer, name) → 拿 file_id → parseResume(fileId) → JSON 结构化字段
-//
-// 选型理由:
-//   1. Kimi Files API 直接吃 PDF/DOCX,无需我们自己跑 pdf-parse / mammoth
-//   2. moonshot-v1-32k 模型对中文简历理解强,32k context 足够一份长简历
-//   3. 兼容 OpenAI Chat Completions 格式,JSON Schema 强约束输出
+// 一份合并 prompt,一次 chat 输出 JSON:
+//   - summary 字段: 按 HR 简报模板的纯文本(候选人详情页直接展示)
+//   - 顶层其他字段: name/skills/experience/...(填 Candidate 结构化列,供列表/检索/匹配度排序)
+// 模型从 GET /v1/models 动态拉(缓存 10 min)
+// API key / model / prompt 三者都走 settings: DB(admin 改) > env > hardcoded
 
 import { getEffective, SETTING_KEYS } from "./settings.js";
 
@@ -18,52 +16,162 @@ async function effectiveModel() {
   return (await getEffective(SETTING_KEYS.KIMI_MODEL)) || "moonshot-v1-32k";
 }
 
-// 可用模型清单(对前端展示用,后端不强校验)
-// 见 https://platform.moonshot.cn/docs/intro/pricing
-export const AVAILABLE_MODELS = [
-  { id: "moonshot-v1-8k",   label: "Moonshot v1 · 8K",   desc: "短简历最经济(~¥0.012/1k token)" },
-  { id: "moonshot-v1-32k",  label: "Moonshot v1 · 32K",  desc: "默认 · 平衡速度与上下文(~¥0.024/1k)" },
-  { id: "moonshot-v1-128k", label: "Moonshot v1 · 128K", desc: "超长简历或合并多份(~¥0.060/1k)" },
-  { id: "kimi-latest",      label: "Kimi Latest (auto)",  desc: "自动路由,支持视觉" },
-  { id: "moonshot-v1-auto", label: "Moonshot Auto",       desc: "按 token 数自动选 8k/32k/128k" },
-];
+// ─── 默认 PROMPT (admin 可在 UI 改) ─────────────────────────────
+// 基于用户提供的「简历信息提取专家」规则,改为单次 JSON 输出。
+// 在 summary 字段内仍严格遵循用户的纯文本模板要求。
+export const DEFAULT_PROMPT = `# Role: 简历信息提取专家
 
-// 让 LLM 输出严格对齐 Candidate schema 的 JSON
-// 字段映射 server/prisma/schema.prisma 的 Candidate 模型
-const SYSTEM_PROMPT = `你是 MESA Recruit 的简历解析助手。
-读取附件简历内容,输出严格的 JSON(不要有任何额外文字,不要 markdown 代码块包裹)。
+你是一个专业的简历解析器。先对简历内容进行噪声清洗,再从清洗后的正文中提取信息,**用 JSON 输出**(便于系统存储和检索)。
 
-JSON 字段要求(中文值优先,无信息时用 null 或空数组):
+## 一、噪声清洗
+
+剔除以下非简历正文内容:
+
+1. 平台水印: 智联招聘 / BOSS直聘 / 前程无忧 / 猎聘 / 拉勾 / 脉脉 / 领英 等平台名称的重复出现或对角线水印
+2. 来源标注: "简历来源:XX平台" "来自XX网" "Downloaded from XX"
+3. 平台页眉页脚: 第X页/共X页、页码、打印时间戳、"该简历来自XX"
+4. 平台附加信息: "最近活跃:X天内" "简历更新时间:XX" "简历编号:XX"
+5. 广告与推荐: "升级VIP查看联系方式" "立即沟通" "推荐职位"
+6. 系统生成标签: "人才标签:XX" "简历完整度:XX%" "活跃度:高"
+7. 格式伪影: OCR 乱码、重复分隔线、连续空行、HTML/XML 残留标签
+8. 免责声明: 版权声明、"未经允许不得转发"
+9. 猎头/HR 批注: "HR备注:XX" "推荐理由:XX"、手写批注 OCR
+
+清洗原则: 只保留候选人本人填写的内容,不确定时保留(宁多勿删)。清洗过程不输出。
+
+## 二、提取规则
+
+1. 只忠于简历原文,不推测、不编造
+2. 时间统一 YYYY.MM,"至今"保留
+3. 工作经历、项目经历按时间倒序(最近的在前)
+4. 工作年限按工作经历自动计算,重叠时间不重复
+5. 985 / 211 / 双一流根据学校名称自动判断;无法判断则如实标注
+6. 从工作和项目经历中提炼隐含技能
+7. 相同技能、证书去重
+8. 联系方式若平台打码(如 138****1234),保留打码格式,不猜测补全
+9. 量化成果必须用【】标注
+10. 简历未提供时,字段值为 null(JSON 字段)或在 summary 文本里写"未提供"
+
+## 三、输出格式 — 一份 JSON 对象
+
+**严格要求**:
+- 不要 Markdown 代码块包裹
+- 不要在 JSON 前后加任何文字、引导语、说明
+- 顶层是对象,不是数组
+- 字段缺失用 null / "" / [] 而非省略 key
+
+\`\`\`
 {
-  "name": "候选人姓名(字符串,必填)",
+  "summary": "<HR 友好的纯文本简报, 按下面 §四 模板>",
+  "name": "候选人姓名(必填)",
   "gender": "male | female | unknown",
-  "age": 年龄(整数 0-120,可空),
-  "education": "学历(最高学历:博士|硕士|本科|大专|高中|其他)",
-  "school": "毕业院校(最高学历对应的)",
+  "age": 整数 0-120 或 null,
+  "education": "博士|硕士|本科|大专|高中|其他",
+  "school": "最高学历对应院校",
   "major": "专业",
-  "location": "现居城市(如:上海·浦东、北京·海淀)",
-  "yearsExp": 工作年限(整数,可空),
-  "phone": "电话号码(原样保留分隔符)",
+  "location": "现居城市(如 上海·浦东)",
+  "yearsExp": 整数 或 null,
+  "phone": "保留原打码格式",
   "email": "邮箱",
-  "appliedFor": "应聘岗位(如简历明确写,否则推断或留空字符串)",
-  "jdMatch": 0-100 的 JD 匹配度估计(无 JD 时按综合能力评分,整数),
-  "tags": ["3-6 个标签", "技能/经历亮点关键词"],
-  "skills": ["按要点列出核心技能 / 经验 / 证书,每条短句"],
-  "risks": ["潜在风险点(如频繁跳槽、空档期、行业不匹配),无则空数组"],
-  "highlights": ["亮点(头部公司、稀缺经验、专利、论文等)"],
+  "appliedFor": "应聘岗位(没明确写就空字符串)",
+  "jdMatch": 0-100 整数(无 JD 时按综合能力评分),
+  "tags": ["3-6 个亮点关键词"],
+  "skills": ["核心技能短句, 已去重"],
+  "risks": ["风险点(跳槽频繁/空档期/行业不匹配),无则空数组"],
+  "highlights": ["亮点: 头部公司/稀缺经验/专利/论文"],
   "experience": [
-    { "period": "2023.1 – 至今", "company": "公司全称", "title": "职位", "summary": "1-2 句要点" }
+    { "period": "2023.01 – 至今", "company": "公司全称", "title": "职位", "summary": "1-2 句要点" }
   ],
   "educationHistory": [
-    { "period": "2018.9 – 2022.6", "school": "学校", "major": "专业", "degree": "本科/硕士/博士" }
+    { "period": "2018.09 – 2022.06", "school": "...", "major": "...", "degree": "本科/硕士/博士" }
   ]
 }
+\`\`\`
 
-约束:
-- 必须返回合法 JSON(顶层是对象,不是数组)
-- 不要回复解释、不要 markdown 包裹、不要在 JSON 前后加任何文本
-- 字段缺失时用 null / "" / [] 而非省略 key
-- experience / educationHistory 按时间倒序`;
+## 四、summary 字段的纯文本模板(严格)
+
+summary 内容必须是**纯文本**(无 Markdown / 无分隔线 / 无引导语),从候选人姓名开始(第一行只是姓名本身,不带"姓名:"标签),到"国际经验:..."结束。模板:
+
+\`\`\`
+{姓名}
+当前职位:{当前职位}
+所在地区:{所在地区}
+联系电话:{联系电话}
+邮箱:{邮箱}
+
+教育背景
+1.
+  学校:{学校名称}
+  学历:{学历}
+  专业:{专业}
+  时间:{时间}
+  学校标签:{985/211/双一流/其他/未提供}
+
+工作经历
+1.
+  公司:{公司名称}
+  职位:{职位}
+  时间:{开始时间 至 结束时间}
+  地点:{地点}
+  下属人数:{下属人数}
+  核心职责:
+  - {职责1}
+  - {职责2}
+  关键成果:
+  - {成果1}
+  - {成果2}
+
+项目经历
+1.
+  项目名称:{项目名称}
+  角色:{角色}
+  时间:{开始时间 至 结束时间}
+  项目说明:{项目说明}
+  职责:
+  - {职责1}
+  - {职责2}
+  项目成果:
+  - {成果1}
+  - {成果2}
+
+核心能力
+- {能力1}
+- {能力2}
+
+技能
+- {技能1}
+- {技能2}
+
+证书
+- {证书1}
+- {证书2}
+
+综合评估
+工作年限:{工作年限}
+行业领域:{行业领域}
+核心专长:
+- {专长1}
+- {专长2}
+管理幅度:{管理幅度}
+国际经验:{国际经验}
+\`\`\`
+
+## 五、空值处理
+
+- 模块完全无内容时,在 summary 中保留模块名后写"未提供"
+- 二级列表无内容时,写"  - 未提供"
+- 多段时按同一格式继续编号
+
+## 六、最终自检
+
+- summary 第一行是否只有姓名(不带"姓名:")
+- summary 最后一行是否是"国际经验:..."
+- summary 内是否出现了"===" "---" "简历信息提取结果" "已清洗内容"等禁止内容(应删除)
+- JSON 是否合法,所有字段都存在`;
+
+async function effectivePrompt() {
+  return (await getEffective(SETTING_KEYS.KIMI_PROMPT)) || DEFAULT_PROMPT;
+}
 
 async function kimiRequest(path, options = {}) {
   const apiKey = await effectiveApiKey();
@@ -73,10 +181,7 @@ async function kimiRequest(path, options = {}) {
   const url = `${KIMI_BASE_URL}${path}`;
   const res = await fetch(url, {
     ...options,
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      ...(options.headers || {}),
-    },
+    headers: { Authorization: `Bearer ${apiKey}`, ...(options.headers || {}) },
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
@@ -87,32 +192,50 @@ async function kimiRequest(path, options = {}) {
 
 export async function uploadFile({ buffer, filename, contentType = "application/octet-stream" }) {
   const form = new FormData();
-  // Kimi 用 purpose=file-extract,服务端会自动提取文本
   form.append("purpose", "file-extract");
   form.append("file", new Blob([buffer], { type: contentType }), filename);
-
   const res = await kimiRequest("/files", { method: "POST", body: form });
-  const data = await res.json();
-  return data; // { id, object, bytes, created_at, filename, purpose, status, status_details }
+  return res.json();
 }
 
 export async function getFileContent(fileId) {
-  // Kimi 返回上传文件的提取后纯文本
   const res = await kimiRequest(`/files/${fileId}/content`);
   return res.text();
 }
 
+// ─── 动态模型列表 ──────────────────────────────────────────────
+let modelsCache = { data: null, expiresAt: 0 };
+const MODELS_TTL_MS = 10 * 60 * 1000;
+
+export async function listModels({ forceRefresh = false } = {}) {
+  const now = Date.now();
+  if (!forceRefresh && modelsCache.data && modelsCache.expiresAt > now) {
+    return modelsCache.data;
+  }
+  const res = await kimiRequest("/models");
+  const data = await res.json();
+  const ids = (data?.data || []).map((m) => m.id).filter(Boolean).sort();
+  modelsCache = { data: ids, expiresAt: now + MODELS_TTL_MS };
+  return ids;
+}
+
+async function pickModel(requested) {
+  if (!requested) return effectiveModel();
+  try {
+    const allowed = await listModels();
+    if (allowed.includes(requested)) return requested;
+  } catch { /* ignore */ }
+  return requested;
+}
+
+// ─── 解析: 一次 chat, JSON 输出含 summary + 结构化字段 ─────────
 export async function parseResume({ buffer, filename, contentType, model }) {
-  // 1) 上传文件让 Kimi 提取文本
   const file = await uploadFile({ buffer, filename, contentType });
-
-  // 2) 拿提取后的文本作为 system 消息附件
   const extractedText = await getFileContent(file.id);
+  const useModel = await pickModel(model);
+  const prompt = await effectivePrompt();
 
-  // 3) 调 chat 让 Kimi 输出 JSON(model 可由调用方指定,否则走 setting 默认)
-  const defaultModel = await effectiveModel();
-  const useModel = (model && (model.startsWith("moonshot") || model === "kimi-latest")) ? model : defaultModel;
-  const chatRes = await kimiRequest("/chat/completions", {
+  const res = await kimiRequest("/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -120,33 +243,28 @@ export async function parseResume({ buffer, filename, contentType, model }) {
       temperature: 0.1,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: SYSTEM_PROMPT },
+        { role: "system", content: prompt },
         { role: "system", content: `以下是简历原文(可能含 OCR 噪音):\n\n${extractedText}` },
-        { role: "user", content: "请按上述 JSON Schema 输出。" },
+        { role: "user", content: "请按上述要求输出 JSON。" },
       ],
     }),
   });
-  const completion = await chatRes.json();
-
-  const raw = completion?.choices?.[0]?.message?.content || "";
-  let parsed;
+  const data = await res.json();
+  const raw = data?.choices?.[0]?.message?.content || "";
+  let json;
   try {
-    parsed = JSON.parse(raw);
+    json = JSON.parse(raw);
   } catch {
-    // 兜底:剥离可能的 markdown 包裹
-    const match = raw.match(/\{[\s\S]*\}/);
-    if (!match) throw Object.assign(new Error("kimi returned non-JSON content"), { statusCode: 502, code: "kimi_parse_error" });
-    parsed = JSON.parse(match[0]);
+    const m = raw.match(/\{[\s\S]*\}/);
+    if (!m) throw Object.assign(new Error("kimi returned non-JSON content"), { statusCode: 502, code: "kimi_parse_error" });
+    json = JSON.parse(m[0]);
   }
 
+  const { summary, ...parsed } = json;
   return {
+    summary: typeof summary === "string" ? summary.trim() : "",
     parsed,
-    meta: {
-      fileId: file.id,
-      model: completion.model,
-      usage: completion.usage,
-      bytesProcessed: file.bytes,
-    },
+    meta: { fileId: file.id, model: useModel, usage: data?.usage, bytesProcessed: file.bytes },
   };
 }
 
@@ -159,9 +277,7 @@ export async function getActiveModel() {
   return effectiveModel();
 }
 
-// 探活: 用 list 模型的 endpoint 或 1-token 探针
-// 通过 chat completion 发一个最小请求,验证 key 是否真的能用
-export async function ping(apiKey, model = "moonshot-v1-8k") {
+export async function ping(apiKey) {
   const url = `${KIMI_BASE_URL}/models`;
   const res = await fetch(url, { headers: { Authorization: `Bearer ${apiKey}` } });
   if (!res.ok) {

@@ -18,15 +18,17 @@ const CACHE_TTL_MS = 30_000;
 export const SETTING_KEYS = {
   KIMI_API_KEY: "kimi.api_key",
   KIMI_MODEL: "kimi.model",
+  KIMI_PROMPT: "kimi.prompt",  // 单一 prompt: JSON 输出含 summary + 结构化字段
 };
 
-// env fallback 映射
+// env fallback 映射(prompt 没有 env fallback,在 kimi.js 里做 DEFAULT_PROMPT 兜底)
 const ENV_FALLBACK = {
   "kimi.api_key": () => process.env.KIMI_API_KEY,
   "kimi.model":   () => process.env.KIMI_MODEL || "moonshot-v1-32k",
+  "kimi.prompt":  () => null,
 };
 
-// 哪些 key 需要加密
+// 哪些 key 需要加密(prompt 不算敏感,不加密)
 const ENCRYPTED_KEYS = new Set(["kimi.api_key"]);
 
 export function isEncryptedKey(key) {

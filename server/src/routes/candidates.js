@@ -33,6 +33,7 @@ const CANDIDATE_BODY = {
     experience: { type: "array" },
     educationHistory: { type: "array" },
     attachment: { type: "string", maxLength: 500, nullable: true },
+    aiSummary: { type: "string", maxLength: 50000, nullable: true },
   },
   additionalProperties: false,
 };

@@ -72,6 +72,7 @@ model Candidate {
   experience        Json     @default("[]")
   educationHistory  Json     @default("[]") @map("education_history")
   attachment        String?
+  aiSummary         String?  @db.Text @map("ai_summary")  // LLM 输出的纯文本简报(HR 可读)
 
   ownerId           String?  @map("owner_id") @db.Uuid
   owner             User?    @relation("CandidateOwner", fields: [ownerId], references: [id], onDelete: SetNull)

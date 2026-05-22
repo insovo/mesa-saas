@@ -6,7 +6,7 @@
 
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { Readable } from "node:stream";
-import { parseResume, isKimiConfigured, AVAILABLE_MODELS } from "../lib/kimi.js";
+import { parseResume, isKimiConfigured, listModels } from "../lib/kimi.js";
 
 const PARSE_BODY = {
   type: "object",
@@ -36,12 +36,22 @@ export default async function resumesRoutes(app) {
 
   app.get("/llm-status", async () => {
     const { getEffective, SETTING_KEYS } = await import("../lib/settings.js");
+    const configured = await isKimiConfigured();
+    let availableModels = [];
+    if (configured) {
+      try {
+        const ids = await listModels();
+        availableModels = ids.map((id) => ({ id, label: id, desc: "" }));
+      } catch (e) {
+        // ignore — UI 会回落到只显示当前默认 model
+      }
+    }
     return {
       provider: "kimi",
       model: (await getEffective(SETTING_KEYS.KIMI_MODEL)) || "moonshot-v1-32k",
-      configured: await isKimiConfigured(),
+      configured,
       mode: "system",
-      availableModels: AVAILABLE_MODELS,
+      availableModels,
     };
   });
 
@@ -88,12 +98,13 @@ export default async function resumesRoutes(app) {
       });
     }
 
-    // 3) 把 r2 key 写进 attachment 字段,方便后续下载
+    // 3) 把 r2 key 写进 attachment 字段,纯文本简报存 aiSummary
     const candidate = {
       ...result.parsed,
+      aiSummary: result.summary,  // HR 友好的纯文本简报
       attachment: key,
       parser: "Kimi",
-      parserConfidence: 92, // Kimi 自身不返回置信度,固定一个标识值
+      parserConfidence: 92,
       source: "自动上传",
       status: result.parsed.status || "待筛选",
     };
