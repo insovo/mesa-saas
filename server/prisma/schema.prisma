@@ -227,10 +227,24 @@ model Review {
   // attachments: [{ type: "image"|"file"|"link", name, url, size?, contentType? }]
   attachments  Json      @default("[]")
 
+  // 回复 — 1 级嵌套
+  parentId     String?   @map("parent_id") @db.Uuid
+  parent       Review?   @relation("ReviewParent", fields: [parentId], references: [id], onDelete: SetNull)
+  replies      Review[]  @relation("ReviewParent")
+
+  // 删除流: 普通作者只能"请求删除",admin 批准后才真删除(deletedAt 标记 soft-delete)
+  deletedAt           DateTime? @map("deleted_at")
+  deleteRequested     DateTime? @map("delete_requested")
+  deleteRequestedBy   String?   @map("delete_requested_by")  // authorName 或 userId
+
+  // admin 隐藏 — 普通用户看不到,admin 视角显示"已隐藏"标记
+  hidden       Boolean   @default(false)
+
   createdAt    DateTime  @default(now()) @map("created_at")
 
   @@index([candidateId])
   @@index([userId])
+  @@index([parentId])
   @@map("reviews")
 }
 

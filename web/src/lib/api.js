@@ -87,7 +87,18 @@ export const resources = {
   reviews: {
     list: (candidateId) => api.get(`/candidates/${candidateId}/reviews`).then((r) => r.data.reviews),
     create: (candidateId, body) => api.post(`/candidates/${candidateId}/reviews`, body).then((r) => r.data.review),
-    remove: (candidateId, reviewId) => api.delete(`/candidates/${candidateId}/reviews/${reviewId}`),
+    requestDelete: (candidateId, reviewId) =>
+      api.post(`/candidates/${candidateId}/reviews/${reviewId}/request-delete`).then((r) => r.data.review),
+    approveDelete: (candidateId, reviewId) =>
+      api.post(`/candidates/${candidateId}/reviews/${reviewId}/approve-delete`).then((r) => r.data.review),
+    rejectDelete: (candidateId, reviewId) =>
+      api.post(`/candidates/${candidateId}/reviews/${reviewId}/reject-delete`).then((r) => r.data.review),
+    adminDelete: (candidateId, reviewId) =>
+      api.delete(`/candidates/${candidateId}/reviews/${reviewId}`).then((r) => r.data.review),
+    hide: (candidateId, reviewId) =>
+      api.post(`/candidates/${candidateId}/reviews/${reviewId}/hide`).then((r) => r.data.review),
+    unhide: (candidateId, reviewId) =>
+      api.post(`/candidates/${candidateId}/reviews/${reviewId}/unhide`).then((r) => r.data.review),
   },
   share: {
     get: (candidateId) => api.get(`/candidates/${candidateId}/share`).then((r) => r.data.link),

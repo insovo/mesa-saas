@@ -116,6 +116,9 @@ export default function CandidateDetail() {
   // 评价
   const [reviews, setReviews] = useState([]);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [replyTo, setReplyTo] = useState(null);  // 回复的父评价对象
+  const me = (() => { try { return JSON.parse(localStorage.getItem("mesa.user") || "null"); } catch { return null; } })();
+  const isAdmin = me?.role === "ADMIN";
 
   async function load() {
     try {
@@ -331,9 +334,10 @@ export default function CandidateDetail() {
       {/* === 添加评价 Modal === */}
       <ReviewModal
         open={reviewOpen}
-        onClose={() => setReviewOpen(false)}
+        onClose={() => { setReviewOpen(false); setReplyTo(null); }}
         candidate={c}
-        onCreated={(r) => { setReviews((p) => [r, ...p]); setReviewOpen(false); }}
+        replyTo={replyTo}
+        onCreated={(r) => { setReviews((p) => [...p, r]); setReviewOpen(false); setReplyTo(null); }}
       />
 
       {/* === 安排面试 Modal === */}
@@ -430,12 +434,15 @@ export default function CandidateDetail() {
         </Card>
 
         {/* === 评价 === */}
-        <ReviewsCard reviews={reviews} candidate={c} onAdd={() => setReviewOpen(true)} onRemove={(rid) => {
-          if (!confirm("删除这条评价?")) return;
-          resources.reviews.remove(c.id, rid)
-            .then(() => { setReviews((p) => p.filter((r) => r.id !== rid)); toast("已删除", "success"); })
-            .catch((e) => toast(e.response?.data?.message || "删除失败", "error"));
-        }} />
+        <ReviewsCard
+          reviews={reviews}
+          candidate={c}
+          me={me}
+          isAdmin={isAdmin}
+          onAdd={() => { setReplyTo(null); setReviewOpen(true); }}
+          onReply={(r) => { setReplyTo(r); setReviewOpen(true); }}
+          updateReview={(r) => setReviews((prev) => prev.map((x) => x.id === r.id ? r : x))}
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-5">
@@ -932,23 +939,40 @@ function fmtReviewTime(iso) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-function ReviewsCard({ reviews, candidate, onAdd, onRemove }) {
+function ReviewsCard({ reviews, candidate, me, isAdmin, onAdd, onReply, updateReview }) {
+  // 把 review 列表组成 thread: 把 replies 挂到对应的 parent 下
+  const tree = reviews.filter((r) => !r.parentId);
+  const repliesByParent = {};
+  reviews.filter((r) => r.parentId).forEach((r) => {
+    (repliesByParent[r.parentId] = repliesByParent[r.parentId] || []).push(r);
+  });
+  const visibleCount = reviews.filter((r) => !r.deletedAt).length;
+
   return (
     <Card className="p-5 md:p-6">
       <div className="flex items-center justify-between mb-4">
         <h3 className="title-card flex items-center gap-2">
           <I name="message-circle" size={18} className="text-brand" />
           评价
-          <span className="text-[11px] px-2 py-0.5 rounded-full bg-brand text-white font-bold">{reviews.length}</span>
+          <span className="text-[11px] px-2 py-0.5 rounded-full bg-brand text-white font-bold">{visibleCount}</span>
         </h3>
       </div>
 
-      {reviews.length === 0 ? (
+      {tree.length === 0 ? (
         <p className="text-xs text-gray-700 py-2">还没有评价 · 点下方按钮添加第一条</p>
       ) : (
         <ul className="space-y-4">
-          {reviews.map((r) => (
-            <ReviewItem key={r.id} review={r} candidate={candidate} onRemove={onRemove} />
+          {tree.map((r) => (
+            <ReviewItem
+              key={r.id}
+              review={r}
+              replies={repliesByParent[r.id] || []}
+              candidate={candidate}
+              me={me}
+              isAdmin={isAdmin}
+              onReply={onReply}
+              updateReview={updateReview}
+            />
           ))}
         </ul>
       )}
@@ -964,42 +988,125 @@ function ReviewsCard({ reviews, candidate, onAdd, onRemove }) {
   );
 }
 
-function ReviewItem({ review, candidate, onRemove }) {
+function ReviewItem({ review, replies = [], candidate, me, isAdmin, onReply, updateReview, isReply = false }) {
+  const isMine = me?.id && review.userId === me.id;
+  const canRequestDelete = !review.deletedAt && (isMine || isAdmin);
+  const pendingDelete = !!review.deleteRequested && !review.deletedAt;
+
+  async function requestDelete() {
+    if (!confirm("请求删除这条评价?(删除需要管理员同意)")) return;
+    try {
+      const r = await resources.reviews.requestDelete(candidate.id, review.id);
+      updateReview(r);
+      toast("已请求,等管理员审核", "info");
+    } catch (e) { toast(e.response?.data?.message || "操作失败", "error"); }
+  }
+  async function approveDelete() {
+    try {
+      const r = await resources.reviews.approveDelete(candidate.id, review.id);
+      updateReview(r);
+      toast("已批准删除", "success");
+    } catch (e) { toast(e.response?.data?.message || "操作失败", "error"); }
+  }
+  async function rejectDelete() {
+    try {
+      const r = await resources.reviews.rejectDelete(candidate.id, review.id);
+      updateReview(r);
+      toast("已拒绝", "success");
+    } catch (e) { toast(e.response?.data?.message || "操作失败", "error"); }
+  }
+  async function adminDelete() {
+    if (!confirm("直接删除这条评价?")) return;
+    try {
+      const r = await resources.reviews.adminDelete(candidate.id, review.id);
+      updateReview(r);
+      toast("已删除", "success");
+    } catch (e) { toast(e.response?.data?.message || "操作失败", "error"); }
+  }
+  async function toggleHide() {
+    try {
+      const r = review.hidden
+        ? await resources.reviews.unhide(candidate.id, review.id)
+        : await resources.reviews.hide(candidate.id, review.id);
+      updateReview(r);
+      toast(review.hidden ? "已取消隐藏" : "已隐藏(普通用户/公开访客看不到)", "success");
+    } catch (e) { toast(e.response?.data?.message || "操作失败", "error"); }
+  }
+
+  const headerLeft = (
+    <p className={`text-sm font-bold ${review.deletedAt ? "text-gray-500" : "text-navy-700"}`}>
+      {review.authorName}
+      {review.authorRole && <span className="ml-2 text-[10px] text-gray-700 font-medium">{review.authorRole}</span>}
+      {review.via === "public" && (
+        <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 font-bold">外部</span>
+      )}
+      {review.hidden && (
+        <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-700 font-bold">已隐藏</span>
+      )}
+      {pendingDelete && (
+        <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold">待审核删除</span>
+      )}
+    </p>
+  );
+
   return (
     <li className="group">
       <div className="flex items-start gap-3">
-        <Avatar name={review.authorName} src={review.authorAvatar} size={32} />
+        <Avatar name={review.authorName} src={review.authorAvatar} size={isReply ? 28 : 32} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <p className="text-sm font-bold text-navy-700">
-              {review.authorName}
-              {review.authorRole && <span className="ml-2 text-[10px] text-gray-700 font-medium">{review.authorRole}</span>}
-              {review.via === "public" && (
-                <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 font-bold">外部</span>
-              )}
-            </p>
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] text-gray-700 flex items-center gap-1">
-                <I name="clock" size={11} /> {fmtReviewTime(review.createdAt)}
-              </span>
-              <button
-                onClick={() => onRemove(review.id)}
-                className="opacity-0 group-hover:opacity-100 text-red-500 hover:bg-red-50 w-6 h-6 rounded flex items-center justify-center transition"
-                title="删除评价"
-              >
-                <I name="trash-2" size={11} />
-              </button>
-            </div>
+            {headerLeft}
+            <span className="text-[11px] text-gray-700 flex items-center gap-1">
+              <I name="clock" size={11} /> {fmtReviewTime(review.createdAt)}
+            </span>
           </div>
-          <p className="text-sm text-navy-700 mt-1 whitespace-pre-wrap">{review.content}</p>
-          {/* 附件 */}
-          {(review.attachments || []).length > 0 && (
+          {review.deletedAt ? (
+            <p className="text-sm text-gray-400 italic mt-1 line-through">[已删除]</p>
+          ) : (
+            <p className="text-sm text-navy-700 mt-1 whitespace-pre-wrap">{review.content}</p>
+          )}
+          {!review.deletedAt && (review.attachments || []).length > 0 && (
             <div className="flex flex-wrap gap-2 mt-2">
               {review.attachments.map((a, i) => <AttachmentChip key={i} a={a} candidate={candidate} />)}
             </div>
           )}
+          {/* 操作行 */}
+          {!review.deletedAt && (
+            <div className="flex items-center gap-3 mt-2 text-[11px]">
+              {!isReply && (
+                <button onClick={() => onReply(review)} className="text-brand hover:underline font-medium flex items-center gap-1">
+                  <I name="reply" size={10} /> 回复
+                </button>
+              )}
+              {pendingDelete && isAdmin && (
+                <>
+                  <button onClick={approveDelete} className="text-red-600 hover:underline font-medium">批准删除</button>
+                  <button onClick={rejectDelete} className="text-gray-700 hover:underline">拒绝</button>
+                </>
+              )}
+              {!pendingDelete && canRequestDelete && !isAdmin && (
+                <button onClick={requestDelete} className="text-gray-700 hover:text-red-500">请求删除</button>
+              )}
+              {isAdmin && !pendingDelete && (
+                <button onClick={adminDelete} className="text-red-500 hover:underline">删除</button>
+              )}
+              {isAdmin && (
+                <button onClick={toggleHide} className="text-gray-700 hover:underline">
+                  {review.hidden ? "取消隐藏" : "隐藏"}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
+      {/* 回复(1 级嵌套) */}
+      {replies.length > 0 && (
+        <ul className="mt-3 ml-9 pl-3 border-l-2 border-gray-100 space-y-3">
+          {replies.map((rp) => (
+            <ReviewItem key={rp.id} review={rp} candidate={candidate} me={me} isAdmin={isAdmin} onReply={onReply} updateReview={updateReview} isReply />
+          ))}
+        </ul>
+      )}
     </li>
   );
 }
@@ -1033,7 +1140,7 @@ function AttachmentChip({ a, candidate }) {
   );
 }
 
-function ReviewModal({ open, onClose, candidate, onCreated }) {
+function ReviewModal({ open, onClose, candidate, replyTo, onCreated }) {
   const [content, setContent] = useState("");
   const [linkInput, setLinkInput] = useState("");
   const [attachments, setAttachments] = useState([]);
@@ -1102,9 +1209,11 @@ function ReviewModal({ open, onClose, candidate, onCreated }) {
     if (!content.trim()) return toast("请输入评价内容", "error");
     setSaving(true);
     try {
-      const r = await resources.reviews.create(candidate.id, { content: content.trim(), attachments });
+      const body = { content: content.trim(), attachments };
+      if (replyTo?.id) body.parentId = replyTo.id;
+      const r = await resources.reviews.create(candidate.id, body);
       onCreated(r);
-      toast("评价已添加", "success");
+      toast(replyTo ? "已回复" : "评价已添加", "success");
     } catch (e) { toast(e.response?.data?.message || "添加失败", "error"); }
     finally { setSaving(false); }
   }
@@ -1114,11 +1223,18 @@ function ReviewModal({ open, onClose, candidate, onCreated }) {
       <div className="p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-bold text-navy-700 flex items-center gap-2">
-            <I name="message-circle" size={18} className="text-brand" />
-            添加评价 — {candidate?.name}
+            <I name={replyTo ? "reply" : "message-circle"} size={18} className="text-brand" />
+            {replyTo ? `回复 ${replyTo.authorName}` : `添加评价 — ${candidate?.name}`}
           </h3>
           <button onClick={onClose} className="text-gray-400 hover:text-navy-700"><I name="x" size={20} /></button>
         </div>
+
+        {replyTo && (
+          <div className="p-3 rounded-xl bg-lightPrimary border-l-4 border-brand">
+            <p className="text-[11px] font-bold text-gray-700">引用 {replyTo.authorName} 的评价:</p>
+            <p className="text-xs text-gray-700 mt-1 line-clamp-2">{replyTo.content}</p>
+          </div>
+        )}
 
         <div>
           <textarea

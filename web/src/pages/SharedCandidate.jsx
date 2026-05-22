@@ -36,6 +36,7 @@ export default function SharedCandidate() {
   const [err, setErr] = useState(null);
   const [reviews, setReviews] = useState([]);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [replyTo, setReplyTo] = useState(null);
 
   useEffect(() => {
     axios.get(`/api/public/share/${token}`)
@@ -242,13 +243,28 @@ export default function SharedCandidate() {
               添加评价
             </Button>
           </div>
-          {reviews.length === 0 ? (
-            <Empty icon="message-circle" title="还没有评价" desc="点击「添加评价」给候选人留下你的反馈" />
-          ) : (
-            <ul className="space-y-4">
-              {reviews.map((r) => <PublicReviewItem key={r.id} review={r} token={token} />)}
-            </ul>
-          )}
+          {(() => {
+            const tree = reviews.filter((r) => !r.parentId);
+            const repliesByParent = {};
+            reviews.filter((r) => r.parentId).forEach((r) => {
+              (repliesByParent[r.parentId] = repliesByParent[r.parentId] || []).push(r);
+            });
+            if (tree.length === 0) return <Empty icon="message-circle" title="还没有评价" desc="点击「添加评价」给候选人留下你的反馈" />;
+            return (
+              <ul className="space-y-4">
+                {tree.map((r) => (
+                  <PublicReviewItem
+                    key={r.id}
+                    review={r}
+                    replies={repliesByParent[r.id] || []}
+                    token={token}
+                    onReply={(parent) => { setReplyTo(parent); setReviewOpen(true); }}
+                    updateReview={(rr) => setReviews((p) => p.map((x) => x.id === rr.id ? rr : x))}
+                  />
+                ))}
+              </ul>
+            );
+          })()}
         </Card>
 
         <footer className="text-center text-[11px] text-gray-600 pt-4">
@@ -257,10 +273,11 @@ export default function SharedCandidate() {
 
         <PublicReviewModal
           open={reviewOpen}
-          onClose={() => setReviewOpen(false)}
+          onClose={() => { setReviewOpen(false); setReplyTo(null); }}
           candidate={c}
           token={token}
-          onCreated={(r) => { setReviews((p) => [r, ...p]); setReviewOpen(false); }}
+          replyTo={replyTo}
+          onCreated={(r) => { setReviews((p) => [...p, r]); setReviewOpen(false); setReplyTo(null); }}
         />
       </main>
     </div>
@@ -273,32 +290,86 @@ function fmtTime(iso) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-function PublicReviewItem({ review, token }) {
+function PublicReviewItem({ review, replies = [], token, onReply, updateReview, isReply = false }) {
+  const [askName, setAskName] = useState("");
+  const [showAsk, setShowAsk] = useState(false);
+  const pendingDelete = !!review.deleteRequested && !review.deletedAt;
+
+  async function requestDelete() {
+    const name = askName.trim();
+    if (!name) return toast("请输入您当时填写的姓名以验证身份", "error");
+    try {
+      const { data } = await axios.post(`/api/public/share/${token}/reviews/${review.id}/request-delete`, { authorName: name });
+      updateReview(data.review);
+      setShowAsk(false);
+      setAskName("");
+      toast("已请求,等管理员审核", "success");
+    } catch (e) { toast(e.response?.data?.message || "操作失败", "error"); }
+  }
+
   return (
     <li>
       <div className="flex items-start gap-3">
-        <Avatar name={review.authorName} src={review.authorAvatar} size={32} />
+        <Avatar name={review.authorName} src={review.authorAvatar} size={isReply ? 28 : 32} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <p className="text-sm font-bold text-navy-700">
+            <p className={`text-sm font-bold ${review.deletedAt ? "text-gray-500" : "text-navy-700"}`}>
               {review.authorName}
               {review.authorRole && <span className="ml-2 text-[10px] text-gray-700 font-medium">{review.authorRole}</span>}
               {review.via === "public" && (
                 <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 font-bold">外部</span>
+              )}
+              {pendingDelete && (
+                <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold">待审核删除</span>
               )}
             </p>
             <span className="text-[11px] text-gray-700 flex items-center gap-1">
               <I name="clock" size={11} /> {fmtTime(review.createdAt)}
             </span>
           </div>
-          <p className="text-sm text-navy-700 mt-1 whitespace-pre-wrap">{review.content}</p>
-          {(review.attachments || []).length > 0 && (
+          {review.deletedAt ? (
+            <p className="text-sm text-gray-400 italic mt-1 line-through">[已删除]</p>
+          ) : (
+            <p className="text-sm text-navy-700 mt-1 whitespace-pre-wrap">{review.content}</p>
+          )}
+          {!review.deletedAt && (review.attachments || []).length > 0 && (
             <div className="flex flex-wrap gap-2 mt-2">
               {review.attachments.map((a, i) => <PublicAttachmentChip key={i} a={a} token={token} />)}
             </div>
           )}
+          {!review.deletedAt && (
+            <div className="flex items-center gap-3 mt-2 text-[11px]">
+              {!isReply && (
+                <button onClick={() => onReply(review)} className="text-brand hover:underline font-medium flex items-center gap-1">
+                  <I name="reply" size={10} /> 回复
+                </button>
+              )}
+              {review.via === "public" && !pendingDelete && (
+                <button onClick={() => setShowAsk((v) => !v)} className="text-gray-700 hover:text-red-500">请求删除</button>
+              )}
+            </div>
+          )}
+          {showAsk && (
+            <div className="mt-2 flex items-center gap-2">
+              <input
+                value={askName}
+                onChange={(e) => setAskName(e.target.value)}
+                placeholder="请输入您当时填写的姓名"
+                className="flex-1 h-8 px-2 rounded-lg border border-gray-200 text-xs outline-none focus:border-brand"
+              />
+              <button onClick={requestDelete} className="h-8 px-3 rounded-lg bg-brand text-white text-xs font-bold">提交</button>
+              <button onClick={() => { setShowAsk(false); setAskName(""); }} className="h-8 px-2 text-gray-700 text-xs">取消</button>
+            </div>
+          )}
         </div>
       </div>
+      {replies.length > 0 && (
+        <ul className="mt-3 ml-9 pl-3 border-l-2 border-gray-100 space-y-3">
+          {replies.map((rp) => (
+            <PublicReviewItem key={rp.id} review={rp} token={token} onReply={onReply} updateReview={updateReview} isReply />
+          ))}
+        </ul>
+      )}
     </li>
   );
 }
@@ -328,7 +399,7 @@ function PublicAttachmentChip({ a, token }) {
   );
 }
 
-function PublicReviewModal({ open, onClose, candidate, token, onCreated }) {
+function PublicReviewModal({ open, onClose, candidate, token, replyTo, onCreated }) {
   const [authorName, setAuthorName] = useState("");
   const [content, setContent] = useState("");
   const [linkInput, setLinkInput] = useState("");
@@ -384,13 +455,11 @@ function PublicReviewModal({ open, onClose, candidate, token, onCreated }) {
     if (!content.trim()) return toast("请输入评价内容", "error");
     setSaving(true);
     try {
-      const { data } = await axios.post(`/api/public/share/${token}/reviews`, {
-        authorName: authorName.trim(),
-        content: content.trim(),
-        attachments,
-      });
+      const body = { authorName: authorName.trim(), content: content.trim(), attachments };
+      if (replyTo?.id) body.parentId = replyTo.id;
+      const { data } = await axios.post(`/api/public/share/${token}/reviews`, body);
       onCreated(data.review);
-      toast("评价已发布", "success");
+      toast(replyTo ? "已回复" : "评价已发布", "success");
     } catch (e) { toast(e.response?.data?.message || "发布失败", "error"); }
     finally { setSaving(false); }
   }
@@ -400,11 +469,18 @@ function PublicReviewModal({ open, onClose, candidate, token, onCreated }) {
       <div className="p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-bold text-navy-700 flex items-center gap-2">
-            <I name="message-circle" size={18} className="text-brand" />
-            添加评价 — {candidate?.name}
+            <I name={replyTo ? "reply" : "message-circle"} size={18} className="text-brand" />
+            {replyTo ? `回复 ${replyTo.authorName}` : `添加评价 — ${candidate?.name}`}
           </h3>
           <button onClick={onClose} className="text-gray-400 hover:text-navy-700"><I name="x" size={20} /></button>
         </div>
+
+        {replyTo && (
+          <div className="p-3 rounded-xl bg-lightPrimary border-l-4 border-brand">
+            <p className="text-[11px] font-bold text-gray-700">引用 {replyTo.authorName} 的评价:</p>
+            <p className="text-xs text-gray-700 mt-1 line-clamp-2">{replyTo.content}</p>
+          </div>
+        )}
 
         <div>
           <label className="text-sm text-navy-700 font-bold ml-3 block mb-2">您的姓名 *</label>

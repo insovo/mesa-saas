@@ -1,6 +1,6 @@
 // /api/candidates/:id/reviews — 登录用户提交评价
 // /api/public/share/:token/reviews — 公开访客经分享链接提交评价
-// 公开访客必填 authorName, 内部用户自动从 JWT 拿身份
+// 完整对话系统: parentId 回复 + soft-delete (deletedAt) + 删除请求审核 + admin 隐藏
 
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 
@@ -10,7 +10,7 @@ const ATTACHMENT_ITEM = {
   properties: {
     type: { type: "string", enum: ["image", "file", "link"] },
     name: { type: "string", maxLength: 200 },
-    url: { type: "string", maxLength: 1000 },  // R2 key 或外部 URL
+    url: { type: "string", maxLength: 1000 },
     size: { type: "integer", minimum: 0, maximum: 30 * 1024 * 1024 },
     contentType: { type: "string", maxLength: 100 },
   },
@@ -24,6 +24,7 @@ const POST_BODY = {
     content: { type: "string", minLength: 1, maxLength: 500 },
     attachments: { type: "array", items: ATTACHMENT_ITEM, maxItems: 10 },
     authorName: { type: "string", minLength: 1, maxLength: 100 },
+    parentId: { type: "string", format: "uuid" },
   },
   additionalProperties: false,
 };
@@ -42,24 +43,79 @@ function validateAttachmentsSize(attachments) {
   return null;
 }
 
+// 公开展示: 不返回 hidden,不返回完整 deletion 元数据
+function publicShape(r) {
+  if (r.hidden) return null;
+  return {
+    id: r.id,
+    candidateId: r.candidateId,
+    authorName: r.authorName,
+    authorRole: r.authorRole,
+    authorAvatar: r.authorAvatar,
+    via: r.via,
+    parentId: r.parentId,
+    content: r.deletedAt ? "" : r.content,  // 删除后不返回内容,前端显示 "已删除"
+    attachments: r.deletedAt ? [] : (r.attachments || []),
+    deletedAt: r.deletedAt,
+    deleteRequested: r.deleteRequested,
+    createdAt: r.createdAt,
+  };
+}
+
+// 内部 admin/普通用户视图: 同样不返回隐藏的(除非 admin)
+function internalShape(r, isAdmin) {
+  if (!isAdmin && r.hidden) return null;
+  return {
+    id: r.id,
+    candidateId: r.candidateId,
+    authorName: r.authorName,
+    authorRole: r.authorRole,
+    authorAvatar: r.authorAvatar,
+    userId: r.userId,
+    via: r.via,
+    shareToken: r.shareToken,
+    parentId: r.parentId,
+    content: r.deletedAt ? "" : r.content,
+    attachments: r.deletedAt ? [] : (r.attachments || []),
+    hidden: r.hidden,
+    deletedAt: r.deletedAt,
+    deleteRequested: r.deleteRequested,
+    deleteRequestedBy: r.deleteRequestedBy,
+    createdAt: r.createdAt,
+  };
+}
+
 export default async function reviewsRoutes(app) {
   // ─── 内部端: 登录用户 ────────────────────────────────────
   app.register(async (internal) => {
     internal.addHook("preHandler", internal.authenticate);
 
-    // 列表
+    // 列表 (admin 看全部,普通用户看 !hidden)
     internal.get("/candidates/:id/reviews", async (req) => {
+      const isAdmin = req.user.role === "ADMIN";
       const reviews = await internal.prisma.review.findMany({
         where: { candidateId: req.params.id },
-        orderBy: { createdAt: "desc" },
+        orderBy: { createdAt: "asc" },  // 正序便于 thread
       });
-      return { reviews };
+      return { reviews: reviews.map((r) => internalShape(r, isAdmin)).filter(Boolean) };
     });
 
-    // 添加(登录用户)
+    // 添加 / 回复
     internal.post("/candidates/:id/reviews", { schema: { body: POST_BODY } }, async (req, reply) => {
       const sizeErr = validateAttachmentsSize(req.body.attachments);
       if (sizeErr) return reply.code(400).send(sizeErr);
+
+      // 校验 parentId 同一 candidate
+      if (req.body.parentId) {
+        const parent = await internal.prisma.review.findUnique({ where: { id: req.body.parentId } });
+        if (!parent || parent.candidateId !== req.params.id) {
+          return reply.code(400).send({ error: "bad_parent" });
+        }
+        // 1 级嵌套限制 — 不允许回复回复(防止深嵌套)
+        if (parent.parentId) {
+          return reply.code(400).send({ error: "nested_reply_not_allowed", message: "只支持 1 级回复" });
+        }
+      }
 
       const user = await internal.prisma.user.findUnique({ where: { id: req.user.sub } });
       const review = await internal.prisma.review.create({
@@ -70,53 +126,105 @@ export default async function reviewsRoutes(app) {
           authorAvatar: user?.avatar || null,
           userId: user?.id || null,
           via: "internal",
+          parentId: req.body.parentId || null,
           content: req.body.content,
           attachments: req.body.attachments || [],
         },
       });
-      return reply.code(201).send({ review });
+      return reply.code(201).send({ review: internalShape(review, req.user.role === "ADMIN") });
     });
 
-    // 删除(自己或 admin)
-    internal.delete("/candidates/:id/reviews/:reviewId", async (req, reply) => {
-      const review = await internal.prisma.review.findUnique({ where: { id: req.params.reviewId } });
-      if (!review) return reply.code(404).send({ error: "not_found" });
-      if (req.user.role !== "ADMIN" && review.userId !== req.user.sub) {
-        return reply.code(403).send({ error: "forbidden" });
+    // 请求删除 (作者本人, 标记 deleteRequested)
+    // admin 直接调 approve-delete 路由不走这里
+    internal.post("/candidates/:id/reviews/:reviewId/request-delete", async (req, reply) => {
+      const r = await internal.prisma.review.findUnique({ where: { id: req.params.reviewId } });
+      if (!r || r.candidateId !== req.params.id) return reply.code(404).send({ error: "not_found" });
+      if (r.deletedAt) return reply.code(400).send({ error: "already_deleted" });
+      // 仅作者本人
+      if (r.userId !== req.user.sub && req.user.role !== "ADMIN") {
+        return reply.code(403).send({ error: "forbidden", message: "只能请求删除自己写的评价" });
       }
-      await internal.prisma.review.delete({ where: { id: req.params.reviewId } });
-      return reply.code(204).send();
+      const updated = await internal.prisma.review.update({
+        where: { id: r.id },
+        data: { deleteRequested: new Date(), deleteRequestedBy: req.user.sub },
+      });
+      return { review: internalShape(updated, req.user.role === "ADMIN") };
+    });
+
+    // admin 批准删除 (soft-delete)
+    internal.post("/candidates/:id/reviews/:reviewId/approve-delete", async (req, reply) => {
+      if (req.user.role !== "ADMIN") return reply.code(403).send({ error: "admin_only" });
+      const r = await internal.prisma.review.findUnique({ where: { id: req.params.reviewId } });
+      if (!r) return reply.code(404).send({ error: "not_found" });
+      const updated = await internal.prisma.review.update({
+        where: { id: r.id },
+        data: { deletedAt: new Date() },
+      });
+      return { review: internalShape(updated, true) };
+    });
+
+    // admin 拒绝删除请求
+    internal.post("/candidates/:id/reviews/:reviewId/reject-delete", async (req, reply) => {
+      if (req.user.role !== "ADMIN") return reply.code(403).send({ error: "admin_only" });
+      const r = await internal.prisma.review.findUnique({ where: { id: req.params.reviewId } });
+      if (!r) return reply.code(404).send({ error: "not_found" });
+      const updated = await internal.prisma.review.update({
+        where: { id: r.id },
+        data: { deleteRequested: null, deleteRequestedBy: null },
+      });
+      return { review: internalShape(updated, true) };
+    });
+
+    // admin 直接 soft-delete
+    internal.delete("/candidates/:id/reviews/:reviewId", async (req, reply) => {
+      if (req.user.role !== "ADMIN") return reply.code(403).send({ error: "admin_only", message: "删除需要管理员权限" });
+      const r = await internal.prisma.review.findUnique({ where: { id: req.params.reviewId } });
+      if (!r) return reply.code(404).send({ error: "not_found" });
+      const updated = await internal.prisma.review.update({
+        where: { id: r.id },
+        data: { deletedAt: new Date() },
+      });
+      return { review: internalShape(updated, true) };
+    });
+
+    // admin 隐藏 / 取消隐藏
+    internal.post("/candidates/:id/reviews/:reviewId/hide", async (req, reply) => {
+      if (req.user.role !== "ADMIN") return reply.code(403).send({ error: "admin_only" });
+      const updated = await internal.prisma.review.update({ where: { id: req.params.reviewId }, data: { hidden: true } });
+      return { review: internalShape(updated, true) };
+    });
+    internal.post("/candidates/:id/reviews/:reviewId/unhide", async (req, reply) => {
+      if (req.user.role !== "ADMIN") return reply.code(403).send({ error: "admin_only" });
+      const updated = await internal.prisma.review.update({ where: { id: req.params.reviewId }, data: { hidden: false } });
+      return { review: internalShape(updated, true) };
     });
   });
 
   // ─── 公开端: 通过 share token 提交评价 ────────────────────
-  // 列表(公开,任何持有 token 的人都能看 — 与候选人正文一起)
   app.get("/public/share/:token/reviews", async (req, reply) => {
     const link = await app.prisma.shareLink.findUnique({ where: { token: req.params.token } });
     if (!link) return reply.code(404).send({ error: "share_not_found" });
     if (link.expiresAt && link.expiresAt < new Date()) return reply.code(410).send({ error: "share_expired" });
-    // 注意:列表不消耗 quota,quota 只在主页面查看时扣
 
     const reviews = await app.prisma.review.findMany({
       where: { candidateId: link.candidateId },
-      orderBy: { createdAt: "desc" },
+      orderBy: { createdAt: "asc" },
     });
-    return { reviews };
+    return { reviews: reviews.map(publicShape).filter(Boolean) };
   });
 
-  // 提交(必填 authorName)
   app.post("/public/share/:token/reviews", {
-    schema: {
-      body: {
-        ...POST_BODY,
-        required: ["content", "authorName"],
-      },
-    },
+    schema: { body: { ...POST_BODY, required: ["content", "authorName"] } },
   }, async (req, reply) => {
     const link = await app.prisma.shareLink.findUnique({ where: { token: req.params.token } });
     if (!link) return reply.code(404).send({ error: "share_not_found" });
     if (link.expiresAt && link.expiresAt < new Date()) return reply.code(410).send({ error: "share_expired" });
-    // 公开评论也算访问 quota? 通常不算,这里保持只有 GET 主页计 quota
+
+    if (req.body.parentId) {
+      const parent = await app.prisma.review.findUnique({ where: { id: req.body.parentId } });
+      if (!parent || parent.candidateId !== link.candidateId) return reply.code(400).send({ error: "bad_parent" });
+      if (parent.parentId) return reply.code(400).send({ error: "nested_reply_not_allowed" });
+    }
 
     const sizeErr = validateAttachmentsSize(req.body.attachments);
     if (sizeErr) return reply.code(400).send(sizeErr);
@@ -128,15 +236,42 @@ export default async function reviewsRoutes(app) {
         authorRole: "外部招聘官",
         via: "public",
         shareToken: link.token,
+        parentId: req.body.parentId || null,
         content: req.body.content,
         attachments: req.body.attachments || [],
       },
     });
-    return reply.code(201).send({ review });
+    return reply.code(201).send({ review: publicShape(review) });
   });
 
-  // 公开版预签名 URL — 给评价附件上传用
-  // 必须有有效 share token,否则拒绝
+  // 公开访客请求删除自己的评价 — 校验 authorName 匹配
+  app.post("/public/share/:token/reviews/:reviewId/request-delete", {
+    schema: {
+      body: {
+        type: "object",
+        required: ["authorName"],
+        properties: { authorName: { type: "string", minLength: 1, maxLength: 100 } },
+      },
+    },
+  }, async (req, reply) => {
+    const link = await app.prisma.shareLink.findUnique({ where: { token: req.params.token } });
+    if (!link) return reply.code(404).send({ error: "share_not_found" });
+
+    const r = await app.prisma.review.findUnique({ where: { id: req.params.reviewId } });
+    if (!r || r.candidateId !== link.candidateId) return reply.code(404).send({ error: "not_found" });
+    if (r.via !== "public") return reply.code(403).send({ error: "not_yours" });
+    if (r.deletedAt) return reply.code(400).send({ error: "already_deleted" });
+    if (r.authorName !== req.body.authorName.trim()) {
+      return reply.code(403).send({ error: "name_mismatch", message: "姓名与评价作者不一致" });
+    }
+    const updated = await app.prisma.review.update({
+      where: { id: r.id },
+      data: { deleteRequested: new Date(), deleteRequestedBy: req.body.authorName.trim() },
+    });
+    return { review: publicShape(updated) };
+  });
+
+  // 公开访客 presigned-url (附件上传)
   app.post("/public/share/:token/presigned-url", {
     schema: {
       body: {
@@ -168,7 +303,6 @@ export default async function reviewsRoutes(app) {
       return reply.code(400).send({ error: "unsupported_type" });
     }
 
-    // 文件名只保留扩展名,文件本体用 uuid
     const { randomUUID } = await import("node:crypto");
     const ext = req.body.filename.match(/\.([a-zA-Z0-9]{1,8})$/)?.[1]?.toLowerCase() || "bin";
     const key = `reviews/public/${link.candidateId}/${randomUUID()}.${ext}`;
@@ -180,7 +314,7 @@ export default async function reviewsRoutes(app) {
     return { uploadUrl, key, expiresIn: 600 };
   });
 
-  // 给附件生成下载 URL(展示用)— 任何人都能调用,因为 key 已经是不可猜 uuid
+  // 公开附件下载
   app.post("/public/share/:token/signed-get-url", {
     schema: {
       body: {
@@ -195,7 +329,6 @@ export default async function reviewsRoutes(app) {
     if (link.expiresAt && link.expiresAt < new Date()) return reply.code(410).send({ error: "share_expired" });
 
     if (!app.r2) return reply.code(503).send({ error: "r2_not_configured" });
-    // 防御:key 必须以 reviews/ 开头,避免拉别的对象
     if (!req.body.key.startsWith("reviews/")) return reply.code(400).send({ error: "bad_key" });
 
     const url = await app.r2.presignGet({ key: req.body.key, expiresIn: 600 });
