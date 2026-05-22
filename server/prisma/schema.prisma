@@ -222,6 +222,7 @@ model ShareLink {
   candidateId  String    @map("candidate_id") @db.Uuid
   candidate    Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   expiresAt    DateTime? @map("expires_at")  // null = 无限期
+  maxViews     Int?      @map("max_views")    // null = 不限制访问次数,否则达 maxViews 后接口拒绝
   createdBy    String?   @map("created_by") @db.Uuid
   viewCount    Int       @default(0) @map("view_count")
   lastViewedAt DateTime? @map("last_viewed_at")

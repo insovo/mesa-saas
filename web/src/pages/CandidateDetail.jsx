@@ -611,12 +611,22 @@ function ShareModal({ open, onClose, candidate }) {
   const [duration, setDuration] = useState("3d");
   const [custom, setCustom] = useState({ n: 7, unit: "d" });
   const [showCustom, setShowCustom] = useState(false);
+  // 访问次数限制
+  const [maxViewsPreset, setMaxViewsPreset] = useState("unlimited");  // "10" / "50" / "100" / "unlimited" / "custom"
+  const [customMaxViews, setCustomMaxViews] = useState(100);
   const [nowTick, setNowTick] = useState(Date.now());
 
   useEffect(() => {
     if (!open || !candidate?.id) return;
     setLoading(true);
-    resources.share.get(candidate.id).then(setLink).catch(() => setLink(null)).finally(() => setLoading(false));
+    resources.share.get(candidate.id).then((l) => {
+      setLink(l);
+      if (l) {
+        if (l.maxViews == null) setMaxViewsPreset("unlimited");
+        else if ([10, 50, 100].includes(l.maxViews)) setMaxViewsPreset(String(l.maxViews));
+        else { setMaxViewsPreset("custom"); setCustomMaxViews(l.maxViews); }
+      }
+    }).catch(() => setLink(null)).finally(() => setLoading(false));
   }, [open, candidate?.id]);
 
   // 实时倒计时: 链接未过期时每秒 tick 一次, 已过期时停止
@@ -639,10 +649,19 @@ function ShareModal({ open, onClose, candidate }) {
     return showCustom ? `${custom.n}${custom.unit}` : duration;
   }
 
+  function effectiveMaxViews() {
+    if (maxViewsPreset === "unlimited") return null;
+    if (maxViewsPreset === "custom") return Math.max(1, Math.min(9999, customMaxViews | 0));
+    return parseInt(maxViewsPreset, 10);
+  }
+
   async function generate() {
     setLoading(true);
     try {
-      const l = await resources.share.create(candidate.id, effectiveDuration());
+      const l = await resources.share.create(candidate.id, {
+        duration: effectiveDuration(),
+        maxViews: effectiveMaxViews(),
+      });
       setLink(l);
       toast(link ? "已重新生成链接" : "已生成分享链接", "success");
     } catch (e) { toast(e.response?.data?.message || "生成失败", "error"); }
@@ -653,9 +672,12 @@ function ShareModal({ open, onClose, candidate }) {
     if (!link) return;
     setLoading(true);
     try {
-      const l = await resources.share.update(candidate.id, effectiveDuration());
+      const l = await resources.share.update(candidate.id, {
+        duration: effectiveDuration(),
+        maxViews: effectiveMaxViews(),
+      });
       setLink(l);
-      toast("已修改有效期", "success");
+      toast("已修改配置", "success");
     } catch (e) { toast(e.response?.data?.message || "修改失败", "error"); }
     finally { setLoading(false); }
   }
@@ -675,6 +697,17 @@ function ShareModal({ open, onClose, candidate }) {
 
   function copy() {
     navigator.clipboard.writeText(publicUrl).then(() => toast("链接已复制到剪贴板", "success"));
+  }
+
+  // 配额状态: { text, tone, exceeded }
+  function fmtQuota() {
+    if (!link || link.maxViews == null) return { text: `已访问 ${link?.viewCount ?? 0} 次 · 不限`, tone: "green", exceeded: false };
+    const used = link.viewCount;
+    const max = link.maxViews;
+    const remaining = max - used;
+    if (remaining <= 0) return { text: `已用完 (${used}/${max})`, tone: "red", exceeded: true };
+    if (remaining <= Math.max(1, Math.floor(max * 0.2))) return { text: `剩余 ${remaining} 次 (${used}/${max})`, tone: "amber", exceeded: false };
+    return { text: `${used}/${max} 次`, tone: "green", exceeded: false };
   }
 
   // 精细化剩余时间 / 已过期时间
@@ -718,25 +751,37 @@ function ShareModal({ open, onClose, candidate }) {
         {link ? (
           (() => {
             const exp = fmtExpires();
-            const wrap = exp.tone === "red" ? "bg-red-50 border-red-200" : exp.tone === "amber" ? "bg-amber-50 border-amber-200" : "bg-green-50 border-green-100";
-            const head = exp.tone === "red" ? "text-red-700" : exp.tone === "amber" ? "text-amber-800" : "text-green-800";
-            const headIcon = exp.tone === "red" ? "alert-circle" : exp.tone === "amber" ? "clock" : "check-circle-2";
+            const quota = fmtQuota();
+            // 取最坏 tone (红 > 黄 > 绿)
+            const worst = (a, b) => (a === "red" || b === "red") ? "red" : (a === "amber" || b === "amber") ? "amber" : "green";
+            const tone = worst(exp.tone, quota.tone);
+            const isBlocked = exp.expired || quota.exceeded;
+            const wrap = tone === "red" ? "bg-red-50 border-red-200" : tone === "amber" ? "bg-amber-50 border-amber-200" : "bg-green-50 border-green-100";
+            const head = tone === "red" ? "text-red-700" : tone === "amber" ? "text-amber-800" : "text-green-800";
+            const headIcon = tone === "red" ? "alert-circle" : tone === "amber" ? "clock" : "check-circle-2";
             const expColor = exp.tone === "red" ? "text-red-700 font-bold" : exp.tone === "amber" ? "text-amber-700 font-bold" : "text-green-700 font-bold";
+            const quotaColor = quota.tone === "red" ? "text-red-700 font-bold" : quota.tone === "amber" ? "text-amber-700 font-bold" : "text-gray-700";
             return (
           <div className="space-y-4">
             <div className={`p-4 rounded-xl border ${wrap}`}>
               <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
                 <p className={`text-xs font-bold flex items-center gap-1.5 ${head}`}>
-                  <I name={headIcon} size={14} /> {exp.expired ? "链接已过期" : "当前分享链接"}
+                  <I name={headIcon} size={14} />
+                  {exp.expired ? "链接已过期" : quota.exceeded ? "访问次数已达上限" : "当前分享链接"}
                 </p>
-                {/* 剩余/已过期 时间显著显示 */}
-                <span className={`text-xs ${expColor} flex items-center gap-1`}>
-                  <I name="hourglass" size={12} /> {exp.text}
-                </span>
+                {/* 剩余/已过期 + 配额显著显示 */}
+                <div className="flex items-center gap-3 text-xs">
+                  <span className={`flex items-center gap-1 ${expColor}`}>
+                    <I name="hourglass" size={12} /> {exp.text}
+                  </span>
+                  <span className={`flex items-center gap-1 ${quotaColor}`}>
+                    <I name="eye" size={12} /> {quota.text}
+                  </span>
+                </div>
               </div>
               <div className="flex items-center gap-2 bg-white rounded-lg p-2">
                 <code className="flex-1 text-xs font-mono text-navy-700 truncate">{publicUrl}</code>
-                <Button size="sm" onClick={copy} icon={<I name="copy" size={12} />} disabled={exp.expired}>
+                <Button size="sm" onClick={copy} icon={<I name="copy" size={12} />} disabled={isBlocked}>
                   复制
                 </Button>
               </div>
@@ -745,25 +790,44 @@ function ShareModal({ open, onClose, candidate }) {
                   <I name="calendar" size={11} />
                   {link.expiresAt ? `到期 ${new Date(link.expiresAt).toLocaleString("zh-CN")}` : "永久有效"}
                 </span>
-                <span className="flex items-center gap-1"><I name="eye" size={11} /> 已访问 {link.viewCount} 次</span>
+                {link.maxViews != null && (
+                  <span className="flex items-center gap-1"><I name="users" size={11} /> 上限 {link.maxViews} 次</span>
+                )}
               </div>
-              {exp.expired && (
+              {/* 配额进度条 */}
+              {link.maxViews != null && (
+                <div className="mt-2 h-1.5 rounded-full bg-white/60 overflow-hidden">
+                  <div
+                    className={`h-full transition-all ${quota.tone === "red" ? "bg-red-500" : quota.tone === "amber" ? "bg-amber-500" : "bg-green-500"}`}
+                    style={{ width: `${Math.min(100, (link.viewCount / link.maxViews) * 100)}%` }}
+                  />
+                </div>
+              )}
+              {isBlocked && (
                 <p className="text-[11px] text-red-600 mt-2 flex items-start gap-1.5">
                   <I name="info" size={11} className="mt-0.5 shrink-0" />
-                  访问者打开链接会看到 "链接已过期" 错误页。请使用下方「重新生成」获取新链接,或「仅改有效期」延长当前链接。
+                  {exp.expired ? "已过期 · " : ""}
+                  {quota.exceeded ? "访问次数已用完 · " : ""}
+                  访问者打开链接会看到错误页。使用下方「重新生成」获取新链接,或「仅改配置」延长有效期/重置访问次数。
                 </p>
               )}
             </div>
 
-            <div>
-              <p className="text-xs font-bold text-gray-700 uppercase mb-2">修改有效期</p>
-              <DurationPicker {...{ duration, setDuration, custom, setCustom, showCustom, setShowCustom, PRESETS }} />
-              <div className="flex gap-2 mt-3">
+            <div className="space-y-3">
+              <div>
+                <p className="text-xs font-bold text-gray-700 uppercase mb-2">修改有效期</p>
+                <DurationPicker {...{ duration, setDuration, custom, setCustom, showCustom, setShowCustom, PRESETS }} />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-gray-700 uppercase mb-2">访问次数限制</p>
+                <MaxViewsPicker {...{ maxViewsPreset, setMaxViewsPreset, customMaxViews, setCustomMaxViews }} />
+              </div>
+              <div className="flex gap-2 pt-2">
                 <Button variant="ghost" onClick={destroy} disabled={loading} icon={<I name="trash-2" size={12} />}>删除链接</Button>
                 <div className="flex-1" />
                 <Button variant="ghost" onClick={generate} disabled={loading} icon={<I name="rotate-ccw" size={12} />}>重新生成</Button>
                 <Button onClick={changeDuration} disabled={loading} icon={<I name={loading ? "loader" : "check"} size={12} className={loading ? "animate-spin" : ""} />}>
-                  仅改有效期
+                  仅改配置
                 </Button>
               </div>
             </div>
@@ -776,10 +840,14 @@ function ShareModal({ open, onClose, candidate }) {
           </div>
         ) : (
           <div className="space-y-4">
-            <p className="text-sm text-gray-700">生成一个 <strong>公开链接</strong>(无须登录),只能看到这位候选人的简报,不暴露其他页面信息。链接过期后立即失效。</p>
+            <p className="text-sm text-gray-700">生成一个 <strong>公开链接</strong>(无须登录),只能看到这位候选人的简报,不暴露其他页面信息。链接过期或访问次数用完后立即失效。</p>
             <div>
               <p className="text-xs font-bold text-gray-700 uppercase mb-2">有效期</p>
               <DurationPicker {...{ duration, setDuration, custom, setCustom, showCustom, setShowCustom, PRESETS }} />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-gray-700 uppercase mb-2">访问次数限制</p>
+              <MaxViewsPicker {...{ maxViewsPreset, setMaxViewsPreset, customMaxViews, setCustomMaxViews }} />
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={onClose}>取消</Button>
@@ -791,6 +859,45 @@ function ShareModal({ open, onClose, candidate }) {
         )}
       </div>
     </Modal>
+  );
+}
+
+function MaxViewsPicker({ maxViewsPreset, setMaxViewsPreset, customMaxViews, setCustomMaxViews }) {
+  const PRESETS = [
+    { v: "unlimited", l: "不限制 (默认)" },
+    { v: "10", l: "10 次" },
+    { v: "50", l: "50 次" },
+    { v: "100", l: "100 次" },
+    { v: "custom", l: "自定义" },
+  ];
+  return (
+    <>
+      <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+        {PRESETS.map((p) => (
+          <button
+            key={p.v}
+            onClick={() => setMaxViewsPreset(p.v)}
+            className={`px-3 py-2 rounded-lg text-xs font-bold transition border-2
+              ${maxViewsPreset === p.v ? "border-brand bg-brand-50 text-brand" : "border-gray-200 hover:border-gray-300 text-gray-700"}`}
+          >
+            {p.l}
+          </button>
+        ))}
+      </div>
+      {maxViewsPreset === "custom" && (
+        <div className="mt-2 flex items-center gap-2">
+          <input
+            type="number"
+            min="1"
+            max="9999"
+            value={customMaxViews}
+            onChange={(e) => setCustomMaxViews(Math.max(1, Math.min(9999, parseInt(e.target.value, 10) || 1)))}
+            className="flex-1 h-10 rounded-lg border border-gray-200 px-3 text-sm text-navy-700 outline-none focus:border-brand"
+          />
+          <span className="text-[11px] text-gray-600">次 · 范围 1 ~ 9999</span>
+        </div>
+      )}
+    </>
   );
 }
 

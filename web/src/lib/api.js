@@ -86,8 +86,8 @@ export const resources = {
   },
   share: {
     get: (candidateId) => api.get(`/candidates/${candidateId}/share`).then((r) => r.data.link),
-    create: (candidateId, duration) => api.post(`/candidates/${candidateId}/share`, { duration }).then((r) => r.data.link),
-    update: (candidateId, duration) => api.patch(`/candidates/${candidateId}/share`, { duration }).then((r) => r.data.link),
+    create: (candidateId, body) => api.post(`/candidates/${candidateId}/share`, body).then((r) => r.data.link),
+    update: (candidateId, body) => api.patch(`/candidates/${candidateId}/share`, body).then((r) => r.data.link),
     remove: (candidateId) => api.delete(`/candidates/${candidateId}/share`),
   },
 };

@@ -43,10 +43,16 @@ export default function SharedCandidate() {
       <div className="min-h-screen bg-lightPrimary flex items-center justify-center px-4">
         <Card className="p-10 max-w-md w-full text-center">
           <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4">
-            <I name={err.error === "share_expired" ? "clock" : "link-2-off"} size={28} className="text-red-500" />
+            <I name={
+              err.error === "share_expired" ? "clock"
+                : err.error === "share_quota_exceeded" ? "users"
+                : "link-2-off"
+            } size={28} className="text-red-500" />
           </div>
           <h1 className="text-xl font-bold text-navy-700 mb-2">
-            {err.error === "share_expired" ? "链接已过期" : "链接无效"}
+            {err.error === "share_expired" ? "链接已过期"
+              : err.error === "share_quota_exceeded" ? "访问次数已达上限"
+              : "链接无效"}
           </h1>
           <p className="text-sm text-gray-700">{err.message || "请联系分享方"}</p>
         </Card>
