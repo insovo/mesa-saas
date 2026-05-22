@@ -196,8 +196,32 @@ export default function Jobs() {
               <I name="x" size={20} />
             </button>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <Input containerClassName="col-span-2" label="岗位名 *" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Input containerClassName="md:col-span-2" label="岗位名 *" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required />
+
+            {/* JD 描述 — 关键信息,放在显眼位置 */}
+            <div className="md:col-span-2">
+              <label className="text-sm text-navy-700 font-bold ml-3 block mb-2 flex items-center gap-2">
+                <I name="file-text" size={14} className="text-brand" />
+                JD 描述 <span className="text-[11px] text-amber-700 font-normal">★ 关键 · 用于 AI 候选人匹配度评估</span>
+              </label>
+              <textarea
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                rows={10}
+                placeholder={`示例 ——\n岗位职责:\n1. ...\n2. ...\n\n任职要求:\n1. 5 年以上 XX 经验\n2. 熟悉 ...\n3. 学历 ...\n\n加分项:\n- ...`}
+                className="w-full p-3 rounded-xl border-2 border-gray-200 text-sm text-navy-700 outline-none focus:border-brand resize-y font-mono leading-relaxed"
+              />
+              <div className="flex items-center justify-between mt-1.5 ml-1">
+                <p className={`text-[11px] ${form.description.length < 200 ? "text-amber-700" : "text-gray-600"}`}>
+                  {form.description.length < 200
+                    ? `当前 ${form.description.length} 字符 · 建议至少 200 字让 AI 评估更准`
+                    : `${form.description.length} 字符 ✓`}
+                </p>
+                <p className="text-[11px] text-gray-600">上限 20,000</p>
+              </div>
+            </div>
+
             <Input label="部门" value={form.dept} onChange={(e) => setForm({ ...form, dept: e.target.value })} />
             <Input label="负责人" value={form.owner} onChange={(e) => setForm({ ...form, owner: e.target.value })} />
             <Input label="职级" value={form.level} onChange={(e) => setForm({ ...form, level: e.target.value })} placeholder="如 P6–P7" />
@@ -215,19 +239,6 @@ export default function Jobs() {
                 <option value="mid">正常</option>
                 <option value="low">可缓</option>
               </select>
-            </div>
-            <div className="col-span-2">
-              <label className="text-sm text-navy-700 font-bold ml-3 block mb-2">JD 描述(用于 AI 匹配度评估)</label>
-              <textarea
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-                rows={8}
-                placeholder="岗位职责 / 任职要求 / 加分项 ... 详细描述,LLM 评估候选人匹配度时会用此内容。可空但不建议。"
-                className="w-full p-3 rounded-xl border border-gray-200 text-sm text-navy-700 outline-none focus:border-brand resize-none"
-              />
-              <p className="text-[11px] text-gray-600 mt-1.5 ml-1">
-                {form.description.length} / 20,000 字符 · 建议至少 200 字让 AI 评估更准
-              </p>
             </div>
           </div>
           <div className="flex justify-end gap-3 mt-8">
