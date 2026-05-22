@@ -47,14 +47,25 @@ export default async function jobsRoutes(app) {
       ];
     }
     const [items, total] = await Promise.all([
-      app.prisma.job.findMany({ where, orderBy: { updatedAt: "desc" }, skip, take }),
+      app.prisma.job.findMany({
+        where,
+        orderBy: { updatedAt: "desc" },
+        skip,
+        take,
+        // 动态统计: 已关联此 JD 的候选人数 + 已入职到此岗位的员工数
+        // 取代 Job.candidates 这个 int 字段的固定值
+        include: { _count: { select: { linkedCandidates: true, employees: true } } },
+      }),
       app.prisma.job.count({ where }),
     ]);
     return { items, total, skip, take };
   });
 
   app.get("/:id", async (req, reply) => {
-    const job = await app.prisma.job.findFirst({ where: whereByIdOrExternal(req.params.id) });
+    const job = await app.prisma.job.findFirst({
+      where: whereByIdOrExternal(req.params.id),
+      include: { _count: { select: { linkedCandidates: true, employees: true } } },
+    });
     if (!job) return reply.code(404).send({ error: "not_found" });
     return { job };
   });

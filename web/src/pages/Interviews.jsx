@@ -56,7 +56,7 @@ export default function Interviews() {
 
   return (
     <div className="space-y-6">
-      <Card className="p-4 flex items-center justify-start gap-2 overflow-x-auto">
+      <Card className="p-4 !flex-row items-center justify-start gap-2 overflow-x-auto">
         <button
           onClick={() => setStatusFilter("")}
           className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition

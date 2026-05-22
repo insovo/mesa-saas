@@ -102,7 +102,7 @@ export default function Jobs() {
 
   return (
     <div className="space-y-6">
-      <Card className="p-4 flex items-center justify-start gap-2 overflow-x-auto">
+      <Card className="p-4 !flex-row items-center justify-start gap-2 overflow-x-auto">
         {[
           { v: "", l: "全部" },
           { v: "high", l: "紧急" },
@@ -158,26 +158,32 @@ export default function Jobs() {
                   {j.level && <Tag tone="brand">{j.level}</Tag>}
                   {j.owner && <Tag>负责人 · {j.owner}</Tag>}
                 </div>
-                <div className="grid grid-cols-2 gap-2 mt-4 text-xs">
+                <div className="grid grid-cols-3 gap-2 mt-4 text-xs">
                   <div className="bg-white rounded-xl p-2.5">
-                    <p className="text-gray-700">名额</p>
+                    <p className="text-gray-700 text-[11px]">名额</p>
                     <p className="text-lg font-bold text-navy-700 mt-0.5">{j.openings}</p>
                   </div>
-                  <div className="bg-white rounded-xl p-2.5">
-                    <p className="text-gray-700">候选人</p>
-                    <p className="text-lg font-bold text-navy-700 mt-0.5">{j.candidates}</p>
+                  <div className="bg-white rounded-xl p-2.5" title="已关联此 JD 的候选人数 (实时统计)">
+                    <p className="text-gray-700 text-[11px]">候选人</p>
+                    <p className="text-lg font-bold text-navy-700 mt-0.5">{j._count?.linkedCandidates ?? j.candidates ?? 0}</p>
+                  </div>
+                  <div className="bg-white rounded-xl p-2.5" title="已入职到此岗位的员工数 (Employee 表)">
+                    <p className="text-gray-700 text-[11px]">在职</p>
+                    <p className="text-lg font-bold text-green-600 mt-0.5">{j._count?.employees ?? 0}</p>
                   </div>
                 </div>
-                <div className="opacity-0 group-hover:opacity-100 transition absolute top-3 right-3 flex gap-1">
+                <div className="opacity-0 group-hover:opacity-100 transition absolute top-3 right-3 flex gap-1.5 bg-white/60 backdrop-blur-sm rounded-full p-1">
                   <button
                     onClick={() => openEdit(j)}
-                    className="w-7 h-7 rounded-full bg-white text-gray-700 hover:text-brand flex items-center justify-center"
+                    className="w-7 h-7 rounded-full bg-white text-gray-700 hover:text-brand hover:bg-lightPrimary flex items-center justify-center shadow-sm"
+                    title="编辑"
                   >
                     <I name="pencil" size={12} />
                   </button>
                   <button
                     onClick={() => onDelete(j)}
-                    className="w-7 h-7 rounded-full bg-white text-red-500 hover:bg-red-50 flex items-center justify-center"
+                    className="w-7 h-7 rounded-full bg-white text-red-500 hover:bg-red-50 flex items-center justify-center shadow-sm"
+                    title="删除"
                   >
                     <I name="trash-2" size={12} />
                   </button>
