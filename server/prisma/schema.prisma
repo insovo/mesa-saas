@@ -247,12 +247,35 @@ model Review {
   // admin 隐藏 — 普通用户看不到,admin 视角显示"已隐藏"标记
   hidden       Boolean   @default(false)
 
+  // 表决态度(用于回复评价): "approve" | "reject" | null(不表态)
+  stance       String?
+
+  // 表决票数(用于显示与排序)
+  upvotes      Int       @default(0)
+  downvotes    Int       @default(0)
+
+  votes        ReviewVote[]
+
   createdAt    DateTime  @default(now()) @map("created_at")
 
   @@index([candidateId])
   @@index([userId])
   @@index([parentId])
   @@map("reviews")
+}
+
+// 登录用户对评价的投票, 用于去重(一个用户对一个评价只能 +1 或 -1 或不投)
+// 公开访客投票不写此表(无法可靠去重), 直接累加 Review.up/downvotes,前端用 localStorage 限制
+model ReviewVote {
+  id        String   @id @default(uuid()) @db.Uuid
+  reviewId  String   @map("review_id") @db.Uuid
+  review    Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  userId    String   @map("user_id") @db.Uuid
+  value     Int      // +1 | -1
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([reviewId, userId])
+  @@map("review_votes")
 }
 
 // 候选人备注 — 详情页时间线显示

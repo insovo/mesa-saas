@@ -99,6 +99,10 @@ export const resources = {
       api.post(`/candidates/${candidateId}/reviews/${reviewId}/hide`).then((r) => r.data.review),
     unhide: (candidateId, reviewId) =>
       api.post(`/candidates/${candidateId}/reviews/${reviewId}/unhide`).then((r) => r.data.review),
+    vote: (candidateId, reviewId, value) =>
+      api.post(`/candidates/${candidateId}/reviews/${reviewId}/vote`, { value }).then((r) => r.data),
+    myVotes: (candidateId) =>
+      api.get(`/candidates/${candidateId}/reviews-votes`).then((r) => r.data.votes),
   },
   share: {
     get: (candidateId) => api.get(`/candidates/${candidateId}/share`).then((r) => r.data.link),

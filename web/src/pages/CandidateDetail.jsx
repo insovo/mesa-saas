@@ -116,7 +116,8 @@ export default function CandidateDetail() {
   // 评价
   const [reviews, setReviews] = useState([]);
   const [reviewOpen, setReviewOpen] = useState(false);
-  const [replyTo, setReplyTo] = useState(null);  // 回复的父评价对象
+  const [replyTo, setReplyTo] = useState(null);
+  const [myVotes, setMyVotes] = useState({});  // { reviewId: 1|-1 }
   const me = (() => { try { return JSON.parse(localStorage.getItem("mesa.user") || "null"); } catch { return null; } })();
   const isAdmin = me?.role === "ADMIN";
 
@@ -134,12 +135,28 @@ export default function CandidateDetail() {
     // eslint-disable-next-line
   }, [id]);
 
-  // 候选人 id 拿到后,拉备注 + 评价
+  // 候选人 id 拿到后,拉备注 + 评价 + 我的投票
   useEffect(() => {
     if (!c?.id) return;
     resources.notes.list(c.id).then(setNotes).catch(() => {});
     resources.reviews.list(c.id).then(setReviews).catch(() => {});
+    resources.reviews.myVotes(c.id).then(setMyVotes).catch(() => {});
   }, [c?.id]);
+
+  async function vote(reviewId, value) {
+    const prev = myVotes[reviewId] || 0;
+    const nextValue = prev === value ? 0 : value;  // 同方向再点 = 取消
+    try {
+      const { review, myVote } = await resources.reviews.vote(c.id, reviewId, nextValue);
+      setReviews((prev2) => prev2.map((r) => r.id === review.id ? { ...r, upvotes: review.upvotes, downvotes: review.downvotes } : r));
+      setMyVotes((p) => {
+        const next = { ...p };
+        if (myVote === 0) delete next[reviewId];
+        else next[reviewId] = myVote;
+        return next;
+      });
+    } catch (e) { toast(e.response?.data?.message || "投票失败", "error"); }
+  }
 
   async function changeStatus(newStatus) {
     setStatusOpen(false);
@@ -491,6 +508,8 @@ export default function CandidateDetail() {
               candidate={c}
               me={me}
               isAdmin={isAdmin}
+              myVotes={myVotes}
+              onVote={vote}
               onAdd={() => { setReplyTo(null); setReviewOpen(true); }}
               onReply={(r) => { setReplyTo(r); setReviewOpen(true); }}
               updateReview={(r) => setReviews((prev) => prev.map((x) => x.id === r.id ? r : x))}
@@ -948,15 +967,33 @@ function fmtReviewTime(iso) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-function ReviewsCard({ reviews, candidate, me, isAdmin, onAdd, onReply, updateReview }) {
-  // 树形结构: parent 倒序(最新在最上),replies 正序在父下方
-  const tree = reviews.filter((r) => !r.parentId);  // 已 desc 排序
+function ReviewsCard({ reviews, candidate, me, isAdmin, myVotes, onVote, onAdd, onReply, updateReview }) {
+  // 排序模式
+  const [sortMode, setSortMode] = useState("newest");  // "newest" | "oldest" | "most_approved" | "most_rejected"
+  const SORT_OPTIONS = [
+    { v: "newest",         l: "最新在前", icon: "arrow-down" },
+    { v: "oldest",         l: "最旧在前", icon: "arrow-up" },
+    { v: "most_approved",  l: "最赞同",    icon: "thumbs-up" },
+    { v: "most_rejected",  l: "最否决",    icon: "thumbs-down" },
+  ];
+
+  // 排序顶级评价
+  let tree = reviews.filter((r) => !r.parentId);
+  tree = [...tree].sort((a, b) => {
+    if (sortMode === "newest") return new Date(b.createdAt) - new Date(a.createdAt);
+    if (sortMode === "oldest") return new Date(a.createdAt) - new Date(b.createdAt);
+    if (sortMode === "most_approved") return (b.upvotes || 0) - (a.upvotes || 0) || new Date(b.createdAt) - new Date(a.createdAt);
+    if (sortMode === "most_rejected") return (b.downvotes || 0) - (a.downvotes || 0) || new Date(b.createdAt) - new Date(a.createdAt);
+    return 0;
+  });
   const repliesByParent = {};
   reviews.filter((r) => r.parentId).forEach((r) => {
     (repliesByParent[r.parentId] = repliesByParent[r.parentId] || []).push(r);
   });
-  // replies 内部按时间正序展示(早回复在上,晚回复在下)
-  Object.keys(repliesByParent).forEach((k) => repliesByParent[k].reverse());
+  // 回复内部统一按时间正序(老的在上,新的在下)
+  Object.keys(repliesByParent).forEach((k) =>
+    repliesByParent[k].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+  );
 
   const visibleCount = reviews.filter((r) => !r.deletedAt).length;
 
@@ -975,12 +1012,20 @@ function ReviewsCard({ reviews, candidate, me, isAdmin, onAdd, onReply, updateRe
 
   return (
     <Card className="p-5 md:p-6">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-3">
         <h3 className="title-card flex items-center gap-2">
           <I name="message-circle" size={18} className="text-brand" />
           评价
           <span className="text-[11px] px-2 py-0.5 rounded-full bg-brand text-white font-bold">{visibleCount}</span>
         </h3>
+        <select
+          value={sortMode}
+          onChange={(e) => setSortMode(e.target.value)}
+          className="text-[11px] h-7 px-2 rounded-lg border border-gray-200 text-gray-700 outline-none focus:border-brand bg-white"
+          title="排序方式"
+        >
+          {SORT_OPTIONS.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
+        </select>
       </div>
 
       {tree.length === 0 ? (
@@ -995,6 +1040,8 @@ function ReviewsCard({ reviews, candidate, me, isAdmin, onAdd, onReply, updateRe
               candidate={candidate}
               me={me}
               isAdmin={isAdmin}
+              myVotes={myVotes}
+              onVote={onVote}
               onReply={onReply}
               updateReview={updateReview}
               selectedIds={selectedIds}
@@ -1040,7 +1087,7 @@ function VisibilityChip({ visibility }) {
   );
 }
 
-function ReviewItem({ review, replies = [], candidate, me, isAdmin, onReply, updateReview, isReply = false, selectedIds = [], toggleSelect }) {
+function ReviewItem({ review, replies = [], candidate, me, isAdmin, myVotes = {}, onVote, onReply, updateReview, isReply = false, selectedIds = [], toggleSelect }) {
   const isMine = me?.id && review.userId === me.id;
   const canRequestDelete = !review.deletedAt && (isMine || isAdmin);
   const pendingDelete = !!review.deleteRequested && !review.deletedAt;
@@ -1091,6 +1138,16 @@ function ReviewItem({ review, replies = [], candidate, me, isAdmin, onReply, upd
       {review.authorRole && <span className="text-[10px] text-gray-700 font-medium ml-1">{review.authorRole}</span>}
       {review.via === "public" && (
         <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 font-bold">外部</span>
+      )}
+      {review.stance === "approve" && (
+        <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-green-50 text-green-700 font-bold inline-flex items-center gap-1">
+          <I name="thumbs-up" size={9} /> 赞同
+        </span>
+      )}
+      {review.stance === "reject" && (
+        <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-red-50 text-red-700 font-bold inline-flex items-center gap-1">
+          <I name="thumbs-down" size={9} /> 否决
+        </span>
       )}
       <VisibilityChip visibility={review.visibility} />
       {review.hidden && (
@@ -1144,7 +1201,29 @@ function ReviewItem({ review, replies = [], candidate, me, isAdmin, onReply, upd
           )}
           {/* 操作行 — 独立到底部, 与评论内容分离 */}
           {!review.deletedAt && (
-            <div className="flex items-center gap-3 mt-2 pt-1.5 border-t border-gray-100 text-[11px]">
+            <div className="flex items-center gap-2 mt-2 pt-1.5 border-t border-gray-100 text-[11px] flex-wrap">
+              {/* 表决按钮 */}
+              {onVote && (
+                <>
+                  <button
+                    onClick={() => onVote(review.id, 1)}
+                    className={`px-2 py-0.5 rounded font-medium inline-flex items-center gap-1 transition
+                      ${myVotes[review.id] === 1 ? "bg-green-100 text-green-700" : "text-gray-700 hover:bg-green-50 hover:text-green-700"}`}
+                    title="赞同"
+                  >
+                    <I name="thumbs-up" size={11} /> {review.upvotes || 0}
+                  </button>
+                  <button
+                    onClick={() => onVote(review.id, -1)}
+                    className={`px-2 py-0.5 rounded font-medium inline-flex items-center gap-1 transition
+                      ${myVotes[review.id] === -1 ? "bg-red-100 text-red-700" : "text-gray-700 hover:bg-red-50 hover:text-red-700"}`}
+                    title="否决"
+                  >
+                    <I name="thumbs-down" size={11} /> {review.downvotes || 0}
+                  </button>
+                  <span className="text-gray-300">·</span>
+                </>
+              )}
               {!isReply && (
                 <button onClick={() => onReply(review)} className="text-brand hover:bg-brand-50 px-2 py-0.5 rounded font-medium flex items-center gap-1">
                   <I name="reply" size={10} /> 回复
@@ -1175,7 +1254,7 @@ function ReviewItem({ review, replies = [], candidate, me, isAdmin, onReply, upd
       {replies.length > 0 && (
         <ul className="mt-3 ml-9 pl-3 border-l-2 border-gray-100 space-y-3">
           {replies.map((rp) => (
-            <ReviewItem key={rp.id} review={rp} candidate={candidate} me={me} isAdmin={isAdmin} onReply={onReply} updateReview={updateReview} isReply />
+            <ReviewItem key={rp.id} review={rp} candidate={candidate} me={me} isAdmin={isAdmin} myVotes={myVotes} onVote={onVote} onReply={onReply} updateReview={updateReview} isReply />
           ))}
         </ul>
       )}
@@ -1217,6 +1296,7 @@ function ReviewModal({ open, onClose, candidate, replyTo, onCreated }) {
   const [linkInput, setLinkInput] = useState("");
   const [attachments, setAttachments] = useState([]);
   const [visibility, setVisibility] = useState("public");
+  const [stance, setStance] = useState(null);  // "approve" | "reject" | null
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const me = (() => { try { return JSON.parse(localStorage.getItem("mesa.user") || "null"); } catch { return null; } })();
@@ -1228,6 +1308,7 @@ function ReviewModal({ open, onClose, candidate, replyTo, onCreated }) {
       setLinkInput("");
       setAttachments([]);
       setVisibility("public");
+      setStance(null);
     }
   }, [open]);
 
@@ -1296,6 +1377,7 @@ function ReviewModal({ open, onClose, candidate, replyTo, onCreated }) {
       } else if (replyTo?.id) {
         body.parentId = replyTo.id;
       }
+      if (replyTo && stance) body.stance = stance;
       const r = await resources.reviews.create(candidate.id, body);
       onCreated(r);
       toast(replyTo ? "已回复" : "评价已添加", "success");
@@ -1354,6 +1436,41 @@ function ReviewModal({ open, onClose, candidate, replyTo, onCreated }) {
             {content.length} / 500 字符
           </p>
         </div>
+
+        {/* 回复 stance(赞同 / 否决 / 不表态)— 仅回复时显示 */}
+        {replyTo && (
+          <div>
+            <p className="text-xs font-bold text-gray-700 uppercase mb-2 flex items-center gap-1.5">
+              <I name="vote" size={12} /> 对原评价的态度 (可选)
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                onClick={() => setStance(stance === "approve" ? null : "approve")}
+                disabled={saving}
+                className={`p-2.5 rounded-xl border-2 text-xs font-bold transition flex items-center justify-center gap-1.5
+                  ${stance === "approve" ? "border-green-500 bg-green-50 text-green-700" : "border-gray-200 text-gray-700 hover:border-green-300"}`}
+              >
+                <I name="thumbs-up" size={12} /> 赞同
+              </button>
+              <button
+                onClick={() => setStance(stance === "reject" ? null : "reject")}
+                disabled={saving}
+                className={`p-2.5 rounded-xl border-2 text-xs font-bold transition flex items-center justify-center gap-1.5
+                  ${stance === "reject" ? "border-red-500 bg-red-50 text-red-700" : "border-gray-200 text-gray-700 hover:border-red-300"}`}
+              >
+                <I name="thumbs-down" size={12} /> 否决
+              </button>
+              <button
+                onClick={() => setStance(null)}
+                disabled={saving}
+                className={`p-2.5 rounded-xl border-2 text-xs font-bold transition flex items-center justify-center gap-1.5
+                  ${stance === null ? "border-brand bg-brand-50 text-brand" : "border-gray-200 text-gray-700 hover:border-gray-300"}`}
+              >
+                <I name="minus" size={12} /> 不表态
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* 可见范围 */}
         <div>

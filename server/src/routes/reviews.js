@@ -27,6 +27,7 @@ const POST_BODY = {
     parentId: { type: "string", format: "uuid" },
     referencedIds: { type: "array", items: { type: "string", format: "uuid" }, maxItems: 50 },
     visibility: { type: "string", enum: ["public", "internal", "admin"] },
+    stance: { type: ["string", "null"], enum: ["approve", "reject", null] },
   },
   additionalProperties: false,
 };
@@ -59,6 +60,9 @@ function publicShape(r) {
     visibility: r.visibility,
     parentId: r.parentId,
     referencedIds: r.referencedIds || [],
+    stance: r.stance || null,
+    upvotes: r.upvotes || 0,
+    downvotes: r.downvotes || 0,
     content: r.deletedAt ? "" : r.content,
     attachments: r.deletedAt ? [] : (r.attachments || []),
     deletedAt: r.deletedAt,
@@ -83,6 +87,9 @@ function internalShape(r, isAdmin) {
     shareToken: r.shareToken,
     parentId: r.parentId,
     referencedIds: r.referencedIds || [],
+    stance: r.stance || null,
+    upvotes: r.upvotes || 0,
+    downvotes: r.downvotes || 0,
     content: r.deletedAt ? "" : r.content,
     attachments: r.deletedAt ? [] : (r.attachments || []),
     hidden: r.hidden,
@@ -139,6 +146,7 @@ export default async function reviewsRoutes(app) {
         });
         if (refs.length !== refIds.length) return reply.code(400).send({ error: "bad_reference_ids" });
       }
+      const stance = req.body.stance && ["approve", "reject"].includes(req.body.stance) ? req.body.stance : null;
       const review = await internal.prisma.review.create({
         data: {
           candidateId: req.params.id,
@@ -150,6 +158,7 @@ export default async function reviewsRoutes(app) {
           visibility,
           parentId: req.body.parentId || (refIds[0] || null),
           referencedIds: refIds,
+          stance,
           content: req.body.content,
           attachments: req.body.attachments || [],
         },
@@ -210,6 +219,57 @@ export default async function reviewsRoutes(app) {
       return { review: internalShape(updated, true) };
     });
 
+    // 投票 (登录用户) - 用 ReviewVote 表去重,一个用户对一个评价只一票
+    // body: { value: 1 | -1 | 0 } (0 = 取消)
+    internal.post("/candidates/:id/reviews/:reviewId/vote", {
+      schema: { body: { type: "object", required: ["value"], properties: { value: { type: "integer", enum: [-1, 0, 1] } } } },
+    }, async (req, reply) => {
+      const reviewId = req.params.reviewId;
+      const userId = req.user.sub;
+      const value = req.body.value;
+
+      const r = await internal.prisma.review.findUnique({ where: { id: reviewId } });
+      if (!r || r.candidateId !== req.params.id) return reply.code(404).send({ error: "not_found" });
+      if (r.deletedAt) return reply.code(400).send({ error: "deleted" });
+
+      const existing = await internal.prisma.reviewVote.findUnique({ where: { reviewId_userId: { reviewId, userId } } });
+      const prevValue = existing?.value || 0;
+
+      if (value === 0) {
+        // 取消
+        if (existing) {
+          await internal.prisma.reviewVote.delete({ where: { id: existing.id } });
+        }
+      } else if (existing) {
+        await internal.prisma.reviewVote.update({ where: { id: existing.id }, data: { value } });
+      } else {
+        await internal.prisma.reviewVote.create({ data: { reviewId, userId, value } });
+      }
+
+      // 算 delta 更新 upvotes/downvotes
+      const upDelta = (value === 1 ? 1 : 0) - (prevValue === 1 ? 1 : 0);
+      const downDelta = (value === -1 ? 1 : 0) - (prevValue === -1 ? 1 : 0);
+      const updated = await internal.prisma.review.update({
+        where: { id: reviewId },
+        data: {
+          upvotes: { increment: upDelta },
+          downvotes: { increment: downDelta },
+        },
+      });
+      return { review: internalShape(updated, req.user.role === "ADMIN"), myVote: value };
+    });
+
+    // 拉用户已投票 map
+    internal.get("/candidates/:id/reviews-votes", async (req) => {
+      const votes = await internal.prisma.reviewVote.findMany({
+        where: { userId: req.user.sub, review: { candidateId: req.params.id } },
+        select: { reviewId: true, value: true },
+      });
+      const map = {};
+      for (const v of votes) map[v.reviewId] = v.value;
+      return { votes: map };
+    });
+
     // admin 隐藏 / 取消隐藏
     internal.post("/candidates/:id/reviews/:reviewId/hide", async (req, reply) => {
       if (req.user.role !== "ADMIN") return reply.code(403).send({ error: "admin_only" });
@@ -261,6 +321,7 @@ export default async function reviewsRoutes(app) {
       });
       if (refs.length !== refIds.length) return reply.code(400).send({ error: "bad_reference_ids" });
     }
+    const stance = req.body.stance && ["approve", "reject"].includes(req.body.stance) ? req.body.stance : null;
     const review = await app.prisma.review.create({
       data: {
         candidateId: link.candidateId,
@@ -271,6 +332,7 @@ export default async function reviewsRoutes(app) {
         shareToken: link.token,
         parentId: req.body.parentId || (refIds[0] || null),
         referencedIds: refIds,
+        stance,
         content: req.body.content,
         attachments: req.body.attachments || [],
       },
@@ -301,6 +363,45 @@ export default async function reviewsRoutes(app) {
     const updated = await app.prisma.review.update({
       where: { id: r.id },
       data: { deleteRequested: new Date(), deleteRequestedBy: req.body.authorName.trim() },
+    });
+    return { review: publicShape(updated) };
+  });
+
+  // 公开访客投票 — 用 voterName + reviewId 弱去重 (前端 localStorage 也限制)
+  // body: { value: 1|-1|0, voterName }
+  app.post("/public/share/:token/reviews/:reviewId/vote", {
+    schema: {
+      body: {
+        type: "object",
+        required: ["value"],
+        properties: {
+          value: { type: "integer", enum: [-1, 0, 1] },
+          voterName: { type: "string", minLength: 1, maxLength: 100 },
+          prevValue: { type: "integer", enum: [-1, 0, 1] },
+        },
+      },
+    },
+  }, async (req, reply) => {
+    const link = await app.prisma.shareLink.findUnique({ where: { token: req.params.token } });
+    if (!link) return reply.code(404).send({ error: "share_not_found" });
+    if (link.expiresAt && link.expiresAt < new Date()) return reply.code(410).send({ error: "share_expired" });
+
+    const r = await app.prisma.review.findUnique({ where: { id: req.params.reviewId } });
+    if (!r || r.candidateId !== link.candidateId) return reply.code(404).send({ error: "not_found" });
+    if (r.deletedAt) return reply.code(400).send({ error: "deleted" });
+
+    // 公开访客无可靠去重,前端用 localStorage 限制重复点击
+    // 后端用客户端传的 prevValue 算 delta
+    const prev = req.body.prevValue || 0;
+    const value = req.body.value;
+    const upDelta = (value === 1 ? 1 : 0) - (prev === 1 ? 1 : 0);
+    const downDelta = (value === -1 ? 1 : 0) - (prev === -1 ? 1 : 0);
+    const updated = await app.prisma.review.update({
+      where: { id: r.id },
+      data: {
+        upvotes: { increment: upDelta },
+        downvotes: { increment: downDelta },
+      },
     });
     return { review: publicShape(updated) };
   });

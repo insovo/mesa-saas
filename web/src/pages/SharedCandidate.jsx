@@ -342,14 +342,24 @@ function PublicReviewItem({ review, replies = [], token, onReply, updateReview, 
         <Avatar name={review.authorName} src={review.authorAvatar} size={isReply ? 28 : 32} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <p className={`text-sm font-bold ${review.deletedAt ? "text-gray-500" : "text-navy-700"}`}>
-              {review.authorName}
-              {review.authorRole && <span className="ml-2 text-[10px] text-gray-700 font-medium">{review.authorRole}</span>}
+            <p className={`text-sm font-bold flex items-center gap-1 flex-wrap ${review.deletedAt ? "text-gray-500" : "text-navy-700"}`}>
+              <span>{review.authorName}</span>
+              {review.authorRole && <span className="text-[10px] text-gray-700 font-medium ml-1">{review.authorRole}</span>}
               {review.via === "public" && (
-                <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 font-bold">外部</span>
+                <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 font-bold">外部</span>
+              )}
+              {review.stance === "approve" && (
+                <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-green-50 text-green-700 font-bold inline-flex items-center gap-1">
+                  <I name="thumbs-up" size={9} /> 赞同
+                </span>
+              )}
+              {review.stance === "reject" && (
+                <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-red-50 text-red-700 font-bold inline-flex items-center gap-1">
+                  <I name="thumbs-down" size={9} /> 否决
+                </span>
               )}
               {pendingDelete && (
-                <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold">待审核删除</span>
+                <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold">待审核删除</span>
               )}
             </p>
             <span className="text-[11px] text-gray-700 flex items-center gap-1">
@@ -372,7 +382,10 @@ function PublicReviewItem({ review, replies = [], token, onReply, updateReview, 
             </div>
           )}
           {!review.deletedAt && (
-            <div className="flex items-center gap-3 mt-2 pt-1.5 border-t border-gray-100 text-[11px]">
+            <div className="flex items-center gap-2 mt-2 pt-1.5 border-t border-gray-100 text-[11px] flex-wrap">
+              {/* 公开端简化投票:仅显示 + 数,点击 +1,后端无登录态去重(前端 localStorage 限制) */}
+              <PublicVoteButtons review={review} token={token} updateReview={updateReview} />
+              <span className="text-gray-300">·</span>
               {!isReply && (
                 <button onClick={() => onReply(review)} className="text-brand hover:bg-brand-50 px-2 py-0.5 rounded font-medium flex items-center gap-1">
                   <I name="reply" size={10} /> 回复
@@ -405,6 +418,56 @@ function PublicReviewItem({ review, replies = [], token, onReply, updateReview, 
         </ul>
       )}
     </li>
+  );
+}
+
+// 公开端投票按钮: 用 localStorage 记录每个 reviewId 上次投票, 切换时传 prevValue 给后端算 delta
+const PUBLIC_VOTE_KEY = "mesa.public.review.votes";
+
+function PublicVoteButtons({ review, token, updateReview }) {
+  const [myVote, setMyVote] = useState(0);
+  useEffect(() => {
+    try {
+      const m = JSON.parse(localStorage.getItem(PUBLIC_VOTE_KEY) || "{}");
+      setMyVote(m[review.id] || 0);
+    } catch { /* ignore */ }
+  }, [review.id]);
+
+  async function cast(value) {
+    const next = myVote === value ? 0 : value;  // 同方向再点 = 取消
+    try {
+      const { data } = await axios.post(`/api/public/share/${token}/reviews/${review.id}/vote`, {
+        value: next,
+        prevValue: myVote,
+      });
+      updateReview(data.review);
+      // 持久化我的投票状态
+      try {
+        const m = JSON.parse(localStorage.getItem(PUBLIC_VOTE_KEY) || "{}");
+        if (next === 0) delete m[review.id]; else m[review.id] = next;
+        localStorage.setItem(PUBLIC_VOTE_KEY, JSON.stringify(m));
+      } catch { /* ignore */ }
+      setMyVote(next);
+    } catch (e) { toast(e.response?.data?.message || "投票失败", "error"); }
+  }
+
+  return (
+    <>
+      <button
+        onClick={() => cast(1)}
+        className={`px-2 py-0.5 rounded font-medium inline-flex items-center gap-1 transition ${myVote === 1 ? "bg-green-100 text-green-700" : "text-gray-700 hover:bg-green-50 hover:text-green-700"}`}
+        title="赞同"
+      >
+        <I name="thumbs-up" size={11} /> {review.upvotes || 0}
+      </button>
+      <button
+        onClick={() => cast(-1)}
+        className={`px-2 py-0.5 rounded font-medium inline-flex items-center gap-1 transition ${myVote === -1 ? "bg-red-100 text-red-700" : "text-gray-700 hover:bg-red-50 hover:text-red-700"}`}
+        title="否决"
+      >
+        <I name="thumbs-down" size={11} /> {review.downvotes || 0}
+      </button>
+    </>
   );
 }
 
@@ -446,12 +509,14 @@ function PublicReviewModal({ open, onClose, candidate, token, replyTo, onCreated
 
   const bulk = replyTo?._bulk;
   const isBulkReply = Array.isArray(bulk) && bulk.length > 1;
+  const [stance, setStance] = useState(null);
 
   useEffect(() => {
     if (!open) {
       setContent("");
       setLinkInput("");
       setAttachments([]);
+      setStance(null);
       // 不清空 authorName, 这样多次发评论不用重复输入
     } else {
       // 打开时读历史姓名
@@ -520,6 +585,7 @@ function PublicReviewModal({ open, onClose, candidate, token, replyTo, onCreated
       } else if (replyTo?.id) {
         body.parentId = replyTo.id;
       }
+      if (replyTo && stance) body.stance = stance;
       const { data } = await axios.post(`/api/public/share/${token}/reviews`, body);
       rememberName(authorName.trim());
       onCreated(data.review);
@@ -571,6 +637,44 @@ function PublicReviewModal({ open, onClose, candidate, token, replyTo, onCreated
             </div>
           )}
         </div>
+
+        {/* 回复 stance */}
+        {replyTo && (
+          <div>
+            <p className="text-xs font-bold text-gray-700 uppercase mb-2 flex items-center gap-1.5">
+              <I name="vote" size={12} /> 对原评价的态度 (可选)
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setStance(stance === "approve" ? null : "approve")}
+                disabled={saving}
+                className={`p-2.5 rounded-xl border-2 text-xs font-bold transition flex items-center justify-center gap-1.5
+                  ${stance === "approve" ? "border-green-500 bg-green-50 text-green-700" : "border-gray-200 text-gray-700 hover:border-green-300"}`}
+              >
+                <I name="thumbs-up" size={12} /> 赞同
+              </button>
+              <button
+                type="button"
+                onClick={() => setStance(stance === "reject" ? null : "reject")}
+                disabled={saving}
+                className={`p-2.5 rounded-xl border-2 text-xs font-bold transition flex items-center justify-center gap-1.5
+                  ${stance === "reject" ? "border-red-500 bg-red-50 text-red-700" : "border-gray-200 text-gray-700 hover:border-red-300"}`}
+              >
+                <I name="thumbs-down" size={12} /> 否决
+              </button>
+              <button
+                type="button"
+                onClick={() => setStance(null)}
+                disabled={saving}
+                className={`p-2.5 rounded-xl border-2 text-xs font-bold transition flex items-center justify-center gap-1.5
+                  ${stance === null ? "border-brand bg-brand-50 text-brand" : "border-gray-200 text-gray-700 hover:border-gray-300"}`}
+              >
+                <I name="minus" size={12} /> 不表态
+              </button>
+            </div>
+          </div>
+        )}
 
         <div>
           <label className="text-sm text-navy-700 font-bold ml-3 block mb-2">评价内容 *</label>
