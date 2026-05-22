@@ -84,6 +84,11 @@ export const resources = {
     create: (candidateId, content) => api.post(`/candidates/${candidateId}/notes`, { content }).then((r) => r.data.note),
     remove: (candidateId, noteId) => api.delete(`/candidates/${candidateId}/notes/${noteId}`),
   },
+  reviews: {
+    list: (candidateId) => api.get(`/candidates/${candidateId}/reviews`).then((r) => r.data.reviews),
+    create: (candidateId, body) => api.post(`/candidates/${candidateId}/reviews`, body).then((r) => r.data.review),
+    remove: (candidateId, reviewId) => api.delete(`/candidates/${candidateId}/reviews/${reviewId}`),
+  },
   share: {
     get: (candidateId) => api.get(`/candidates/${candidateId}/share`).then((r) => r.data.link),
     create: (candidateId, body) => api.post(`/candidates/${candidateId}/share`, body).then((r) => r.data.link),

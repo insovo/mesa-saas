@@ -29,10 +29,13 @@ model User {
   passwordHash String   @map("password_hash")
   name         String?
   role         Role     @default(RECRUITER)
+  avatar       String?    // 头像 URL,登录用户评价时自动带出
+  jobTitle     String?  @map("job_title")  // 内部角色显示(如 HR · 负责人 / 技术面试官 / HRBP)
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
   candidates Candidate[] @relation("CandidateOwner")
+  reviews    Review[]
 
   @@index([email])
   @@map("users")
@@ -85,6 +88,7 @@ model Candidate {
   employee          Employee?
   notes             CandidateNote[]
   shareLinks        ShareLink[]
+  reviews           Review[]
 
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
@@ -197,6 +201,37 @@ model Employee {
   @@index([stage])
   @@index([jobId])
   @@map("employees")
+}
+
+// 候选人评价 — 不同于 CandidateNote (内部备注)
+// Review 可以由登录用户 + 公开访客(经 ShareLink token)都提交
+// 公开提交的 authorName 强制必填,内部提交自动从登录 User 拿
+model Review {
+  id           String    @id @default(uuid()) @db.Uuid
+  candidateId  String    @map("candidate_id") @db.Uuid
+  candidate    Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  // 作者信息(快照,即便 User 删了也能展示)
+  authorName   String    @map("author_name")
+  authorRole   String?   @map("author_role")    // 如 "HR · 负责人" / "技术面试官"
+  authorAvatar String?   @map("author_avatar")
+
+  // 关联用户(仅登录用户),公开评论为 null
+  userId       String?   @map("user_id") @db.Uuid
+  user         User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  via          String    @default("internal")   // "internal" | "public"
+  shareToken   String?   @map("share_token")    // 公开提交时记录是经哪个 share token
+
+  content      String    @db.Text               // ≤500 字符
+  // attachments: [{ type: "image"|"file"|"link", name, url, size?, contentType? }]
+  attachments  Json      @default("[]")
+
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@index([candidateId])
+  @@index([userId])
+  @@map("reviews")
 }
 
 // 候选人备注 — 详情页时间线显示

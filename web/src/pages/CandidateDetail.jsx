@@ -113,6 +113,10 @@ export default function CandidateDetail() {
   const [shareOpen, setShareOpen] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
 
+  // 评价
+  const [reviews, setReviews] = useState([]);
+  const [reviewOpen, setReviewOpen] = useState(false);
+
   async function load() {
     try {
       setC(await resources.candidates.detail(id));
@@ -127,10 +131,11 @@ export default function CandidateDetail() {
     // eslint-disable-next-line
   }, [id]);
 
-  // 候选人 id 拿到后,拉备注列表
+  // 候选人 id 拿到后,拉备注 + 评价
   useEffect(() => {
     if (!c?.id) return;
     resources.notes.list(c.id).then(setNotes).catch(() => {});
+    resources.reviews.list(c.id).then(setReviews).catch(() => {});
   }, [c?.id]);
 
   async function changeStatus(newStatus) {
@@ -323,6 +328,14 @@ export default function CandidateDetail() {
       {/* === 添加备注 Modal === */}
       <NoteModal open={noteOpen} onClose={() => setNoteOpen(false)} candidate={c} onCreated={(n) => { setNotes((p) => [n, ...p]); setNoteOpen(false); }} />
 
+      {/* === 添加评价 Modal === */}
+      <ReviewModal
+        open={reviewOpen}
+        onClose={() => setReviewOpen(false)}
+        candidate={c}
+        onCreated={(r) => { setReviews((p) => [r, ...p]); setReviewOpen(false); }}
+      />
+
       {/* === 安排面试 Modal === */}
       <InterviewModal open={interviewOpen} onClose={() => setInterviewOpen(false)} candidate={c} jobs={jobs} />
 
@@ -343,7 +356,7 @@ export default function CandidateDetail() {
         </Card>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
         {/* === AI 核心技能 / 风险 / 亮点 === */}
         <Card className="p-5 md:p-6">
           <h3 className="title-card flex items-center gap-2">
@@ -390,7 +403,7 @@ export default function CandidateDetail() {
           )}
         </Card>
 
-        <Card className="p-5 md:p-6">
+        <Card className="p-5 md:p-6 lg:col-span-1">
           <div className="flex items-start justify-between gap-2 mb-1">
             <h3 className="title-card flex items-center gap-2">
               <I name="trophy" size={18} className="text-green-500" />
@@ -415,6 +428,14 @@ export default function CandidateDetail() {
             </ul>
           )}
         </Card>
+
+        {/* === 评价 === */}
+        <ReviewsCard reviews={reviews} candidate={c} onAdd={() => setReviewOpen(true)} onRemove={(rid) => {
+          if (!confirm("删除这条评价?")) return;
+          resources.reviews.remove(c.id, rid)
+            .then(() => { setReviews((p) => p.filter((r) => r.id !== rid)); toast("已删除", "success"); })
+            .catch((e) => toast(e.response?.data?.message || "删除失败", "error"));
+        }} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-5">
@@ -898,6 +919,281 @@ function MaxViewsPicker({ maxViewsPreset, setMaxViewsPreset, customMaxViews, set
         </div>
       )}
     </>
+  );
+}
+
+// ════════════════════════════════════════════════
+// 评价组件
+// ════════════════════════════════════════════════
+
+function fmtReviewTime(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+function ReviewsCard({ reviews, candidate, onAdd, onRemove }) {
+  return (
+    <Card className="p-5 md:p-6">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="title-card flex items-center gap-2">
+          <I name="message-circle" size={18} className="text-brand" />
+          评价
+          <span className="text-[11px] px-2 py-0.5 rounded-full bg-brand text-white font-bold">{reviews.length}</span>
+        </h3>
+      </div>
+
+      {reviews.length === 0 ? (
+        <p className="text-xs text-gray-700 py-2">还没有评价 · 点下方按钮添加第一条</p>
+      ) : (
+        <ul className="space-y-4">
+          {reviews.map((r) => (
+            <ReviewItem key={r.id} review={r} candidate={candidate} onRemove={onRemove} />
+          ))}
+        </ul>
+      )}
+
+      <button
+        onClick={onAdd}
+        className="mt-4 w-full p-3 rounded-xl bg-lightPrimary hover:bg-brand-50 text-brand font-bold text-sm flex items-center justify-center gap-2 transition border-2 border-dashed border-transparent hover:border-brand/30"
+      >
+        <I name="message-square-plus" size={16} />
+        添加评价
+      </button>
+    </Card>
+  );
+}
+
+function ReviewItem({ review, candidate, onRemove }) {
+  return (
+    <li className="group">
+      <div className="flex items-start gap-3">
+        <Avatar name={review.authorName} src={review.authorAvatar} size={32} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <p className="text-sm font-bold text-navy-700">
+              {review.authorName}
+              {review.authorRole && <span className="ml-2 text-[10px] text-gray-700 font-medium">{review.authorRole}</span>}
+              {review.via === "public" && (
+                <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 font-bold">外部</span>
+              )}
+            </p>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-gray-700 flex items-center gap-1">
+                <I name="clock" size={11} /> {fmtReviewTime(review.createdAt)}
+              </span>
+              <button
+                onClick={() => onRemove(review.id)}
+                className="opacity-0 group-hover:opacity-100 text-red-500 hover:bg-red-50 w-6 h-6 rounded flex items-center justify-center transition"
+                title="删除评价"
+              >
+                <I name="trash-2" size={11} />
+              </button>
+            </div>
+          </div>
+          <p className="text-sm text-navy-700 mt-1 whitespace-pre-wrap">{review.content}</p>
+          {/* 附件 */}
+          {(review.attachments || []).length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-2">
+              {review.attachments.map((a, i) => <AttachmentChip key={i} a={a} candidate={candidate} />)}
+            </div>
+          )}
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function AttachmentChip({ a, candidate }) {
+  const [downloading, setDownloading] = useState(false);
+  async function open() {
+    if (a.type === "link") {
+      window.open(a.url, "_blank", "noopener,noreferrer");
+      return;
+    }
+    // type=image / file 走 signed-get-url
+    setDownloading(true);
+    try {
+      const { data } = await api.post("/storage/signed-get-url", { key: a.url });
+      window.open(data.url, "_blank");
+    } catch (e) {
+      toast(e.response?.data?.message || "下载失败", "error");
+    } finally {
+      setDownloading(false);
+    }
+  }
+  const icon = a.type === "image" ? "image" : a.type === "link" ? "link" : "paperclip";
+  const tone = a.type === "image" ? "bg-blue-50 text-blue-700" : a.type === "link" ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-700";
+  return (
+    <button onClick={open} disabled={downloading} className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium ${tone} hover:opacity-80 transition max-w-[180px]`}>
+      <I name={downloading ? "loader" : icon} size={11} className={downloading ? "animate-spin shrink-0" : "shrink-0"} />
+      <span className="truncate">{a.name}</span>
+      {a.size != null && <span className="opacity-60 shrink-0">{(a.size / 1024).toFixed(0)}KB</span>}
+    </button>
+  );
+}
+
+function ReviewModal({ open, onClose, candidate, onCreated }) {
+  const [content, setContent] = useState("");
+  const [linkInput, setLinkInput] = useState("");
+  const [attachments, setAttachments] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      setContent("");
+      setLinkInput("");
+      setAttachments([]);
+    }
+  }, [open]);
+
+  const totalSize = attachments.reduce((s, a) => s + (a.size || 0), 0);
+  const MAX_TOTAL = 30 * 1024 * 1024;
+
+  async function uploadFile(file) {
+    if (totalSize + file.size > MAX_TOTAL) {
+      toast(`总附件大小将超过 30MB,无法添加`, "error");
+      return;
+    }
+    setUploading(true);
+    try {
+      const { data: presign } = await api.post("/storage/presigned-url", {
+        filename: file.name,
+        contentType: file.type || "application/octet-stream",
+        expectedSize: file.size,
+      });
+      // 浏览器直传 R2
+      const axios = (await import("axios")).default;
+      await axios.put(presign.uploadUrl, file, {
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+      });
+      const isImage = (file.type || "").startsWith("image/");
+      setAttachments((prev) => [...prev, {
+        type: isImage ? "image" : "file",
+        name: file.name,
+        url: presign.key,
+        size: file.size,
+        contentType: file.type,
+      }]);
+    } catch (e) {
+      toast(e.response?.data?.message || "上传失败", "error");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function addLink() {
+    const url = linkInput.trim();
+    if (!url) return;
+    if (!/^https?:\/\//i.test(url)) {
+      toast("链接必须以 http:// 或 https:// 开头", "error");
+      return;
+    }
+    setAttachments((p) => [...p, { type: "link", name: url, url, size: 0 }]);
+    setLinkInput("");
+  }
+
+  function removeAttachment(idx) {
+    setAttachments((p) => p.filter((_, i) => i !== idx));
+  }
+
+  async function submit() {
+    if (!content.trim()) return toast("请输入评价内容", "error");
+    setSaving(true);
+    try {
+      const r = await resources.reviews.create(candidate.id, { content: content.trim(), attachments });
+      onCreated(r);
+      toast("评价已添加", "success");
+    } catch (e) { toast(e.response?.data?.message || "添加失败", "error"); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} maxWidth="max-w-xl">
+      <div className="p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-bold text-navy-700 flex items-center gap-2">
+            <I name="message-circle" size={18} className="text-brand" />
+            添加评价 — {candidate?.name}
+          </h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-navy-700"><I name="x" size={20} /></button>
+        </div>
+
+        <div>
+          <textarea
+            value={content}
+            onChange={(e) => setContent(e.target.value.slice(0, 500))}
+            rows={5}
+            placeholder="请输入对此候选人的评价,如表现、推荐理由、建议等..."
+            className="w-full p-3 rounded-xl border border-gray-200 text-sm text-navy-700 outline-none focus:border-brand resize-none"
+            disabled={saving}
+          />
+          <p className={`text-[11px] mt-1.5 ${content.length >= 500 ? "text-red-500" : "text-gray-600"}`}>
+            {content.length} / 500 字符
+          </p>
+        </div>
+
+        {/* 附件 */}
+        <div>
+          <p className="text-xs font-bold text-gray-700 uppercase mb-2">附件(可选,总 ≤ 30MB)</p>
+          {attachments.length > 0 && (
+            <ul className="space-y-1.5 mb-2">
+              {attachments.map((a, i) => (
+                <li key={i} className="flex items-center gap-2 px-2.5 py-1.5 bg-lightPrimary rounded-lg text-xs">
+                  <I name={a.type === "image" ? "image" : a.type === "link" ? "link" : "paperclip"} size={12} className="text-gray-700 shrink-0" />
+                  <span className="flex-1 truncate text-navy-700">{a.name}</span>
+                  <span className="text-[10px] text-gray-600 shrink-0">
+                    {a.type === "link" ? "链接" : `${(a.size / 1024).toFixed(0)} KB`}
+                  </span>
+                  <button onClick={() => removeAttachment(i)} className="text-red-500 hover:bg-red-50 w-5 h-5 rounded flex items-center justify-center">
+                    <I name="x" size={11} />
+                  </button>
+                </li>
+              ))}
+              <li className="text-[11px] text-gray-600 mt-1">
+                总大小 {(totalSize / 1024 / 1024).toFixed(2)} / 30 MB
+              </li>
+            </ul>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border-2 border-dashed border-gray-200 hover:border-brand text-xs font-bold text-gray-700">
+              <I name={uploading ? "loader" : "upload"} size={12} className={uploading ? "animate-spin" : ""} />
+              {uploading ? "上传中" : "图片 / 文件"}
+              <input
+                type="file"
+                className="hidden"
+                accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx,.txt,image/*"
+                disabled={uploading || saving}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile(f); e.target.value = ""; }}
+              />
+            </label>
+            <div className="flex-1 min-w-[200px] flex items-center gap-1.5 px-2 rounded-xl border border-gray-200 h-9 focus-within:border-brand">
+              <I name="link" size={12} className="text-gray-400 shrink-0" />
+              <input
+                type="url"
+                value={linkInput}
+                onChange={(e) => setLinkInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addLink())}
+                placeholder="粘贴 URL 链接,回车添加"
+                className="flex-1 bg-transparent outline-none text-xs text-navy-700"
+                disabled={saving}
+              />
+              <button onClick={addLink} disabled={!linkInput.trim()} className="text-[10px] font-bold text-brand hover:underline disabled:opacity-30 px-1">
+                添加
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2 border-t border-gray-200">
+          <Button variant="ghost" onClick={onClose} disabled={saving}>取消</Button>
+          <Button onClick={submit} disabled={saving || !content.trim()} icon={<I name={saving ? "loader" : "check"} size={12} className={saving ? "animate-spin" : ""} />}>
+            {saving ? "保存中" : "发布评价"}
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
