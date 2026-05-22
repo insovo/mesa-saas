@@ -104,26 +104,88 @@ MESA Recruit 是面向 AI 原生招聘场景的 SaaS 产品,核心能力包括:
 4. backend 通过 Docker bridge 网络访问 `postgres:5432` / `redis:6379`(无 NAT、无加密,因为在隔离网内)
 5. 简历上传时,backend 签发预签名 URL,前端直接 `PUT` 到 R2(零出口流量费)
 
-# 5. 数据模型(简版)
+# 5. 数据模型
 
-主要表与关系:
+当前共 **11 张表**,关系如下:
 
 ```
-User (uuid pk, email unique, password_hash, role)
-  └─owns─ Candidate (uuid pk, external_id, name, ..., owner_id fk)
+User ─owns──> Candidate ─has─> CandidateNote / Review / ShareLink / Employee
+                    │           ↑
+                    └──> Interview                     Job
+                                                       ↑
+                                       Department      │
+                                                       │
+                                Review ─votes─> ReviewVote ─by─> User
+                                Review ─replies─> Review (self, 1 level)
 
-Job (uuid pk, external_id, title, dept, urgency)
-  └─has─ Interview (candidate_id, job_id, round, scheduled_at)
-  └─has─ Employee  (candidate_id, job_id, stage, ...)
-
-Department (uuid pk, name, code, parent_id self-fk)
-
-Candidate ────► Interview ◄──── Job
-   │
-   └────────── Employee (转化) ── checklist json / probation json / events json
+SystemSetting (KV, admin only · AES-256-GCM 加密敏感 value)
 ```
 
-完整 schema 见 `server/prisma/schema.prisma`。
+| 表 | 用途 |
+|----|------|
+| `User` | 系统账号(ADMIN/RECRUITER/VIEWER 三角色) |
+| `Candidate` | 候选人,带 LLM 解析结果(aiSummary/skills/tags/risks/highlights)+ jobId 关联 JD |
+| `Job` | 岗位,`description` 字段给 LLM 二次评估用 |
+| `Department` | 部门(自关联树) |
+| `Employee` | 已入职员工(候选人 → 员工转化) |
+| `Interview` | 面试安排 |
+| `CandidateNote` | 内部备注(详情页时间线) |
+| `Review` | 评价对话(回复/投票/可见范围/审核删除) |
+| `ReviewVote` | 登录用户对评价的投票去重 |
+| `ShareLink` | 公开分享凭证(token/有效期/访问次数上限) |
+| `SystemSetting` | admin 配置(Kimi API Key 等,AES-256-GCM 加密) |
+
+完整 schema 见 `server/prisma/schema.prisma`,字段级说明参考 CLAUDE.md §10。
+
+# 5A. 新增子系统说明
+
+以下为 demo.md 六阶段之外、上线后扩展实现的子系统:
+
+## 5A.1 LLM 简历解析(Kimi · Moonshot AI)
+
+```
+[ Upload UI ] -> [ POST /api/storage/presigned-url ] -> R2 mesa-resumes
+        ↓
+[ POST /api/resumes/parse ] -> [ Kimi Files API 上传 ] -> [ /v1/chat/completions JSON mode ]
+        ↓
+[ aiSummary (HR 简报纯文本) + 结构化字段 ] -> [ 写入 Candidate ]
+```
+
+- 系统级配置:`SystemSetting (kimi.api_key/model/prompt)` · `api_key` AES-256-GCM 加密(密钥从 `JWT_SECRET` HKDF 派生)
+- admin 在 UI(Sidebar 弹 Modal)可改 key/model(从 `/v1/models` 动态拉)/prompt(20000 字符)
+- 一次 chat 同时产出 summary + 结构化(节省 token,详见 CLAUDE.md §1.1)
+
+## 5A.2 JD 二次匹配评估
+
+- 用 candidate.aiSummary + job.description 调 Kimi 输出 `{ jdMatch, risks, highlights, matchReason }`
+- 触发时机:Upload 时关联 JD 自动触发;或详情页 MatchRing 点击换 JD 触发
+- 强 prompt:禁用"可能/或许"含糊词,无强匹配点必须写"未发现"
+
+## 5A.3 分享给招聘官(公开页 `/share/<token>`)
+
+```
+[ admin 创建 ShareLink ] -> [ 32 字符 URL-safe token ]
+        ↓
+[ 公开页 /share/:token ] -> [ GET /api/public/share/:token ]
+        ↓ (phone/email 自动 mask)
+[ 只读 候选人视图 + 评价 ]
+```
+
+- 有效期:60s ~ 30d / 无限期
+- 访问次数上限:可选 10/50/100/自定义 1-9999/不限
+- 公开页不在 AuthGuard 内,**不含 Sidebar/Topbar**(防泄漏其他页面信息)
+
+## 5A.4 评价对话系统
+
+完整功能:
+- 写评价 / 1 级嵌套回复 / 多选批量回复(`referencedIds[]`)
+- 附件(image/file/link,单条 ≤30MB,R2 直传)
+- 赞同/否决投票 + 投票名单 popover
+- 可见范围(public/internal/admin)
+- 软删除审核(作者请求 → admin 批准)
+- admin 隐藏 / 取消隐藏
+- 实时新评价 Notification + Web Audio 音效(15s 轮询)
+- 排序:最新/最旧/最赞同/最否决
 
 # 6. 安全设计
 
@@ -173,6 +235,9 @@ Candidate ────► Interview ◄──── Job
 | ④ Cloudflare + VPS 加固 | ✅ 已上线 | UFW 36724/80/443、SSH 禁 root + 禁密码、fail2ban、unattended-upgrades |
 | ⑤ CI/CD + 容灾 | ✅ 已上线 | GitHub Actions + GHCR + SSH 部署;systemd timer 每日 03:00 UTC 自动备份 R2 |
 | ⑥ 交付物打包 | ✅ 已交付 | 本套 4 份 .docx + ops/runbook + README + CLAUDE.md |
+| ⑦ LLM 解析 + JD 匹配 | ✅ 已上线(5A.1/5A.2) | Kimi 单 chat JSON 输出 · admin 在 UI 改 key/model/prompt · 二次评估 |
+| ⑧ 分享给招聘官 | ✅ 已上线(5A.3) | ShareLink token · 公开页 · 有效期 + 次数上限 |
+| ⑨ 评价对话系统 | ✅ 已上线(5A.4) | 11 表中 Review/ReviewVote 双表 · 浏览器通知 |
 
 # 11. 实际部署关键参数(已生效)
 

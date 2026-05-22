@@ -296,3 +296,63 @@ docker compose down
 # 完全清理(慎用!会丢数据卷)
 docker compose down -v
 ```
+
+# 9. 新功能运维注意事项
+
+## 9.1 评价系统数据增长
+
+| 表 | 增长速度 | 监控阈值 |
+|----|---------|---------|
+| `reviews` | 中速,每候选人 5-50 条 | 单表 > 100MB 关注 |
+| `review_votes` | 快速,每评价 N 投票 × 全员 | 单表 > 50MB 加 index 检查 |
+
+清理策略(可选定期 cron):
+
+```sql
+-- 删除已 soft-deleted 超过 90 天的评价及其投票/回复(Cascade)
+DELETE FROM reviews WHERE deleted_at < NOW() - INTERVAL '90 days';
+
+-- 删除孤儿投票(理论上 Cascade 已处理,周巡检确认)
+DELETE FROM review_votes WHERE NOT EXISTS (SELECT 1 FROM reviews r WHERE r.id = review_id);
+```
+
+## 9.2 ShareLink 清理
+
+```sql
+-- 过期 > 7 天的 ShareLink 已无用,可清理
+DELETE FROM share_links
+ WHERE expires_at IS NOT NULL AND expires_at < NOW() - INTERVAL '7 days';
+```
+
+## 9.3 R2 业务桶清理(简历 + 评价附件)
+
+`mesa-resumes` 桶里有两类文件:
+- `uploads/<uuid>.pdf` — 候选人简历
+- `reviews/public/<uuid>.*` — 公开访客评价附件
+
+定期对比 DB 实际引用,删除孤儿对象,避免桶无限增长。
+
+## 9.4 Kimi API 用量监控
+
+```bash
+# 看今日 Kimi 调用次数
+docker compose logs --since 24h backend | grep "kimi" | wc -l
+```
+
+如发现异常激增,先 admin UI 把 `kimi.api_key` 设为空字符串临时停服。
+
+## 9.5 浏览器通知 / 音效不工作排查
+
+候选人详情页新评价应触发桌面通知 + 音效,若无效:
+1. 浏览器地址栏 → 站点权限 → 通知 = 允许
+2. Chrome 设置 → 隐私 → 站点设置 → 通知 → `insovo.top`
+3. 音效不响:Web Audio API 需用户交互后才能 play,首次进入页面无声正常(用户先点过任意按钮后才会有音)
+
+## 9.6 JWT_SECRET 与 AES SystemSetting 联动风险
+
+`SystemSetting` 中 `kimi.api_key` 用 AES-256-GCM 加密,密钥从 `JWT_SECRET` HKDF 派生。
+**轮换 JWT_SECRET 会让所有加密 setting 解不开** —— 必须按顺序:
+1. admin UI 看到当前 Kimi key(只 mask 显示)
+2. 通过 `/v1/models` 测试连通,确认 key 仍可用
+3. 改 `JWT_SECRET` 重启
+4. admin UI 重新粘贴明文 Kimi key,重新加密写 DB

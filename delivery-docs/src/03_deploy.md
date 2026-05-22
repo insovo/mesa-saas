@@ -233,3 +233,45 @@ docker compose up -d
 - [ ] `curl https://<域名>/login` 返回 200 + 含 `<div id="root">`
 - [ ] 浏览器访问能登录 + Dashboard 数据正常
 - [ ] crontab 已配置每日 03:00 备份(见交付文档 04)
+
+# 11. LLM(Kimi)配置(上线后追加)
+
+## 11.1 .env 字段
+
+```dotenv
+KIMI_BASE_URL=https://api.moonshot.cn/v1
+KIMI_API_KEY=sk-...
+KIMI_MODEL=moonshot-v1-32k
+```
+
+`KIMI_API_KEY` **优先级**:DB SystemSetting > .env fallback。生产建议:
+- `.env` 留空(`KIMI_API_KEY=`),让 admin 在 UI 设置(加密写 DB)
+- 仅紧急回退时填 .env
+
+## 11.2 admin UI 改 Kimi 配置
+
+Sidebar → LLM Key → 编辑:
+1. **API Key**:粘贴 `sk-...` → 系统加密(AES-256-GCM,密钥从 JWT_SECRET HKDF 派生)写 DB
+2. **模型**:从 Kimi `/v1/models` 动态拉,管理员选择
+3. **Prompt**:解析模板,默认 ~3000 字,可改至 20000 字
+
+⚠️ **风险**:轮换 `JWT_SECRET` 会让加密 SystemSetting 全部不可解,需先 UI 解密 → 改 secret → 重写。
+
+## 11.3 测试 Kimi 连通
+
+```bash
+curl -X POST "https://insovo.top/api/system/settings/kimi.api_key/test" \
+  -H "Authorization: Bearer $JWT" -H "Content-Type: application/json" \
+  -d '{"value":"sk-..."}'
+# {"ok":true} 或 4xx 错误描述
+```
+
+# 12. R2 业务桶 + 备份桶分离
+
+| 桶 | 用途 | 凭证位置 |
+|----|------|---------|
+| `mesa-resumes` | 业务文件:简历 / 评价附件 | VPS `/opt/mesa/.env` 中的 `R2_*` |
+| `mesa-backups` | 每日 pg_dump | VPS `~/.aws/credentials` 中 `[r2-backup]` profile |
+
+业务桶 CORS 限定 `https://insovo.top`。备份桶不需 CORS(server-to-server)。
+
