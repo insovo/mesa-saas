@@ -51,6 +51,12 @@ services:
       WEB_ORIGIN: ${WEB_ORIGIN:?set WEB_ORIGIN in .env}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       NODE_ENV: production
+      # Cloudflare R2(可选) — 若未配置,后端 r2 plugin 自动跳过,/api/storage/* 返回 503
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+      R2_BUCKET: ${R2_BUCKET:-}
+      R2_PUBLIC_BASE_URL: ${R2_PUBLIC_BASE_URL:-}
     # 故意不映射端口 — 仅在 bridge 网络内通过服务名 backend:3001 访问
     expose:
       - "3001"
