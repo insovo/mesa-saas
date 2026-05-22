@@ -1154,6 +1154,81 @@ function ReviewsCard({ reviews, candidate, me, isAdmin, myVotes, onVote, onAdd, 
   );
 }
 
+// 投票按钮: 主按钮投票 + 点击数字弹 popover 显示投票者
+function VoteButton({ direction, review, candidate, active, onVote }) {
+  const [open, setOpen] = useState(false);
+  const [voters, setVoters] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const isUp = direction === "up";
+  const count = isUp ? (review.upvotes || 0) : (review.downvotes || 0);
+
+  async function loadVoters() {
+    if (voters || loading) return;
+    setLoading(true);
+    try {
+      const d = await resources.reviews.voters(candidate.id, review.id);
+      setVoters(d);
+    } catch (e) { /* ignore */ }
+    finally { setLoading(false); }
+  }
+
+  return (
+    <div className="relative inline-block">
+      <button
+        onClick={onVote}
+        onContextMenu={(e) => { e.preventDefault(); setOpen((v) => !v); loadVoters(); }}
+        className={`px-2 py-0.5 rounded font-medium inline-flex items-center gap-1 transition
+          ${active
+            ? (isUp ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700")
+            : `text-gray-700 ${isUp ? "hover:bg-green-50 hover:text-green-700" : "hover:bg-red-50 hover:text-red-700"}`}`}
+        title={`${isUp ? "赞同" : "否决"}(右键查看名单)`}
+      >
+        <I name={isUp ? "thumbs-up" : "thumbs-down"} size={11} />
+        <span
+          onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); loadVoters(); }}
+          className="hover:underline"
+        >
+          {count}
+        </span>
+      </button>
+      {open && count > 0 && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          <div className="absolute top-full left-0 mt-1 z-40 bg-white rounded-xl shadow-card p-3 min-w-[200px] max-w-[260px]">
+            <p className={`text-[11px] font-bold mb-2 ${isUp ? "text-green-700" : "text-red-700"} flex items-center gap-1`}>
+              <I name={isUp ? "thumbs-up" : "thumbs-down"} size={11} />
+              {isUp ? "赞同" : "否决"}的人
+            </p>
+            {loading && <p className="text-xs text-gray-700 py-2">加载中...</p>}
+            {!loading && voters && (
+              <>
+                {(isUp ? voters.up : voters.down).length === 0 && (isUp ? voters.anonymousUp : voters.anonymousDown) === 0 ? (
+                  <p className="text-xs text-gray-700">还没有人</p>
+                ) : (
+                  <ul className="space-y-1 max-h-[200px] overflow-y-auto">
+                    {(isUp ? voters.up : voters.down).map((u, i) => (
+                      <li key={i} className="flex items-center gap-2 text-xs text-navy-700">
+                        <Avatar name={u.name} src={u.avatar} size={20} />
+                        <span className="font-medium">{u.name}</span>
+                        {u.role && <span className="text-[10px] text-gray-700">{u.role}</span>}
+                      </li>
+                    ))}
+                    {(isUp ? voters.anonymousUp : voters.anonymousDown) > 0 && (
+                      <li className="text-xs text-gray-700 pt-1 border-t border-gray-100 mt-1">
+                        + {(isUp ? voters.anonymousUp : voters.anonymousDown)} 位匿名访客
+                      </li>
+                    )}
+                  </ul>
+                )}
+              </>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function VisibilityChip({ visibility }) {
   if (!visibility || visibility === "public") return null;
   const map = {
@@ -1284,25 +1359,23 @@ function ReviewItem({ review, replies = [], candidate, me, isAdmin, myVotes = {}
           {/* 操作行 — 独立到底部, 与评论内容分离 */}
           {!review.deletedAt && (
             <div className="flex items-center gap-2 mt-2 pt-1.5 border-t border-gray-100 text-[11px] flex-wrap">
-              {/* 表决按钮 */}
+              {/* 表决按钮 + 投票名单 */}
               {onVote && (
                 <>
-                  <button
-                    onClick={() => onVote(review.id, 1)}
-                    className={`px-2 py-0.5 rounded font-medium inline-flex items-center gap-1 transition
-                      ${myVotes[review.id] === 1 ? "bg-green-100 text-green-700" : "text-gray-700 hover:bg-green-50 hover:text-green-700"}`}
-                    title="赞同"
-                  >
-                    <I name="thumbs-up" size={11} /> {review.upvotes || 0}
-                  </button>
-                  <button
-                    onClick={() => onVote(review.id, -1)}
-                    className={`px-2 py-0.5 rounded font-medium inline-flex items-center gap-1 transition
-                      ${myVotes[review.id] === -1 ? "bg-red-100 text-red-700" : "text-gray-700 hover:bg-red-50 hover:text-red-700"}`}
-                    title="否决"
-                  >
-                    <I name="thumbs-down" size={11} /> {review.downvotes || 0}
-                  </button>
+                  <VoteButton
+                    direction="up"
+                    review={review}
+                    candidate={candidate}
+                    active={myVotes[review.id] === 1}
+                    onVote={() => onVote(review.id, 1)}
+                  />
+                  <VoteButton
+                    direction="down"
+                    review={review}
+                    candidate={candidate}
+                    active={myVotes[review.id] === -1}
+                    onVote={() => onVote(review.id, -1)}
+                  />
                   <span className="text-gray-300">·</span>
                 </>
               )}

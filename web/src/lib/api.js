@@ -103,6 +103,8 @@ export const resources = {
       api.post(`/candidates/${candidateId}/reviews/${reviewId}/vote`, { value }).then((r) => r.data),
     myVotes: (candidateId) =>
       api.get(`/candidates/${candidateId}/reviews-votes`).then((r) => r.data.votes),
+    voters: (candidateId, reviewId) =>
+      api.get(`/candidates/${candidateId}/reviews/${reviewId}/voters`).then((r) => r.data),
   },
   share: {
     get: (candidateId) => api.get(`/candidates/${candidateId}/share`).then((r) => r.data.link),

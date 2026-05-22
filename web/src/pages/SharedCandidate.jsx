@@ -426,6 +426,18 @@ const PUBLIC_VOTE_KEY = "mesa.public.review.votes";
 
 function PublicVoteButtons({ review, token, updateReview }) {
   const [myVote, setMyVote] = useState(0);
+  const [open, setOpen] = useState(null);  // "up" | "down" | null
+  const [voters, setVoters] = useState(null);
+  const [loading, setLoading] = useState(false);
+  async function loadVoters() {
+    if (voters || loading) return;
+    setLoading(true);
+    try {
+      const { data } = await axios.get(`/api/public/share/${token}/reviews/${review.id}/voters`);
+      setVoters(data);
+    } catch { /* ignore */ }
+    finally { setLoading(false); }
+  }
   useEffect(() => {
     try {
       const m = JSON.parse(localStorage.getItem(PUBLIC_VOTE_KEY) || "{}");
@@ -451,23 +463,83 @@ function PublicVoteButtons({ review, token, updateReview }) {
     } catch (e) { toast(e.response?.data?.message || "投票失败", "error"); }
   }
 
+  function showVoters(direction) {
+    setOpen(direction);
+    loadVoters();
+  }
+
   return (
     <>
-      <button
-        onClick={() => cast(1)}
-        className={`px-2 py-0.5 rounded font-medium inline-flex items-center gap-1 transition ${myVote === 1 ? "bg-green-100 text-green-700" : "text-gray-700 hover:bg-green-50 hover:text-green-700"}`}
-        title="赞同"
-      >
-        <I name="thumbs-up" size={11} /> {review.upvotes || 0}
-      </button>
-      <button
-        onClick={() => cast(-1)}
-        className={`px-2 py-0.5 rounded font-medium inline-flex items-center gap-1 transition ${myVote === -1 ? "bg-red-100 text-red-700" : "text-gray-700 hover:bg-red-50 hover:text-red-700"}`}
-        title="否决"
-      >
-        <I name="thumbs-down" size={11} /> {review.downvotes || 0}
-      </button>
+      <div className="relative inline-block">
+        <button
+          onClick={() => cast(1)}
+          onContextMenu={(e) => { e.preventDefault(); showVoters("up"); }}
+          className={`px-2 py-0.5 rounded font-medium inline-flex items-center gap-1 transition ${myVote === 1 ? "bg-green-100 text-green-700" : "text-gray-700 hover:bg-green-50 hover:text-green-700"}`}
+          title="赞同(右键看名单)"
+        >
+          <I name="thumbs-up" size={11} />
+          <span onClick={(e) => { e.stopPropagation(); showVoters("up"); }} className="hover:underline">{review.upvotes || 0}</span>
+        </button>
+        {open === "up" && (
+          <>
+            <div className="fixed inset-0 z-30" onClick={() => setOpen(null)} />
+            <PublicVotersPopover voters={voters} loading={loading} direction="up" />
+          </>
+        )}
+      </div>
+      <div className="relative inline-block">
+        <button
+          onClick={() => cast(-1)}
+          onContextMenu={(e) => { e.preventDefault(); showVoters("down"); }}
+          className={`px-2 py-0.5 rounded font-medium inline-flex items-center gap-1 transition ${myVote === -1 ? "bg-red-100 text-red-700" : "text-gray-700 hover:bg-red-50 hover:text-red-700"}`}
+          title="否决(右键看名单)"
+        >
+          <I name="thumbs-down" size={11} />
+          <span onClick={(e) => { e.stopPropagation(); showVoters("down"); }} className="hover:underline">{review.downvotes || 0}</span>
+        </button>
+        {open === "down" && (
+          <>
+            <div className="fixed inset-0 z-30" onClick={() => setOpen(null)} />
+            <PublicVotersPopover voters={voters} loading={loading} direction="down" />
+          </>
+        )}
+      </div>
     </>
+  );
+}
+
+function PublicVotersPopover({ voters, loading, direction }) {
+  const isUp = direction === "up";
+  return (
+    <div className="absolute top-full left-0 mt-1 z-40 bg-white rounded-xl shadow-card p-3 min-w-[200px] max-w-[260px]">
+      <p className={`text-[11px] font-bold mb-2 ${isUp ? "text-green-700" : "text-red-700"} flex items-center gap-1`}>
+        <I name={isUp ? "thumbs-up" : "thumbs-down"} size={11} />
+        {isUp ? "赞同" : "否决"}的人
+      </p>
+      {loading && <p className="text-xs text-gray-700 py-2">加载中...</p>}
+      {!loading && voters && (
+        <>
+          {(isUp ? voters.up : voters.down).length === 0 && (isUp ? voters.anonymousUp : voters.anonymousDown) === 0 ? (
+            <p className="text-xs text-gray-700">还没有人</p>
+          ) : (
+            <ul className="space-y-1 max-h-[200px] overflow-y-auto">
+              {(isUp ? voters.up : voters.down).map((u, i) => (
+                <li key={i} className="flex items-center gap-2 text-xs text-navy-700">
+                  <Avatar name={u.name} size={20} />
+                  <span className="font-medium">{u.name}</span>
+                  {u.role && <span className="text-[10px] text-gray-700">{u.role}</span>}
+                </li>
+              ))}
+              {(isUp ? voters.anonymousUp : voters.anonymousDown) > 0 && (
+                <li className="text-xs text-gray-700 pt-1 border-t border-gray-100 mt-1">
+                  + {(isUp ? voters.anonymousUp : voters.anonymousDown)} 位匿名访客
+                </li>
+              )}
+            </ul>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 

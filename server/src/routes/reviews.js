@@ -270,6 +270,40 @@ export default async function reviewsRoutes(app) {
       return { votes: map };
     });
 
+    // 列出某条评价的投票者(用户名 + 角色)
+    // 公开访客无身份记录, 只统计差额: review.upvotes - 登录用户中投赞同的数 = 匿名赞同数
+    internal.get("/candidates/:id/reviews/:reviewId/voters", async (req, reply) => {
+      const review = await internal.prisma.review.findUnique({ where: { id: req.params.reviewId } });
+      if (!review || review.candidateId !== req.params.id) return reply.code(404).send({ error: "not_found" });
+
+      const votes = await internal.prisma.reviewVote.findMany({
+        where: { reviewId: review.id },
+        include: { user: { select: { id: true, name: true, email: true, role: true, jobTitle: true, avatar: true } } },
+      });
+      const up = [], down = [];
+      for (const v of votes) {
+        const item = {
+          userId: v.userId,
+          name: v.user?.name || v.user?.email || "未知用户",
+          role: v.user?.jobTitle || (v.user?.role === "ADMIN" ? "管理员" : "招聘官"),
+          avatar: v.user?.avatar || null,
+          createdAt: v.createdAt,
+        };
+        if (v.value === 1) up.push(item);
+        else if (v.value === -1) down.push(item);
+      }
+      const anonymousUp = Math.max(0, (review.upvotes || 0) - up.length);
+      const anonymousDown = Math.max(0, (review.downvotes || 0) - down.length);
+      return {
+        up,
+        down,
+        anonymousUp,
+        anonymousDown,
+        totalUp: review.upvotes || 0,
+        totalDown: review.downvotes || 0,
+      };
+    });
+
     // admin 隐藏 / 取消隐藏
     internal.post("/candidates/:id/reviews/:reviewId/hide", async (req, reply) => {
       if (req.user.role !== "ADMIN") return reply.code(403).send({ error: "admin_only" });
@@ -365,6 +399,36 @@ export default async function reviewsRoutes(app) {
       data: { deleteRequested: new Date(), deleteRequestedBy: req.body.authorName.trim() },
     });
     return { review: publicShape(updated) };
+  });
+
+  // 公开端: 列出投票者(只显示登录用户名单, 匿名访客汇总)
+  app.get("/public/share/:token/reviews/:reviewId/voters", async (req, reply) => {
+    const link = await app.prisma.shareLink.findUnique({ where: { token: req.params.token } });
+    if (!link) return reply.code(404).send({ error: "share_not_found" });
+    if (link.expiresAt && link.expiresAt < new Date()) return reply.code(410).send({ error: "share_expired" });
+
+    const review = await app.prisma.review.findUnique({ where: { id: req.params.reviewId } });
+    if (!review || review.candidateId !== link.candidateId) return reply.code(404).send({ error: "not_found" });
+
+    // 公开端只能看登录用户姓名(role 可见),不暴露 userId/email/avatar
+    const votes = await app.prisma.reviewVote.findMany({
+      where: { reviewId: review.id },
+      include: { user: { select: { name: true, jobTitle: true, role: true } } },
+    });
+    const up = [], down = [];
+    for (const v of votes) {
+      const item = { name: v.user?.name || "未知", role: v.user?.jobTitle || (v.user?.role === "ADMIN" ? "管理员" : "招聘官") };
+      if (v.value === 1) up.push(item);
+      else if (v.value === -1) down.push(item);
+    }
+    return {
+      up,
+      down,
+      anonymousUp: Math.max(0, (review.upvotes || 0) - up.length),
+      anonymousDown: Math.max(0, (review.downvotes || 0) - down.length),
+      totalUp: review.upvotes || 0,
+      totalDown: review.downvotes || 0,
+    };
   });
 
   // 公开访客投票 — 用 voterName + reviewId 弱去重 (前端 localStorage 也限制)
