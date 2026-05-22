@@ -87,10 +87,11 @@ MESA Recruit 是面向 AI 原生招聘场景的 SaaS 产品,核心能力包括:
 
 | 服务 | 镜像 | 端口策略 | 数据卷 |
 |------|------|----------|--------|
-| `frontend` | `mesa-web:latest` | **仅暴露 80 到宿主机** | 无(静态资源在镜像里) |
-| `backend` | `mesa-server:latest` | 仅 `expose: 3001`(不映射宿主) | 无(无状态) |
+| `frontend` | `ghcr.io/insovo/mesa-web:latest` | **暴露 80/443**(80 跳 443, 443 终止 TLS) | TLS 证书 bind mount `web/certs/` |
+| `backend` | `ghcr.io/insovo/mesa-server:latest` | 仅 `expose: 3001`(不映射宿主) | 无(无状态) |
 | `postgres` | `postgres:16-alpine` | 仅 `expose: 5432`(**严禁映射宿主**) | `mesa_pg_prod_data` |
 | `redis` | `redis:7-alpine` | 仅 `expose: 6379`(**严禁映射宿主**) | `mesa_redis_prod_data` |
+| `uptime-kuma` | `louislam/uptime-kuma:1` | 仅 `expose: 3001`(通过 nginx `monitor.insovo.top` 反代) | `mesa_uptime_data` |
 
 ## 4.3 流量走向
 
@@ -162,13 +163,27 @@ Candidate ────► Interview ◄──── Job
 - Nginx access log:`docker exec mesa-web tail -f /var/log/nginx/access.log`
 - (可选)接入 Cloudflare Analytics 看接入层数据
 
-# 10. 演进路线
+# 10. 演进路线(实际落地状态)
 
 | 阶段 | 状态 | 说明 |
 |------|------|------|
-| ① 本地全栈闭环 | ✅ 已完成 | server + web + dev compose |
-| ② R2 对象存储 | 🔜 代码就绪,等凭证 | `/api/storage/presigned-url` 接口预留 |
-| ③ Docker + Nginx | ✅ 已完成 | 本文件覆盖范围 |
-| ④ Cloudflare + VPS 加固 | 📋 runbook 就绪 | 见交付文档 03 |
-| ⑤ CI/CD + 容灾 | ✅ workflow + 脚本就绪 | 见 .github/workflows/ + ops/ |
-| ⑥ 交付物打包 | ✅ 即本套 .docx 4 件套 | |
+| ① 本地全栈闭环 | ✅ 已上线 | server + web + dev compose,本地 vite + node 联调 |
+| ② R2 对象存储 | ✅ 已上线 | `mesa-resumes`(业务) + `mesa-backups`(备份)双桶,凭证最小权限隔离 |
+| ③ Docker + Nginx | ✅ 已上线 | 5 容器(含 Uptime Kuma 监控),Cloudflare Origin Cert 端到端 HTTPS |
+| ④ Cloudflare + VPS 加固 | ✅ 已上线 | UFW 36724/80/443、SSH 禁 root + 禁密码、fail2ban、unattended-upgrades |
+| ⑤ CI/CD + 容灾 | ✅ 已上线 | GitHub Actions + GHCR + SSH 部署;systemd timer 每日 03:00 UTC 自动备份 R2 |
+| ⑥ 交付物打包 | ✅ 已交付 | 本套 4 份 .docx + ops/runbook + README + CLAUDE.md |
+
+# 11. 实际部署关键参数(已生效)
+
+| 参数 | 值 |
+|------|----|
+| 主域名 | https://insovo.top |
+| 监控面板 | https://monitor.insovo.top |
+| VPS | 114.134.188.7 · Ubuntu 22.04 LTS · 4C8G |
+| SSH 端口 | **36724**(VPS 厂商出厂默认,非 22) |
+| 部署用户 | `deploy`(`/etc/sudoers.d/90-deploy` 免密 sudo) |
+| 容器编排 | docker compose v2(5 服务) · 卷 `mesa_pg_prod_data` + `mesa_redis_prod_data` + `mesa_uptime_data` |
+| Cloudflare TLS | Origin Certificate(ECC, *.insovo.top, 15 年, 到期 2041-05-18) |
+| 备份触发 | systemd `mesa-backup.timer` · `OnCalendar=*-*-* 03:00:00` UTC |
+| 备份保留 | 本地 7 天 · R2 远端(可加 lifecycle 转 IA) |

@@ -256,11 +256,11 @@ Query: `status` / `candidateId` / `jobId` / `from`(date-time) / `to`(date-time) 
 }
 ```
 
-# 9. Storage · 文件存储(阶段② 接入 R2 后启用)
+# 9. Storage · Cloudflare R2 文件存储(已上线)
 
 ## 9.1 POST /api/storage/presigned-url
 
-> 状态:阶段② 待启用。代码骨架已在 `server/src/routes/storage.js`(预留)。
+> 状态:**已上线**。Backend 启动时若 `R2_*` 环境变量齐全则自动激活 r2 plugin,否则该路由返回 503 `r2_not_configured`。
 
 请求体:
 ```json
@@ -277,6 +277,20 @@ Query: `status` / `candidateId` / `jobId` / `from`(date-time) / `to`(date-time) 
 ```
 
 前端拿到 `uploadUrl` 后直接 `PUT` 文件流到 R2,完成后把 `key` 提交回后端写入 Candidate / Employee 记录。
+
+## 9.2 POST /api/storage/confirm
+
+确认 R2 已收到文件,可选返回公网 URL。
+
+请求体:`{ "key": "resumes/2026-05/uuid.pdf" }`
+响应:`{ "key": "...", "publicUrl": null }`(若 `R2_PUBLIC_BASE_URL` 未配则 null)
+
+## 9.3 POST /api/storage/signed-get-url
+
+为已上传的 key 签发 10 分钟下载 URL。
+
+请求体:`{ "key": "resumes/2026-05/uuid.pdf" }`
+响应:`{ "url": "https://...r2.cloudflarestorage.com/...?X-Amz-Signature=...", "expiresIn": 600 }`
 
 # 10. Health & Readiness
 

@@ -29,11 +29,20 @@ date: "2026-05-22"
 | A | `@` | `<VPS 公网 IP>` | 已代理 | Auto |
 | CNAME | `www` | `recruit.<your-domain>` | 已代理 | Auto |
 
-## 1.4 SSL/TLS 模式
+## 1.4 SSL/TLS 模式 — Cloudflare Origin Certificate(实际方案)
 
-`SSL/TLS → 概览 → 加密模式` 选择 **Strict(严格)**。
+本项目用 **Cloudflare Origin Certificate**(免费签发,15 年有效),而不是 Let's Encrypt。优点:
+- 签发到 `*.insovo.top` 通配符,所有子域名(monitor / api / ...)复用同张证书
+- 浏览器看到的是 Cloudflare 边缘证书,源站证书只需被 Cloudflare 验证 —— Cloudflare Full(strict) 自然信任
+- 15 年到期,无需 ACME 续期机器人
 
-`Edge Certificates → Always Use HTTPS = ON`,`HSTS → 启用` (`max-age=31536000; includeSubDomains; preload`)。
+操作步骤:
+
+1. `SSL/TLS → Origin Server → Create Certificate` → Key Type `ECC` → Hostnames `*.insovo.top, insovo.top` → Validity `15 years`
+2. 复制 Origin Certificate 和 Private Key(**页面只显示一次**),保存到 VPS `/opt/mesa/web/certs/insovo.top.pem` + `insovo.top.key`,`chmod 600`
+3. nginx.conf 监听 443 + `ssl_certificate /etc/nginx/certs/insovo.top.pem`
+4. Cloudflare `SSL/TLS → Overview` 选 **Full (strict)** 端到端加密
+5. `Edge Certificates → Always Use HTTPS = ON`,`HSTS → Enable` (`max-age=31536000; includeSubDomains; preload`)
 
 # 2. VPS 安全硬化
 
@@ -54,27 +63,37 @@ chown -R deploy:deploy /home/deploy/.ssh
 `/etc/ssh/sshd_config`:
 
 ```
-Port 2222                  # 改非默认,避免暴力扫描
+# Port 保留 VPS 厂商出厂默认(如 36724);若改记得同步改 UFW
 PermitRootLogin no
 PasswordAuthentication no
 AllowUsers deploy
 ```
 
-`sudo systemctl restart sshd`,然后 **新开终端验证** `ssh -p 2222 deploy@vps` 通过后再关旧连接。
+`sudo systemctl restart ssh`,然后 **新开终端验证** `ssh deploy@vps` 通过后再关旧连接。
+
+> ⚠️ **本项目 VPS 出厂 sshd 监听 36724**(不是 22)。本机 `~/.ssh/config` 已配:
+> ```
+> Host 114.134.188.7
+>   User deploy
+>   Port 36724
+>   IdentityFile ~/.ssh/id_ed25519
+> ```
 
 ## 2.3 UFW 防火墙
 
 ```bash
 sudo ufw default deny incoming
 sudo ufw default allow outgoing
-sudo ufw allow 2222/tcp comment 'ssh'
-sudo ufw allow 80/tcp   comment 'http'
-sudo ufw allow 443/tcp  comment 'https'
+sudo ufw allow 36724/tcp comment 'sshd'   # 改成你实际的 sshd 端口
+sudo ufw allow 80/tcp    comment 'http'
+sudo ufw allow 443/tcp   comment 'https'
 sudo ufw enable
 sudo ufw status verbose
 ```
 
 **严禁**放行 `5432`(PostgreSQL)`6379`(Redis)。
+
+⚠️ **常见踩坑**:如果 sshd 不在 22 而 UFW 只放行了 22,SSH 会立即被锁出 —— 这是部署初期最大的风险点。务必先确认 `ss -tlnp \| grep sshd` 看 sshd 真实监听端口,UFW 放行对应端口后再 `ufw enable`。
 
 ## 2.4 自动更新
 
@@ -112,18 +131,22 @@ nano .env
 ```
 POSTGRES_DB=mesa
 POSTGRES_USER=mesa
-POSTGRES_PASSWORD=$(openssl rand -base64 24)     # 真实值
-JWT_SECRET=$(openssl rand -hex 32)               # 真实值
-WEB_ORIGIN=https://recruit.your-domain.com
+# ⚠️ 必须用 hex 字符集,base64 含 / + = 会破坏 DATABASE_URL 解析(Prisma P1000)
+POSTGRES_PASSWORD=$(openssl rand -hex 24)
+JWT_SECRET=$(openssl rand -hex 32)
+WEB_ORIGIN=https://insovo.top
 WEB_HTTP_PORT=80
 LOG_LEVEL=info
-# 阶段② R2 凭证
+# R2 凭证(业务桶 mesa-resumes)
 R2_ACCOUNT_ID=<cloudflare account id>
 R2_ACCESS_KEY_ID=<r2 access key>
 R2_SECRET_ACCESS_KEY=<r2 secret>
 R2_BUCKET=mesa-resumes
 R2_BACKUP_BUCKET=mesa-backups
 ```
+
+> 💡 **R2 备份桶凭证不放 `.env`** —— 用独立 token 写到 `~/.aws/credentials` 的 `[r2-backup]` profile,
+> backup.sh 通过 `aws --profile r2-backup ...` 调用,保证业务凭证泄露不会影响备份桶。
 
 ## 4.2 首次启动
 
@@ -150,11 +173,12 @@ curl -fsSL https://recruit.your-domain.com/api/health
 
 | Secret | 值 |
 |--------|----|
-| `VPS_HOST` | 生产 VPS 公网 IP 或域名 |
+| `VPS_HOST` | 生产 VPS 公网 IP 或域名(如 `114.134.188.7`) |
 | `VPS_USER` | `deploy` |
+| `VPS_SSH_PORT` | **必填** · VPS 实际 sshd 端口(本项目 `36724`) |
 | `VPS_SSH_KEY` | 私钥 PEM 内容(对应 authorized_keys 里的公钥) |
 | `VPS_DEPLOY_DIR` | `/opt/mesa` |
-| `GHCR_TOKEN` | (可选)PAT 含 `write:packages`,默认 GITHUB_TOKEN 也行 |
+| `GHCR_TOKEN` | (可选)默认用 `secrets.GITHUB_TOKEN`(workflow 内置),无需再设 |
 
 在 `Settings → Secrets and variables → Actions → Variables` 添加:
 

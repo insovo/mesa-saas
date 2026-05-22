@@ -51,15 +51,37 @@ aws --profile r2-backup --endpoint-url $R2_ENDPOINT \
 
 # 2. 备份与灾备
 
-## 2.1 自动备份机制
+## 2.1 自动备份机制(实际部署:systemd timer)
 
-- **触发**:`cron`,每日 03:00,见 `/opt/mesa/ops/crontab.example`
-- **脚本**:`/opt/mesa/ops/backup.sh`
+> 本项目采用 **systemd timer + service**,不用 crontab。
+> 优点:有 journal 日志、统一管理、支持 `Persistent=true`(重启后补跑)、`RandomizedDelaySec` 防雪崩。
+
+- **触发**:`mesa-backup.timer`(`/etc/systemd/system/mesa-backup.timer`)
+  - `OnCalendar=*-*-* 03:00:00` UTC
+  - `Persistent=true` · `RandomizedDelaySec=300`
+- **脚本**:`/opt/mesa/ops/backup.sh`(由 service unit `mesa-backup.service` 调用)
 - **流程**:
   1. `docker exec mesa-postgres pg_dump` → `/var/backups/mesa/mesa-pg-{ts}.sql`
   2. `gzip -9` 压缩
-  3. `aws s3 cp` 上传到 `s3://mesa-backups/postgres/YYYY/MM/mesa-pg-{ts}.sql.gz`(R2 endpoint)
+  3. `aws --profile r2-backup s3 cp` 上传到 `s3://mesa-backups/postgres/YYYY/MM/mesa-pg-{ts}.sql.gz`
   4. 本地保留 7 天,远端按 R2 lifecycle(建议设置 90 天后转 IA 存储,365 天后归档)
+
+### 常用命令
+
+```bash
+# 看下次备份时间
+systemctl list-timers mesa-backup.timer
+
+# 手动触发一次
+sudo systemctl start mesa-backup.service
+
+# 看最近备份日志
+journalctl -u mesa-backup.service -n 50 --no-pager
+
+# 列 R2 所有备份
+aws --profile r2-backup --endpoint-url https://<account-id>.r2.cloudflarestorage.com \
+    s3 ls s3://mesa-backups/postgres/ --recursive --human-readable
+```
 
 ## 2.2 手动备份
 
@@ -223,13 +245,27 @@ docker compose up -d mesa-server
 | 数据库密码泄露 | 1) 改 `POSTGRES_PASSWORD` 与 `.env`;2) 在容器内 `ALTER USER mesa PASSWORD '...'`;3) `docker compose up -d backend` |
 | JWT 密钥泄露 | 改 `JWT_SECRET`,重启 backend。所有 token 立即失效 |
 
-# 7. 可观测性扩展(可选)
+# 7. 可观测性(已部署)
+
+## 7.1 Uptime Kuma · 已上线
+
+- 地址:**https://monitor.insovo.top**
+- 部署:`docker-compose.yml` 中 `uptime-kuma` 服务,卷 `mesa_uptime_data`
+- 访问:Cloudflare CDN → nginx(`monitor.insovo.top` server block) → `uptime-kuma:3001`
+- 推荐 monitor:
+  - `https://insovo.top/api/health`(60s)
+  - `https://insovo.top/healthz`(60s)
+  - `https://insovo.top/login` HTTPS 关键字校验
+  - 自定义业务接口
+- 通知:UI `Settings → Notifications` 添加 Telegram / 邮件 / Webhook,每个 monitor 单独勾选
+
+## 7.2 可选进一步扩展
 
 | 工具 | 用途 | 接入方式 |
 |------|------|----------|
-| Uptime Kuma | 外部探针 + IM 报警 | docker 单容器,监 `/api/health` |
 | Grafana + Loki | 日志聚合 | docker compose 加 promtail 收集 mesa-{server,web} 日志 |
 | Cloudflare Analytics | 接入层 RPS / 错误率 | 已自带,登录 dashboard 查看 |
+| Better Stack Heartbeat | 备份心跳 | 在 backup.sh 末尾 curl 一个 webhook,失败时报警 |
 
 # 8. 附录 · 常用命令速查
 
