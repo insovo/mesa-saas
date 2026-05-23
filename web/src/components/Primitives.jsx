@@ -236,6 +236,119 @@ export function MatchRing({ value = 0, size = 56, stroke = 6, showLabel = true }
   );
 }
 
+// === Liquid Loader ================================================
+// 液体进度球 — 改写自 /Users/mysaria/Desktop/Project/liquid-loader.html
+// 适配 mesa 多种尺寸 (40-80px),保留液面 + 双层波浪 + 气泡上升 + 中心数字 + 三档调色板 (red ≤60 / blue 60-80 / violet >80)
+// 模块顶层一次性注入 @keyframes,后续多处复用零成本
+if (typeof document !== "undefined" && !document.getElementById("mesa-liquid-keyframes")) {
+  const style = document.createElement("style");
+  style.id = "mesa-liquid-keyframes";
+  style.textContent = `
+    @keyframes mesaLiquidWaveBack { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+    @keyframes mesaLiquidWaveFront { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+    @keyframes mesaLiquidBubble {
+      0% { opacity: 0; transform: translateY(0) scale(0.6); }
+      15% { opacity: 1; }
+      85% { opacity: 0.7; }
+      100% { opacity: 0; transform: translateY(-100%) scale(1.15); }
+    }
+    @keyframes mesaLiquidPulse {
+      0%, 100% { box-shadow: 0 0 0 0 var(--mesa-pulse, rgba(66,42,251,0.45)); }
+      50% { box-shadow: 0 0 0 6px transparent; }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+const MESA_LIQUID_PALETTES = {
+  violet: { main: "#6547FF", back: "#3F27C9", edge: "rgba(38,24,106,0.48)", glow: "rgba(101,71,255,0.45)" },
+  blue:   { main: "#1187FF", back: "#0064D8", edge: "rgba(7,46,92,0.46)",  glow: "rgba(17,135,255,0.45)" },
+  red:    { main: "#F51342", back: "#D80334", edge: "rgba(67,13,25,0.42)", glow: "rgba(245,19,66,0.45)" },
+};
+
+function pickMesaLiquidPalette(value) {
+  if (value > 80) return MESA_LIQUID_PALETTES.violet;
+  if (value > 60) return MESA_LIQUID_PALETTES.blue;
+  return MESA_LIQUID_PALETTES.red;
+}
+
+export function LiquidLoader({ size = 56, level = 0, label = "", loading = false }) {
+  const fillPct = Math.max(0, Math.min(100, level));
+  const numericLabel = typeof label === "number" ? label : (label === "" ? "" : String(label));
+  const paletteValue = typeof label === "number" ? label : fillPct;
+  const palette = pickMesaLiquidPalette(paletteValue);
+  // 小尺寸下数字字号 / 波浪高度自适应
+  const waveH = Math.max(8, Math.round(size * 0.22));
+  const showBubbles = size >= 48;
+  return (
+    <div
+      className="relative rounded-full shrink-0 inline-flex"
+      style={{
+        width: size,
+        height: size,
+        animation: loading ? "mesaLiquidPulse 1.6s ease-out infinite" : undefined,
+        "--mesa-pulse": palette.glow,
+      }}
+      aria-label={loading ? "评估中" : `匹配度 ${numericLabel}`}
+      role={loading ? "status" : "img"}
+    >
+      <div
+        className="relative rounded-full overflow-hidden w-full h-full"
+        style={{
+          background: "radial-gradient(circle at 34% 22%, rgba(255,255,255,0.55), transparent 24%), rgba(244,247,254,0.7)",
+          boxShadow: `inset 0 5px 10px rgba(255,255,255,0.55), inset 0 -5px 10px rgba(0,0,0,0.05), 0 4px 14px ${palette.glow}`,
+        }}
+      >
+        <div className="absolute left-0 right-0 bottom-0" style={{ height: `${fillPct}%`, transition: "height 600ms cubic-bezier(0.34,1.56,0.64,1)" }}>
+          <div className="absolute inset-0" style={{ background: `linear-gradient(180deg, ${palette.main} 0%, ${palette.back} 100%)` }} />
+          <svg
+            className="absolute left-0 w-[200%]"
+            style={{ height: waveH, top: -Math.round(waveH * 0.66), opacity: 0.86, animation: "mesaLiquidWaveBack 4.4s linear infinite reverse" }}
+            viewBox="0 0 1440 100" preserveAspectRatio="none"
+          >
+            <path d="M0 58C120 26 240 26 360 58S600 90 720 58S960 26 1080 58S1320 90 1440 58V100H0Z" fill={palette.back} />
+          </svg>
+          <svg
+            className="absolute left-0 w-[200%]"
+            style={{ height: waveH, top: -Math.round(waveH * 0.5), animation: "mesaLiquidWaveFront 3.2s linear infinite" }}
+            viewBox="0 0 1440 100" preserveAspectRatio="none"
+          >
+            <path d="M0 48C120 12 240 12 360 48S600 84 720 48S960 12 1080 48S1320 84 1440 48V100H0Z" fill={palette.main} />
+          </svg>
+        </div>
+        {showBubbles && (
+          <>
+            <span className="absolute" style={{ left: "28%", bottom: 0, width: 4, height: 4, borderRadius: "50%", background: "rgba(255,255,255,0.85)", border: "1px solid rgba(255,255,255,0.9)", animation: "mesaLiquidBubble 3s linear infinite" }} />
+            <span className="absolute" style={{ left: "55%", bottom: 0, width: 5, height: 5, borderRadius: "50%", background: "rgba(255,255,255,0.85)", border: "1px solid rgba(255,255,255,0.9)", animation: "mesaLiquidBubble 3.8s linear 0.7s infinite" }} />
+            <span className="absolute" style={{ left: "74%", bottom: 0, width: 3, height: 3, borderRadius: "50%", background: "rgba(255,255,255,0.85)", border: "1px solid rgba(255,255,255,0.9)", animation: "mesaLiquidBubble 3.4s linear 1.4s infinite" }} />
+          </>
+        )}
+        <span
+          className="absolute pointer-events-none"
+          style={{ left: "18%", top: "12%", width: "30%", height: "12%", borderRadius: "50%", background: "linear-gradient(180deg, rgba(255,255,255,0.72), rgba(255,255,255,0))", filter: "blur(1px)", transform: "rotate(-18deg)", zIndex: 4 }}
+        />
+        {numericLabel !== "" && (
+          <div
+            className="absolute inset-0 flex items-center justify-center pointer-events-none"
+            style={{
+              color: "#fff",
+              fontWeight: 800,
+              fontSize: Math.round(size * 0.36),
+              lineHeight: 1,
+              letterSpacing: "-0.02em",
+              WebkitTextStroke: "0.5px rgba(22,22,22,0.22)",
+              textShadow: `0 1px 0 ${palette.edge}, 0 0 2px rgba(22,22,22,0.22), 0 2px 6px rgba(22,22,22,0.18)`,
+              zIndex: 5,
+            }}
+          >
+            {numericLabel}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // === Tag ============================================================
 export function Tag({ children, tone = "default" }) {
   const tones = {

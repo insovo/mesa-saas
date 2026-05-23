@@ -7,7 +7,7 @@ import {
   Avatar,
   StatusPill,
   AiBadge,
-  MatchRing,
+  LiquidLoader,
   I,
   LoadingBlock,
   Empty,
@@ -85,7 +85,7 @@ export default function Dashboard() {
                       ))}
                     </div>
                   </div>
-                  <MatchRing value={c.jdMatch || 0} size={48} stroke={5} />
+                  <LiquidLoader size={48} level={c.jdMatch || 0} label={c.jdMatch || 0} />
                   <div className="hidden md:block w-32 text-right">
                     <StatusPill status={c.status} />
                     {c.parser && (

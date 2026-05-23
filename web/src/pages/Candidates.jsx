@@ -7,7 +7,7 @@ import {
   Input,
   StatusPill,
   AiBadge,
-  MatchRing,
+  LiquidLoader,
   Avatar,
   I,
   Empty,
@@ -179,7 +179,7 @@ export default function Candidates() {
                     <p className="text-sm font-bold text-navy-700 truncate w-full text-right">{c.appliedFor || "—"}</p>
                   </div>
                   {c.jdMatch != null ? (
-                    <MatchRing value={c.jdMatch} size={56} stroke={6} />
+                    <LiquidLoader size={56} level={c.jdMatch} label={c.jdMatch} />
                   ) : (
                     <div className="w-14 h-14 flex flex-col items-center justify-center text-[10px] text-gray-400">
                       <I name="link-2-off" size={16} />
@@ -217,7 +217,7 @@ export default function Candidates() {
                       </p>
                     </div>
                     {c.jdMatch != null ? (
-                      <MatchRing value={c.jdMatch} size={48} stroke={5} />
+                      <LiquidLoader size={48} level={c.jdMatch} label={c.jdMatch} />
                     ) : (
                       <div className="w-12 shrink-0 text-center text-[10px] text-gray-400">
                         <I name="link-2-off" size={14} className="inline" />

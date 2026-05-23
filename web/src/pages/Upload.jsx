@@ -3,7 +3,7 @@ import axios from "axios";
 import { Link } from "react-router-dom";
 import { api, resources, LONG_TIMEOUT } from "../lib/api.js";
 import {
-  Card, Button, I, Tag, AiBadge, toast, Empty, LoadingBlock, MatchRing, StatusPill,
+  Card, Button, I, Tag, AiBadge, toast, Empty, LoadingBlock, LiquidLoader, StatusPill,
 } from "../components/Primitives.jsx";
 
 // 简历收件箱 · 真实流程
@@ -237,7 +237,7 @@ export default function Upload() {
                 <div className="hidden md:flex gap-1.5 max-w-[280px] flex-wrap">
                   {(c.tags || []).slice(0, 3).map((t) => <Tag key={t}>{t}</Tag>)}
                 </div>
-                {c.jdMatch != null && <MatchRing value={c.jdMatch} size={40} stroke={4} />}
+                {c.jdMatch != null && <LiquidLoader size={40} level={c.jdMatch} label={c.jdMatch} />}
                 {c.parser ? (
                   <AiBadge parser={c.parser} confidence={c.parserConfidence} />
                 ) : (

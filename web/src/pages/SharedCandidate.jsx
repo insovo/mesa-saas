@@ -11,7 +11,7 @@ import {
   Avatar,
   StatusPill,
   AiBadge,
-  MatchRing,
+  LiquidLoader,
   Tag,
   I,
   LoadingBlock,
@@ -124,7 +124,7 @@ export default function SharedCandidate() {
             </div>
             {c.jdMatch != null && (
               <div className="flex flex-col items-center gap-2 px-4 py-3 rounded-2xl bg-lightPrimary">
-                <MatchRing value={c.jdMatch} size={80} stroke={8} />
+                <LiquidLoader size={80} level={c.jdMatch} label={c.jdMatch} />
                 <p className="text-xs text-gray-700 font-bold">JD 匹配度</p>
               </div>
             )}
