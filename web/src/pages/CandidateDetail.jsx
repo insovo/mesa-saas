@@ -2614,7 +2614,13 @@ function CandidateDetail() {
       setC(data.candidate);
       toast(`✓ 已重新解析: ${data.candidate.name}${data.match ? ` · JD 匹配度 ${data.candidate.jdMatch ?? "—"}` : ""}`, "success");
     } catch (e) {
-      toast(e.response?.data?.message || e.message || "重新解析失败", "error");
+      // 把后端真实 error code + message 都暴露出来,避免 axios 默认 "Request failed with status code 502" 遮蔽根因
+      console.error("[reparse] failed", e);
+      const r = e.response;
+      const code = r?.data?.error ? `${r.data.error}` : "";
+      const msg = r?.data?.message || e.message || "未知错误";
+      const status = r?.status ? `[${r.status}] ` : "";
+      toast(`重新解析失败 · ${status}${code ? code + " · " : ""}${msg}`, "error");
     } finally {
       setReparsing(false);
     }

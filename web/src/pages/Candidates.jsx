@@ -69,7 +69,12 @@ export default function Candidates() {
       setItems((prev) => prev.map((x) => (x.id === c.id ? data.candidate : x)));
       toast(`✓ ${data.candidate.name} 已重新解析`, "success");
     } catch (e) {
-      toast(e.response?.data?.message || e.message || "重新解析失败", "error");
+      console.error("[reparse] failed", c.name, e);
+      const r = e.response;
+      const code = r?.data?.error ? `${r.data.error}` : "";
+      const msg = r?.data?.message || e.message || "未知错误";
+      const status = r?.status ? `[${r.status}] ` : "";
+      toast(`重新解析失败 · ${c.name} · ${status}${code ? code + " · " : ""}${msg}`, "error");
     } finally {
       setReparsingId(null);
     }
