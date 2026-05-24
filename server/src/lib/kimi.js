@@ -177,21 +177,43 @@ async function effectivePrompt() {
   return (await getEffective(SETTING_KEYS.KIMI_PROMPT)) || DEFAULT_PROMPT;
 }
 
+// Node fetch 默认无 timeout,Kimi 慢时会阻塞 backend 直到上游 nginx 掐断 → 前端看到 502 + 空 body。
+// 用 AbortController 让 backend 自己控制 Kimi 调用 timeout,失败后返回结构化 error code(504/502)。
+// 链 backend (chat 90s + files 60s 单次) < nginx 180s,保证 backend 能先响应。
+function pickTimeout(path) {
+  if (path.includes("/chat/completions")) return 90000;   // LLM 推理,大 prompt 60-90s 常见
+  if (path.includes("/files")) return 60000;              // 文件上传到 Kimi,PDF 较大时 20-40s
+  return 30000;                                            // /models 等轻量请求
+}
+
 async function kimiRequest(path, options = {}) {
   const apiKey = await effectiveApiKey();
   if (!apiKey || apiKey.startsWith("__")) {
     throw Object.assign(new Error("KIMI_API_KEY not configured"), { statusCode: 503, code: "kimi_not_configured" });
   }
   const url = `${KIMI_BASE_URL}${path}`;
-  const res = await fetch(url, {
-    ...options,
-    headers: { Authorization: `Bearer ${apiKey}`, ...(options.headers || {}) },
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw Object.assign(new Error(`kimi ${path} ${res.status}: ${body.slice(0, 300)}`), { statusCode: 502, code: "kimi_upstream_error" });
+  const timeoutMs = options.timeoutMs || pickTimeout(path);
+  const ctrl = new AbortController();
+  const tid = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      ...options,
+      signal: ctrl.signal,
+      headers: { Authorization: `Bearer ${apiKey}`, ...(options.headers || {}) },
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw Object.assign(new Error(`kimi ${path} ${res.status}: ${body.slice(0, 300)}`), { statusCode: 502, code: "kimi_upstream_error" });
+    }
+    return res;
+  } catch (err) {
+    if (err.name === "AbortError") {
+      throw Object.assign(new Error(`kimi ${path} timed out after ${timeoutMs}ms (backend AbortController fired before nginx upstream)`), { statusCode: 504, code: "kimi_timeout" });
+    }
+    throw err;
+  } finally {
+    clearTimeout(tid);
   }
-  return res;
 }
 
 export async function uploadFile({ buffer, filename, contentType = "application/octet-stream" }) {
