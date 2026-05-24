@@ -13,13 +13,17 @@ import { withDerivedCandidate } from "../lib/derived.js";
 
 const PARSE_BODY = {
   type: "object",
-  required: ["key"],
   properties: {
+    // 新建候选人场景:R2 key 直传后调 parse → 返回未存 DB 的 candidate object,前端 POST /candidates 创建
     key: { type: "string", minLength: 1, maxLength: 500 },
+    // 已有候选人「重新解析」场景:传 candidateId,后端从 DB 取 attachment 作为 R2 key,跑 Kimi 后 UPDATE DB
+    candidateId: { type: "string", format: "uuid" },
     contentType: { type: "string", maxLength: 100 },
     model: { type: "string", maxLength: 100 },
     jobId: { type: "string", format: "uuid", nullable: true },
   },
+  // 必须二选一
+  oneOf: [{ required: ["key"] }, { required: ["candidateId"] }],
   additionalProperties: false,
 };
 
@@ -68,6 +72,9 @@ export default async function resumesRoutes(app) {
   });
 
   // ─── 简历解析(纯抽取 + 可选 JD 联评)─────────────────────
+  // 两种模式:
+  //   (a) 新建候选人 — 前端传 key:        从 R2 拉文件 → Kimi → 返回未存 DB 的 candidate object,前端再 POST /candidates 创建
+  //   (b) 重新解析已有候选人 — 前端传 candidateId: 从 DB 拿 candidate.attachment 作 R2 key → Kimi → UPDATE 现有 DB 记录,返回 candidate
   app.post("/parse", { schema: { body: PARSE_BODY } }, async (req, reply) => {
     if (!app.r2) {
       return reply.code(503).send({ error: "r2_not_configured", message: "R2 凭证未配置,无法读取简历" });
@@ -75,7 +82,21 @@ export default async function resumesRoutes(app) {
     if (!(await isKimiConfigured())) {
       return reply.code(503).send({ error: "kimi_not_configured", message: "KIMI_API_KEY 未配置" });
     }
-    const { key, contentType, model, jobId } = req.body;
+    let { key, contentType, model, jobId } = req.body;
+    const { candidateId } = req.body;
+
+    // 重新解析模式: 解析 candidateId 拿 attachment 当 R2 key
+    let existingCandidate = null;
+    if (candidateId) {
+      existingCandidate = await app.prisma.candidate.findUnique({ where: { id: candidateId } });
+      if (!existingCandidate) return reply.code(404).send({ error: "candidate_not_found" });
+      if (!existingCandidate.attachment) {
+        return reply.code(400).send({ error: "no_attachment", message: "候选人无附件 R2 key,无法重新解析(请重新上传简历)" });
+      }
+      key = existingCandidate.attachment;
+      // 重新解析时若候选人原本关联 JD,自动用此 jobId 做二次评估;前端也可显式覆盖
+      if (!jobId && existingCandidate.jobId) jobId = existingCandidate.jobId;
+    }
 
     // 1) R2 拉文件
     let buffer;
@@ -166,6 +187,53 @@ export default async function resumesRoutes(app) {
       } catch (err) {
         req.log.warn({ err, jobId }, "match against job failed, candidate still saved without jd evaluation");
       }
+    }
+
+    // 5) 重新解析模式: UPDATE 现有 candidate(不破坏 status/appliedFor/source/owner),返回数据库快照
+    if (existingCandidate) {
+      // 不动这些字段(用户可能已经手动改过):status / appliedFor / source / ownerId / jobId
+      // 不动 documents(可能用户已经 UI 加过附件了)
+      const updateData = {
+        // LLM 抽取的基础字段全部覆盖(候选人核心信息,以 LLM 输出为准)
+        name: candidate.name || existingCandidate.name,
+        gender: candidate.gender ?? existingCandidate.gender,
+        animal: candidate.animal ?? existingCandidate.animal,
+        education: candidate.education ?? existingCandidate.education,
+        school: candidate.school ?? existingCandidate.school,
+        major: candidate.major ?? existingCandidate.major,
+        age: candidate.age ?? existingCandidate.age,
+        location: candidate.location ?? existingCandidate.location,
+        yearsExp: candidate.yearsExp ?? existingCandidate.yearsExp,
+        phone: candidate.phone ?? existingCandidate.phone,
+        email: candidate.email ?? existingCandidate.email,
+        tags: Array.isArray(candidate.tags) ? candidate.tags : existingCandidate.tags,
+        skills: Array.isArray(candidate.skills) ? candidate.skills : existingCandidate.skills,
+        experience: Array.isArray(candidate.experience) ? candidate.experience : existingCandidate.experience,
+        educationHistory: Array.isArray(candidate.educationHistory) ? candidate.educationHistory : existingCandidate.educationHistory,
+        languages: candidate.languages,
+        aiSummary: result.summary,
+        parser: "Kimi",
+        parserConfidence: 92,
+      };
+      // 如果传了 jobId 跑过 match, 把 LLM 评估也写入
+      if (match) {
+        updateData.jdMatch = candidate.jdMatch;
+        updateData.risks = candidate.risks;
+        updateData.highlights = candidate.highlights;
+        updateData.aiSuggestedTags = candidate.aiSuggestedTags;
+        updateData.matchedFor = candidate.matchedFor;
+        updateData.againstFor = candidate.againstFor;
+        updateData.insights = candidate.insights;
+        // 重新解析时若用户传了不同的 jobId 覆盖关联
+        if (req.body.jobId && req.body.jobId !== existingCandidate.jobId) {
+          updateData.jobId = req.body.jobId;
+        }
+      }
+      const updated = await app.prisma.candidate.update({
+        where: { id: existingCandidate.id },
+        data: updateData,
+      });
+      return { candidate: withDerivedCandidate(updated), meta: result.meta, match, reparsed: true };
     }
 
     return { candidate: withDerivedCandidate(candidate), meta: result.meta, match };

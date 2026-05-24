@@ -2554,6 +2554,20 @@ function CandidateDetail() {
   }
 
   useEffect(() => {
+    // 切候选人时立刻清空所有与「上个候选人」绑定的 state,
+    // 避免在新 detail/reviews/notes 拉回来之前一闪而过显示旧候选人的内容
+    setC(null);
+    setErr("");
+    setNotes([]);
+    setReviews([]);
+    setMyVotes({});
+    setMatchingJobId("");
+    setStatusOpen(false);
+    setJdPickerOpen(false);
+    setJdDescOpen(false);
+    setPendingJobId("");
+    setEditingInterview(null);
+    setReplyTo(null);
     load();
     resources.jobs.list({ take: 200 }).then((d) => setJobs(d.items || [])).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2586,6 +2600,24 @@ function CandidateDetail() {
     setJdPickerOpen(false);
     if (!id || !c || id === c.jobId) return;
     setPendingJobId(id);
+  }
+
+  // 重新解析:候选人 parser 字段为空(LLM 上传时降级入库)→ 调 /resumes/parse {candidateId},
+  // 后端用 candidate.attachment 作为 R2 key 重跑 Kimi,UPDATE 现有 candidate 字段
+  const [reparsing, setReparsing] = useState(false);
+  async function reparse() {
+    if (!c?.id) return;
+    if (!c.attachment) return toast("候选人无简历附件,无法重新解析", "error");
+    setReparsing(true);
+    try {
+      const { data } = await api.post("/resumes/parse", { candidateId: c.id }, { timeout: LONG_TIMEOUT });
+      setC(data.candidate);
+      toast(`✓ 已重新解析: ${data.candidate.name}${data.match ? ` · JD 匹配度 ${data.candidate.jdMatch ?? "—"}` : ""}`, "success");
+    } catch (e) {
+      toast(e.response?.data?.message || e.message || "重新解析失败", "error");
+    } finally {
+      setReparsing(false);
+    }
   }
 
   async function confirmSwitchJob() {
@@ -2655,6 +2687,24 @@ function CandidateDetail() {
 
         {/* === Profile Card === */}
         <Card className="p-4 md:p-5">
+          {/* 重新解析 banner — 仅在 parser 为空(LLM 上传时降级入库)且有附件时显示 */}
+          {!c.parser && c.attachment && (
+            <div className="mb-3 -mt-1 rounded-xl bg-amber-50 border border-amber-200 p-2.5 flex items-start gap-2">
+              <I name="alert-triangle" size={13} className="text-amber-600 mt-0.5 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-[11px] font-bold text-amber-900">未 AI 解析</p>
+                <p className="text-[10px] text-amber-700 mt-0.5 truncate" title={c.attachment}>简历附件已存档,但结构化字段未抽取</p>
+              </div>
+              <button
+                onClick={reparse}
+                disabled={reparsing}
+                className="text-[11px] font-bold text-amber-800 hover:underline whitespace-nowrap disabled:opacity-50 inline-flex items-center gap-1"
+              >
+                <I name={reparsing ? "loader" : "sparkles"} size={11} className={reparsing ? "animate-spin" : ""} />
+                {reparsing ? "解析中..." : "重新解析"}
+              </button>
+            </div>
+          )}
           <div className="flex items-start gap-3.5">
             <Avatar name={c.name} animal={c.animal} src={c.avatar} size={64} />
             <div className="flex-1 min-w-0">

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { resources } from "../lib/api.js";
+import { api, resources, LONG_TIMEOUT } from "../lib/api.js";
 import {
   Card,
   Button,
@@ -57,6 +57,23 @@ export default function Candidates() {
     load();
     // eslint-disable-next-line
   }, [statusFilter]);
+
+  // 重新解析:对 parser 为空的候选人,调 /resumes/parse {candidateId} 让后端用 attachment 重跑 Kimi。
+  const [reparsingId, setReparsingId] = useState(null);
+  async function onReparse(c) {
+    if (!c?.id) return;
+    if (!c.attachment) return toast("无简历附件,无法重新解析", "error");
+    setReparsingId(c.id);
+    try {
+      const { data } = await api.post("/resumes/parse", { candidateId: c.id }, { timeout: LONG_TIMEOUT });
+      setItems((prev) => prev.map((x) => (x.id === c.id ? data.candidate : x)));
+      toast(`✓ ${data.candidate.name} 已重新解析`, "success");
+    } catch (e) {
+      toast(e.response?.data?.message || e.message || "重新解析失败", "error");
+    } finally {
+      setReparsingId(null);
+    }
+  }
 
   async function onCreate(e) {
     e.preventDefault();
@@ -194,6 +211,17 @@ export default function Candidates() {
                     <button onClick={() => navigate(`/candidates/${c.externalId || c.id}`)} className="w-8 h-8 rounded-full bg-lightPrimary text-gray-700 hover:text-brand flex items-center justify-center" title="查看详情">
                       <I name="arrow-right" size={14} />
                     </button>
+                    {/* 重新解析 — 仅在 parser 为空且 attachment 存在(说明上传时 LLM 降级了)显示 */}
+                    {!c.parser && c.attachment && (
+                      <button
+                        onClick={() => onReparse(c)}
+                        disabled={reparsingId === c.id}
+                        className="w-8 h-8 rounded-full bg-amber-50 text-amber-600 hover:bg-amber-100 disabled:opacity-50 flex items-center justify-center"
+                        title="重新解析"
+                      >
+                        <I name={reparsingId === c.id ? "loader" : "sparkles"} size={14} className={reparsingId === c.id ? "animate-spin" : ""} />
+                      </button>
+                    )}
                     <button onClick={() => onDelete(c.id, c.name)} className="w-8 h-8 rounded-full bg-red-50 text-red-500 hover:bg-red-100 flex items-center justify-center" title="删除">
                       <I name="trash-2" size={14} />
                     </button>
