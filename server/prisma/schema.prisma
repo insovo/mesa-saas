@@ -77,6 +77,16 @@ model Candidate {
   attachment        String?
   aiSummary         String?  @db.Text @map("ai_summary")  // LLM 输出的纯文本简报(HR 可读)
 
+  // === V2 新字段(2026-05-24 新增,与 candidate-detail-flat 设计稿对齐) ===
+  // 部分由 LLM 在 parseResume + matchAgainstJob 阶段输出(见 lib/kimi.js),部分由 admin 手动维护
+  aiSuggestedTags   String[] @default([]) @map("ai_suggested_tags")           // LLM 建议标签,左侧 TagsModule 「+ 添加」可选
+  insights          Json     @default("[]")                                    // [{kind:"up"|"down", text:""}] LLM 输出洞察
+  matchedFor        String[] @default([]) @map("matched_for")                  // 相对当前 JD 的匹配维度 ["教育背景","技能栈","工作经验"]
+  againstFor        String[] @default([]) @map("against_for")                  // 不匹配维度
+  profileCompletion Int      @default(0) @map("profile_completion")            // 资料完整度 0-100,后端按字段填充率算
+  languages         Json     @default("[]")                                    // [{name:"中文",level:"母语"}, {name:"英语",level:"CEFR C1"}]
+  documents         Json     @default("{\"resume\":[],\"materials\":[],\"portfolio\":[]}")  // 附件分类: resume/materials/portfolio,每项 [{id,kind:"file"|"link"|"note",name/label,url?,size?,verified?,content?}]
+
   ownerId           String?  @map("owner_id") @db.Uuid
   owner             User?    @relation("CandidateOwner", fields: [ownerId], references: [id], onDelete: SetNull)
 
@@ -113,6 +123,20 @@ model Job {
   urgency     Urgency  @default(mid)
   status      String?  @default("招聘中")
   description String?  @db.Text  // JD 详情(职责/要求/福利) — LLM 用作 JD 匹配度评估的素材
+
+  // === V2 新字段(JD 详情弹窗 + 岗位概览 Card 用)===
+  employment          String?                                                  // "全职" / "兼职" / "实习" / "合同制"
+  salary              String?                                                  // "30K-40K · 16薪"
+  levelRange          String?  @map("level_range")                              // "P6-P7" (跟 level 字段不同语义,level=单一职级)
+  yearsExpRange       String?  @map("years_exp_range")                          // "5-7 年" (字符串,跟 Candidate.yearsExp Int 不同)
+  educationRequirement String? @map("education_requirement")                    // "本科及以上"
+  languageRequirement String?  @map("language_requirement")                     // "英语 CEFR B2+"
+  publishedAt         DateTime? @map("published_at")
+  deadline            DateTime?
+  responsibilities    String[] @default([])
+  requirements        String[] @default([])
+  nice                String[] @default([])
+  benefits            String[] @default([])
 
   interviews    Interview[]
   employees     Employee[]
@@ -340,11 +364,15 @@ model Interview {
   jobTitle        String?   @map("job_title")
 
   round           String?
+  category        String?    // V2 新增: "技术" / "HR" / "业务" / 自定义
   mode            String?
   status          String?
   recommendation  String?
   scheduledAt     DateTime? @map("scheduled_at")
-  interviewer     String?
+  interviewer     String?   // 老字段,保留向后兼容(单 string,展示用)
+  managers        Json      @default("[]")  // V2 新增: HR/招聘官列表 [{name,role,animal,avatar}]
+  interviewers    Json      @default("[]")  // V2 新增: 面试官列表(多人)[{name,role,animal,avatar}]
+  link            String?    // V2 新增: 会议链接 / 线下地址
   notes           String?
 
   createdAt       DateTime  @default(now()) @map("created_at")

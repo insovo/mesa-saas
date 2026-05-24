@@ -9,6 +9,7 @@
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { Readable } from "node:stream";
 import { parseResume, matchAgainstJob, isKimiConfigured, listModels } from "../lib/kimi.js";
+import { withDerivedCandidate } from "../lib/derived.js";
 
 const PARSE_BODY = {
   type: "object",
@@ -108,10 +109,13 @@ export default async function resumesRoutes(app) {
     }
 
     // 3) 剥离 JD 相关字段 — 这些只有在传 jobId 时由二次评估填
+    //    保留 languages(parseResume 输出的 V2 字段),其它无关字段从 parsed 透出
     const parsed = { ...result.parsed };
     delete parsed.jdMatch;
     delete parsed.risks;
     delete parsed.highlights;
+    // languages 兜底 + 限长(Kimi 偶尔会输出 null 或非数组)
+    if (!Array.isArray(parsed.languages)) parsed.languages = [];
 
     const candidate = {
       ...parsed,
@@ -126,9 +130,14 @@ export default async function resumesRoutes(app) {
       risks: [],
       highlights: [],
       jobId: jobId || null,
+      // V2 新字段默认空,等 /match 后再填
+      aiSuggestedTags: [],
+      matchedFor: [],
+      againstFor: [],
+      insights: [],
     };
 
-    // 4) 若传了 jobId, 跑二次评估补 jdMatch/risks/highlights
+    // 4) 若传了 jobId, 跑二次评估补 jdMatch/risks/highlights + V2 新字段
     let match = null;
     if (jobId) {
       try {
@@ -143,6 +152,15 @@ export default async function resumesRoutes(app) {
           candidate.jdMatch = match.jdMatch ?? null;
           candidate.risks = Array.isArray(match.risks) ? match.risks : [];
           candidate.highlights = Array.isArray(match.highlights) ? match.highlights : [];
+          candidate.aiSuggestedTags = Array.isArray(match.aiSuggestedTags) ? match.aiSuggestedTags.slice(0, 12) : [];
+          candidate.matchedFor = Array.isArray(match.matchedFor) ? match.matchedFor.slice(0, 12) : [];
+          candidate.againstFor = Array.isArray(match.againstFor) ? match.againstFor.slice(0, 12) : [];
+          candidate.insights = Array.isArray(match.insights)
+            ? match.insights
+                .filter((i) => i && (i.kind === "up" || i.kind === "down") && typeof i.text === "string")
+                .slice(0, 20)
+                .map((i) => ({ kind: i.kind, text: i.text.slice(0, 300) }))
+            : [];
           if (!candidate.appliedFor) candidate.appliedFor = job.title;
         }
       } catch (err) {
@@ -150,7 +168,7 @@ export default async function resumesRoutes(app) {
       }
     }
 
-    return { candidate, meta: result.meta, match };
+    return { candidate: withDerivedCandidate(candidate), meta: result.meta, match };
   });
 
   // ─── 现有候选人事后关联 JD 二次评估 ───────────────────────
@@ -185,6 +203,14 @@ export default async function resumesRoutes(app) {
     // 持久化到 candidate
     // appliedFor 强制改为新 JD 的 title(否则切 JD 后头部还是旧应聘岗位,与 risks/highlights 不一致)
     // jobId 也跟着更新,这样下次 load 时 jdMatchCard 能正确反映"当前关联的 JD"
+    // V2 新字段(2026-05-24): 把 LLM 输出的 aiSuggestedTags/insights/matchedFor/againstFor 也写入,
+    // 这样左侧主卡 TagsModule + 匹配项-不匹配项 + 中间 FeedbackHistoryCard 洞察 Tab 都有真实数据
+    const filteredInsights = Array.isArray(match.insights)
+      ? match.insights
+          .filter((i) => i && (i.kind === "up" || i.kind === "down") && typeof i.text === "string")
+          .slice(0, 20)
+          .map((i) => ({ kind: i.kind, text: i.text.slice(0, 300) }))
+      : [];
     const updated = await app.prisma.candidate.update({
       where: { id: candidateId },
       data: {
@@ -193,9 +219,13 @@ export default async function resumesRoutes(app) {
         highlights: Array.isArray(match.highlights) ? match.highlights : [],
         appliedFor: job.title,
         jobId,
+        aiSuggestedTags: Array.isArray(match.aiSuggestedTags) ? match.aiSuggestedTags.slice(0, 12) : [],
+        matchedFor: Array.isArray(match.matchedFor) ? match.matchedFor.slice(0, 12) : [],
+        againstFor: Array.isArray(match.againstFor) ? match.againstFor.slice(0, 12) : [],
+        insights: filteredInsights,
       },
     });
 
-    return { candidate: updated, match };
+    return { candidate: withDerivedCandidate(updated), match };
   });
 }

@@ -84,6 +84,10 @@ export const DEFAULT_PROMPT = `# Role: 简历信息提取专家
   ],
   "educationHistory": [
     { "period": "2018.09 – 2022.06", "school": "...", "major": "...", "degree": "本科/硕士/博士" }
+  ],
+  "languages": [
+    { "name": "中文", "level": "母语" },
+    { "name": "英语", "level": "CEFR C1 / TOEFL 105 / 流利,如简历未写具体级别用 一般|流利|精通" }
   ]
 }
 \`\`\`
@@ -270,18 +274,27 @@ export async function parseResume({ buffer, filename, contentType, model }) {
 
 // ─── 二次评估: 给已有候选人匹配某个 JD ─────────────────────────
 // 输入: candidateSummary (已解析的纯文本简报) + jobDescription (JD 描述)
-// 输出: { jdMatch: 0-100, risks: [...], highlights: [...], matchReason: "..." }
+// 输出: { jdMatch, risks, highlights, matchReason, aiSuggestedTags, insights, matchedFor, againstFor }
+//   (V2 新字段: 2026-05-24 加入 aiSuggestedTags/insights/matchedFor/againstFor,
+//    供 candidate-detail-flat 设计稿的左侧 TagsModule / 匹配项-不匹配项 / 洞察 Tab 渲染)
 export async function matchAgainstJob({ candidateSummary, jobTitle, jobDescription, model }) {
   const useModel = await pickModel(model);
   const systemPrompt = `你是 MESA Recruit 的「候选人-岗位匹配评估」专家。
 基于下面给出的候选人简报和岗位 JD,输出严格 JSON,不要 Markdown 包裹,不要额外文字。
 
-JSON 结构:
+JSON 结构(所有字段都必须出现,无内容也要返回空数组/空串而不是省略 key):
 {
   "jdMatch": 0-100 整数(综合匹配度),
   "risks": ["相对此 JD 的风险/缺项, 3-6 条"],
   "highlights": ["相对此 JD 的亮点, 3-6 条"],
-  "matchReason": "1-2 句话说明给出 jdMatch 分数的关键依据"
+  "matchReason": "1-2 句话说明给出 jdMatch 分数的关键依据",
+  "matchedFor": ["匹配维度的简短标签 2-5 个,如 教育背景 / 技能栈 / 工作经验 / 行业经验 / 管理经验"],
+  "againstFor": ["不匹配维度的简短标签 0-4 个,如 薪资期望 / 通勤城市 / 技术栈 / 行业经验"],
+  "aiSuggestedTags": ["AI 推荐给 HR 的候选人标签 3-6 个,4-8 字短语,如 性能优化高手 / Tech Lead 潜质 / 海外协作经验 / 组件库主理 / DevOps 双修"],
+  "insights": [
+    { "kind": "up", "text": "对这次匹配的正面洞察,具体且可执行" },
+    { "kind": "down", "text": "需要 HR 在面试中深入了解的关注点" }
+  ]
 }
 
 评估规则:
@@ -293,7 +306,14 @@ JSON 结构:
    - **优先量化**: 引用具体数字 / 公司 / 项目 / 证书 / 专利数
    - **禁用含糊语**: "可能具备" "可能有助于" "或许" "应该" 等推测词全部禁用 — 必须基于简历明确事实
    - 如果候选人**真的没有针对此 JD 的强匹配点**, 此数组返回 ["未发现显著相对此 JD 的亮点"], **不要凑数**
-5. 若 JD 描述空白或太短(<50 字符), matchReason 必须明确写 "JD 信息不足, 评估不准确, 请补充 JD 描述"`;
+5. matchedFor / againstFor: 简短标签(4-8 字),用于左侧主卡的"匹配项 / 不匹配项"chip,只列**维度名**(如 "教育背景"),不要写完整句子
+6. aiSuggestedTags: 给 HR 一个候选人画像 chip 列表,每条 4-8 字,**避免**"优秀工程师"这种没区分度的标签,要有信息量,如 "P7 候选" / "百万 DAU 经验" / "缺增长经验"
+7. insights:
+   - kind="up" 表示对面试有利的正面线索, kind="down" 表示要重点核实的关注点
+   - 每条 1-2 句,具体到事实(不要"工作经历丰富"这种空话);引用简历或 JD 中的具体数字/公司/技能
+   - 总数 3-6 条,up 和 down 都要有(若简历完美无可挑剔, down 可只 1 条写"未发现明显风险点")
+8. 若 JD 描述空白或太短(<50 字符), matchReason 必须明确写 "JD 信息不足, 评估不准确, 请补充 JD 描述",
+   且 jdMatch ≤ 60, aiSuggestedTags/matchedFor 可返回 [], insights 至少 1 条 kind="down" 提示 JD 残缺`;
 
   const userMsg = `# 候选人简报
 ${candidateSummary || "(未提供)"}

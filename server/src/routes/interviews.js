@@ -15,6 +15,37 @@ const INTERVIEW_BODY = {
     scheduledAt: { type: "string", format: "date-time", nullable: true },
     interviewer: { type: "string", maxLength: 100, nullable: true },
     notes: { type: "string", maxLength: 2000, nullable: true },
+    // V2 新字段(2026-05-24)
+    category: { type: "string", maxLength: 50, nullable: true },
+    link: { type: "string", maxLength: 500, nullable: true },
+    managers: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          name: { type: "string", maxLength: 100 },
+          role: { type: "string", maxLength: 100 },
+          animal: { type: "string", maxLength: 32 },
+          avatar: { type: "string", maxLength: 500 },
+        },
+        additionalProperties: false,
+      },
+      maxItems: 10,
+    },
+    interviewers: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          name: { type: "string", maxLength: 100 },
+          role: { type: "string", maxLength: 100 },
+          animal: { type: "string", maxLength: 32 },
+          avatar: { type: "string", maxLength: 500 },
+        },
+        additionalProperties: false,
+      },
+      maxItems: 10,
+    },
   },
   additionalProperties: false,
 };

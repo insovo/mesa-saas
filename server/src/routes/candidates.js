@@ -2,6 +2,7 @@
 // 所有路由都需 JWT 鉴权。
 
 import { whereByIdOrExternal } from "../lib/idLookup.js";
+import { withDerivedCandidate as withDerived } from "../lib/derived.js";
 
 const CANDIDATE_BODY = {
   type: "object",
@@ -35,6 +36,44 @@ const CANDIDATE_BODY = {
     attachment: { type: "string", maxLength: 500, nullable: true },
     aiSummary: { type: "string", maxLength: 50000, nullable: true },
     jobId: { type: "string", format: "uuid", nullable: true },
+    // V2 新字段(2026-05-24) — 跟 prisma schema add_v2_fields migration 对齐
+    aiSuggestedTags: { type: "array", items: { type: "string", maxLength: 60 }, maxItems: 12 },
+    insights: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          kind: { type: "string", enum: ["up", "down"] },
+          text: { type: "string", maxLength: 300 },
+        },
+        additionalProperties: false,
+      },
+      maxItems: 20,
+    },
+    matchedFor: { type: "array", items: { type: "string", maxLength: 80 }, maxItems: 12 },
+    againstFor: { type: "array", items: { type: "string", maxLength: 80 }, maxItems: 12 },
+    profileCompletion: { type: "integer", minimum: 0, maximum: 100, nullable: true },
+    languages: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          name: { type: "string", maxLength: 50 },
+          level: { type: "string", maxLength: 50 },
+        },
+        additionalProperties: false,
+      },
+      maxItems: 10,
+    },
+    documents: {
+      type: "object",
+      properties: {
+        resume: { type: "array", maxItems: 20 },
+        materials: { type: "array", maxItems: 30 },
+        portfolio: { type: "array", maxItems: 20 },
+      },
+      additionalProperties: false,
+    },
   },
   additionalProperties: false,
 };
@@ -76,14 +115,14 @@ export default async function candidatesRoutes(app) {
       }),
       app.prisma.candidate.count({ where }),
     ]);
-    return { items, total, skip, take };
+    return { items: items.map(withDerived), total, skip, take };
   });
 
   // Detail
   app.get("/:id", async (req, reply) => {
     const candidate = await app.prisma.candidate.findFirst({ where: whereByIdOrExternal(req.params.id) });
     if (!candidate) return reply.code(404).send({ error: "not_found" });
-    return { candidate };
+    return { candidate: withDerived(candidate) };
   });
 
   // Create
@@ -91,8 +130,10 @@ export default async function candidatesRoutes(app) {
     const ownerId = req.user.sub;
     const data = { ...req.body, ownerId };
     if (data.pushedAt) data.pushedAt = new Date(data.pushedAt);
+    // profileCompletion 是 derived,不接受外部写入
+    delete data.profileCompletion;
     const created = await app.prisma.candidate.create({ data });
-    return reply.code(201).send({ candidate: created });
+    return reply.code(201).send({ candidate: withDerived(created) });
   });
 
   // Update
@@ -100,12 +141,13 @@ export default async function candidatesRoutes(app) {
     const { id } = req.params;
     const data = { ...req.body };
     if (data.pushedAt) data.pushedAt = new Date(data.pushedAt);
+    delete data.profileCompletion;
     try {
       const updated = await app.prisma.candidate.update({
         where: { id },
         data,
       });
-      return { candidate: updated };
+      return { candidate: withDerived(updated) };
     } catch (err) {
       if (err.code === "P2025") return reply.code(404).send({ error: "not_found" });
       throw err;

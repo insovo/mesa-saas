@@ -16,6 +16,19 @@ const JOB_BODY = {
     urgency: { type: "string", enum: ["high", "mid", "low"] },
     status: { type: "string", maxLength: 50, nullable: true },
     description: { type: "string", maxLength: 20000, nullable: true },
+    // V2 新字段(2026-05-24) — 跟 prisma schema add_v2_fields migration 对齐
+    employment: { type: "string", maxLength: 50, nullable: true },
+    salary: { type: "string", maxLength: 200, nullable: true },
+    levelRange: { type: "string", maxLength: 50, nullable: true },
+    yearsExpRange: { type: "string", maxLength: 50, nullable: true },
+    educationRequirement: { type: "string", maxLength: 100, nullable: true },
+    languageRequirement: { type: "string", maxLength: 200, nullable: true },
+    publishedAt: { type: "string", format: "date-time", nullable: true },
+    deadline: { type: "string", format: "date-time", nullable: true },
+    responsibilities: { type: "array", items: { type: "string", maxLength: 500 }, maxItems: 20 },
+    requirements: { type: "array", items: { type: "string", maxLength: 500 }, maxItems: 20 },
+    nice: { type: "array", items: { type: "string", maxLength: 500 }, maxItems: 20 },
+    benefits: { type: "array", items: { type: "string", maxLength: 200 }, maxItems: 20 },
   },
   additionalProperties: false,
 };
@@ -71,14 +84,20 @@ export default async function jobsRoutes(app) {
   });
 
   app.post("/", { schema: { body: { ...JOB_BODY, required: ["title"] } } }, async (req, reply) => {
-    const created = await app.prisma.job.create({ data: req.body });
+    const data = { ...req.body };
+    if (data.publishedAt) data.publishedAt = new Date(data.publishedAt);
+    if (data.deadline) data.deadline = new Date(data.deadline);
+    const created = await app.prisma.job.create({ data });
     return reply.code(201).send({ job: created });
   });
 
   app.patch("/:id", { schema: { body: JOB_BODY } }, async (req, reply) => {
     const { id } = req.params;
+    const data = { ...req.body };
+    if (data.publishedAt) data.publishedAt = new Date(data.publishedAt);
+    if (data.deadline) data.deadline = new Date(data.deadline);
     try {
-      const updated = await app.prisma.job.update({ where: { id }, data: req.body });
+      const updated = await app.prisma.job.update({ where: { id }, data });
       return { job: updated };
     } catch (err) {
       if (err.code === "P2025") return reply.code(404).send({ error: "not_found" });

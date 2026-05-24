@@ -106,6 +106,7 @@ jobs:
             docker compose pull
 
             echo "[deploy] applying compose..."
+            # backend Dockerfile CMD 启动时会自动跑 `prisma migrate deploy`,无需额外 exec
             docker compose up -d --remove-orphans
 
             echo "[deploy] verifying health..."
