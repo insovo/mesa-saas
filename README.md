@@ -30,6 +30,29 @@ npm run dev
 
 默认账号:`admin@mesa.local / mesa-dev-2026`
 
+## 多任务并行开发(git worktree)
+
+需要同时修多个问题又不想互相污染 working tree 时,**统一**用 git worktree:
+
+```bash
+# 命名规则: .worktrees/<分类>/<任务>,分类 = feature / fix / hotfix / chore / docs
+git worktree add .worktrees/feature/upload  -b feature/upload  origin/main
+git worktree add .worktrees/fix/jwt-renew   -b fix/jwt-renew   origin/main
+
+# 进 worktree 开发(各自独立 node_modules / .env)
+cd .worktrees/feature/upload
+npm install   # 首次需要装
+# ... 改代码 → commit → push origin feature/upload → PR → merge main → 触发部署
+
+# 清理
+git worktree remove .worktrees/feature/upload
+git branch -d feature/upload
+```
+
+完整流程(含 CI/CD 衔接 + 多 AI 协作约束 + 踩坑速查)见 [`delivery-docs/src/03_deploy.md` §5.5](./delivery-docs/src/03_deploy.md)。
+
+> `.worktrees/` 和 `.claude/` 都已在 `.gitignore`,零误推风险。**禁止**把 worktree 放在 `.claude/worktrees/`(Claude Code 工具默认路径,不符合本项目约定)。
+
 ## 一键拉起完整生产栈(本地验证)
 
 ```bash

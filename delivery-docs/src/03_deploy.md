@@ -208,6 +208,166 @@ docker compose up -d
 
 或在 GHCR 上 tag 一个旧版本为 latest,然后 `docker compose pull && docker compose up -d`。
 
+## 5.5 多 worktree 并行开发流程(开发侧硬约定)
+
+当需要同时修多个问题(候选人 V2 / Kimi 鲁棒性 / Cloudflare 502 等)而不互相污染 working tree 时,**统一**使用 git worktree。本项目使用的标准结构是:
+
+```
+mesa/
+└── .worktrees/              # ✅ 已在 .gitignore,不入库
+    ├── feature/             # 新功能
+    │   └── upload/          # = 一个独立 working tree,分支 feature/upload
+    ├── fix/                 # bug 修复
+    │   └── jwt-renew/
+    ├── hotfix/              # 生产紧急
+    │   └── cf-502/
+    ├── chore/               # 杂活
+    └── docs/                # 文档
+```
+
+### 5.5.1 命名规则
+
+- **位置**:`.worktrees/<分类>/<任务名>` 两级目录
+- **分类**白名单:`feature` / `fix` / `hotfix` / `chore` / `docs`
+- **分支名**与目录同名:`<分类>/<任务名>`(如 `feature/upload`、`hotfix/cf-502`)
+- ❌ **禁止**放 `.claude/worktrees/`(Claude Code 工具默认路径,不符合本项目约定;且 `.claude/` 已加入 gitignore 防误推)
+
+### 5.5.2 标准命令
+
+```bash
+# === 在主 repo (/Users/mysaria/Project/mesa 或 /opt/mesa) 跑 ===
+
+# 1) 创建 worktree(一律基于 origin/main,不要基于本地 main,可能滞后)
+git worktree add .worktrees/feature/upload   -b feature/upload   origin/main
+git worktree add .worktrees/fix/jwt-renew    -b fix/jwt-renew    origin/main
+git worktree add .worktrees/hotfix/cf-502    -b hotfix/cf-502    origin/main
+
+# 2) 进入 worktree 开发
+cd .worktrees/feature/upload
+#   各自的 .env / node_modules / web/certs/ 需独立准备,git 不会自动同步
+#   建议: cp /opt/mesa/.env .env  或链接 ln -s ../../../.env .env
+
+# 3) 完事提交并推送 feature 分支
+git add <files>
+git commit -m "feat(upload): xxx"
+git push origin feature/upload
+
+# 4) 合并到 main(任选其一):
+#    A. GitHub PR → squash/merge → main → 触发 deploy.yml 自动部署
+#    B. 在主 repo 直接 fast-forward(适合本地单人小改):
+#       cd /Users/mysaria/Project/mesa
+#       git checkout main
+#       git merge feature/upload --ff-only  # 失败说明 main 已前进,需先 rebase
+#       git push origin main                # 触发自动部署
+
+# 5) 清理
+git worktree remove .worktrees/feature/upload
+git branch -d feature/upload          # 已合并的用 -d,git 自带保护
+#                                     # 未合并的强制删用 -D,慎用
+```
+
+### 5.5.3 与 CI/CD 的衔接
+
+| 触发点 | 链路 |
+|---|---|
+| `git push origin feature/<x>` | 触发 **CI** (build + smoke),**不会** deploy |
+| `git push origin main`(merge 后) | 触发 **Deploy**(GHCR build/push + SSH 滚动部署),1-2 分钟生产生效 |
+| `gh workflow run deploy.yml --ref main` | 手动触发,无需 push |
+
+### 5.5.4 多 AI 协作约束
+
+本项目至少有 Claude Code / Codex CLI / Cursor 三家 AI 介入。Worktree 约定对所有 AI 等效:
+
+1. **AI 创建 worktree 时**:必须用 `.worktrees/<分类>/<任务>`,**不允许**用工具自带的默认路径(如 Claude Code 的 `EnterWorktree` 默认 `.claude/worktrees/`)
+2. **AI 退出 worktree 时**:已合并的分支必须 `git worktree remove + git branch -d` 清理,避免堆积
+3. **AI 不主动 commit/push**:按 `CLAUDE.md §13` 全局硬约束,任何 commit / push / merge 到 main 都必须用户明确指令
+
+### 5.5.5 踩坑速查
+
+| 现象 | 原因 | 修复 |
+|------|------|------|
+| `fatal: 'feature/xxx' already exists` | 旧分支残留 | `git branch -d feature/xxx`(小 d 保护,有未合并 commit 会拒绝) |
+| worktree 里 `npm run dev` 报 module not found | 每个 worktree 独立 `node_modules`,需各自 `npm install` | `cd .worktrees/feature/upload/server && npm install` |
+| worktree 里 `.env` 缺失 | git 不会同步 untracked 文件 | 从主 repo 复制或软链:`cp ../../../.env .env` |
+| `git worktree list` 显示残留路径 | `rm -rf` 删了目录但没 `git worktree remove` | `git worktree prune` 清理元数据 |
+| 前端 dev `Port 5173 is in use` | 主 repo 已占,worktree 没分配新端口 | 见 §5.5.6 |
+| 浏览器登录后请求 `/api/*` CORS 报错 | `server/.env` 的 `WEB_ORIGIN` 没跟着前端端口改 | 与 `VITE_DEV_PORT` 对齐(如 `WEB_ORIGIN="http://localhost:5183"`) |
+
+### 5.5.6 多 worktree 端口分配(防冲突)
+
+后端默认 `3001` + 前端默认 `5173`,多 worktree 并行启动 dev server 会冲突。通过**端口登记表 `.worktree-ports.json`**(项目根,入库)管理。
+
+**端口分配公式**:
+
+| slot | 用途 | 后端 PORT | 前端 VITE_DEV_PORT |
+|------|------|-----------|----|
+| 0 | 主 repo (main) | 3001 | 5173 |
+| 1 | 第 1 个 worktree | 3011 | 5183 |
+| 2 | 第 2 个 worktree | 3021 | 5193 |
+| N | 第 N 个 worktree | 3001 + N*10 | 5173 + N*10 |
+
+**新建 worktree 端口分配步骤**(配合 §5.5.2 的命令):
+
+```bash
+# === 1) 在主 repo 跑 ===
+
+# 看现有 slot 已占哪些
+cat .worktree-ports.json | jq '.slots[].slot'
+
+# 假设下一个空闲 = 1,则:
+BACKEND=3011
+FRONTEND=5183
+
+# 2) 创建 worktree(同 §5.5.2)
+git worktree add .worktrees/feature/upload -b feature/upload origin/main
+
+# 3) 复制 .env 并改后端端口
+cp .env .worktrees/feature/upload/.env
+cp server/.env .worktrees/feature/upload/server/.env
+sed -i '' "s|^PORT=.*|PORT=\"$BACKEND\"|" .worktrees/feature/upload/server/.env
+sed -i '' "s|^WEB_ORIGIN=.*|WEB_ORIGIN=\"http://localhost:$FRONTEND\"|" .worktrees/feature/upload/server/.env
+
+# 4) 写前端 .env(新建)
+cat > .worktrees/feature/upload/web/.env <<EOF
+VITE_DEV_PORT=$FRONTEND
+VITE_API_PORT=$BACKEND
+EOF
+
+# 5) 登记到 .worktree-ports.json(用 jq 或手编辑)
+jq --arg slot 1 --arg name feature/upload --arg path .worktrees/feature/upload \
+   --arg branch feature/upload --arg backend "$BACKEND" --arg frontend "$FRONTEND" \
+   --arg since "$(date -u +%F)" \
+   '.slots += [{slot:($slot|tonumber),name:$name,path:$path,branch:$branch,backend:($backend|tonumber),frontend:($frontend|tonumber),since:$since}]' \
+   .worktree-ports.json > /tmp/wp.json && mv /tmp/wp.json .worktree-ports.json
+
+# 6) 装依赖
+cd .worktrees/feature/upload/server && npm install && npx prisma generate
+cd ../web && npm install
+```
+
+**vite.config.js 已改造**(向后兼容):
+```js
+// web/vite.config.js
+const devPort = Number(env.VITE_DEV_PORT) || 5173;
+const apiPort = Number(env.VITE_API_PORT) || 3001;
+```
+- 主 repo 不需要 `web/.env`(走默认 5173/3001)
+- worktree 通过 `web/.env` 注入端口,vite 启动时自动读
+
+**禁止**:
+1. 跳过 `.worktree-ports.json` 直接 `git worktree add`(端口登记会漂移)
+2. 多个 worktree 共用同一 slot(端口冲突)
+3. 手改 `vite.config.js` 硬编码端口(改 env 即可)
+
+**删除 worktree**:
+```bash
+git worktree remove .worktrees/feature/upload
+git branch -d feature/upload
+# 从登记表删条目
+jq '.slots |= map(select(.name != "feature/upload"))' \
+   .worktree-ports.json > /tmp/wp.json && mv /tmp/wp.json .worktree-ports.json
+```
+
 # 6. Cloudflare WAF 配置(推荐)
 
 `Security → WAF → Custom rules → Create rule`:

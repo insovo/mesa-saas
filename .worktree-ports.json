@@ -1,0 +1,38 @@
+{
+  "_schema": "v1",
+  "_doc": "Worktree 端口登记表 — 多 worktree 并行开发时防端口冲突。AI / 人新建或删除 worktree 必须同步更新本文件。详见 CLAUDE.md §7.0.1 与 delivery-docs/src/03_deploy.md §5.5.6。",
+  "rules": {
+    "base": { "backend": 3001, "frontend": 5173 },
+    "step": 10,
+    "formula": "slot_N 的端口 = base + N * step。slot 0 固定给主 repo (main),其它 worktree 取下一个空闲 slot。"
+  },
+  "slots": [
+    {
+      "slot": 0,
+      "name": "main",
+      "path": ".",
+      "branch": "main",
+      "backend": 3001,
+      "frontend": 5173,
+      "since": "2026-05-25"
+    },
+    {
+      "slot": 1,
+      "name": "feature/upload",
+      "path": ".worktrees/feature/upload",
+      "branch": "feature/upload",
+      "backend": 3011,
+      "frontend": 5183,
+      "since": "2026-05-25"
+    },
+    {
+      "slot": 2,
+      "name": "feature/candidates",
+      "path": ".worktrees/feature/candidates",
+      "branch": "feature/candidates",
+      "backend": 3021,
+      "frontend": 5193,
+      "since": "2026-05-25"
+    }
+  ]
+}

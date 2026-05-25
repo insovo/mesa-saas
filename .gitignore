@@ -33,5 +33,8 @@ web/certs/
 # Git worktrees(本机隔离工作区,不入库)
 .worktrees/
 
+# Claude Code 私域(会话状态 / 工具默认 worktree 等,不入库)
+.claude/
+
 # 交付文档源 md(只保留 docx)— 可选,保留 md 也行
 # delivery-docs/src/
