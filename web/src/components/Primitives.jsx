@@ -441,22 +441,37 @@ export function ToastHost() {
   useEffect(() => {
     const cb = (t) => {
       setItems((prev) => [...prev, t]);
-      setTimeout(() => setItems((prev) => prev.filter((x) => x.id !== t.id)), 3500);
+      // error 类型不自动消失,用户必须点 X 关闭 — 留时间复制 / 截图
+      // success / info 仍 3.5s 自动关闭
+      if (t.type !== "error") {
+        setTimeout(() => setItems((prev) => prev.filter((x) => x.id !== t.id)), 3500);
+      }
     };
     toastListeners.add(cb);
     return () => toastListeners.delete(cb);
   }, []);
+  const dismiss = (id) => setItems((prev) => prev.filter((x) => x.id !== id));
   return (
-    <div className="fixed bottom-6 right-6 z-[100] flex flex-col gap-2">
+    <div className="fixed bottom-6 right-6 z-[100] flex flex-col gap-2 max-w-md">
       {items.map((t) => (
         <div
           key={t.id}
-          className={`px-4 py-3 rounded-xl shadow-card text-sm font-medium max-w-sm
-            ${t.type === "error" ? "bg-red-500 text-white" :
-              t.type === "success" ? "bg-green-500 text-white" :
-              "bg-navy-700 text-white"}`}
+          className={`px-4 py-3 rounded-xl shadow-card text-sm font-medium flex items-start gap-3
+            ${t.type === "error" ? "bg-red-500 text-white max-w-md" :
+              t.type === "success" ? "bg-green-500 text-white max-w-sm" :
+              "bg-navy-700 text-white max-w-sm"}`}
         >
-          {t.msg}
+          <span className="flex-1 break-words whitespace-pre-wrap select-text">{t.msg}</span>
+          {t.type === "error" && (
+            <button
+              onClick={() => dismiss(t.id)}
+              className="shrink-0 text-white/80 hover:text-white text-xs leading-none mt-0.5"
+              aria-label="关闭"
+              title="关闭"
+            >
+              ✕
+            </button>
+          )}
         </div>
       ))}
     </div>

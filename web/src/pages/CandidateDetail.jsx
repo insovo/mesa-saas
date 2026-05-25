@@ -2631,20 +2631,48 @@ function CandidateDetail() {
         setC(finalTask.candidate);
         toast(`✓ 已重新解析: ${finalTask.candidate.name}${finalTask.match ? ` · JD 匹配度 ${finalTask.candidate.jdMatch ?? "—"}` : ""}`, "success");
       } else {
-        // failed — 展开 task.error 给具体上游 message
-        const err = finalTask.error || {};
-        toast(`重新解析失败 · [${err.statusCode || "?"}] ${err.code || "error"} · ${err.message || "未知"}`, "error");
+        // failed — 完整错误信息复制到剪贴板 + console.error 完整 task 便于排查
+        reportReparseError(finalTask, c?.name);
       }
     } catch (e) {
-      console.error("[reparse] failed", e);
-      const r = e.response;
-      const code = r?.data?.error ? `${r.data.error}` : "";
-      const msg = r?.data?.message || e.message || "未知错误";
-      const status = r?.status ? `[${r.status}] ` : "";
-      toast(`重新解析失败 · ${status}${code ? code + " · " : ""}${msg}`, "error");
+      console.error("[reparse] axios failed", e);
+      reportAxiosError(e, c?.name);
     } finally {
       setReparsing(false);
     }
+  }
+
+  // 失败信息无处可贴的问题:full task 信息塞剪贴板 + console.error 全文 + toast 提示已复制
+  function reportReparseError(task, candidateName) {
+    const err = task.error || {};
+    const full = JSON.stringify({
+      candidate: candidateName,
+      taskId: task.id,
+      startedAt: task.startedAt,
+      finishedAt: task.finishedAt,
+      statusCode: err.statusCode,
+      errorCode: err.code,
+      message: err.message,
+    }, null, 2);
+    console.error("[reparse] task failed", task);
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(full).catch(() => {});
+    }
+    toast(`重新解析失败 · ${err.code || "error"} · 完整错误已复制到剪贴板,直接粘贴`, "error");
+  }
+  function reportAxiosError(e, candidateName) {
+    const r = e.response;
+    const full = JSON.stringify({
+      candidate: candidateName,
+      status: r?.status,
+      url: r?.config?.url,
+      data: r?.data,
+      message: e.message,
+    }, null, 2);
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(full).catch(() => {});
+    }
+    toast(`重新解析失败 · ${r?.data?.error || e.message?.slice(0, 40)} · 完整错误已复制到剪贴板`, "error");
   }
 
   async function confirmSwitchJob() {

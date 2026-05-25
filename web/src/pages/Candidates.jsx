@@ -83,16 +83,33 @@ export default function Candidates() {
         setItems((prev) => prev.map((x) => (x.id === c.id ? finalTask.candidate : x)));
         toast(`✓ ${finalTask.candidate.name} 已重新解析`, "success");
       } else {
+        // failed — 全完整错误塞剪贴板 + console.error 完整 task
         const err = finalTask.error || {};
-        toast(`重新解析失败 · ${c.name} · [${err.statusCode || "?"}] ${err.code || "error"} · ${err.message || "未知"}`, "error");
+        const full = JSON.stringify({
+          candidate: c.name,
+          taskId: finalTask.id,
+          startedAt: finalTask.startedAt,
+          finishedAt: finalTask.finishedAt,
+          statusCode: err.statusCode,
+          errorCode: err.code,
+          message: err.message,
+        }, null, 2);
+        console.error("[reparse] task failed", finalTask);
+        if (navigator.clipboard?.writeText) navigator.clipboard.writeText(full).catch(() => {});
+        toast(`${c.name} · ${err.code || "error"} · 完整错误已复制到剪贴板`, "error");
       }
     } catch (e) {
-      console.error("[reparse] failed", c.name, e);
+      console.error("[reparse] axios failed", c.name, e);
       const r = e.response;
-      const code = r?.data?.error ? `${r.data.error}` : "";
-      const msg = r?.data?.message || e.message || "未知错误";
-      const status = r?.status ? `[${r.status}] ` : "";
-      toast(`重新解析失败 · ${c.name} · ${status}${code ? code + " · " : ""}${msg}`, "error");
+      const full = JSON.stringify({
+        candidate: c.name,
+        status: r?.status,
+        url: r?.config?.url,
+        data: r?.data,
+        message: e.message,
+      }, null, 2);
+      if (navigator.clipboard?.writeText) navigator.clipboard.writeText(full).catch(() => {});
+      toast(`重新解析失败 · ${c.name} · 完整错误已复制到剪贴板`, "error");
     } finally {
       setReparsingId(null);
     }
