@@ -250,6 +250,50 @@ export async function listModels({ forceRefresh = false } = {}) {
   return ids;
 }
 
+// LLM 输出 JSON 抢救:LLM 偶尔会输出 trailing comma / markdown code fence /
+// 单引号 / 非转义换行,JSON.parse 直接 throw。这里做最小 sanitization,提高解析成功率。
+function sanitizeLlmJson(raw) {
+  if (!raw) return raw;
+  let s = raw.trim();
+  // 去 markdown code fence: ```json ... ``` 或 ``` ... ```
+  s = s.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "");
+  // 抓第一个 { 到最后一个 }
+  const firstBrace = s.indexOf("{");
+  const lastBrace = s.lastIndexOf("}");
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    s = s.slice(firstBrace, lastBrace + 1);
+  }
+  // 去 trailing comma: ,] 或 ,}
+  s = s.replace(/,(\s*[}\]])/g, "$1");
+  return s;
+}
+
+// 解析 LLM JSON 输出,失败时给出可读 error(含 raw 片段,便于定位)
+function parseLlmJson(raw, context = "kimi") {
+  if (!raw) {
+    throw Object.assign(new Error(`${context} returned empty content`), { statusCode: 422, code: "kimi_parse_error" });
+  }
+  // 1) 直接 parse
+  try { return JSON.parse(raw); } catch {}
+  // 2) sanitize 后再 parse
+  const cleaned = sanitizeLlmJson(raw);
+  try { return JSON.parse(cleaned); } catch (e) {
+    // 失败时把 raw 关键片段附在 error 上(限长避免日志爆炸)
+    const m = /at position (\d+)/.exec(e.message);
+    let snippet = raw.slice(0, 400);
+    if (m) {
+      const pos = parseInt(m[1], 10);
+      const start = Math.max(0, pos - 80);
+      const end = Math.min(raw.length, pos + 80);
+      snippet = `...${raw.slice(start, end)}...`;
+    }
+    throw Object.assign(
+      new Error(`${context} JSON parse failed: ${e.message} | snippet around error: ${snippet}`),
+      { statusCode: 422, code: "kimi_parse_error" }
+    );
+  }
+}
+
 async function pickModel(requested) {
   if (!requested) return effectiveModel();
   try {
@@ -282,37 +326,46 @@ export async function parseResume({ buffer, filename, contentType, model }) {
   const useModel = await pickParseModel(model);
   const prompt = await effectivePrompt();
 
-  const res = await kimiRequest("/chat/completions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: useModel,
-      // 不传 temperature: kimi-k2.5 等推理模型只接受 temperature=1,旧 moonshot-v1-* 默认也 OK
-      // 推理模型靠 reasoning 保证稳定性,不需要 low temperature
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: prompt },
-        { role: "system", content: `以下是简历原文(可能含 OCR 噪音):\n\n${extractedText}` },
-        { role: "user", content: "请按上述要求输出 JSON。" },
-      ],
-    }),
-  });
-  const data = await res.json();
-  const raw = data?.choices?.[0]?.message?.content || "";
-  let json;
-  try {
-    json = JSON.parse(raw);
-  } catch {
-    const m = raw.match(/\{[\s\S]*\}/);
-    if (!m) throw Object.assign(new Error("kimi returned non-JSON content"), { statusCode: 422, code: "kimi_parse_error" });
-    json = JSON.parse(m[0]);
+  // 内部函数,执行 1 次 chat 调用 + JSON 解析
+  async function attempt() {
+    const res = await kimiRequest("/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: useModel,
+        // 不传 temperature: kimi-k2.5 等推理模型只接受 temperature=1,旧 moonshot-v1-* 默认也 OK
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: prompt },
+          { role: "system", content: `以下是简历原文(可能含 OCR 噪音):\n\n${extractedText}` },
+          { role: "user", content: "请按上述要求输出 JSON。务必保证 JSON 语法合法 — 数组元素之间用 comma, 不要 trailing comma, 不要 markdown code fence。" },
+        ],
+      }),
+    });
+    const data = await res.json();
+    const raw = data?.choices?.[0]?.message?.content || "";
+    const json = parseLlmJson(raw, "kimi parseResume");
+    return { json, meta: { usage: data?.usage } };
   }
 
-  const { summary, ...parsed } = json;
+  // 重试 1 次:LLM 输出抖动大,第一次 JSON 语法错时通常第二次能正确返回
+  let result;
+  try {
+    result = await attempt();
+  } catch (err) {
+    if (err.code === "kimi_parse_error") {
+      // 仅 parse 错误才 retry,上游 4xx/5xx 不重试避免雪崩
+      result = await attempt();
+    } else {
+      throw err;
+    }
+  }
+
+  const { summary, ...parsed } = result.json;
   return {
     summary: typeof summary === "string" ? summary.trim() : "",
     parsed,
-    meta: { fileId: file.id, model: useModel, usage: data?.usage, bytesProcessed: file.bytes },
+    meta: { fileId: file.id, model: useModel, usage: result.meta.usage, bytesProcessed: file.bytes },
   };
 }
 
@@ -384,14 +437,7 @@ ${jobDescription || "(未提供)"}`;
   });
   const data = await res.json();
   const raw = data?.choices?.[0]?.message?.content || "";
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    const m = raw.match(/\{[\s\S]*\}/);
-    if (!m) throw Object.assign(new Error("kimi match output unparseable"), { statusCode: 422, code: "kimi_parse_error" });
-    parsed = JSON.parse(m[0]);
-  }
+  const parsed = parseLlmJson(raw, "kimi matchAgainstJob");
   return { ...parsed, _meta: { model: useModel, usage: data?.usage } };
 }
 
