@@ -20,8 +20,11 @@
 | 子系统 | 关键能力 |
 |--------|---------|
 | 招聘工作台 | 候选人 / 岗位 / 部门 / 员工 / 面试 / 概览统计 全套 CRUD |
+| 候选人详情页(V2)| 三列布局(profile sticky · 中间 · 评价+洞察 sticky)· 15+ 新组件:DocsModule / TagsModule / InlineSource / PeopleChips / JdSwitchConfirmModal / JdDescModal / FeedbackHistoryCard / OverviewTile 等 |
 | LLM 简历解析 | Kimi (Moonshot AI) · 一次 chat 输出 JSON(含 HR 友好简报 + 结构化字段)· admin 在 UI 编辑 API Key/模型/Prompt |
-| JD 匹配评估 | 二次 LLM 调用,基于候选人简报 + JD 描述输出 jdMatch(0-100)+ risks/highlights |
+| JD 匹配评估 | 二次 LLM 调用,基于候选人简报 + JD 描述输出 jdMatch + risks/highlights + V2 新字段(matchedFor / againstFor / aiSuggestedTags / insights[kind=up/down]) |
+| 候选人重新解析 | 「待解析」候选人(LLM 上传时降级)详情页 amber banner / 列表 hover icon 触发,**异步任务化**:POST 立即 202 + taskId,前端 2s 一次轮询 GET /parse-tasks/:taskId,绕 Cloudflare 100s 上限,Kimi 跑多久都行 |
+| LiquidLoader | 候选人匹配度全站液体进度球(替换原 MatchRing)· 三档调色板(red ≤60 / blue 60-80 / violet >80)· 数字白色描边 · 波浪 + 气泡 + 高光 · loading=true 外圈呼吸光晕 |
 | 分享给招聘官 | ShareLink 公开链接,可设有效期(60s-30d/无限期)+ 访问次数上限(10/50/100/自定义/无限) |
 | 评价对话系统 | 1 级嵌套回复 + 多选批量回复 + 赞同/否决投票 + 投票名单 popover + 可见范围(public/internal/admin) + soft-delete + admin 审核删除/隐藏 + 实时通知(Notification+音效) |
 
@@ -32,8 +35,7 @@
 | 维度 | 当前生产形态 |
 |------|-------------|
 | 前端(生产) | `web/` — Vite 5 + React 18 + Tailwind 3 + react-router 6 |
-| 前端(设计沙箱) | `ui_kits/mesa-recruit/` — React UMD + Babel Standalone + Tailwind Play CDN(**无构建**) |
-| 后端 | `server/` — Node 20 + Fastify 4 + Prisma 5 + JWT |
+| 后端 | `server/` — Node 20 + Fastify 4 + Prisma 5 + JWT · jsonrepair(LLM JSON 兜底)|
 | 数据 | PostgreSQL 16 + Redis 7(均 docker bridge 网内,公网零暴露) |
 | 对象存储 | Cloudflare R2(`mesa-resumes` 业务桶 + `mesa-backups` 备份桶,凭证独立) |
 | 反向代理 / TLS | 容器内 Nginx 1.27 + Cloudflare Origin Cert(`*.insovo.top` 15 年) |
@@ -48,14 +50,17 @@
 mesa/
 ├── server/                    # Fastify + Prisma 后端
 │   ├── prisma/                # schema + migrations + seed
-│   └── src/                   # plugins/ + routes/ + lib/
+│   │   └── migrations/        # 含 add_v2_fields(Candidate/Job/Interview 共 23 新字段)
+│   └── src/
+│       ├── plugins/           # prisma / jwt / cors / redis / r2
+│       ├── routes/            # candidates / jobs / departments / employees / interviews / dashboard / storage / resumes / system / share / reviews / auth
+│       └── lib/               # api / kimi(LLM + 4 层 JSON fallback + 429 retry)/ derived(profileCompletion)/ parseTaskStore(reparse 异步任务)/ idLookup / settings
 ├── web/                       # Vite 生产前端
-│   ├── src/components/        # Primitives / Sidebar / Topbar / Layout / AuthGuard
-│   ├── src/pages/             # 11 个业务页面
+│   ├── src/components/        # Primitives(LiquidLoader / MatchRing / Card / I / ToastHost 等)/ Sidebar / Topbar / Layout / AuthGuard
+│   ├── src/pages/             # 13 个业务页面(候选人详情 = V2 三列布局)
 │   ├── src/lib/               # api / auth / constants
-│   ├── nginx.conf             # 容器内 Nginx 配置(80 跳 443 + 443 主服务 + monitor 子域)
+│   ├── nginx.conf             # 容器内 Nginx(80→443 / 主服务 / monitor / /api proxy_read_timeout 180s / index.html no-cache)
 │   └── Dockerfile             # 多阶段 build
-├── ui_kits/mesa-recruit/      # 无构建设计沙箱(组件 prototype → 移植到 web/)
 ├── ops/
 │   ├── backup.sh              # pg_dump → R2(由 systemd timer 每日跑)
 │   ├── restore.sh             # R2 → pg_restore(灾备恢复)
@@ -64,8 +69,6 @@ mesa/
 ├── docker-compose.yml         # 生产 5 容器编排
 ├── docker-compose.dev.yml     # 本地开发 PG + Redis(仅 127.0.0.1)
 ├── .github/workflows/         # CI + Deploy 流水线
-├── colors_and_type.css        # 设计令牌源(被 ui_kits 引用,web/ 已抽到 index.css + tailwind.config)
-├── assets/ + fonts/           # UI Kit 素材
 ├── .env.example               # 生产环境变量模板(占位 __SET_BY_OPS__)
 ├── CLAUDE.md                  # 本文件
 └── README.md                  # 引导性 README
@@ -126,13 +129,7 @@ mesa/
 - 认证拦截器在 `src/lib/api.js`: 401 → 自动 clearAuth + `navigate('/login')`
 - Routing: `AuthGuard` 包裹 `Layout`(Sidebar+Topbar+Outlet),所有业务页 lazy mount
 
-### 6.3 UI Kit(`ui_kits/mesa-recruit/`,无构建沙箱)
-- ⛔ **不要**引入 npm / vite / 打包器
-- ⛔ **不要**把 `.jsx` 改成 ESM `import/export`(挂 `window` 全局命名空间)
-- 跨文件通讯只走 `window.{Comp}` 与 `window.MESA_*`
-- 修改 `index.html` 时严格按依赖序加 `<script>`:`data.js → Primitives → Sidebar/Topbar → 页面 → App`
-
-### 6.4 UI / Tailwind 风格
+### 6.3 UI / Tailwind 风格
 - 品牌色 `#422AFB`(primary) / `#3311DB`(hover) / `#2111A5`(active)
 - 文本主色 `#1B254B`(navy-700),次级 `#707EAE`,占位 `#A0AEC0`
 - 圆角:卡片 `rounded-card`(20px),按钮/输入 `rounded-xl`
@@ -190,6 +187,16 @@ gh run watch  # 想盯过程的话
 | 16 | 注释里的"示例 API key"误推 | Push Protection 没拦 `sk-` | 任何示例都用 `sk-XXX...`,grep 命中**立即终止**(不判断是否注释) |
 | 17 | localStorage 存的 token 不是后端最新 | admin 改了密码后客户端还能用旧 token 一段时间 | JWT 过期才会真失效(7d);敏感操作做 server-side 当前用户校验 |
 | 18 | 浏览器 `Notification.requestPermission()` 必须用户交互后调 | 自动调被 silently 拒 | 在用户进入候选人详情后被动调用,初始 `Notification.permission === "default"` 时才 request |
+| 19 | kimi-k2.5 等推理模型只接受 `temperature=1` | `chat/completions 400: invalid temperature` | 全部删 temperature 参数,用 model 默认值,兼容推理/非推理模型 |
+| 20 | Cloudflare Free/Pro plan origin response **100s 硬上限** | LLM 慢请求 >100s → CF 替换 origin 5xx 为自己的 HTML 错误页 | reparse 这种长任务**异步化**(立即返回 taskId,前端 2s 轮询);backend 错误码 5xx → 4xx(422/408/424)让 CF 透传 JSON body |
+| 21 | LLM 输出 JSON 不稳定(中文全角 `，：` / unescaped newline / trailing comma) | `JSON.parse Expected ',' or ']' at position N` | 4 层 fallback:直接 parse → 手写 sanitize(全角符号 / fence)→ `jsonrepair` 库 → throw 带 snippet。parseResume 失败再 retry 1 次整 Kimi 调用 |
+| 22 | Kimi `engine_overloaded` 429 间歇失败 | reparse 偶尔失败,实际是 Kimi 服务侧过载 | `kimiRequest` 内 429/5xx 自动指数 backoff retry(1.5s → 3.6s → 8.6s,最多 3 次) |
+| 23 | 简历解析推理模型(k2.5)长上下文 >90s 必超时 | 简历解析这种「长输入抽取式」根本不需要 reasoning | `pickParseModel` fallback:admin 若选 kimi-k* / *-thinking / *-reasoner,parseResume 强制改 moonshot-v1-32k(non-reasoning,10-20s) |
+| 24 | Node `fetch` 默认无 timeout | Kimi 卡死时 backend 一直挂等 nginx 180s 超时 | `kimiRequest` 加 `AbortController`:chat 90s / files 60s,backend 抢先 abort 返回结构化 4xx error |
+| 25 | CDN/浏览器缓存 `index.html` 导致用户长时间看旧 bundle | 部署完后前端仍引用过期 chunk hash | nginx `location = /index.html { Cache-Control: no-cache, no-store, must-revalidate }`;静态 chunk 因有 contenthash 仍可长缓存 |
+| 26 | error toast 3.5s 自动消失 | 用户来不及复制错误信息发开发 | error 类型不自动 dismiss + 加 ✕ 关闭按钮 + 完整 task.error 自动 `navigator.clipboard.writeText` + `console.error` 完整对象 |
+| 27 | nginx `proxy_read_timeout 60s` 短于后端长任务 | Kimi 慢请求被 nginx 先掐 502 | `/api/` location 改 `proxy_read_timeout 180s` + `proxy_send_timeout 180s`(给 backend `LONG_TIMEOUT=120s` 留缓冲) |
+| 18 | 浏览器 `Notification.requestPermission()` 必须用户交互后调 | 自动调被 silently 拒 | 在用户进入候选人详情后被动调用,初始 `Notification.permission === "default"` 时才 request |
 
 ---
 
@@ -221,11 +228,11 @@ SystemSetting  独立 KV (kimi.api_key / kimi.model / kimi.prompt 等)
 | 表 | 关键字段 | 备注 |
 |----|---------|------|
 | `User` | email/passwordHash/role/avatar/jobTitle | Role: ADMIN/RECRUITER/VIEWER |
-| `Candidate` | name/skills/tags/risks/highlights/aiSummary/jobId/jdMatch | aiSummary 是 LLM 输出的 HR 简报纯文本 |
-| `Job` | title/description/urgency/openings/_count linkedCandidates+employees | description 给 LLM 二次评估用 |
+| `Candidate` | name/skills/tags/risks/highlights/aiSummary/jobId/jdMatch + **V2** documents/insights/aiSuggestedTags/matchedFor/againstFor/profileCompletion(derived)/languages | aiSummary = LLM 输出的 HR 简报纯文本;V2 字段由 `/api/resumes/match` 写入,profileCompletion 后端 read 时算(`lib/derived.js`)不存 DB |
+| `Job` | title/description/urgency/openings/_count + **V2** employment/salary/levelRange/yearsExpRange/educationRequirement/languageRequirement/publishedAt/deadline/responsibilities/requirements/nice/benefits | V2 字段供 JdDescModal + 岗位概览 OverviewTile 渲染;暂由 admin 手动填,无 LLM 产 |
 | `Department` | name/code/head/headcount/openHc/parentId | 自关联树 |
 | `Employee` | candidateId/jobId/stage/checklist json/probation json/events json/riskItems json | candidate → employee 转化 |
-| `Interview` | candidateId/jobId/round/mode/scheduledAt/status | |
+| `Interview` | candidateId/jobId/round/mode/scheduledAt/status + **V2** category/link/managers(JSON)/interviewers(JSON) | managers/interviewers 是多人 JSON 数组,旧 interviewer single string 保留向后兼容 |
 | `CandidateNote` | candidateId/content/authorId/authorName | admin 内部备注 |
 | `Review` | candidateId/authorName/content/attachments json/parentId/referencedIds json/stance/upvotes/downvotes/visibility/hidden/deletedAt | 评价对话(详见 §12) |
 | `ReviewVote` | reviewId/userId/value(+1/-1) | unique(reviewId,userId) 登录用户去重 |

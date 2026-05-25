@@ -44,18 +44,17 @@ docker exec mesa-server node prisma/seed.js
 
 ```
 mesa/
-├── server/                  # Fastify + Prisma 后端
-├── web/                     # Vite + React + Tailwind 生产前端
-├── ui_kits/mesa-recruit/    # 「无构建」UI Kit 设计参考(不参与生产)
+├── server/                  # Fastify + Prisma 后端 (含 lib/{kimi,derived,parseTaskStore}.js)
+├── web/                     # Vite + React + Tailwind 生产前端 (V2 三列布局候选人详情)
 ├── docker-compose.dev.yml   # 本地 PG + Redis
-├── docker-compose.yml       # 生产 4 容器编排
+├── docker-compose.yml       # 生产 5 容器编排
 ├── .github/workflows/       # CI(build) + Deploy(GHCR + SSH)
 ├── ops/
 │   ├── backup.sh            # pg_dump → R2
 │   ├── restore.sh           # R2 → pg_restore
 │   ├── crontab.example      # 每日 03:00 备份
 │   └── runbook_cloudflare_vps.md   # 阶段④ 生产硬化 SOP
-└── delivery-docs/           # 4 份交付文档(.docx)
+└── delivery-docs/           # 4 份交付文档(.docx + src/*.md)
     ├── 01_系统架构与网络拓扑设计说明书.docx
     ├── 02_后端标准API接口参考手册.docx
     ├── 03_生产环境云端部署与CI-CD配置手册.docx
@@ -67,11 +66,15 @@ mesa/
 | 阶段 | 状态 |
 |------|------|
 | ① 本地全栈闭环(server + web + dev compose) | ✅ |
-| ② Cloudflare R2 对象存储 | ✅ 代码就绪,等运维填凭证 |
+| ② Cloudflare R2 对象存储 | ✅ |
 | ③ Docker + Nginx 容器化(生产 compose) | ✅ |
-| ④ Cloudflare DNS/WAF + VPS 加固 | ✅ runbook 就绪 |
+| ④ Cloudflare DNS/WAF + VPS 加固 | ✅ |
 | ⑤ CI/CD(GitHub Actions)+ 容灾备份 | ✅ |
 | ⑥ 交付文档 4 件套(`delivery-docs/*.docx`) | ✅ |
+| ⑦ V2 设计稿合入(候选人详情三列布局 + 15 新组件 + LiquidLoader 全站) | ✅ |
+| ⑧ 后端 DTO 扩展(Candidate/Job/Interview 共 23 V2 字段 + LLM 写新字段) | ✅ |
+| ⑨ Reparse 异步任务化(POST 立即 202 + 前端轮询,绕 Cloudflare 100s 上限) | ✅ |
+| ⑩ Kimi 鲁棒性(4 层 JSON fallback + jsonrepair + 429/5xx 指数 backoff retry) | ✅ |
 
 ## License
 

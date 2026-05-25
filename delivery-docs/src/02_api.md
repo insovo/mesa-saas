@@ -97,11 +97,22 @@ Query:
   "experience": [{ "period": "2023.1 – 至今", "company": "...", "title": "..." }],
   "educationHistory": [{ "period": "...", "school": "...", "degree": "硕士" }],
   "parser": "Kimi",
-  "parserConfidence": 92
+  "parserConfidence": 92,
+  // V2 字段(2026-05-24 add_v2_fields migration)
+  "languages": [{ "name": "中文", "level": "母语" }, { "name": "英语", "level": "CEFR C1" }],
+  "aiSuggestedTags": ["Tech Lead 潜质"],  // 由 /resumes/match LLM 写入,admin 也可手工改
+  "matchedFor": ["技能栈", "工作经验"],
+  "againstFor": ["薪资期望"],
+  "insights": [{ "kind": "up", "text": "..." }, { "kind": "down", "text": "..." }],
+  "documents": {
+    "resume":    [{ "id": "...", "kind": "file", "name": "...", "size": "...", "url": "..." }],
+    "materials": [{ "id": "...", "kind": "link", "label": "GitHub", "url": "..." }],
+    "portfolio": []
+  }
 }
 ```
 
-`name` 必填。
+`name` 必填。`profileCompletion` (0-100) 是 derived 字段,read 时后端按字段填充率算(`lib/derived.js`),不接受外部写入。
 
 ## 3.4 PATCH /api/candidates/:id
 
@@ -132,7 +143,21 @@ Query: `q` / `dept` / `urgency` (`high|mid|low`) / `skip` / `take`。
   "candidates": 41,
   "level": "P6–P7",
   "location": "上海",
-  "urgency": "high"
+  "urgency": "high",
+  "description": "...",
+  // V2 字段 — JdDescModal + 岗位概览 OverviewTile 用,目前 admin 手动维护(LLM 暂未产)
+  "employment": "全职",
+  "salary": "30K-40K · 16薪",
+  "levelRange": "P6-P7",                  // 跟 level 区分(level=单值, range=范围)
+  "yearsExpRange": "5-7 年",
+  "educationRequirement": "本科及以上",
+  "languageRequirement": "英语 CEFR B2+",
+  "publishedAt": "2026-04-20T00:00:00Z",
+  "deadline":    "2026-06-30T23:59:59Z",
+  "responsibilities": ["主导 C 端业务前端架构", "推动性能体系建设"],
+  "requirements":     ["5 年以上前端经验", "精通 React 18 + TS"],
+  "nice":             ["微前端实战", "懂 Node.js"],
+  "benefits":         ["五险一金", "16 薪 + 期权"]
 }
 ```
 
@@ -225,10 +250,15 @@ Query: `status` / `candidateId` / `jobId` / `from`(date-time) / `to`(date-time) 
   "jobId": "uuid",
   "jobTitle": "智能驾驶感知工程师",
   "round": "终面",
+  "category": "技术",                     // V2 新: "技术" / "HR" / "业务" / 自定义
   "mode": "线下",
   "status": "已安排",
   "scheduledAt": "2026-05-22T15:30:00+08:00",
-  "interviewer": "王浩"
+  "interviewer": "王浩",                  // 老字段单 string,保留向后兼容
+  "link": "https://meet.example.com/abc",  // V2 新: 会议链接 / 线下地址
+  "managers":     [{ "name": "MESA Admin", "role": "HR 经理", "animal": "fox", "avatar": null }],
+  "interviewers": [{ "name": "陈架构师",    "role": "技术总监", "animal": "tiger", "avatar": null },
+                   { "name": "王浩",        "role": "高级工程师", "animal": "panda", "avatar": null }]
 }
 ```
 
@@ -338,36 +368,85 @@ Query: `status` / `candidateId` / `jobId` / `from`(date-time) / `to`(date-time) 
 
 ## 12.2 POST /api/resumes/parse
 
-请求体:
+两种调用模式(请求体 `key` 与 `candidateId` 互斥,schema oneOf 强制二选一):
+
+### (a) 新建候选人(同步)— 传 `key`
+
 ```json
 {
-  "key": "uploads/abc.pdf",      // R2 object key
+  "key": "uploads/abc.pdf",       // R2 object key
   "contentType": "application/pdf",
-  "model": "moonshot-v1-32k",     // 可选, 不传用 SystemSetting 配置
-  "jobId": "uuid"                  // 可选, 传了会自动跑 JD 二次评估
+  "model": "moonshot-v1-32k",      // 可选, 不传用 SystemSetting 配置
+  "jobId": "uuid"                   // 可选, 传了会自动跑 JD 二次评估
 }
 ```
 
-流程:
-1. 从 R2 拉文件
-2. Kimi Files API 上传 + 文件解析(`/v1/files`)
-3. `/v1/chat/completions` JSON 模式输出
-4. 若有 `jobId`,自动调 `matchAgainstJob` 二次评估
+流程:R2 拉文件 → Kimi /files 上传 + 抽文本 → /chat/completions JSON 输出 → 若有 jobId 跑 matchAgainstJob。
 
 响应 200:
 ```json
 {
-  "candidate": { /* 完整候选人字段, 含 aiSummary 纯文本简报 */ },
+  "candidate": { /* 未存 DB 的 candidate object, 前端再 POST /candidates 创建 */ },
   "meta": { "model": "...", "usage": {...} },
-  "match": null  // 或 { jdMatch, risks, highlights, matchReason }
+  "match": null  // 或 { jdMatch, risks, highlights, matchReason, matchedFor, againstFor, aiSuggestedTags, insights }
 }
 ```
 
-**注意**:这是长任务,通常 10-30s,前端使用 `LONG_TIMEOUT=120s`。
+### (b) 重新解析已有候选人(异步)— 传 `candidateId`
 
-## 12.3 POST /api/resumes/match
+```json
+{ "candidateId": "uuid", "model": "moonshot-v1-32k" /* 可选 */ }
+```
 
-事后给已有候选人关联 JD 二次评估:
+后端立即 202 返回 taskId,fire-and-forget 跑 Kimi(后端用 `candidate.attachment` 作 R2 key,UPDATE 现有 DB 行,不破坏 status/appliedFor/source/owner/documents)。绕过 Cloudflare 100s origin response 硬上限。
+
+响应 202:
+```json
+{
+  "task": {
+    "id": "uuid",
+    "candidateId": "uuid",
+    "status": "pending",
+    "startedAt": "2026-05-25T..."
+  }
+}
+```
+
+错误响应(4xx,Cloudflare 透传 JSON body):
+- 424 `kimi_not_configured` / `r2_not_configured`
+- 404 `candidate_not_found`
+- 400 `no_attachment`(候选人无简历附件)
+
+## 12.3 GET /api/resumes/parse-tasks/:taskId
+
+轮询异步 reparse 任务状态。前端建议每 2s 调一次,最长 5 分钟。
+
+响应 200:
+```json
+{
+  "task": {
+    "id": "uuid",
+    "candidateId": "uuid",
+    "status": "pending" | "running" | "done" | "failed",
+    "startedAt": "2026-05-25T...",
+    "finishedAt": "2026-05-25T...",     // status=done/failed 时填
+    "candidate": { /* 更新后的 candidate 快照 */ },  // status=done 时填
+    "match": {...},                       // status=done 且有 jobId 联评时填
+    "reparsed": true,                     // 标识是 reparse 路径
+    "error": {                            // status=failed 时填
+      "code": "kimi_upstream_error" | "kimi_timeout" | "r2_object_not_found" | ...,
+      "message": "...",
+      "statusCode": 422
+    }
+  }
+}
+```
+
+任务 Redis TTL 1 小时(降级到 in-process Map)。404 表示任务不存在或已过期。
+
+## 12.4 POST /api/resumes/match
+
+事后给已有候选人关联 JD 二次评估(同步):
 ```json
 { "candidateId": "uuid", "jobId": "uuid", "model": "moonshot-v1-128k" }
 ```
@@ -375,10 +454,20 @@ Query: `status` / `candidateId` / `jobId` / `from`(date-time) / `to`(date-time) 
 响应:
 ```json
 {
-  "candidate": { /* 更新后的 candidate, jobId/jdMatch/risks/highlights/appliedFor 已写入 */ },
-  "match": { "jdMatch": 75, "risks": [...], "highlights": [...], "matchReason": "..." }
+  "candidate": { /* 更新后的 candidate, jobId/jdMatch/risks/highlights/appliedFor/aiSuggestedTags/matchedFor/againstFor/insights 已写入 */ },
+  "match": { "jdMatch": 75, "risks": [...], "highlights": [...], "matchReason": "...",
+             "matchedFor": [...], "againstFor": [...], "aiSuggestedTags": [...], "insights": [{kind:"up", text:"..."}, ...] }
 }
 ```
+
+### Kimi 鲁棒性设计(v3)
+
+- 上游错误码: 后端统一改 5xx → 4xx(`422 kimi_upstream_error` / `408 kimi_timeout` / `424 kimi_not_configured`),避免 Cloudflare 替换 origin 5xx 为 HTML 错误页
+- LLM JSON 4 层 fallback: 直接 parse → 手写 sanitize(中文全角符号 / markdown fence / trailing comma) → `jsonrepair` 库 → 抛 422 含 raw snippet
+- `parseResume` 失败自动 retry 1 次(LLM 输出抖动)
+- 429 / 5xx 自动指数 backoff retry(1.5s → 3.6s → 8.6s,最多 3 次)缓解 `engine_overloaded`
+- `AbortController` 控制 fetch:chat 90s / files 60s,backend 抢先 nginx upstream(180s)abort,返回结构化 error
+- 简历解析自动选 non-reasoning model(`pickParseModel`):admin 配 kimi-k*/thinking → 强制 fallback `moonshot-v1-32k`(reasoning model 长输入易超 timeout)
 
 ---
 

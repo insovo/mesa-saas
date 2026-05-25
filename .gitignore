@@ -25,13 +25,10 @@ server/prisma/*.db
 web/certs/
 *.pem
 *.key
-!ui_kits/**/*.svg
 
 # Playwright 临时输出
 .playwright-mcp/
 *.png
-!assets/**/*.png
-!ui_kits/**/*.png
 
 # 交付文档源 md(只保留 docx)— 可选,保留 md 也行
 # delivery-docs/src/
