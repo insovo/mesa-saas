@@ -34,8 +34,8 @@
 
 | 维度 | 当前生产形态 |
 |------|-------------|
-| 前端(生产) | `web/` — Vite 5 + React 18 + Tailwind 3 + react-router 6 |
-| 后端 | `server/` — Node 20 + Fastify 4 + Prisma 5 + JWT · jsonrepair(LLM JSON 兜底)|
+| 前端(生产) | `web/` — Vite 6 + React 18 + Tailwind 3 + react-router 6 |
+| 后端 | `server/` — Node 20 + Fastify 5 + @fastify/jwt 10 (fast-jwt 6.x) + Prisma 5 · jsonrepair(LLM JSON 兜底)|
 | 数据 | PostgreSQL 16 + Redis 7(均 docker bridge 网内,公网零暴露) |
 | 对象存储 | Cloudflare R2(`mesa-resumes` 业务桶 + `mesa-backups` 备份桶,凭证独立) |
 | 反向代理 / TLS | 容器内 Nginx 1.27 + Cloudflare Origin Cert(`*.insovo.top` 15 年) |

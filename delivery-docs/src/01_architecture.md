@@ -29,8 +29,8 @@ MESA Recruit 是面向 AI 原生招聘场景的 SaaS 产品,核心能力包括:
 |------|----------|------|
 | 接入层 | Cloudflare DNS + CDN + WAF | DNS 解析、HTTPS 边缘卸载、防 DDoS |
 | 反向代理 | Nginx 1.27 (alpine) | TLS 终止、SPA 路由兜底、/api 反代后端 |
-| 前端 | React 18 + Vite 5 + Tailwind 3 + react-router 6 | 静态构建产物,无 SSR |
-| 后端 | Node.js 20 + Fastify 4 + Prisma 5 | JWT 鉴权、ESM、Pino 日志 |
+| 前端 | React 18 + Vite 6 + Tailwind 3 + react-router 6 | 静态构建产物,无 SSR |
+| 后端 | Node.js 20 + Fastify 5 + @fastify/jwt 10 (fast-jwt 6.x) + Prisma 5 | JWT 鉴权、ESM、Pino 日志 |
 | 数据库 | PostgreSQL 16 (alpine) | 业务核心数据 |
 | 缓存 / 队列 | Redis 7 (alpine) | 会话、限流、解析任务队列 |
 | 对象存储 | Cloudflare R2 | 简历附件 + 数据库备份 |
