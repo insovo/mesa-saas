@@ -259,11 +259,27 @@ async function pickModel(requested) {
   return requested;
 }
 
+// 简历解析专用 model 选择:推理模型(kimi-k* / *-thinking)解析长简历常超 90s timeout,
+// 又被 Cloudflare 100s 硬上限封死。简历是「长输入 + 抽取式输出」,根本不需要 reasoning,
+// 用 moonshot-v1-32k(普通 chat,10-20s)反而稳定。
+// 用户显式传 model 仍然尊重(/upload 页 admin 自己选什么用什么)。
+async function pickParseModel(requested) {
+  if (requested) return pickModel(requested);
+  const adminConfigured = await effectiveModel();
+  if (!adminConfigured) return "moonshot-v1-32k";
+  // 推理模型 (kimi-k*, *-thinking, *-reasoner) 简历解析超时风险高, fallback 到 v1-32k
+  if (/^kimi-k/i.test(adminConfigured) || /thinking|reasoner/i.test(adminConfigured)) {
+    return "moonshot-v1-32k";
+  }
+  return adminConfigured;
+}
+
 // ─── 解析: 一次 chat, JSON 输出含 summary + 结构化字段 ─────────
 export async function parseResume({ buffer, filename, contentType, model }) {
   const file = await uploadFile({ buffer, filename, contentType });
   const extractedText = await getFileContent(file.id);
-  const useModel = await pickModel(model);
+  // 简历解析强制走 non-reasoning model — 见 pickParseModel 注释
+  const useModel = await pickParseModel(model);
   const prompt = await effectivePrompt();
 
   const res = await kimiRequest("/chat/completions", {
