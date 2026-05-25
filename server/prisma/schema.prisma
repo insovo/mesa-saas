@@ -141,6 +141,7 @@ model Job {
   interviews    Interview[]
   employees     Employee[]
   linkedCandidates Candidate[] @relation("CandidateJob")
+  uploadLinks   UploadShareLink[] @relation("UploadLinkJob")
 
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
@@ -335,6 +336,35 @@ model ShareLink {
   @@index([candidateId])
   @@index([token])
   @@map("share_links")
+}
+
+// 公开「上传分享链接」 — 反向用法:登录用户生成 token → 外部(候选人本人 / 同事 / 猎头)通过
+// 公开 URL https://insovo.top/upload/<token> 上传简历给系统。与 ShareLink(分享候选人简报给外部看)
+// 是镜像关系,所以单独建表避免字段语义混用(viewCount 既算看也算收会很乱)。
+//
+// 安全要点:
+//   - token = 32 字符 URL-safe base64,不可猜
+//   - 公开 endpoint 受 maxUploads + expiresAt 双重限速,达到任一上限就拒绝
+//   - 上传的 candidate.ownerId 自动 = createdBy(归属链接创建者),source 默认 = defaultSource 或链接 note
+//   - defaultJobId 让外部"自动关联到这个 JD"(招聘官分享时常用),外部上传者也可改选其它 JD
+model UploadShareLink {
+  id            String    @id @default(uuid()) @db.Uuid
+  token         String    @unique  // 公开 URL 的 path 参数,不可猜
+  defaultJobId  String?   @map("default_job_id") @db.Uuid
+  defaultJob    Job?      @relation("UploadLinkJob", fields: [defaultJobId], references: [id], onDelete: SetNull)
+  defaultSource String?   @map("default_source")  // 预填来源,如"罗卡推荐",外部上传时默认带上(可被外部覆盖)
+  note          String?   @db.Text                // 给外部上传者的提示文案,如"请上传 PDF 简历,我们会在 24h 内联系您"
+  expiresAt     DateTime? @map("expires_at")      // null = 无限期
+  maxUploads    Int?      @map("max_uploads")     // null = 不限制,否则达 maxUploads 后接口拒绝(对应截图"最多 200 份")
+  uploadCount   Int       @default(0) @map("upload_count")
+  createdBy     String?   @map("created_by") @db.Uuid
+  lastUploadAt  DateTime? @map("last_upload_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@index([token])
+  @@index([createdBy])
+  @@map("upload_share_links")
 }
 
 // 系统级 KV 设置 — 仅 admin 可读写

@@ -470,6 +470,99 @@ ${jobDescription || "(未提供)"}`;
   return { ...parsed, _meta: { model: useModel, usage: data?.usage } };
 }
 
+// ─── JD 文件解析: 上传一份 JD 文档(PDF/DOCX/TXT),抽取成结构化字段 ──
+// 输入: buffer + filename + contentType + 可选 model
+// 输出: { title 候选, description 整段, responsibilities[], requirements[], nice[], benefits[],
+//        employment, salary, levelRange, yearsExpRange, educationRequirement, languageRequirement, meta }
+// 不存 DB — 前端拿到后展示给用户在新建 JD 弹窗里编辑确认,再 POST /jobs 落库
+export async function parseJobDescription({ buffer, filename, contentType, model }) {
+  const file = await uploadFile({ buffer, filename, contentType });
+  const extractedText = await getFileContent(file.id);
+  const useModel = await pickModel(model);
+
+  const systemPrompt = `你是 MESA Recruit 的「JD 文件结构化抽取」专家。
+基于下面给出的岗位描述(JD)文件原文,输出严格 JSON,不要 Markdown 包裹,不要额外文字。
+
+JSON 结构(所有字段都必须出现,JD 没明确写的字段返回 null 或 [] 不要省略 key):
+{
+  "title": "岗位标题(短,不超过 30 字)",
+  "description": "JD 完整描述(整段,可包含岗位介绍/职责/要求/福利,2000-8000 字符;直接复用原文要点,允许轻度整理标点)",
+  "responsibilities": ["职责条目, 5-10 条"],
+  "requirements": ["硬性要求条目, 5-10 条"],
+  "nice": ["加分项条目, 0-6 条"],
+  "benefits": ["福利条目, 0-8 条"],
+  "employment": "雇佣类型: 全职 / 兼职 / 实习 / 合同制(JD 没说就 null)",
+  "salary": "薪资范围 如 30K-40K · 16薪(JD 没说就 null)",
+  "levelRange": "职级范围 如 P6-P7(JD 没说就 null)",
+  "yearsExpRange": "工作年限要求 如 5-7 年(JD 没说就 null)",
+  "educationRequirement": "学历要求 如 本科及以上(JD 没说就 null)",
+  "languageRequirement": "语言要求 如 英语 CEFR B2+(JD 没说就 null)"
+}
+
+抽取规则:
+1. 严禁虚构 — JD 原文没明确给出的字段,返回 null(字符串字段)或 [](数组字段),不要凭空补全
+2. title: 优先用 JD 原文的岗位名称;若 JD 标题含公司名前缀(如「字节跳动 - 高级前端工程师」),只保留岗位部分
+3. description: 必须保留 JD 的关键信息,可以重新组织段落让可读性更好,但不要删减实质内容
+4. 列表类字段(responsibilities/requirements/nice/benefits): 每条独立成句,去掉编号前缀("1." "•" "-"),不要 trailing 标点
+5. salary/levelRange/yearsExpRange 等结构化字段: 严格按格式样例返回,不要变体
+6. 全角符号硬要求: 所有 JSON 结构符号必须 ASCII 半角(英文 , : " 等),不能用中文全角(,,:" 等)`;
+
+  const userMsg = `# JD 文件原文(可能含 OCR 噪音)
+
+${extractedText}`;
+
+  async function attempt() {
+    const res = await kimiRequest("/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: useModel,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userMsg },
+        ],
+      }),
+    });
+    const data = await res.json();
+    const raw = data?.choices?.[0]?.message?.content || "";
+    const json = parseLlmJson(raw, "kimi parseJobDescription");
+    return { json, meta: { usage: data?.usage } };
+  }
+
+  // 与 parseResume 同款:LLM 偶尔输出 JSON 抖动,parse 错误时 retry 1 次
+  let result;
+  try {
+    result = await attempt();
+  } catch (err) {
+    if (err.code === "kimi_parse_error") {
+      result = await attempt();
+    } else {
+      throw err;
+    }
+  }
+
+  const j = result.json;
+  // 字段兜底 + 限长(防 LLM 输出超大 / 类型错乱炸前端)
+  return {
+    job: {
+      title: typeof j.title === "string" ? j.title.slice(0, 100).trim() : "",
+      description: typeof j.description === "string" ? j.description.slice(0, 10000).trim() : "",
+      responsibilities: Array.isArray(j.responsibilities) ? j.responsibilities.filter((x) => typeof x === "string").slice(0, 20).map((s) => s.slice(0, 300)) : [],
+      requirements: Array.isArray(j.requirements) ? j.requirements.filter((x) => typeof x === "string").slice(0, 20).map((s) => s.slice(0, 300)) : [],
+      nice: Array.isArray(j.nice) ? j.nice.filter((x) => typeof x === "string").slice(0, 10).map((s) => s.slice(0, 300)) : [],
+      benefits: Array.isArray(j.benefits) ? j.benefits.filter((x) => typeof x === "string").slice(0, 15).map((s) => s.slice(0, 200)) : [],
+      employment: typeof j.employment === "string" ? j.employment.slice(0, 30) : null,
+      salary: typeof j.salary === "string" ? j.salary.slice(0, 60) : null,
+      levelRange: typeof j.levelRange === "string" ? j.levelRange.slice(0, 30) : null,
+      yearsExpRange: typeof j.yearsExpRange === "string" ? j.yearsExpRange.slice(0, 30) : null,
+      educationRequirement: typeof j.educationRequirement === "string" ? j.educationRequirement.slice(0, 60) : null,
+      languageRequirement: typeof j.languageRequirement === "string" ? j.languageRequirement.slice(0, 100) : null,
+    },
+    meta: { fileId: file.id, model: useModel, usage: result.meta.usage, bytesProcessed: file.bytes },
+  };
+}
+
 export async function isKimiConfigured() {
   const key = await effectiveApiKey();
   return !!key && !key.startsWith("__");

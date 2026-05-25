@@ -16,6 +16,7 @@ import storageRoutes from "./routes/storage.js";
 import resumesRoutes from "./routes/resumes.js";
 import systemRoutes from "./routes/system.js";
 import shareRoutes from "./routes/share.js";
+import uploadLinksRoutes from "./routes/upload-links.js";
 import reviewsRoutes from "./routes/reviews.js";
 
 const requiredEnv = ["DATABASE_URL", "JWT_SECRET", "WEB_ORIGIN"];
@@ -60,6 +61,8 @@ await app.register(resumesRoutes, { prefix: "/api/resumes" });
 await app.register(systemRoutes, { prefix: "/api/system" });
 // share 路由分两部分: admin 在 /api/candidates/:id/share,公开在 /api/public/share/:token
 await app.register(shareRoutes, { prefix: "/api" });
+// upload-links: admin 在 /api/upload-links,公开在 /api/public/upload/:token
+await app.register(uploadLinksRoutes, { prefix: "/api" });
 await app.register(reviewsRoutes, { prefix: "/api" });
 
 app.setErrorHandler((err, req, reply) => {

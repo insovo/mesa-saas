@@ -8,7 +8,7 @@
 
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { Readable } from "node:stream";
-import { parseResume, matchAgainstJob, isKimiConfigured, listModels } from "../lib/kimi.js";
+import { parseResume, parseJobDescription, matchAgainstJob, isKimiConfigured, listModels } from "../lib/kimi.js";
 import { withDerivedCandidate } from "../lib/derived.js";
 import { createTask, getTask, markRunning, markDone, markFailed } from "../lib/parseTaskStore.js";
 
@@ -34,6 +34,17 @@ const MATCH_BODY = {
   properties: {
     candidateId: { type: "string", format: "uuid" },
     jobId: { type: "string", format: "uuid" },
+    model: { type: "string", maxLength: 100 },
+  },
+  additionalProperties: false,
+};
+
+const PARSE_JD_BODY = {
+  type: "object",
+  required: ["key"],
+  properties: {
+    key: { type: "string", minLength: 1, maxLength: 500 },
+    contentType: { type: "string", maxLength: 100 },
     model: { type: "string", maxLength: 100 },
   },
   additionalProperties: false,
@@ -326,6 +337,52 @@ export default async function resumesRoutes(app) {
     const task = await getTask(app, req.params.taskId);
     if (!task) return reply.code(404).send({ error: "task_not_found", message: "任务不存在或已过期(TTL 1 小时)" });
     return { task };
+  });
+
+  // ─── JD 文件 AI 解析(新建 JD 时的辅助)─────────────────────
+  // 前端流程: 用户点"新建 JD"→ 上传 JD 文件 → R2 直传 → 调本端点 → AI 抽取结构化字段 → 弹窗回填供用户编辑 → 提交 POST /jobs 落库
+  // 本端点纯无副作用: 不存 DB, 不创建 Job. 失败容错: R2 拉失败 → 404; Kimi 失败 → 502;
+  // 端点同步处理(JD 文件一般 <2MB, Kimi 10-20s 内完成, 不像简历那样需要异步化)
+  app.post("/parse-jd", { schema: { body: PARSE_JD_BODY } }, async (req, reply) => {
+    if (!(await isKimiConfigured())) {
+      return reply.code(424).send({ error: "kimi_not_configured", message: "KIMI_API_KEY 未配置" });
+    }
+    if (!app.r2) {
+      return reply.code(424).send({ error: "r2_not_configured", message: "R2 凭证未配置,无法读取 JD 文件" });
+    }
+    const { key, contentType, model } = req.body;
+
+    let buffer;
+    try {
+      const cmd = new GetObjectCommand({ Bucket: app.r2.bucket, Key: key });
+      const obj = await app.r2.client.send(cmd);
+      buffer = await streamToBuffer(obj.Body);
+    } catch (err) {
+      req.log.error({ err, key }, "fetch JD from r2 failed");
+      return reply.code(404).send({ error: "r2_object_not_found", message: `R2 中找不到对象 ${key}` });
+    }
+    if (!buffer || buffer.length === 0) {
+      return reply.code(400).send({ error: "empty_file", message: "文件为空" });
+    }
+    if (buffer.length > 20 * 1024 * 1024) {
+      return reply.code(413).send({ error: "file_too_large", message: "JD 文件超过 20MB" });
+    }
+
+    const filename = key.split("/").pop() || "jd.pdf";
+    try {
+      const result = await parseJobDescription({
+        buffer, filename,
+        contentType: contentType || "application/octet-stream",
+        model,
+      });
+      return result;
+    } catch (err) {
+      req.log.error({ err, key }, "kimi parseJobDescription failed");
+      return reply.code(err.statusCode || 502).send({
+        error: err.code || "kimi_error",
+        message: err.message?.slice(0, 500) || "Kimi JD 解析失败",
+      });
+    }
   });
 
   // ─── 现有候选人事后关联 JD 二次评估 ───────────────────────

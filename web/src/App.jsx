@@ -17,6 +17,7 @@ import Departments from "./pages/Departments.jsx";
 import Interviews from "./pages/Interviews.jsx";
 import Reports from "./pages/Reports.jsx";
 import SharedCandidate from "./pages/SharedCandidate.jsx";
+import PublicUpload from "./pages/PublicUpload.jsx";
 
 export default function App() {
   const navigate = useNavigate();
@@ -32,6 +33,8 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       {/* 公开候选人分享页 — 不在 AuthGuard 内 */}
       <Route path="/share/:token" element={<SharedCandidate />} />
+      {/* 公开上传简历页 — 不在 AuthGuard 内,/upload/:token 在 /upload(登录页)前匹配 */}
+      <Route path="/upload/:token" element={<PublicUpload />} />
       <Route
         element={
           <AuthGuard>
