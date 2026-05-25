@@ -189,7 +189,8 @@ function pickTimeout(path) {
 async function kimiRequest(path, options = {}) {
   const apiKey = await effectiveApiKey();
   if (!apiKey || apiKey.startsWith("__")) {
-    throw Object.assign(new Error("KIMI_API_KEY not configured"), { statusCode: 503, code: "kimi_not_configured" });
+    // 424 Failed Dependency 而非 503 — Cloudflare 替换 5xx HTML 错误页,4xx 透传 JSON body
+    throw Object.assign(new Error("KIMI_API_KEY not configured"), { statusCode: 424, code: "kimi_not_configured" });
   }
   const url = `${KIMI_BASE_URL}${path}`;
   const timeoutMs = options.timeoutMs || pickTimeout(path);
@@ -203,12 +204,16 @@ async function kimiRequest(path, options = {}) {
     });
     if (!res.ok) {
       const body = await res.text().catch(() => "");
-      throw Object.assign(new Error(`kimi ${path} ${res.status}: ${body.slice(0, 300)}`), { statusCode: 502, code: "kimi_upstream_error" });
+      // 注意: 用 422 而不是 502,因为 Cloudflare 默认会把 origin 5xx 替换成自己的 HTML 错误页,
+      // 前端就看不到我们返回的 JSON message。422 (unprocessable entity) Cloudflare 不替换,语义近似
+      // "upstream rejected request"。res.status 也带进 message 让前端能识别真实上游码。
+      throw Object.assign(new Error(`kimi ${path} ${res.status}: ${body.slice(0, 300)}`), { statusCode: 422, code: "kimi_upstream_error" });
     }
     return res;
   } catch (err) {
     if (err.name === "AbortError") {
-      throw Object.assign(new Error(`kimi ${path} timed out after ${timeoutMs}ms (backend AbortController fired before nginx upstream)`), { statusCode: 504, code: "kimi_timeout" });
+      // 504 也会被 Cloudflare 替换;用 408 (Request Timeout) 4xx 让 Cloudflare 透传 body
+      throw Object.assign(new Error(`kimi ${path} timed out after ${timeoutMs}ms (backend AbortController fired before nginx upstream)`), { statusCode: 408, code: "kimi_timeout" });
     }
     throw err;
   } finally {
@@ -266,7 +271,8 @@ export async function parseResume({ buffer, filename, contentType, model }) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model: useModel,
-      temperature: 0.1,
+      // 不传 temperature: kimi-k2.5 等推理模型只接受 temperature=1,旧 moonshot-v1-* 默认也 OK
+      // 推理模型靠 reasoning 保证稳定性,不需要 low temperature
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: prompt },
@@ -282,7 +288,7 @@ export async function parseResume({ buffer, filename, contentType, model }) {
     json = JSON.parse(raw);
   } catch {
     const m = raw.match(/\{[\s\S]*\}/);
-    if (!m) throw Object.assign(new Error("kimi returned non-JSON content"), { statusCode: 502, code: "kimi_parse_error" });
+    if (!m) throw Object.assign(new Error("kimi returned non-JSON content"), { statusCode: 422, code: "kimi_parse_error" });
     json = JSON.parse(m[0]);
   }
 
@@ -351,7 +357,8 @@ ${jobDescription || "(未提供)"}`;
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model: useModel,
-      temperature: 0.2,
+      // 不传 temperature: kimi-k2.5 等推理模型只接受 temperature=1, 旧 moonshot-v1-* 默认也 OK
+      // 任何 chat/completions 调用统一不传, 兼容所有 Kimi 模型
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: systemPrompt },
@@ -366,7 +373,7 @@ ${jobDescription || "(未提供)"}`;
     parsed = JSON.parse(raw);
   } catch {
     const m = raw.match(/\{[\s\S]*\}/);
-    if (!m) throw Object.assign(new Error("kimi match output unparseable"), { statusCode: 502 });
+    if (!m) throw Object.assign(new Error("kimi match output unparseable"), { statusCode: 422, code: "kimi_parse_error" });
     parsed = JSON.parse(m[0]);
   }
   return { ...parsed, _meta: { model: useModel, usage: data?.usage } };

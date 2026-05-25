@@ -77,10 +77,11 @@ export default async function resumesRoutes(app) {
   //   (b) 重新解析已有候选人 — 前端传 candidateId: 从 DB 拿 candidate.attachment 作 R2 key → Kimi → UPDATE 现有 DB 记录,返回 candidate
   app.post("/parse", { schema: { body: PARSE_BODY } }, async (req, reply) => {
     if (!app.r2) {
-      return reply.code(503).send({ error: "r2_not_configured", message: "R2 凭证未配置,无法读取简历" });
+      // 424 Failed Dependency — Cloudflare 不替换 4xx, 前端能拿到具体 message
+      return reply.code(424).send({ error: "r2_not_configured", message: "R2 凭证未配置,无法读取简历" });
     }
     if (!(await isKimiConfigured())) {
-      return reply.code(503).send({ error: "kimi_not_configured", message: "KIMI_API_KEY 未配置" });
+      return reply.code(424).send({ error: "kimi_not_configured", message: "KIMI_API_KEY 未配置" });
     }
     let { key, contentType, model, jobId } = req.body;
     const { candidateId } = req.body;
@@ -242,7 +243,7 @@ export default async function resumesRoutes(app) {
   // ─── 现有候选人事后关联 JD 二次评估 ───────────────────────
   app.post("/match", { schema: { body: MATCH_BODY } }, async (req, reply) => {
     if (!(await isKimiConfigured())) {
-      return reply.code(503).send({ error: "kimi_not_configured" });
+      return reply.code(424).send({ error: "kimi_not_configured", message: "KIMI_API_KEY 未配置" });
     }
     const { candidateId, jobId, model } = req.body;
 
