@@ -6,6 +6,7 @@
 // API key / model / prompt 三者都走 settings: DB(admin 改) > env > hardcoded
 
 import { getEffective, SETTING_KEYS } from "./settings.js";
+import { jsonrepair } from "jsonrepair";
 
 const KIMI_BASE_URL = process.env.KIMI_BASE_URL || "https://api.moonshot.cn/v1";
 
@@ -276,16 +277,25 @@ function sanitizeLlmJson(raw) {
   return s;
 }
 
-// 解析 LLM JSON 输出,失败时给出可读 error(含 raw 片段,便于定位)
+// 解析 LLM JSON 输出 — 4 层 fallback,失败时给可读 error(含 raw 片段)
+//   1) 直接 JSON.parse — 大多数情况
+//   2) 手写 sanitize 后 JSON.parse — 处理 markdown fence / trailing comma / 中文全角符号
+//   3) jsonrepair 库 — 专门修 LLM 输出 JSON(unescaped newlines / 缺 comma / 未闭合 string 等)
+//   4) 都失败 → throw kimi_parse_error 422 + snippet
 function parseLlmJson(raw, context = "kimi") {
   if (!raw) {
     throw Object.assign(new Error(`${context} returned empty content`), { statusCode: 422, code: "kimi_parse_error" });
   }
   // 1) 直接 parse
   try { return JSON.parse(raw); } catch {}
-  // 2) sanitize 后再 parse
+  // 2) sanitize 后 parse
   const cleaned = sanitizeLlmJson(raw);
-  try { return JSON.parse(cleaned); } catch (e) {
+  try { return JSON.parse(cleaned); } catch {}
+  // 3) jsonrepair — 终极 fallback,能修 95%+ LLM JSON 输出错误
+  try {
+    const repaired = jsonrepair(cleaned);
+    return JSON.parse(repaired);
+  } catch (e) {
     // 失败时把 raw 关键片段附在 error 上(限长避免日志爆炸)
     const m = /at position (\d+)/.exec(e.message);
     let snippet = raw.slice(0, 400);
@@ -296,7 +306,7 @@ function parseLlmJson(raw, context = "kimi") {
       snippet = `...${raw.slice(start, end)}...`;
     }
     throw Object.assign(
-      new Error(`${context} JSON parse failed: ${e.message} | snippet around error: ${snippet}`),
+      new Error(`${context} JSON parse failed even after jsonrepair: ${e.message} | snippet: ${snippet}`),
       { statusCode: 422, code: "kimi_parse_error" }
     );
   }
