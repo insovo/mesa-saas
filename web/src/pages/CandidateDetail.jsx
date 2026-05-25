@@ -2602,19 +2602,40 @@ function CandidateDetail() {
     setPendingJobId(id);
   }
 
-  // 重新解析:候选人 parser 字段为空(LLM 上传时降级入库)→ 调 /resumes/parse {candidateId},
-  // 后端用 candidate.attachment 作为 R2 key 重跑 Kimi,UPDATE 现有 candidate 字段
+  // 重新解析(异步): POST /resumes/parse {candidateId} 立即拿 taskId,
+  // 轮询 GET /parse-tasks/:taskId 直到 done/failed。绕过 Cloudflare 100s 硬上限,
+  // Kimi 跑多久都没事(单次轮询 < 100ms)。
   const [reparsing, setReparsing] = useState(false);
   async function reparse() {
     if (!c?.id) return;
     if (!c.attachment) return toast("候选人无简历附件,无法重新解析", "error");
     setReparsing(true);
     try {
-      const { data } = await api.post("/resumes/parse", { candidateId: c.id }, { timeout: LONG_TIMEOUT });
-      setC(data.candidate);
-      toast(`✓ 已重新解析: ${data.candidate.name}${data.match ? ` · JD 匹配度 ${data.candidate.jdMatch ?? "—"}` : ""}`, "success");
+      // 1) 立即 POST 拿 taskId
+      const { data: { task: initialTask } } = await api.post("/resumes/parse", { candidateId: c.id });
+      // 2) 轮询(每 2s 一次,最长 5 分钟)
+      const taskId = initialTask.id;
+      const startedAt = Date.now();
+      const MAX_WAIT_MS = 5 * 60 * 1000;
+      let finalTask = null;
+      while (Date.now() - startedAt < MAX_WAIT_MS) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const { data: { task } } = await api.get(`/resumes/parse-tasks/${taskId}`);
+        if (task.status === "done" || task.status === "failed") { finalTask = task; break; }
+      }
+      if (!finalTask) {
+        toast(`重新解析超时(>5 分钟未完成,task ${taskId.slice(0, 8)})`, "error");
+        return;
+      }
+      if (finalTask.status === "done") {
+        setC(finalTask.candidate);
+        toast(`✓ 已重新解析: ${finalTask.candidate.name}${finalTask.match ? ` · JD 匹配度 ${finalTask.candidate.jdMatch ?? "—"}` : ""}`, "success");
+      } else {
+        // failed — 展开 task.error 给具体上游 message
+        const err = finalTask.error || {};
+        toast(`重新解析失败 · [${err.statusCode || "?"}] ${err.code || "error"} · ${err.message || "未知"}`, "error");
+      }
     } catch (e) {
-      // 把后端真实 error code + message 都暴露出来,避免 axios 默认 "Request failed with status code 502" 遮蔽根因
       console.error("[reparse] failed", e);
       const r = e.response;
       const code = r?.data?.error ? `${r.data.error}` : "";

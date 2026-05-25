@@ -58,16 +58,34 @@ export default function Candidates() {
     // eslint-disable-next-line
   }, [statusFilter]);
 
-  // 重新解析:对 parser 为空的候选人,调 /resumes/parse {candidateId} 让后端用 attachment 重跑 Kimi。
+  // 重新解析(异步): POST /resumes/parse {candidateId} 立即拿 taskId,轮询 GET /parse-tasks/:taskId 直到 done/failed
   const [reparsingId, setReparsingId] = useState(null);
   async function onReparse(c) {
     if (!c?.id) return;
     if (!c.attachment) return toast("无简历附件,无法重新解析", "error");
     setReparsingId(c.id);
     try {
-      const { data } = await api.post("/resumes/parse", { candidateId: c.id }, { timeout: LONG_TIMEOUT });
-      setItems((prev) => prev.map((x) => (x.id === c.id ? data.candidate : x)));
-      toast(`✓ ${data.candidate.name} 已重新解析`, "success");
+      const { data: { task: initialTask } } = await api.post("/resumes/parse", { candidateId: c.id });
+      const taskId = initialTask.id;
+      const startedAt = Date.now();
+      const MAX_WAIT_MS = 5 * 60 * 1000;
+      let finalTask = null;
+      while (Date.now() - startedAt < MAX_WAIT_MS) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const { data: { task } } = await api.get(`/resumes/parse-tasks/${taskId}`);
+        if (task.status === "done" || task.status === "failed") { finalTask = task; break; }
+      }
+      if (!finalTask) {
+        toast(`${c.name} 重新解析超时(>5 分钟)`, "error");
+        return;
+      }
+      if (finalTask.status === "done") {
+        setItems((prev) => prev.map((x) => (x.id === c.id ? finalTask.candidate : x)));
+        toast(`✓ ${finalTask.candidate.name} 已重新解析`, "success");
+      } else {
+        const err = finalTask.error || {};
+        toast(`重新解析失败 · ${c.name} · [${err.statusCode || "?"}] ${err.code || "error"} · ${err.message || "未知"}`, "error");
+      }
     } catch (e) {
       console.error("[reparse] failed", c.name, e);
       const r = e.response;

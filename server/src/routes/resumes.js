@@ -10,6 +10,7 @@ import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { Readable } from "node:stream";
 import { parseResume, matchAgainstJob, isKimiConfigured, listModels } from "../lib/kimi.js";
 import { withDerivedCandidate } from "../lib/derived.js";
+import { createTask, getTask, markRunning, markDone, markFailed } from "../lib/parseTaskStore.js";
 
 const PARSE_BODY = {
   type: "object",
@@ -49,6 +50,122 @@ async function streamToBuffer(stream) {
   return Buffer.concat(chunks);
 }
 
+// Reparse 异步任务执行器 — 跑 Kimi parseResume + 可选 JD 联评 + UPDATE DB,
+// 把最终结果(或错误)写入 parseTaskStore。前端轮询 GET /parse-tasks/:taskId 拿状态。
+// 关键设计:这个函数 fire-and-forget(setImmediate 调用),HTTP handler 立即返回 taskId,
+// 彻底绕过 Cloudflare 100s origin response 硬上限。
+async function runReparse(app, taskId, candidateId, model) {
+  try {
+    await markRunning(app, taskId);
+
+    if (!app.r2) throw Object.assign(new Error("R2 凭证未配置,无法读取简历"), { statusCode: 424, code: "r2_not_configured" });
+
+    const existingCandidate = await app.prisma.candidate.findUnique({ where: { id: candidateId } });
+    if (!existingCandidate) throw Object.assign(new Error("候选人不存在"), { statusCode: 404, code: "candidate_not_found" });
+    if (!existingCandidate.attachment) throw Object.assign(new Error("候选人无简历附件"), { statusCode: 400, code: "no_attachment" });
+
+    const key = existingCandidate.attachment;
+    const jobId = existingCandidate.jobId;
+
+    // 1) R2 拉文件
+    let buffer;
+    try {
+      const cmd = new GetObjectCommand({ Bucket: app.r2.bucket, Key: key });
+      const obj = await app.r2.client.send(cmd);
+      buffer = await streamToBuffer(obj.Body);
+    } catch (err) {
+      throw Object.assign(new Error(`R2 中找不到对象 ${key}`), { statusCode: 404, code: "r2_object_not_found" });
+    }
+    if (!buffer || buffer.length === 0) throw Object.assign(new Error("文件为空"), { statusCode: 400, code: "empty_file" });
+
+    // 2) Kimi parseResume
+    const filename = key.split("/").pop() || "resume.pdf";
+    const result = await parseResume({
+      buffer, filename,
+      contentType: "application/octet-stream",
+      model,
+    });
+
+    // 3) 字段处理
+    const parsed = { ...result.parsed };
+    delete parsed.jdMatch; delete parsed.risks; delete parsed.highlights;
+    if (!Array.isArray(parsed.languages)) parsed.languages = [];
+
+    // 4) JD 联评(如有 jobId)
+    let match = null;
+    let llmFields = { jdMatch: null, risks: [], highlights: [], aiSuggestedTags: [], matchedFor: [], againstFor: [], insights: [] };
+    if (jobId) {
+      try {
+        const job = await app.prisma.job.findUnique({ where: { id: jobId } });
+        if (job) {
+          match = await matchAgainstJob({
+            candidateSummary: result.summary,
+            jobTitle: job.title,
+            jobDescription: job.description || "",
+            model,
+          });
+          llmFields.jdMatch = match.jdMatch ?? null;
+          llmFields.risks = Array.isArray(match.risks) ? match.risks : [];
+          llmFields.highlights = Array.isArray(match.highlights) ? match.highlights : [];
+          llmFields.aiSuggestedTags = Array.isArray(match.aiSuggestedTags) ? match.aiSuggestedTags.slice(0, 12) : [];
+          llmFields.matchedFor = Array.isArray(match.matchedFor) ? match.matchedFor.slice(0, 12) : [];
+          llmFields.againstFor = Array.isArray(match.againstFor) ? match.againstFor.slice(0, 12) : [];
+          llmFields.insights = Array.isArray(match.insights)
+            ? match.insights
+                .filter((i) => i && (i.kind === "up" || i.kind === "down") && typeof i.text === "string")
+                .slice(0, 20)
+                .map((i) => ({ kind: i.kind, text: i.text.slice(0, 300) }))
+            : [];
+        }
+      } catch (err) {
+        app.log.warn({ err, jobId, taskId }, "reparse JD 联评失败,候选人仍然 update(无 JD 字段)");
+      }
+    }
+
+    // 5) UPDATE DB (不动 status/appliedFor/source/owner/documents — 用户可能已手动改过)
+    const updateData = {
+      name: parsed.name || existingCandidate.name,
+      gender: parsed.gender ?? existingCandidate.gender,
+      animal: parsed.animal ?? existingCandidate.animal,
+      education: parsed.education ?? existingCandidate.education,
+      school: parsed.school ?? existingCandidate.school,
+      major: parsed.major ?? existingCandidate.major,
+      age: parsed.age ?? existingCandidate.age,
+      location: parsed.location ?? existingCandidate.location,
+      yearsExp: parsed.yearsExp ?? existingCandidate.yearsExp,
+      phone: parsed.phone ?? existingCandidate.phone,
+      email: parsed.email ?? existingCandidate.email,
+      tags: Array.isArray(parsed.tags) ? parsed.tags : existingCandidate.tags,
+      skills: Array.isArray(parsed.skills) ? parsed.skills : existingCandidate.skills,
+      experience: Array.isArray(parsed.experience) ? parsed.experience : existingCandidate.experience,
+      educationHistory: Array.isArray(parsed.educationHistory) ? parsed.educationHistory : existingCandidate.educationHistory,
+      languages: parsed.languages,
+      aiSummary: result.summary,
+      parser: "Kimi",
+      parserConfidence: 92,
+    };
+    if (match) {
+      updateData.jdMatch = llmFields.jdMatch;
+      updateData.risks = llmFields.risks;
+      updateData.highlights = llmFields.highlights;
+      updateData.aiSuggestedTags = llmFields.aiSuggestedTags;
+      updateData.matchedFor = llmFields.matchedFor;
+      updateData.againstFor = llmFields.againstFor;
+      updateData.insights = llmFields.insights;
+    }
+    const updated = await app.prisma.candidate.update({
+      where: { id: existingCandidate.id },
+      data: updateData,
+    });
+
+    await markDone(app, taskId, { candidate: withDerivedCandidate(updated), match, reparsed: true });
+    app.log.info({ taskId, candidateId, jdMatch: updated.jdMatch }, "reparse task done");
+  } catch (err) {
+    app.log.error({ err, taskId, candidateId }, "reparse task failed");
+    await markFailed(app, taskId, err);
+  }
+}
+
 export default async function resumesRoutes(app) {
   app.addHook("preHandler", app.authenticate);
 
@@ -76,28 +193,36 @@ export default async function resumesRoutes(app) {
   //   (a) 新建候选人 — 前端传 key:        从 R2 拉文件 → Kimi → 返回未存 DB 的 candidate object,前端再 POST /candidates 创建
   //   (b) 重新解析已有候选人 — 前端传 candidateId: 从 DB 拿 candidate.attachment 作 R2 key → Kimi → UPDATE 现有 DB 记录,返回 candidate
   app.post("/parse", { schema: { body: PARSE_BODY } }, async (req, reply) => {
-    if (!app.r2) {
-      // 424 Failed Dependency — Cloudflare 不替换 4xx, 前端能拿到具体 message
-      return reply.code(424).send({ error: "r2_not_configured", message: "R2 凭证未配置,无法读取简历" });
-    }
     if (!(await isKimiConfigured())) {
       return reply.code(424).send({ error: "kimi_not_configured", message: "KIMI_API_KEY 未配置" });
     }
     let { key, contentType, model, jobId } = req.body;
     const { candidateId } = req.body;
 
-    // 重新解析模式: 解析 candidateId 拿 attachment 当 R2 key
-    let existingCandidate = null;
+    // 重新解析模式:异步化避开 Cloudflare 100s 硬上限。
+    // 立即返回 taskId,前端轮询 GET /parse-tasks/:taskId 拿结果。Kimi 跑多久都无所谓。
+    // R2 检查放到 runReparse 内异步处理(失败会写到 task.error,前端轮询能拿到)。
     if (candidateId) {
-      existingCandidate = await app.prisma.candidate.findUnique({ where: { id: candidateId } });
-      if (!existingCandidate) return reply.code(404).send({ error: "candidate_not_found" });
-      if (!existingCandidate.attachment) {
-        return reply.code(400).send({ error: "no_attachment", message: "候选人无附件 R2 key,无法重新解析(请重新上传简历)" });
+      // 提前 sanity check 防止异步任务起后才报「候选人不存在」
+      const exists = await app.prisma.candidate.findUnique({
+        where: { id: candidateId },
+        select: { id: true, attachment: true },
+      });
+      if (!exists) return reply.code(404).send({ error: "candidate_not_found", message: "候选人不存在" });
+      if (!exists.attachment) {
+        return reply.code(400).send({ error: "no_attachment", message: "候选人无简历附件,无法重新解析(请重新上传简历)" });
       }
-      key = existingCandidate.attachment;
-      // 重新解析时若候选人原本关联 JD,自动用此 jobId 做二次评估;前端也可显式覆盖
-      if (!jobId && existingCandidate.jobId) jobId = existingCandidate.jobId;
+      const task = await createTask(app, candidateId);
+      // fire-and-forget,HTTP handler 不等
+      setImmediate(() => runReparse(app, task.id, candidateId, model));
+      return reply.code(202).send({ task });
     }
+
+    // 新上传模式(传 key):同步处理,因为 Upload 页已有 progress UI 等待
+    if (!app.r2) {
+      return reply.code(424).send({ error: "r2_not_configured", message: "R2 凭证未配置,无法读取简历" });
+    }
+    let existingCandidate = null;
 
     // 1) R2 拉文件
     let buffer;
@@ -190,54 +315,17 @@ export default async function resumesRoutes(app) {
       }
     }
 
-    // 5) 重新解析模式: UPDATE 现有 candidate(不破坏 status/appliedFor/source/owner),返回数据库快照
-    if (existingCandidate) {
-      // 不动这些字段(用户可能已经手动改过):status / appliedFor / source / ownerId / jobId
-      // 不动 documents(可能用户已经 UI 加过附件了)
-      const updateData = {
-        // LLM 抽取的基础字段全部覆盖(候选人核心信息,以 LLM 输出为准)
-        name: candidate.name || existingCandidate.name,
-        gender: candidate.gender ?? existingCandidate.gender,
-        animal: candidate.animal ?? existingCandidate.animal,
-        education: candidate.education ?? existingCandidate.education,
-        school: candidate.school ?? existingCandidate.school,
-        major: candidate.major ?? existingCandidate.major,
-        age: candidate.age ?? existingCandidate.age,
-        location: candidate.location ?? existingCandidate.location,
-        yearsExp: candidate.yearsExp ?? existingCandidate.yearsExp,
-        phone: candidate.phone ?? existingCandidate.phone,
-        email: candidate.email ?? existingCandidate.email,
-        tags: Array.isArray(candidate.tags) ? candidate.tags : existingCandidate.tags,
-        skills: Array.isArray(candidate.skills) ? candidate.skills : existingCandidate.skills,
-        experience: Array.isArray(candidate.experience) ? candidate.experience : existingCandidate.experience,
-        educationHistory: Array.isArray(candidate.educationHistory) ? candidate.educationHistory : existingCandidate.educationHistory,
-        languages: candidate.languages,
-        aiSummary: result.summary,
-        parser: "Kimi",
-        parserConfidence: 92,
-      };
-      // 如果传了 jobId 跑过 match, 把 LLM 评估也写入
-      if (match) {
-        updateData.jdMatch = candidate.jdMatch;
-        updateData.risks = candidate.risks;
-        updateData.highlights = candidate.highlights;
-        updateData.aiSuggestedTags = candidate.aiSuggestedTags;
-        updateData.matchedFor = candidate.matchedFor;
-        updateData.againstFor = candidate.againstFor;
-        updateData.insights = candidate.insights;
-        // 重新解析时若用户传了不同的 jobId 覆盖关联
-        if (req.body.jobId && req.body.jobId !== existingCandidate.jobId) {
-          updateData.jobId = req.body.jobId;
-        }
-      }
-      const updated = await app.prisma.candidate.update({
-        where: { id: existingCandidate.id },
-        data: updateData,
-      });
-      return { candidate: withDerivedCandidate(updated), meta: result.meta, match, reparsed: true };
-    }
-
     return { candidate: withDerivedCandidate(candidate), meta: result.meta, match };
+  });
+
+  // ─── 异步 reparse 任务状态轮询 ────────────────────────────
+  // 前端 reparse 立即拿到 taskId, 每 2s 调本 endpoint 拿状态。
+  // status: "pending" → 还没开始; "running" → Kimi 跑中; "done" → 成功(task.candidate 是新 DB 快照);
+  // "failed" → 失败(task.error 是 {code, message, statusCode})
+  app.get("/parse-tasks/:taskId", async (req, reply) => {
+    const task = await getTask(app, req.params.taskId);
+    if (!task) return reply.code(404).send({ error: "task_not_found", message: "任务不存在或已过期(TTL 1 小时)" });
+    return { task };
   });
 
   // ─── 现有候选人事后关联 JD 二次评估 ───────────────────────
