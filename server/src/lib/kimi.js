@@ -187,7 +187,10 @@ function pickTimeout(path) {
   return 30000;                                            // /models 等轻量请求
 }
 
-async function kimiRequest(path, options = {}) {
+// 应该重试的 Kimi 上游错误:429 速率限制 + 5xx 服务端临时故障(包括 engine_overloaded)
+const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
+
+async function kimiRequest(path, options = {}, attempt = 0) {
   const apiKey = await effectiveApiKey();
   if (!apiKey || apiKey.startsWith("__")) {
     // 424 Failed Dependency 而非 503 — Cloudflare 替换 5xx HTML 错误页,4xx 透传 JSON body
@@ -205,10 +208,18 @@ async function kimiRequest(path, options = {}) {
     });
     if (!res.ok) {
       const body = await res.text().catch(() => "");
+      // 上游过载 → 自动重试(指数 backoff: 1.5s, 4s, 9s, 总 ~15s, 不超 backend AbortController 90s)
+      if (RETRYABLE_STATUS.has(res.status) && attempt < 3) {
+        const delayMs = Math.round(1500 * Math.pow(2.4, attempt));
+        // 注意: backend 内部 log 不走 CF, 直接 console
+        console.warn(`[kimi] ${path} returned ${res.status}, retrying in ${delayMs}ms (attempt ${attempt + 1}/3)`);
+        await new Promise((r) => setTimeout(r, delayMs));
+        return kimiRequest(path, options, attempt + 1);
+      }
       // 注意: 用 422 而不是 502,因为 Cloudflare 默认会把 origin 5xx 替换成自己的 HTML 错误页,
       // 前端就看不到我们返回的 JSON message。422 (unprocessable entity) Cloudflare 不替换,语义近似
       // "upstream rejected request"。res.status 也带进 message 让前端能识别真实上游码。
-      throw Object.assign(new Error(`kimi ${path} ${res.status}: ${body.slice(0, 300)}`), { statusCode: 422, code: "kimi_upstream_error" });
+      throw Object.assign(new Error(`kimi ${path} ${res.status} (after ${attempt} retries): ${body.slice(0, 300)}`), { statusCode: 422, code: "kimi_upstream_error" });
     }
     return res;
   } catch (err) {
