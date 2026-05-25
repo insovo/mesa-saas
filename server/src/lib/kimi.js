@@ -251,7 +251,8 @@ export async function listModels({ forceRefresh = false } = {}) {
 }
 
 // LLM 输出 JSON 抢救:LLM 偶尔会输出 trailing comma / markdown code fence /
-// 单引号 / 非转义换行,JSON.parse 直接 throw。这里做最小 sanitization,提高解析成功率。
+// 中文全角符号 / 单引号 / 非转义换行,JSON.parse 直接 throw。
+// 这里做最小 sanitization,提高解析成功率。
 function sanitizeLlmJson(raw) {
   if (!raw) return raw;
   let s = raw.trim();
@@ -263,6 +264,13 @@ function sanitizeLlmJson(raw) {
   if (firstBrace >= 0 && lastBrace > firstBrace) {
     s = s.slice(firstBrace, lastBrace + 1);
   }
+  // 修复中文全角符号在 JSON 结构位置错用 — 中文 LLM 输出常见坑,字体显示一样 JSON.parse 拒
+  // 数组/对象元素之间: }，{  ]，[  }，[  ]，{
+  s = s.replace(/([}\]])\s*[，、]\s*(?=[{["])/g, "$1,");
+  // 对象内字段之间: "，"  "key"，"value"  "key"，123 等
+  s = s.replace(/"\s*[，、]\s*(?=["\dtfn-])/g, '",');
+  // 冒号也可能误用中文全角:"key" ：value
+  s = s.replace(/"\s*[：]\s*/g, '":');
   // 去 trailing comma: ,] 或 ,}
   s = s.replace(/,(\s*[}\]])/g, "$1");
   return s;
@@ -338,7 +346,7 @@ export async function parseResume({ buffer, filename, contentType, model }) {
         messages: [
           { role: "system", content: prompt },
           { role: "system", content: `以下是简历原文(可能含 OCR 噪音):\n\n${extractedText}` },
-          { role: "user", content: "请按上述要求输出 JSON。务必保证 JSON 语法合法 — 数组元素之间用 comma, 不要 trailing comma, 不要 markdown code fence。" },
+          { role: "user", content: "请按上述要求输出 JSON。严格要求:所有标点符号必须 ASCII 半角(英文 , : \" 等),不能用中文全角(,,:\" 等),数组元素之间用半角 comma,不要 trailing comma,不要 markdown code fence。" },
         ],
       }),
     });
