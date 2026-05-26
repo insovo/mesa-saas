@@ -92,7 +92,26 @@ export default function Upload() {
     setFiles((prev) => [...prev, ...fs]);
   }
 
+  // 2s 一次轮询 parse-task,直到 done/failed,或超过 maxAttempts(180 次 = 6 分钟,够 Kimi 任何慢 case)
+  async function pollParseTask(taskId, maxAttempts = 180) {
+    for (let i = 0; i < maxAttempts; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      const { data } = await api.get(`/resumes/parse-tasks/${taskId}`);
+      const task = data.task;
+      if (task.status === "done") return task;
+      if (task.status === "failed") {
+        const err = new Error(task.error?.message || "解析失败");
+        err.taskError = task.error;
+        throw err;
+      }
+      // pending / running → 继续轮询
+    }
+    throw new Error("解析超时(已等 6 分钟,请稍后到候选人列表查看)");
+  }
+
   async function uploadOne(file) {
+    const trimmedSource = source.trim().slice(0, 500);
+
     // ── 1) 预签名 + R2 直传 ─────────────────────────
     let r2Key = null;
     try {
@@ -110,49 +129,44 @@ export default function Upload() {
       if (e.response?.status !== 503) console.warn("R2 upload failed:", e);
     }
 
-    // ── 2) 调 Kimi 解析(仅当 R2 上传成功 + Kimi 已配置)─
-    // ⚠️ timeout 120s — Kimi 解析 PDF/Word 实测 10-30s,Word/扫描件偶尔 60s+
-    let parsedFields = null;
+    // ── 2) 调 Kimi 异步解析(R2 + Kimi 都 OK 时,走 parse-and-create 异步任务)
+    //    工作机制:POST /resumes/parse 立即拿 taskId(<200ms),前端 2s 一次轮询直到 done/failed
+    //    后端任务完成时 task.candidate 已经写入 DB,前端拿到的就是最终快照
     if (r2Key && llmStatus?.configured) {
       try {
         const model = localStorage.getItem("mesa.llm.model") || llmStatus.model;
         const body = {
           key: r2Key,
           contentType: file.type || "application/octet-stream",
+          filename: file.name,
           model,
         };
-        if (selectedJobId) body.jobId = selectedJobId;  // 关联 JD → 后端二次评估
-        const { data } = await api.post("/resumes/parse", body, { timeout: LONG_TIMEOUT });
-        parsedFields = data.candidate;
+        if (selectedJobId) body.jobId = selectedJobId;
+        if (trimmedSource) body.source = trimmedSource;
+        const { data: createData } = await api.post("/resumes/parse", body);
+        const finalTask = await pollParseTask(createData.task.id);
+        return finalTask.candidate;  // 后端已 create,直接返回 DB 快照
       } catch (e) {
-        const msg = e.response?.data?.message || e.message;
+        const msg = e.taskError?.message || e.response?.data?.message || e.message;
         toast(`${file.name}: ${msg}`, "error");
-        // 解析失败不阻塞 — 仍按元数据降级入库
+        // 解析失败不阻塞 — fall through 到降级路径(只入元数据)
       }
     }
 
-    // ── 3) 创建 Candidate ────────────────────────────
-    const payload = parsedFields
-      ? parsedFields
-      : {
-          name: file.name.replace(/\.[^/.]+$/, ""),
-          status: "待筛选",
-          source: "自动上传",
-          attachment: r2Key || file.name,
-          // 占位 — 等用户在 UI 编辑或事后触发再解析
-          tags: ["待解析"],
-          skills: [],
-          risks: [],
-          highlights: [],
-          experience: [],
-          educationHistory: [],
-        };
-
-    // 用户填了来源就覆盖(parseResume 默认填 "自动上传",降级路径默认也 "自动上传")
-    const trimmedSource = source.trim().slice(0, 500);
-    if (trimmedSource) payload.source = trimmedSource;
-
-    return resources.candidates.create(payload);
+    // ── 3) 降级路径:R2 失败 / Kimi 未配置 / 异步任务失败 → 直接 POST /candidates 入库
+    const fallbackPayload = {
+      name: file.name.replace(/\.[^/.]+$/, ""),
+      status: "待筛选",
+      source: trimmedSource || "自动上传",
+      attachment: r2Key || file.name,
+      tags: ["待解析"],
+      skills: [],
+      risks: [],
+      highlights: [],
+      experience: [],
+      educationHistory: [],
+    };
+    return resources.candidates.create(fallbackPayload);
   }
 
   // ─── 新建 JD 弹窗:可选先上传 JD 文件 → AI 解析回填,再 POST /jobs 落库 ───

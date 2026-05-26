@@ -15,13 +15,16 @@ import { createTask, getTask, markRunning, markDone, markFailed } from "../lib/p
 const PARSE_BODY = {
   type: "object",
   properties: {
-    // 新建候选人场景:R2 key 直传后调 parse → 返回未存 DB 的 candidate object,前端 POST /candidates 创建
+    // 新建候选人场景:R2 key 直传后调 parse → 异步任务化(避开 CF 100s 上限和 Kimi 不稳定的 .doc 慢)→ 后端 create candidate
     key: { type: "string", minLength: 1, maxLength: 500 },
     // 已有候选人「重新解析」场景:传 candidateId,后端从 DB 取 attachment 作为 R2 key,跑 Kimi 后 UPDATE DB
     candidateId: { type: "string", format: "uuid" },
     contentType: { type: "string", maxLength: 100 },
     model: { type: "string", maxLength: 100 },
     jobId: { type: "string", format: "uuid", nullable: true },
+    // 新建路径附加字段(异步化后必须传给 backend 一次,task 内部用):
+    filename: { type: "string", maxLength: 200 },                       // 原始文件名(降级时入库 candidate.name 用)
+    source: { type: ["string", "null"], maxLength: 500 },               // 来源,覆盖默认 "自动上传"
   },
   // 必须二选一
   oneOf: [{ required: ["key"] }, { required: ["candidateId"] }],
@@ -177,6 +180,107 @@ async function runReparse(app, taskId, candidateId, model) {
   }
 }
 
+// Parse-and-create 异步任务执行器 — 跑 Kimi parseResume + 可选 JD 联评 + Prisma CREATE candidate,
+// 把最终结果(或错误)写入 parseTaskStore。前端 POST /parse 立即拿 taskId,2s 一次轮询 GET /parse-tasks/:taskId。
+// 关键设计:这个函数 fire-and-forget(setImmediate 调用),HTTP handler 立即返回 taskId,
+// 彻底绕过 Cloudflare 100s origin response 硬上限 + 修复 .doc 等格式 Kimi 慢导致 backend 90s abort 的问题。
+async function runParseAndCreate(app, taskId, payload) {
+  // payload: { key, contentType, model, jobId, filename, source, ownerId }
+  try {
+    await markRunning(app, taskId);
+
+    if (!app.r2) throw Object.assign(new Error("R2 凭证未配置,无法读取简历"), { statusCode: 424, code: "r2_not_configured" });
+
+    // 1) R2 拉文件
+    let buffer;
+    try {
+      const cmd = new GetObjectCommand({ Bucket: app.r2.bucket, Key: payload.key });
+      const obj = await app.r2.client.send(cmd);
+      buffer = await streamToBuffer(obj.Body);
+    } catch (err) {
+      throw Object.assign(new Error(`R2 中找不到对象 ${payload.key}`), { statusCode: 404, code: "r2_object_not_found" });
+    }
+    if (!buffer || buffer.length === 0) throw Object.assign(new Error("文件为空"), { statusCode: 400, code: "empty_file" });
+
+    // 2) Kimi parseResume(无 Kimi 配置时 throw 在路由层已拦,此处 isKimiConfigured 必为 true)
+    const filename = payload.filename || payload.key.split("/").pop() || "resume.pdf";
+    const result = await parseResume({
+      buffer, filename,
+      contentType: payload.contentType || "application/octet-stream",
+      model: payload.model,
+    });
+
+    // 3) 字段处理 — 与同步老路径一致,只是无 throw 改 markFailed
+    const parsed = { ...result.parsed };
+    delete parsed.jdMatch;
+    delete parsed.risks;
+    delete parsed.highlights;
+    if (!Array.isArray(parsed.languages)) parsed.languages = [];
+
+    // 4) JD 联评(若有 jobId 且 job 存在)
+    let match = null;
+    let llmFields = { jdMatch: null, risks: [], highlights: [], aiSuggestedTags: [], matchedFor: [], againstFor: [], insights: [], appliedFor: null };
+    if (payload.jobId) {
+      try {
+        const job = await app.prisma.job.findUnique({ where: { id: payload.jobId } });
+        if (job) {
+          match = await matchAgainstJob({
+            candidateSummary: result.summary,
+            jobTitle: job.title,
+            jobDescription: job.description || "",
+            model: payload.model,
+          });
+          llmFields.jdMatch = match.jdMatch ?? null;
+          llmFields.risks = Array.isArray(match.risks) ? match.risks : [];
+          llmFields.highlights = Array.isArray(match.highlights) ? match.highlights : [];
+          llmFields.aiSuggestedTags = Array.isArray(match.aiSuggestedTags) ? match.aiSuggestedTags.slice(0, 12) : [];
+          llmFields.matchedFor = Array.isArray(match.matchedFor) ? match.matchedFor.slice(0, 12) : [];
+          llmFields.againstFor = Array.isArray(match.againstFor) ? match.againstFor.slice(0, 12) : [];
+          llmFields.insights = Array.isArray(match.insights)
+            ? match.insights
+                .filter((i) => i && (i.kind === "up" || i.kind === "down") && typeof i.text === "string")
+                .slice(0, 20)
+                .map((i) => ({ kind: i.kind, text: i.text.slice(0, 300) }))
+            : [];
+          llmFields.appliedFor = job.title;
+        }
+      } catch (err) {
+        app.log.warn({ err, jobId: payload.jobId, taskId }, "parse-and-create JD 联评失败,候选人仍 create(无 JD 字段)");
+      }
+    }
+
+    // 5) Prisma CREATE candidate(归并所有字段)
+    const candidateData = {
+      ...parsed,
+      aiSummary: result.summary,
+      attachment: payload.key,
+      parser: "Kimi",
+      parserConfidence: 92,
+      source: payload.source?.trim()?.slice(0, 500) || "自动上传",
+      status: parsed.status || "待筛选",
+      jdMatch: llmFields.jdMatch,
+      risks: llmFields.risks,
+      highlights: llmFields.highlights,
+      aiSuggestedTags: llmFields.aiSuggestedTags,
+      matchedFor: llmFields.matchedFor,
+      againstFor: llmFields.againstFor,
+      insights: llmFields.insights,
+      jobId: payload.jobId || null,
+      appliedFor: llmFields.appliedFor || parsed.appliedFor || null,
+      ownerId: payload.ownerId || null,
+    };
+    // languages 兜底
+    if (!Array.isArray(candidateData.languages)) candidateData.languages = [];
+
+    const created = await app.prisma.candidate.create({ data: candidateData });
+    await markDone(app, taskId, { candidate: withDerivedCandidate(created), match });
+    app.log.info({ taskId, candidateId: created.id, jdMatch: created.jdMatch, source: created.source }, "parse-and-create task done");
+  } catch (err) {
+    app.log.error({ err, taskId }, "parse-and-create task failed");
+    await markFailed(app, taskId, err);
+  }
+}
+
 export default async function resumesRoutes(app) {
   app.addHook("preHandler", app.authenticate);
 
@@ -207,12 +311,9 @@ export default async function resumesRoutes(app) {
     if (!(await isKimiConfigured())) {
       return reply.code(424).send({ error: "kimi_not_configured", message: "KIMI_API_KEY 未配置" });
     }
-    let { key, contentType, model, jobId } = req.body;
-    const { candidateId } = req.body;
+    const { key, candidateId, contentType, model, jobId, filename, source } = req.body;
 
-    // 重新解析模式:异步化避开 Cloudflare 100s 硬上限。
-    // 立即返回 taskId,前端轮询 GET /parse-tasks/:taskId 拿结果。Kimi 跑多久都无所谓。
-    // R2 检查放到 runReparse 内异步处理(失败会写到 task.error,前端轮询能拿到)。
+    // ─── 路径 A:已有候选人「重新解析」(reparse 模式) ───
     if (candidateId) {
       // 提前 sanity check 防止异步任务起后才报「候选人不存在」
       const exists = await app.prisma.candidate.findUnique({
@@ -223,110 +324,27 @@ export default async function resumesRoutes(app) {
       if (!exists.attachment) {
         return reply.code(400).send({ error: "no_attachment", message: "候选人无简历附件,无法重新解析(请重新上传简历)" });
       }
-      const task = await createTask(app, candidateId);
+      const task = await createTask(app, candidateId, "reparse");
       // fire-and-forget,HTTP handler 不等
       setImmediate(() => runReparse(app, task.id, candidateId, model));
       return reply.code(202).send({ task });
     }
 
-    // 新上传模式(传 key):同步处理,因为 Upload 页已有 progress UI 等待
-    if (!app.r2) {
-      return reply.code(424).send({ error: "r2_not_configured", message: "R2 凭证未配置,无法读取简历" });
-    }
-    let existingCandidate = null;
-
-    // 1) R2 拉文件
-    let buffer;
-    try {
-      const cmd = new GetObjectCommand({ Bucket: app.r2.bucket, Key: key });
-      const obj = await app.r2.client.send(cmd);
-      buffer = await streamToBuffer(obj.Body);
-    } catch (err) {
-      req.log.error({ err, key }, "fetch from r2 failed");
-      return reply.code(404).send({ error: "r2_object_not_found", message: `R2 中找不到对象 ${key}` });
-    }
-    if (!buffer || buffer.length === 0) {
-      return reply.code(400).send({ error: "empty_file", message: "文件为空" });
-    }
-
-    // 2) Kimi 解析(基础信息 + summary)
-    const filename = key.split("/").pop() || "resume.pdf";
-    let result;
-    try {
-      result = await parseResume({
-        buffer, filename,
-        contentType: contentType || "application/octet-stream",
-        model,
-      });
-    } catch (err) {
-      req.log.error({ err, key }, "kimi parse failed");
-      return reply.code(err.statusCode || 502).send({
-        error: err.code || "kimi_error",
-        message: err.message?.slice(0, 500) || "Kimi 解析失败",
-      });
-    }
-
-    // 3) 剥离 JD 相关字段 — 这些只有在传 jobId 时由二次评估填
-    //    保留 languages(parseResume 输出的 V2 字段),其它无关字段从 parsed 透出
-    const parsed = { ...result.parsed };
-    delete parsed.jdMatch;
-    delete parsed.risks;
-    delete parsed.highlights;
-    // languages 兜底 + 限长(Kimi 偶尔会输出 null 或非数组)
-    if (!Array.isArray(parsed.languages)) parsed.languages = [];
-
-    const candidate = {
-      ...parsed,
-      aiSummary: result.summary,
-      attachment: key,
-      parser: "Kimi",
-      parserConfidence: 92,
-      source: "自动上传",
-      status: parsed.status || "待筛选",
-      // 显式置 null/[] 让前端知道未评估
-      jdMatch: null,
-      risks: [],
-      highlights: [],
+    // ─── 路径 B:新上传简历「parse-and-create」(异步模式,自 2026-05-26 上线) ───
+    // 修复 .doc 等格式 Kimi 慢导致 backend 90s abort 失败的问题。Kimi 跑多久都无所谓,
+    // 前端 2s 一次轮询 GET /parse-tasks/:taskId 拿最终 candidate 快照(已写 DB)。
+    // R2 检查放到 runParseAndCreate 内异步处理(失败会写到 task.error,前端轮询能拿到)。
+    const task = await createTask(app, null, "create");
+    setImmediate(() => runParseAndCreate(app, task.id, {
+      key,
+      contentType,
+      model,
       jobId: jobId || null,
-      // V2 新字段默认空,等 /match 后再填
-      aiSuggestedTags: [],
-      matchedFor: [],
-      againstFor: [],
-      insights: [],
-    };
-
-    // 4) 若传了 jobId, 跑二次评估补 jdMatch/risks/highlights + V2 新字段
-    let match = null;
-    if (jobId) {
-      try {
-        const job = await app.prisma.job.findUnique({ where: { id: jobId } });
-        if (job) {
-          match = await matchAgainstJob({
-            candidateSummary: result.summary,
-            jobTitle: job.title,
-            jobDescription: job.description || "",
-            model,
-          });
-          candidate.jdMatch = match.jdMatch ?? null;
-          candidate.risks = Array.isArray(match.risks) ? match.risks : [];
-          candidate.highlights = Array.isArray(match.highlights) ? match.highlights : [];
-          candidate.aiSuggestedTags = Array.isArray(match.aiSuggestedTags) ? match.aiSuggestedTags.slice(0, 12) : [];
-          candidate.matchedFor = Array.isArray(match.matchedFor) ? match.matchedFor.slice(0, 12) : [];
-          candidate.againstFor = Array.isArray(match.againstFor) ? match.againstFor.slice(0, 12) : [];
-          candidate.insights = Array.isArray(match.insights)
-            ? match.insights
-                .filter((i) => i && (i.kind === "up" || i.kind === "down") && typeof i.text === "string")
-                .slice(0, 20)
-                .map((i) => ({ kind: i.kind, text: i.text.slice(0, 300) }))
-            : [];
-          if (!candidate.appliedFor) candidate.appliedFor = job.title;
-        }
-      } catch (err) {
-        req.log.warn({ err, jobId }, "match against job failed, candidate still saved without jd evaluation");
-      }
-    }
-
-    return { candidate: withDerivedCandidate(candidate), meta: result.meta, match };
+      filename,
+      source,
+      ownerId: req.user?.sub || null,
+    }));
+    return reply.code(202).send({ task });
   });
 
   // ─── 异步 reparse 任务状态轮询 ────────────────────────────

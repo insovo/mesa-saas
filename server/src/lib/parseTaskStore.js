@@ -12,13 +12,14 @@
 // Task 形状:
 //   {
 //     id: string (uuid),
-//     candidateId: string,
+//     candidateId: string | null,   // reparse 模式必填;新建上传(parse-and-create)模式为 null
 //     status: "pending" | "running" | "done" | "failed",
+//     mode: "reparse" | "create",   // 标识本任务做的是 reparse 还是 parse-and-create
 //     startedAt: ISO string,
 //     finishedAt?: ISO string,
-//     candidate?: object,   // status=done 时填,等于 update 后的 DB 行
+//     candidate?: object,   // status=done 时填,等于 update/create 后的 DB 行
 //     match?: object,       // status=done 时填(若 jobId 联评)
-//     reparsed?: boolean,   // 标识本次是 reparse 路径
+//     reparsed?: boolean,   // 标识本次是 reparse 路径(向后兼容,新代码用 mode 字段)
 //     error?: { code, message, statusCode },  // status=failed 时填
 //   }
 
@@ -40,10 +41,11 @@ function memoryKey(taskId) {
   return KEY_PREFIX + taskId;
 }
 
-export async function createTask(app, candidateId) {
+export async function createTask(app, candidateId, mode = "reparse") {
   const task = {
     id: randomUUID(),
-    candidateId,
+    candidateId: candidateId || null,
+    mode,
     status: "pending",
     startedAt: new Date().toISOString(),
   };
