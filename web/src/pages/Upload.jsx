@@ -14,6 +14,18 @@ function fmtExpiresLabel(expiresAt) {
   const days = Math.max(0, Math.ceil((new Date(expiresAt).getTime() - Date.now()) / DAY_MS));
   return `${days} 天后失效`;
 }
+
+// 本次已入库列表用 sessionStorage 持久化(切页/刷新都保留,关 tab 自动清,tab 间隔离防多用户串数据)
+const PARSED_SS_KEY = "mesa.upload.parsed.v1";
+const PARSED_MAX = 20;
+function loadParsedFromSession() {
+  try {
+    const raw = sessionStorage.getItem(PARSED_SS_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr.slice(0, PARSED_MAX) : [];
+  } catch { return []; }
+}
 const NEW_JOB_DEFAULT = { title: "", description: "", responsibilities: [], requirements: [], nice: [], benefits: [], employment: null, salary: null, levelRange: null, yearsExpRange: null, educationRequirement: null, languageRequirement: null };
 
 // 简历收件箱 · 真实流程
@@ -30,7 +42,7 @@ const NEW_JOB_DEFAULT = { title: "", description: "", responsibilities: [], requ
 export default function Upload() {
   const [files, setFiles] = useState([]);
   const [parsing, setParsing] = useState(false);
-  const [parsed, setParsed] = useState([]);
+  const [parsed, setParsed] = useState(loadParsedFromSession);
   const [llmStatus, setLlmStatus] = useState(null);
   const [jobs, setJobs] = useState([]);
   const [selectedJobId, setSelectedJobId] = useState("");  // 空字符串 = 不关联 JD
@@ -56,6 +68,14 @@ export default function Upload() {
       .catch(() => setUploadLinks([]))
       .finally(() => setLinksLoading(false));
   }, []);
+
+  // parsed 改动同步写回 sessionStorage(切页/刷新后恢复)
+  useEffect(() => {
+    try {
+      const trimmed = parsed.slice(0, PARSED_MAX);
+      sessionStorage.setItem(PARSED_SS_KEY, JSON.stringify(trimmed));
+    } catch { /* sessionStorage full / disabled,忽略 */ }
+  }, [parsed]);
 
   // 打开新建 JD 弹窗时重置表单(避免上次留下的脏数据)
   useEffect(() => {
@@ -430,7 +450,16 @@ export default function Upload() {
 
       {parsed.length > 0 && (
         <Card className="p-6">
-          <h3 className="title-card mb-4">本次已入库</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="title-card">本次已入库 ({parsed.length})</h3>
+            <button
+              onClick={() => setParsed([])}
+              className="text-[11px] text-gray-500 hover:text-red-500 inline-flex items-center gap-1"
+              title="清空显示(候选人不会从数据库删除)"
+            >
+              <I name="x-circle" size={11} /> 清空显示
+            </button>
+          </div>
           <ul className="divide-y divide-gray-200">
             {parsed.map((c) => (
               <li key={c.id} className="py-3 flex items-center gap-3">
