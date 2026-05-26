@@ -102,12 +102,16 @@ jobs:
             echo "[deploy] docker login ghcr.io..."
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
 
-            echo "[deploy] pulling latest images (tag=$IMAGE_TAG)..."
-            docker compose pull
+            echo "[deploy] pulling latest GHCR images (tag=$IMAGE_TAG)..."
+            # 只拉项目自研镜像(backend + frontend / web)。其他基础镜像(postgres/redis/uptime-kuma)
+            # 来自 docker.io,VPS 到 Docker Hub 偶尔有网络抖动 (199.59.150.49 i/o timeout),
+            # 拉它们要么受网络影响, 要么是 noop (已运行版本不会变, image: TAG 是固定 major.minor)。
+            # 失败也不能让整个 deploy abort, 所以 || true 兜底。
+            docker compose pull backend frontend || true
 
-            echo "[deploy] applying compose..."
+            echo "[deploy] applying compose (--pull missing 保留 postgres/redis 现有镜像不重拉)..."
             # backend Dockerfile CMD 启动时会自动跑 `prisma migrate deploy`,无需额外 exec
-            docker compose up -d --remove-orphans
+            docker compose up -d --remove-orphans --pull missing
 
             echo "[deploy] verifying health..."
             sleep 8
