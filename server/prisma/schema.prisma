@@ -94,6 +94,10 @@ model Candidate {
   jobId             String?  @map("job_id") @db.Uuid
   job               Job?     @relation("CandidateJob", fields: [jobId], references: [id], onDelete: SetNull)
 
+  // 关联部门(可选) — 独立于 JD,允许"先归到某部门,后续再定具体 JD"的工作流
+  departmentId      String?  @map("department_id") @db.Uuid
+  department        Department? @relation("CandidateDepartment", fields: [departmentId], references: [id], onDelete: SetNull)
+
   interviews        Interview[]
   employee          Employee?
   notes             CandidateNote[]
@@ -159,6 +163,7 @@ model Department {
   parentId    String?  @map("parent_id") @db.Uuid
   parent      Department?  @relation("DeptParent", fields: [parentId], references: [id], onDelete: SetNull)
   children    Department[] @relation("DeptParent")
+  candidates  Candidate[] @relation("CandidateDepartment")
   head        String?
   headcount   Int      @default(0)
   openHc      Int      @default(0) @map("open_hc")

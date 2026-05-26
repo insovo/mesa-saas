@@ -36,6 +36,7 @@ const CANDIDATE_BODY = {
     attachment: { type: "string", maxLength: 500, nullable: true },
     aiSummary: { type: "string", maxLength: 50000, nullable: true },
     jobId: { type: "string", format: "uuid", nullable: true },
+    departmentId: { type: "string", format: "uuid", nullable: true },
     // V2 新字段(2026-05-24) — 跟 prisma schema add_v2_fields migration 对齐
     aiSuggestedTags: { type: "array", items: { type: "string", maxLength: 60 }, maxItems: 12 },
     insights: {
@@ -119,6 +120,10 @@ export default async function candidatesRoutes(app) {
         orderBy: { [orderBy]: "desc" },
         skip,
         take,
+        include: {
+          job: { select: { id: true, title: true, dept: true } },
+          department: { select: { id: true, name: true, code: true } },
+        },
       }),
       app.prisma.candidate.count({ where }),
     ]);
@@ -127,7 +132,13 @@ export default async function candidatesRoutes(app) {
 
   // Detail
   app.get("/:id", async (req, reply) => {
-    const candidate = await app.prisma.candidate.findFirst({ where: whereByIdOrExternal(req.params.id) });
+    const candidate = await app.prisma.candidate.findFirst({
+      where: whereByIdOrExternal(req.params.id),
+      include: {
+        job: { select: { id: true, title: true, dept: true } },
+        department: { select: { id: true, name: true, code: true } },
+      },
+    });
     if (!candidate) return reply.code(404).send({ error: "not_found" });
     return { candidate: withDerived(candidate) };
   });

@@ -15,6 +15,19 @@ function fmtExpiresLabel(expiresAt) {
   return `${days} 天后失效`;
 }
 
+// 简历卡片右侧显示 "上传 X 时间"。<1m → 刚刚;<1h → N 分钟前;<24h → N 小时前;<30d → N 天前;其它 → 日期
+function fmtRelativeTime(iso) {
+  if (!iso) return "";
+  const ts = new Date(iso).getTime();
+  if (Number.isNaN(ts)) return "";
+  const secs = Math.max(0, (Date.now() - ts) / 1000);
+  if (secs < 60) return "刚刚";
+  if (secs < 3600) return `${Math.floor(secs / 60)} 分钟前`;
+  if (secs < 86400) return `${Math.floor(secs / 3600)} 小时前`;
+  if (secs < 86400 * 30) return `${Math.floor(secs / 86400)} 天前`;
+  return new Date(iso).toLocaleDateString();
+}
+
 // 本次已入库列表用 sessionStorage 持久化(切页/刷新都保留,关 tab 自动清,tab 间隔离防多用户串数据)
 const PARSED_SS_KEY = "mesa.upload.parsed.v1";
 const PARSED_MAX = 20;
@@ -60,6 +73,12 @@ export default function Upload() {
   const [creatingLink, setCreatingLink] = useState(false);
   const qrRef = useRef(null);  // 用于保存二维码图片
 
+  // 列表批量操作 — 候选人多选 + 关联 JD / 部门 / 解析
+  const [departments, setDepartments] = useState([]);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [bulkAssigning, setBulkAssigning] = useState(false);     // 批量改 JD/部门 loading
+  const [reparsingIds, setReparsingIds] = useState(() => new Set()); // 触发了 reparse 的 candidate id 集合(显示 spinner)
+
   // 拉当前用户最近的候选人(含本地手动上传 + 公开链接收到的)
   // remote 优先,失败时保留 sessionStorage 兜底
   const [refreshing, setRefreshing] = useState(false);
@@ -88,6 +107,8 @@ export default function Upload() {
       .finally(() => setLinksLoading(false));
     // mount 时拉一次远程(silent=true 不显示 loading,sessionStorage 已经秒级显示了)
     refetchOwned(true);
+    // 部门列表给"批量关联部门"下拉用(api.js resources.departments.list 不接 params,直接 api.get)
+    api.get("/departments", { params: { take: 200 } }).then((r) => setDepartments(r.data.items || [])).catch(() => setDepartments([]));
   }, []);
 
   // parsed 改动同步写回 sessionStorage(切页/刷新后恢复)
@@ -97,6 +118,78 @@ export default function Upload() {
       sessionStorage.setItem(PARSED_SS_KEY, JSON.stringify(trimmed));
     } catch { /* sessionStorage full / disabled,忽略 */ }
   }, [parsed]);
+
+  // ─── 批量操作 helpers ────────────────────────────────────
+  function toggleSelect(id) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+  const allSelected = parsed.length > 0 && parsed.every((c) => selectedIds.has(c.id));
+  function toggleSelectAll() {
+    if (allSelected) setSelectedIds(new Set());
+    else setSelectedIds(new Set(parsed.map((c) => c.id)));
+  }
+
+  // 批量关联 JD / 部门:对每个选中 candidate 调 PATCH(并行)
+  async function onBulkAssign({ jobId, departmentId }) {
+    if (selectedIds.size === 0) return;
+    setBulkAssigning(true);
+    const ids = Array.from(selectedIds);
+    const job = jobId ? jobs.find((j) => j.id === jobId) : null;
+    const dept = departmentId ? departments.find((d) => d.id === departmentId) : null;
+    const patch = {};
+    if (jobId !== undefined) {
+      patch.jobId = jobId || null;
+      patch.appliedFor = job?.title || null;
+    }
+    if (departmentId !== undefined) {
+      patch.departmentId = departmentId || null;
+    }
+    try {
+      await Promise.all(ids.map((id) => api.patch(`/candidates/${id}`, patch)));
+      const targetLabel = job ? `岗位「${job.title}」` : dept ? `部门「${dept.name}」` : "已清除关联";
+      toast(`${ids.length} 份简历已关联到 ${targetLabel}`, "success");
+      await refetchOwned(true);
+      setSelectedIds(new Set());
+    } catch (e) {
+      toast(e.response?.data?.message || "批量关联失败", "error");
+    } finally {
+      setBulkAssigning(false);
+    }
+  }
+
+  // 批量 / 单个解析:复用 reparse 异步任务模式(POST /resumes/parse { candidateId } → 后台跑)
+  // 触发后立即 toast,5s 自动 refetch(给 Kimi 时间完成),已解析的 parser 字段会从 null 变 "Kimi"
+  async function onReparse(ids) {
+    const toReparse = Array.from(ids);
+    if (toReparse.length === 0) return;
+    setReparsingIds((prev) => new Set([...prev, ...toReparse]));
+    try {
+      await Promise.all(toReparse.map((id) => api.post("/resumes/parse", { candidateId: id })));
+      toast(`已触发 ${toReparse.length} 份简历重新解析(后台处理 5-60 秒,会自动刷新)`, "success");
+      if (toReparse.length > 1) setSelectedIds(new Set());
+      // 5s 后 refetch,以及 30s 兜底再 refetch 一次(覆盖慢 Kimi)
+      setTimeout(() => refetchOwned(true), 5000);
+      setTimeout(() => {
+        refetchOwned(true);
+        setReparsingIds((prev) => {
+          const next = new Set(prev);
+          toReparse.forEach((id) => next.delete(id));
+          return next;
+        });
+      }, 30000);
+    } catch (e) {
+      toast(e.response?.data?.message || "触发解析失败", "error");
+      setReparsingIds((prev) => {
+        const next = new Set(prev);
+        toReparse.forEach((id) => next.delete(id));
+        return next;
+      });
+    }
+  }
 
   // 打开新建 JD 弹窗时重置表单(避免上次留下的脏数据)
   useEffect(() => {
@@ -487,8 +580,18 @@ export default function Upload() {
 
       {parsed.length > 0 && (
         <Card className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="title-card">我接收到的简历 ({parsed.length})</h3>
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                ref={(el) => { if (el) el.indeterminate = !allSelected && selectedIds.size > 0; }}
+                onChange={toggleSelectAll}
+                className="w-4 h-4 accent-brand cursor-pointer"
+                title={allSelected ? "取消全选" : "全选"}
+              />
+              <h3 className="title-card">我接收到的简历 ({parsed.length})</h3>
+            </div>
             <div className="flex items-center gap-3">
               <button
                 onClick={() => refetchOwned(false)}
@@ -507,31 +610,113 @@ export default function Upload() {
               </button>
             </div>
           </div>
+
+          {/* 批量操作浮条 — 选中时显示 */}
+          {selectedIds.size > 0 && (
+            <div className="mb-4 p-3 rounded-xl bg-brand/5 border border-brand/20 flex items-center gap-3 flex-wrap">
+              <span className="text-sm font-bold text-brand">已选 {selectedIds.size}</span>
+              <span className="text-gray-300">|</span>
+              <span className="text-xs text-gray-700">批量关联:</span>
+              <select
+                value=""
+                disabled={bulkAssigning}
+                onChange={(e) => { if (e.target.value !== "") onBulkAssign({ jobId: e.target.value || null }); }}
+                className="h-8 rounded-lg border border-gray-200 px-2 text-xs text-navy-700 outline-none focus:border-brand bg-white max-w-[200px]"
+              >
+                <option value="">— 关联到 JD —</option>
+                <option value="__CLEAR__" disabled>—</option>
+                <option value={null}>清除 JD 关联</option>
+                {jobs.map((j) => (<option key={j.id} value={j.id}>{j.title}{j.dept ? ` · ${j.dept}` : ""}</option>))}
+              </select>
+              <select
+                value=""
+                disabled={bulkAssigning}
+                onChange={(e) => { if (e.target.value !== "") onBulkAssign({ departmentId: e.target.value || null }); }}
+                className="h-8 rounded-lg border border-gray-200 px-2 text-xs text-navy-700 outline-none focus:border-brand bg-white max-w-[200px]"
+              >
+                <option value="">— 关联到部门 —</option>
+                <option value={null}>清除部门关联</option>
+                {departments.map((d) => (<option key={d.id} value={d.id}>{d.name}{d.code ? ` (${d.code})` : ""}</option>))}
+              </select>
+              <button
+                onClick={() => onReparse(selectedIds)}
+                disabled={bulkAssigning || !llmStatus?.configured}
+                className="inline-flex items-center gap-1 h-8 px-3 rounded-lg bg-brand text-white text-xs font-bold hover:bg-brand-hover disabled:opacity-50"
+                title={!llmStatus?.configured ? "LLM 未配置,无法解析" : "用 Kimi 重新解析选中的简历"}
+              >
+                <I name="sparkles" size={11} /> 批量解析 ({selectedIds.size})
+              </button>
+              <button
+                onClick={() => setSelectedIds(new Set())}
+                className="ml-auto text-[11px] text-gray-500 hover:text-navy-700"
+              >
+                取消选择
+              </button>
+            </div>
+          )}
+
           <ul className="divide-y divide-gray-200">
-            {parsed.map((c) => (
-              <li key={c.id} className="py-3 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-brand-gradient text-white flex items-center justify-center font-bold">
+            {parsed.map((c) => {
+              const isSelected = selectedIds.has(c.id);
+              const isReparsing = reparsingIds.has(c.id);
+              const unparsed = !c.parser;  // null/undefined = 未解析过 → 显示"解析"按钮
+              return (
+              <li key={c.id} className={`py-3 flex items-center gap-3 ${isSelected ? "bg-brand/5 -mx-2 px-2 rounded-lg" : ""}`}>
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={() => toggleSelect(c.id)}
+                  className="w-4 h-4 accent-brand cursor-pointer shrink-0"
+                />
+                <div className="w-10 h-10 rounded-full bg-brand-gradient text-white flex items-center justify-center font-bold shrink-0">
                   {(c.name || "?").slice(0, 1)}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <Link to={`/candidates/${c.externalId || c.id}`} className="text-sm font-bold text-navy-700 hover:text-brand block truncate">
-                    {c.name || "—"}
-                  </Link>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Link to={`/candidates/${c.externalId || c.id}`} className="text-sm font-bold text-navy-700 hover:text-brand truncate">
+                      {c.name || "—"}
+                    </Link>
+                    {c.job?.title && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-brand/10 text-brand inline-flex items-center gap-1">
+                        <I name="briefcase" size={9} /> {c.job.title}
+                      </span>
+                    )}
+                    {c.department?.name && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 inline-flex items-center gap-1">
+                        <I name="users" size={9} /> {c.department.name}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-gray-700 truncate">
                     {[c.education, c.school, c.major].filter(Boolean).join(" · ") || c.attachment}
                   </p>
                 </div>
-                <div className="hidden md:flex gap-1.5 max-w-[280px] flex-wrap">
+                <div className="hidden md:flex gap-1.5 max-w-[200px] flex-wrap">
                   {(c.tags || []).slice(0, 3).map((t) => <Tag key={t}>{t}</Tag>)}
                 </div>
+                <span className="text-[10px] text-gray-500 shrink-0 hidden sm:inline" title={c.createdAt ? new Date(c.createdAt).toLocaleString() : ""}>
+                  {fmtRelativeTime(c.createdAt)}
+                </span>
                 {c.jdMatch != null && <LiquidLoader size={40} level={c.jdMatch} label={c.jdMatch} />}
+                {/* 解析按钮 — 仅在 LLM 已配置且(未解析或正在重新解析中)时显示 */}
+                {llmStatus?.configured && (unparsed || isReparsing) && (
+                  <button
+                    onClick={() => onReparse([c.id])}
+                    disabled={isReparsing}
+                    className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg bg-brand text-white text-[11px] font-bold hover:bg-brand-hover disabled:opacity-60 shrink-0"
+                    title={unparsed ? "调 Kimi 解析这份简历" : "正在解析中"}
+                  >
+                    <I name={isReparsing ? "loader" : "sparkles"} size={10} className={isReparsing ? "animate-spin" : ""} />
+                    {isReparsing ? "解析中" : "解析"}
+                  </button>
+                )}
                 {c.parser ? (
                   <AiBadge parser={c.parser} confidence={c.parserConfidence} />
                 ) : (
                   <StatusPill status={c.status || "待筛选"} />
                 )}
               </li>
-            ))}
+            );})}
           </ul>
         </Card>
       )}

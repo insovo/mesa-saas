@@ -43,7 +43,7 @@ function SuccessScreen({ name, uploadCount, maxUploads }) {
         <h2 className="text-xl font-bold text-navy-700 mb-2">上传成功</h2>
         <p className="text-sm text-gray-700">
           感谢 {name ? <b>{name}</b> : "您"} 的简历!我们已收到,
-          招聘官会在 24h 内联系您。
+          招聘官会与您联系。
         </p>
         {maxUploads != null && (
           <p className="text-[11px] text-gray-500 mt-4">本链接收件进度 {uploadCount} / {maxUploads}</p>
