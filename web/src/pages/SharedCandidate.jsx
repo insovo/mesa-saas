@@ -19,6 +19,7 @@ import {
   Modal,
   toast,
 } from "../components/Primitives.jsx";
+import MarkdownBullets from "../components/MarkdownBullets.jsx";
 
 function fmtExpiresHint(iso) {
   if (!iso) return "永久有效";
@@ -152,7 +153,10 @@ export default function SharedCandidate() {
               <I name="sparkles" size={18} className="text-brand" />
               核心技能
             </h3>
-            {(c.skills || []).length === 0 ? <Empty title="暂无技能识别" /> : (
+            {/* 两阶段:string → markdown bullet;array → 旧渲染兼容;空 → empty */}
+            {typeof c.skills === "string" && c.skills.trim() ? (
+              <MarkdownBullets md={c.skills} />
+            ) : Array.isArray(c.skills) && c.skills.length > 0 ? (
               <ul className="mt-4 space-y-2.5">
                 {c.skills.map((s, i) => (
                   <li key={i} className="text-sm text-navy-700 flex items-start gap-2">
@@ -161,6 +165,8 @@ export default function SharedCandidate() {
                   </li>
                 ))}
               </ul>
+            ) : (
+              <Empty title="暂无技能识别" />
             )}
           </Card>
           <Card className="p-5 md:p-6">
@@ -201,7 +207,9 @@ export default function SharedCandidate() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-5">
           <Card className="p-5 md:p-6">
             <h3 className="title-card">工作经历</h3>
-            {(!c.experience || c.experience.length === 0) ? <Empty title="暂无工作经历" /> : (
+            {typeof c.experience === "string" && c.experience.trim() ? (
+              <MarkdownBullets md={c.experience} />
+            ) : Array.isArray(c.experience) && c.experience.length > 0 ? (
               <ul className="mt-4 space-y-4">
                 {c.experience.map((e, i) => (
                   <li key={i} className="border-l-2 border-brand pl-4 relative">
@@ -213,11 +221,15 @@ export default function SharedCandidate() {
                   </li>
                 ))}
               </ul>
+            ) : (
+              <Empty title="暂无工作经历" />
             )}
           </Card>
           <Card className="p-5 md:p-6">
             <h3 className="title-card">教育背景</h3>
-            {(!c.educationHistory || c.educationHistory.length === 0) ? <Empty title="暂无教育背景" /> : (
+            {typeof c.educationHistory === "string" && c.educationHistory.trim() ? (
+              <MarkdownBullets md={c.educationHistory} />
+            ) : Array.isArray(c.educationHistory) && c.educationHistory.length > 0 ? (
               <ul className="mt-4 space-y-4">
                 {c.educationHistory.map((e, i) => (
                   <li key={i} className="border-l-2 border-gray-300 pl-4 relative">
@@ -228,6 +240,8 @@ export default function SharedCandidate() {
                   </li>
                 ))}
               </ul>
+            ) : (
+              <Empty title="暂无教育背景" />
             )}
           </Card>
         </div>
