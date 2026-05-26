@@ -133,6 +133,23 @@ export default function Upload() {
     else setSelectedIds(new Set(parsed.map((c) => c.id)));
   }
 
+  // 单条关联 JD / 部门:直接 PATCH 一个 candidate,失败 toast,成功 refetch
+  // patch 字段:jobId 或 departmentId(null = 清除关联)
+  async function onSingleAssign(id, patch) {
+    const actualPatch = { ...patch };
+    if ("jobId" in actualPatch) {
+      const job = actualPatch.jobId ? jobs.find((j) => j.id === actualPatch.jobId) : null;
+      actualPatch.appliedFor = job?.title || null;
+    }
+    try {
+      await api.patch(`/candidates/${id}`, actualPatch);
+      toast("关联已更新", "success");
+      await refetchOwned(true);
+    } catch (e) {
+      toast(e.response?.data?.message || "关联失败", "error");
+    }
+  }
+
   // 批量关联 JD / 部门:对每个选中 candidate 调 PATCH(并行)
   async function onBulkAssign({ jobId, departmentId }) {
     if (selectedIds.size === 0) return;
@@ -659,9 +676,8 @@ export default function Upload() {
             {parsed.map((c) => {
               const isSelected = selectedIds.has(c.id);
               const isReparsing = reparsingIds.has(c.id);
-              const unparsed = !c.parser;  // null/undefined = 未解析过 → 显示"解析"按钮
               return (
-              <li key={c.id} className={`py-3 flex items-center gap-3 ${isSelected ? "bg-brand/5 -mx-2 px-2 rounded-lg" : ""}`}>
+              <li key={c.id} className={`py-3 flex items-center gap-3 flex-wrap lg:flex-nowrap ${isSelected ? "bg-brand/5 -mx-2 px-2 rounded-lg" : ""}`}>
                 <input
                   type="checkbox"
                   checked={isSelected}
@@ -672,49 +688,59 @@ export default function Upload() {
                   {(c.name || "?").slice(0, 1)}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Link to={`/candidates/${c.externalId || c.id}`} className="text-sm font-bold text-navy-700 hover:text-brand truncate">
-                      {c.name || "—"}
-                    </Link>
-                    {c.job?.title && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-brand/10 text-brand inline-flex items-center gap-1">
-                        <I name="briefcase" size={9} /> {c.job.title}
-                      </span>
-                    )}
-                    {c.department?.name && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 inline-flex items-center gap-1">
-                        <I name="users" size={9} /> {c.department.name}
-                      </span>
-                    )}
-                  </div>
+                  <Link to={`/candidates/${c.externalId || c.id}`} className="text-sm font-bold text-navy-700 hover:text-brand truncate block">
+                    {c.name || "—"}
+                  </Link>
                   <p className="text-xs text-gray-700 truncate">
                     {[c.education, c.school, c.major].filter(Boolean).join(" · ") || c.attachment}
                   </p>
                 </div>
-                <div className="hidden md:flex gap-1.5 max-w-[200px] flex-wrap">
-                  {(c.tags || []).slice(0, 3).map((t) => <Tag key={t}>{t}</Tag>)}
-                </div>
-                <span className="text-[10px] text-gray-500 shrink-0 hidden sm:inline" title={c.createdAt ? new Date(c.createdAt).toLocaleString() : ""}>
-                  {fmtRelativeTime(c.createdAt)}
-                </span>
-                {c.jdMatch != null && <LiquidLoader size={40} level={c.jdMatch} label={c.jdMatch} />}
-                {/* 解析按钮 — 仅在 LLM 已配置且(未解析或正在重新解析中)时显示 */}
-                {llmStatus?.configured && (unparsed || isReparsing) && (
-                  <button
-                    onClick={() => onReparse([c.id])}
-                    disabled={isReparsing}
-                    className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg bg-brand text-white text-[11px] font-bold hover:bg-brand-hover disabled:opacity-60 shrink-0"
-                    title={unparsed ? "调 Kimi 解析这份简历" : "正在解析中"}
+
+                {/* 单条 inline 操作:JD select / 部门 select / 解析按钮 */}
+                <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+                  <select
+                    value={c.jobId || ""}
+                    onChange={(e) => onSingleAssign(c.id, { jobId: e.target.value || null })}
+                    className="h-7 rounded-lg border border-gray-200 px-2 text-[11px] text-navy-700 outline-none focus:border-brand bg-white max-w-[140px]"
+                    title={c.job?.title ? `关联到 JD: ${c.job.title}` : "未关联 JD,点击选择"}
                   >
-                    <I name={isReparsing ? "loader" : "sparkles"} size={10} className={isReparsing ? "animate-spin" : ""} />
-                    {isReparsing ? "解析中" : "解析"}
-                  </button>
-                )}
-                {c.parser ? (
-                  <AiBadge parser={c.parser} confidence={c.parserConfidence} />
-                ) : (
-                  <StatusPill status={c.status || "待筛选"} />
-                )}
+                    <option value="">— 未关联 JD —</option>
+                    {jobs.map((j) => (<option key={j.id} value={j.id}>{j.title}</option>))}
+                  </select>
+                  <select
+                    value={c.departmentId || ""}
+                    onChange={(e) => onSingleAssign(c.id, { departmentId: e.target.value || null })}
+                    className="h-7 rounded-lg border border-gray-200 px-2 text-[11px] text-navy-700 outline-none focus:border-brand bg-white max-w-[120px]"
+                    title={c.department?.name ? `关联到部门: ${c.department.name}` : "未关联部门,点击选择"}
+                  >
+                    <option value="">— 未关联部门 —</option>
+                    {departments.map((d) => (<option key={d.id} value={d.id}>{d.name}</option>))}
+                  </select>
+                  {llmStatus?.configured && (
+                    <button
+                      onClick={() => onReparse([c.id])}
+                      disabled={isReparsing}
+                      className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg bg-brand text-white text-[11px] font-bold hover:bg-brand-hover disabled:opacity-60"
+                      title={isReparsing ? "正在解析中" : (c.parser ? "用 Kimi 重新解析这份简历" : "用 Kimi 解析这份简历")}
+                    >
+                      <I name={isReparsing ? "loader" : (c.parser ? "refresh-cw" : "sparkles")} size={10} className={isReparsing ? "animate-spin" : ""} />
+                      {isReparsing ? "解析中" : (c.parser ? "重新解析" : "解析")}
+                    </button>
+                  )}
+                </div>
+
+                {/* 状态显示:LiquidLoader + AiBadge/StatusPill + 时间 */}
+                <div className="flex items-center gap-2 shrink-0">
+                  {c.jdMatch != null && <LiquidLoader size={36} level={c.jdMatch} label={c.jdMatch} />}
+                  {c.parser ? (
+                    <AiBadge parser={c.parser} confidence={c.parserConfidence} />
+                  ) : (
+                    <StatusPill status={c.status || "待筛选"} />
+                  )}
+                  <span className="text-[10px] text-gray-500" title={c.createdAt ? new Date(c.createdAt).toLocaleString() : ""}>
+                    {fmtRelativeTime(c.createdAt)}
+                  </span>
+                </div>
               </li>
             );})}
           </ul>
