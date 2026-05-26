@@ -390,9 +390,23 @@ export async function parseResume({ buffer, filename, contentType, model }) {
     }
   }
 
-  const { summary, ...parsed } = result.json;
+  const { summary: rawSummary, ...parsed } = result.json;
+  const summary = typeof rawSummary === "string" ? rawSummary.trim() : "";
+
+  // 兜底:LLM 偶尔结构化字段空但 summary 文本完整(.doc 旧 Word 格式高发)。
+  // 从 summary 按固定模板反向 regex 抽取,填回 experience/educationHistory/skills 三个高价值字段。
+  if (summary) {
+    const { extractFromSummary } = await import("./summaryParser.js");
+    const fromSummary = extractFromSummary(summary);
+    for (const key of ["experience", "educationHistory", "skills"]) {
+      if ((!Array.isArray(parsed[key]) || parsed[key].length === 0) && Array.isArray(fromSummary[key]) && fromSummary[key].length > 0) {
+        parsed[key] = fromSummary[key];
+      }
+    }
+  }
+
   return {
-    summary: typeof summary === "string" ? summary.trim() : "",
+    summary,
     parsed,
     meta: { fileId: file.id, model: useModel, usage: result.meta.usage, bytesProcessed: file.bytes },
   };
