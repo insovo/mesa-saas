@@ -69,11 +69,13 @@ model Candidate {
   parserConfidence  Int?     @map("parser_confidence")
 
   tags              String[] @default([])
-  skills            String[] @default([])
+  // 两阶段:skills / experience / educationHistory 由 matchAgainstJob (阶段二) 产出 markdown bullet 字符串,
+  // 详见 server/src/lib/kimi.js + routes/resumes.js 写入逻辑。
+  skills            String?  @db.Text                                              // markdown bullet 字符串("- xxx\n- yyy")
   risks             String[] @default([])
   highlights        String[] @default([])
-  experience        Json     @default("[]")
-  educationHistory  Json     @default("[]") @map("education_history")
+  experience        String?  @db.Text                                              // markdown bullet 字符串
+  educationHistory  String?  @db.Text @map("education_history")                    // markdown bullet 字符串
   attachment        String?
   aiSummary         String?  @db.Text @map("ai_summary")  // LLM 输出的纯文本简报(HR 可读)
 

@@ -393,17 +393,9 @@ export async function parseResume({ buffer, filename, contentType, model }) {
   const { summary: rawSummary, ...parsed } = result.json;
   const summary = typeof rawSummary === "string" ? rawSummary.trim() : "";
 
-  // 兜底:LLM 偶尔结构化字段空但 summary 文本完整(.doc 旧 Word 格式高发)。
-  // 从 summary 按固定模板反向 regex 抽取,填回 experience/educationHistory/skills 三个高价值字段。
-  if (summary) {
-    const { extractFromSummary } = await import("./summaryParser.js");
-    const fromSummary = extractFromSummary(summary);
-    for (const key of ["experience", "educationHistory", "skills"]) {
-      if ((!Array.isArray(parsed[key]) || parsed[key].length === 0) && Array.isArray(fromSummary[key]) && fromSummary[key].length > 0) {
-        parsed[key] = fromSummary[key];
-      }
-    }
-  }
+  // 注意: 两阶段解析 — parseResume 只负责 summary + 基础信息 + tags,
+  // experience/educationHistory/skills 不再在这里产出 (即便 LLM 输出了也由调用方丢弃),
+  // 这三项交给 matchAgainstJob 在关联 JD 后产出 markdown bullet 字符串。
 
   return {
     summary,
@@ -422,7 +414,7 @@ export async function matchAgainstJob({ candidateSummary, jobTitle, jobDescripti
   const systemPrompt = `你是 MESA Recruit 的「候选人-岗位匹配评估」专家。
 基于下面给出的候选人简报和岗位 JD,输出严格 JSON,不要 Markdown 包裹,不要额外文字。
 
-JSON 结构(所有字段都必须出现,无内容也要返回空数组/空串而不是省略 key):
+JSON 结构(所有字段都必须出现,无内容也要返回空数组/空串/空 markdown 而不是省略 key):
 {
   "jdMatch": 0-100 整数(综合匹配度),
   "risks": ["相对此 JD 的风险/缺项, 3-6 条"],
@@ -431,6 +423,9 @@ JSON 结构(所有字段都必须出现,无内容也要返回空数组/空串而
   "matchedFor": ["匹配维度的简短标签 2-5 个,如 教育背景 / 技能栈 / 工作经验 / 行业经验 / 管理经验"],
   "againstFor": ["不匹配维度的简短标签 0-4 个,如 薪资期望 / 通勤城市 / 技术栈 / 行业经验"],
   "aiSuggestedTags": ["AI 推荐给 HR 的候选人标签 3-6 个,4-8 字短语,如 性能优化高手 / Tech Lead 潜质 / 海外协作经验 / 组件库主理 / DevOps 双修"],
+  "skillsMd": "markdown 无序列表:候选人针对此 JD 的核心技能, 4-10 条, 例:\n- 整车技术统筹 (智己 / 上汽大众 6+ 年)\n- RFQ 管理与成本控制 (节约 10%+)",
+  "experienceMd": "markdown 无序列表:候选人工作经历(突出与 JD 强相关的项),按时间倒序, 例:\n- 智己汽车 制造&质量项目经理 (2024.01 – 至今) — 整车技术统筹, 6 个项目并行\n- 上汽大众 项目经理 (2017.07 – 2023.12) — 主导 RFQ, 预算节约 10%+",
+  "educationMd": "markdown 无序列表:教育背景, 按时间倒序, 例:\n- 同济大学 硕士 车辆工程 (2014.09 – 2017.06, 985)",
   "insights": [
     { "kind": "up", "text": "对这次匹配的正面洞察,具体且可执行" },
     { "kind": "down", "text": "需要 HR 在面试中深入了解的关注点" }
@@ -448,11 +443,18 @@ JSON 结构(所有字段都必须出现,无内容也要返回空数组/空串而
    - 如果候选人**真的没有针对此 JD 的强匹配点**, 此数组返回 ["未发现显著相对此 JD 的亮点"], **不要凑数**
 5. matchedFor / againstFor: 简短标签(4-8 字),用于左侧主卡的"匹配项 / 不匹配项"chip,只列**维度名**(如 "教育背景"),不要写完整句子
 6. aiSuggestedTags: 给 HR 一个候选人画像 chip 列表,每条 4-8 字,**避免**"优秀工程师"这种没区分度的标签,要有信息量,如 "P7 候选" / "百万 DAU 经验" / "缺增长经验"
-7. insights:
+7. skillsMd / experienceMd / educationMd (三大 markdown 字段, **硬性要求**):
+   - 严格用 markdown 无序列表语法,每行以 "- " (短横+空格) 开头,行间用 \\n 分隔
+   - 不要 markdown 表格、不要 ##/### 标题、不要 **加粗**、不要链接,**纯 bullet**
+   - experienceMd 必须**按 JD 相关度排序**:跟 JD 强相关的经历放前面,完全无关的可以省略或一句话带过
+   - skillsMd 必须**面向此 JD**:列简报里支持得起这个 JD 要求的技能,JD 无关的技能不出现
+   - educationMd 按时间倒序,1-3 条,每条「学校 学历 专业 (时间, 学校档次如有)」
+   - 简报里如果**完全没相关信息**(如简报短而残缺),三个字段都返回 "" 空字符串
+8. insights:
    - kind="up" 表示对面试有利的正面线索, kind="down" 表示要重点核实的关注点
    - 每条 1-2 句,具体到事实(不要"工作经历丰富"这种空话);引用简历或 JD 中的具体数字/公司/技能
    - 总数 3-6 条,up 和 down 都要有(若简历完美无可挑剔, down 可只 1 条写"未发现明显风险点")
-8. 若 JD 描述空白或太短(<50 字符), matchReason 必须明确写 "JD 信息不足, 评估不准确, 请补充 JD 描述",
+9. 若 JD 描述空白或太短(<50 字符), matchReason 必须明确写 "JD 信息不足, 评估不准确, 请补充 JD 描述",
    且 jdMatch ≤ 60, aiSuggestedTags/matchedFor 可返回 [], insights 至少 1 条 kind="down" 提示 JD 残缺`;
 
   const userMsg = `# 候选人简报

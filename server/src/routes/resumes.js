@@ -53,6 +53,12 @@ const PARSE_JD_BODY = {
   additionalProperties: false,
 };
 
+// 两阶段解析:阶段二 matchAgainstJob 输出 markdown bullet 字符串,
+// 入库前清洗 — 限长 + trim,避免 LLM 抖出超长内容把 DB JSON 列撑爆
+function safeMd(s) {
+  return typeof s === "string" ? s.trim().slice(0, 5000) : "";
+}
+
 async function streamToBuffer(stream) {
   if (Buffer.isBuffer(stream)) return stream;
   if (stream && typeof stream.transformToByteArray === "function") {
@@ -111,8 +117,15 @@ async function runReparse(app, taskId, candidateId, model, jobIdOverride) {
     if (!Array.isArray(parsed.languages)) parsed.languages = [];
 
     // 4) JD 联评(如有 jobId)
+    // 两阶段解析: 简报来自阶段一,本步基于简报 + JD 二次评估,
+    // 产出 jdMatch + risks/highlights/insights/matchedFor/againstFor/aiSuggestedTags
+    // + skills/experience/educationHistory (markdown bullet 字符串)。
     let match = null;
-    let llmFields = { jdMatch: null, risks: [], highlights: [], aiSuggestedTags: [], matchedFor: [], againstFor: [], insights: [] };
+    let llmFields = {
+      jdMatch: null, risks: [], highlights: [], aiSuggestedTags: [],
+      matchedFor: [], againstFor: [], insights: [],
+      skills: "", experience: "", educationHistory: "",
+    };
     if (jobId) {
       try {
         const job = await app.prisma.job.findUnique({ where: { id: jobId } });
@@ -135,6 +148,9 @@ async function runReparse(app, taskId, candidateId, model, jobIdOverride) {
                 .slice(0, 20)
                 .map((i) => ({ kind: i.kind, text: i.text.slice(0, 300) }))
             : [];
+          llmFields.skills = safeMd(match.skillsMd);
+          llmFields.experience = safeMd(match.experienceMd);
+          llmFields.educationHistory = safeMd(match.educationMd);
         }
       } catch (err) {
         app.log.warn({ err, jobId, taskId }, "reparse JD 联评失败,候选人仍然 update(无 JD 字段)");
@@ -142,6 +158,8 @@ async function runReparse(app, taskId, candidateId, model, jobIdOverride) {
     }
 
     // 5) UPDATE DB (不动 status/appliedFor/source/owner/documents — 用户可能已手动改过)
+    // 阶段一只写基础字段 + summary + tags + languages,
+    // skills/experience/educationHistory 由阶段二(match)产出,这里不动。
     const updateData = {
       name: parsed.name || existingCandidate.name,
       gender: parsed.gender ?? existingCandidate.gender,
@@ -154,13 +172,7 @@ async function runReparse(app, taskId, candidateId, model, jobIdOverride) {
       yearsExp: parsed.yearsExp ?? existingCandidate.yearsExp,
       phone: parsed.phone ?? existingCandidate.phone,
       email: parsed.email ?? existingCandidate.email,
-      // 列表字段保护:LLM 偶尔结构化输出抖动(summary 文本完整但 JSON 漏字段 → []),
-      // 此时保留原值避免把已有内容清空。reparse 的本意是"刷新"不是"清空"。
-      // 用户想真正清空请走 PATCH /candidates 显式更新。
       tags: (Array.isArray(parsed.tags) && parsed.tags.length > 0) ? parsed.tags : existingCandidate.tags,
-      skills: (Array.isArray(parsed.skills) && parsed.skills.length > 0) ? parsed.skills : existingCandidate.skills,
-      experience: (Array.isArray(parsed.experience) && parsed.experience.length > 0) ? parsed.experience : existingCandidate.experience,
-      educationHistory: (Array.isArray(parsed.educationHistory) && parsed.educationHistory.length > 0) ? parsed.educationHistory : existingCandidate.educationHistory,
       languages: (Array.isArray(parsed.languages) && parsed.languages.length > 0) ? parsed.languages : existingCandidate.languages,
       aiSummary: result.summary,
       parser: "Kimi",
@@ -168,7 +180,7 @@ async function runReparse(app, taskId, candidateId, model, jobIdOverride) {
     };
     // jobId 切换:用户在 reparse 前 modal 改了投递岗位 → 同步写 DB
     if (jobIdChanged) updateData.jobId = jobId;
-    // jobId 设为 null(取消 JD)时,清空所有 JD 相关字段
+    // jobId 设为 null(取消 JD)时,清空所有 JD 相关字段 + 三个 markdown
     if (jobIdOverride === null) {
       updateData.jdMatch = null;
       updateData.risks = [];
@@ -177,6 +189,9 @@ async function runReparse(app, taskId, candidateId, model, jobIdOverride) {
       updateData.matchedFor = [];
       updateData.againstFor = [];
       updateData.insights = [];
+      updateData.skills = "";
+      updateData.experience = "";
+      updateData.educationHistory = "";
     }
     if (match) {
       updateData.jdMatch = llmFields.jdMatch;
@@ -186,6 +201,9 @@ async function runReparse(app, taskId, candidateId, model, jobIdOverride) {
       updateData.matchedFor = llmFields.matchedFor;
       updateData.againstFor = llmFields.againstFor;
       updateData.insights = llmFields.insights;
+      updateData.skills = llmFields.skills;
+      updateData.experience = llmFields.experience;
+      updateData.educationHistory = llmFields.educationHistory;
     }
     const updated = await app.prisma.candidate.update({
       where: { id: existingCandidate.id },
@@ -230,16 +248,24 @@ async function runParseAndCreate(app, taskId, payload) {
       model: payload.model,
     });
 
-    // 3) 字段处理 — 与同步老路径一致,只是无 throw 改 markFailed
+    // 3) 字段处理 — 两阶段:阶段一只保留基础字段 + summary + tags + languages,
+    // experience/educationHistory/skills/highlights/risks 由阶段二 match 产出。
     const parsed = { ...result.parsed };
     delete parsed.jdMatch;
     delete parsed.risks;
     delete parsed.highlights;
+    delete parsed.experience;
+    delete parsed.educationHistory;
+    delete parsed.skills;
     if (!Array.isArray(parsed.languages)) parsed.languages = [];
 
-    // 4) JD 联评(若有 jobId 且 job 存在)
+    // 4) JD 联评(若有 jobId 且 job 存在)— 产出 JD 评估字段 + 3 个 markdown 字段
     let match = null;
-    let llmFields = { jdMatch: null, risks: [], highlights: [], aiSuggestedTags: [], matchedFor: [], againstFor: [], insights: [], appliedFor: null };
+    let llmFields = {
+      jdMatch: null, risks: [], highlights: [], aiSuggestedTags: [],
+      matchedFor: [], againstFor: [], insights: [], appliedFor: null,
+      skills: "", experience: "", educationHistory: "",
+    };
     if (payload.jobId) {
       try {
         const job = await app.prisma.job.findUnique({ where: { id: payload.jobId } });
@@ -262,6 +288,9 @@ async function runParseAndCreate(app, taskId, payload) {
                 .slice(0, 20)
                 .map((i) => ({ kind: i.kind, text: i.text.slice(0, 300) }))
             : [];
+          llmFields.skills = safeMd(match.skillsMd);
+          llmFields.experience = safeMd(match.experienceMd);
+          llmFields.educationHistory = safeMd(match.educationMd);
           llmFields.appliedFor = job.title;
         }
       } catch (err) {
@@ -285,6 +314,9 @@ async function runParseAndCreate(app, taskId, payload) {
       matchedFor: llmFields.matchedFor,
       againstFor: llmFields.againstFor,
       insights: llmFields.insights,
+      skills: llmFields.skills,
+      experience: llmFields.experience,
+      educationHistory: llmFields.educationHistory,
       jobId: payload.jobId || null,
       appliedFor: llmFields.appliedFor || parsed.appliedFor || null,
       ownerId: payload.ownerId || null,
@@ -478,6 +510,10 @@ export default async function resumesRoutes(app) {
         matchedFor: Array.isArray(match.matchedFor) ? match.matchedFor.slice(0, 12) : [],
         againstFor: Array.isArray(match.againstFor) ? match.againstFor.slice(0, 12) : [],
         insights: filteredInsights,
+        // 两阶段产出的 3 个 markdown 字段
+        skills: safeMd(match.skillsMd),
+        experience: safeMd(match.experienceMd),
+        educationHistory: safeMd(match.educationMd),
       },
     });
 
