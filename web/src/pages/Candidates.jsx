@@ -17,6 +17,7 @@ import {
   toast,
 } from "../components/Primitives.jsx";
 import { STATUS_ORDER } from "../lib/constants.js";
+import ReparseConfirmModal from "../components/ReparseConfirmModal.jsx";
 
 const EMPTY_FORM = {
   name: "",
@@ -31,12 +32,14 @@ const EMPTY_FORM = {
 export default function Candidates() {
   const navigate = useNavigate();
   const [items, setItems] = useState([]);
+  const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [err, setErr] = useState("");
+  const [reparseTarget, setReparseTarget] = useState(null); // 弹 modal 用的候选人
 
   async function load() {
     setLoading(true);
@@ -58,14 +61,27 @@ export default function Candidates() {
     // eslint-disable-next-line
   }, [statusFilter]);
 
-  // 重新解析(异步): POST /resumes/parse {candidateId} 立即拿 taskId,轮询 GET /parse-tasks/:taskId 直到 done/failed
+  // jobs 列表只 load 一次,给 ReparseConfirmModal 的 select 用
+  useEffect(() => {
+    resources.jobs.list({ take: 200 }).then((d) => setJobs(d.items || [])).catch(() => {});
+  }, []);
+
+  // 重新解析(异步): POST /resumes/parse {candidateId, jobId} 立即拿 taskId,轮询 GET /parse-tasks/:taskId 直到 done/failed
+  // 入口走 ReparseConfirmModal,让用户先确认/修改投递岗位再开跑(与详情页同行为)。
   const [reparsingId, setReparsingId] = useState(null);
-  async function onReparse(c) {
+
+  function openReparse(c) {
     if (!c?.id) return;
     if (!c.attachment) return toast("无简历附件,无法重新解析", "error");
+    setReparseTarget(c);
+  }
+
+  async function onReparse(jobId) {
+    const c = reparseTarget;
+    if (!c?.id) return;
     setReparsingId(c.id);
     try {
-      const { data: { task: initialTask } } = await api.post("/resumes/parse", { candidateId: c.id });
+      const { data: { task: initialTask } } = await api.post("/resumes/parse", { candidateId: c.id, jobId });
       const taskId = initialTask.id;
       const startedAt = Date.now();
       const MAX_WAIT_MS = 5 * 60 * 1000;
@@ -81,6 +97,7 @@ export default function Candidates() {
       }
       if (finalTask.status === "done") {
         setItems((prev) => prev.map((x) => (x.id === c.id ? finalTask.candidate : x)));
+        setReparseTarget(null);
         toast(`✓ ${finalTask.candidate.name} 已重新解析`, "success");
       } else {
         // failed — 全完整错误塞剪贴板 + console.error 完整 task
@@ -254,7 +271,7 @@ export default function Candidates() {
                     {/* 重新解析 — 仅在 parser 为空且 attachment 存在(说明上传时 LLM 降级了)显示 */}
                     {!c.parser && c.attachment && (
                       <button
-                        onClick={() => onReparse(c)}
+                        onClick={() => openReparse(c)}
                         disabled={reparsingId === c.id}
                         className="w-8 h-8 rounded-full bg-amber-50 text-amber-600 hover:bg-amber-100 disabled:opacity-50 flex items-center justify-center"
                         title="重新解析"
@@ -367,6 +384,15 @@ export default function Candidates() {
           </div>
         </form>
       </Modal>
+      <ReparseConfirmModal
+        open={!!reparseTarget}
+        onClose={() => setReparseTarget(null)}
+        onConfirm={onReparse}
+        currentJob={jobs.find((j) => j.id === reparseTarget?.jobId)}
+        jobs={jobs}
+        candidateName={reparseTarget?.name}
+        reparsing={!!reparsingId && reparsingId === reparseTarget?.id}
+      />
     </div>
   );
 }
