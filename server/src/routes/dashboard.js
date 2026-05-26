@@ -29,6 +29,11 @@ export default async function dashboardRoutes(app) {
           id: true, externalId: true, name: true, avatar: true, school: true,
           appliedFor: true, jdMatch: true, status: true, parser: true, parserConfidence: true,
           tags: true, pushedAt: true, updatedAt: true,
+          // 2026-05-26 加: dashboard 列表也支持 inline 关联 + 解析,需要这些字段
+          attachment: true, source: true, createdAt: true,
+          jobId: true, departmentId: true,
+          job: { select: { id: true, title: true, dept: true } },
+          department: { select: { id: true, name: true, code: true } },
         },
       }),
       app.prisma.interview.findMany({

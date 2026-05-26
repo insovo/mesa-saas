@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { resources } from "../lib/api.js";
+import { api, resources } from "../lib/api.js";
 import {
   Card,
   Widget,
@@ -12,6 +12,7 @@ import {
   LoadingBlock,
   Empty,
   StagePill,
+  toast,
 } from "../components/Primitives.jsx";
 import { URGENCY_TONE } from "../lib/constants.js";
 
@@ -21,16 +22,72 @@ function formatDateTime(iso) {
   return `${d.getMonth() + 1}月${d.getDate()}日 ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
+function fmtFullDateTime(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+function fmtSource(s) {
+  const t = (s || "").trim();
+  return t || "未提供";
+}
+
 export default function Dashboard() {
   const [data, setData] = useState(null);
   const [err, setErr] = useState("");
+  const [jobs, setJobs] = useState([]);
+  const [departments, setDepartments] = useState([]);
+  const [llmStatus, setLlmStatus] = useState(null);
+  const [reparsingIds, setReparsingIds] = useState(() => new Set());
 
-  useEffect(() => {
-    resources.dashboard
-      .overview()
+  function reload() {
+    resources.dashboard.overview()
       .then(setData)
       .catch((e) => setErr(e.response?.data?.message || e.message));
+  }
+
+  useEffect(() => {
+    reload();
+    resources.jobs.list({ take: 200 }).then((d) => setJobs(d.items || [])).catch(() => {});
+    api.get("/departments", { params: { take: 200 } }).then((r) => setDepartments(r.data.items || [])).catch(() => {});
+    api.get("/resumes/llm-status").then((r) => setLlmStatus(r.data)).catch(() => setLlmStatus({ configured: false }));
   }, []);
+
+  // 单条 inline 关联(直接 PATCH /candidates/:id,完后 reload dashboard)
+  async function onAssign(id, patch) {
+    const actualPatch = { ...patch };
+    if ("jobId" in actualPatch) {
+      const job = actualPatch.jobId ? jobs.find((j) => j.id === actualPatch.jobId) : null;
+      actualPatch.appliedFor = job?.title || null;
+    }
+    try {
+      await api.patch(`/candidates/${id}`, actualPatch);
+      toast("关联已更新", "success");
+      reload();
+    } catch (e) {
+      toast(e.response?.data?.message || "关联失败", "error");
+    }
+  }
+
+  // 单条解析(走异步任务,带 candidate 当前 jobId)
+  async function onReparse(c) {
+    if (!c.attachment) return toast("无简历附件,无法解析", "error");
+    setReparsingIds((prev) => new Set([...prev, c.id]));
+    try {
+      await api.post("/resumes/parse", { candidateId: c.id, jobId: c.jobId || null });
+      toast(`已触发「${c.name}」重新解析,5-60 秒后自动刷新`, "success");
+      setTimeout(() => reload(), 5000);
+      setTimeout(() => {
+        reload();
+        setReparsingIds((prev) => { const next = new Set(prev); next.delete(c.id); return next; });
+      }, 30000);
+    } catch (e) {
+      toast(e.response?.data?.message || "触发解析失败", "error");
+      setReparsingIds((prev) => { const next = new Set(prev); next.delete(c.id); return next; });
+    }
+  }
 
   if (err) return <Card className="p-6 text-red-500 text-sm">{err}</Card>;
   if (!data) return <LoadingBlock label="加载概览..." height="h-64" />;
@@ -64,9 +121,11 @@ export default function Dashboard() {
             <Empty title="还没有候选人" desc="先去「简历收件箱」上传一份简历" />
           ) : (
             <ul className="divide-y divide-gray-200">
-              {data.recentCandidates.map((c) => (
-                <li key={c.id} className="py-3 flex items-center gap-4">
-                  <Avatar name={c.name} size={44} />
+              {data.recentCandidates.map((c) => {
+                const isReparsing = reparsingIds.has(c.id);
+                return (
+                <li key={c.id} className="py-3 flex items-center gap-3 flex-wrap lg:flex-nowrap">
+                  <Avatar name={c.name} size={40} />
                   <div className="min-w-0 flex-1">
                     <Link
                       to={`/candidates/${c.externalId || c.id}`}
@@ -74,28 +133,55 @@ export default function Dashboard() {
                     >
                       {c.name}
                     </Link>
-                    <p className="text-xs text-gray-700 truncate mt-0.5">
+                    <p className="text-[11px] text-gray-700 truncate mt-0.5">
                       {c.school || "—"} · {c.appliedFor || "未指派岗位"}
                     </p>
-                    <div className="mt-1.5 flex gap-1.5 flex-wrap">
-                      {(c.tags || []).slice(0, 3).map((t) => (
-                        <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-lightPrimary text-gray-700">
-                          {t}
-                        </span>
-                      ))}
-                    </div>
+                    <p className="text-[10px] text-gray-500 truncate mt-0.5">
+                      <span className="text-gray-400">来源:</span> {fmtSource(c.source)}
+                      <span className="mx-1.5 text-gray-300">·</span>
+                      <span className="font-mono">{fmtFullDateTime(c.createdAt)}</span>
+                    </p>
                   </div>
-                  <LiquidLoader size={48} level={c.jdMatch || 0} label={c.jdMatch || 0} />
-                  <div className="hidden md:block w-32 text-right">
-                    <StatusPill status={c.status} />
-                    {c.parser && (
-                      <div className="mt-1.5">
-                        <AiBadge parser={c.parser} confidence={c.parserConfidence} />
-                      </div>
+
+                  {/* inline 关联操作 */}
+                  <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+                    <select
+                      value={c.jobId || ""}
+                      onChange={(e) => onAssign(c.id, { jobId: e.target.value || null })}
+                      className="h-7 rounded-lg border border-gray-200 px-2 text-[11px] text-navy-700 outline-none focus:border-brand bg-white max-w-[120px]"
+                      title={c.job?.title || "关联 JD"}
+                    >
+                      <option value="">— 未关联 JD —</option>
+                      {jobs.map((j) => (<option key={j.id} value={j.id}>{j.title}</option>))}
+                    </select>
+                    <select
+                      value={c.departmentId || ""}
+                      onChange={(e) => onAssign(c.id, { departmentId: e.target.value || null })}
+                      className="h-7 rounded-lg border border-gray-200 px-2 text-[11px] text-navy-700 outline-none focus:border-brand bg-white max-w-[100px]"
+                      title={c.department?.name || "关联部门"}
+                    >
+                      <option value="">— 未关联部门 —</option>
+                      {departments.map((d) => (<option key={d.id} value={d.id}>{d.name}</option>))}
+                    </select>
+                    {llmStatus?.configured && c.attachment && (
+                      <button
+                        onClick={() => onReparse(c)}
+                        disabled={isReparsing}
+                        className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg bg-brand text-white text-[11px] font-bold hover:bg-brand-hover disabled:opacity-60"
+                      >
+                        <I name={isReparsing ? "loader" : (c.parser ? "refresh-cw" : "sparkles")} size={10} className={isReparsing ? "animate-spin" : ""} />
+                        {isReparsing ? "解析中" : (c.parser ? "重新解析" : "解析")}
+                      </button>
                     )}
                   </div>
+
+                  <LiquidLoader size={40} level={c.jdMatch || 0} label={c.jdMatch || 0} />
+                  <div className="hidden md:flex flex-col items-end gap-1 w-20 shrink-0">
+                    <StatusPill status={c.status} />
+                    {c.parser && <AiBadge parser={c.parser} confidence={c.parserConfidence} />}
+                  </div>
                 </li>
-              ))}
+              );})}
             </ul>
           )}
         </Card>
