@@ -124,7 +124,7 @@ export default function Dashboard() {
               {data.recentCandidates.map((c) => {
                 const isReparsing = reparsingIds.has(c.id);
                 return (
-                <li key={c.id} className="py-3 flex items-center gap-3 flex-wrap lg:flex-nowrap">
+                <li key={c.id} className="py-3 flex items-center gap-2.5">
                   <Avatar name={c.name} size={40} />
                   <div className="min-w-0 flex-1">
                     <Link
@@ -142,44 +142,37 @@ export default function Dashboard() {
                       <span className="font-mono">{fmtFullDateTime(c.createdAt)}</span>
                     </p>
                   </div>
-
-                  {/* inline 关联操作 */}
-                  <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
-                    <select
-                      value={c.jobId || ""}
-                      onChange={(e) => onAssign(c.id, { jobId: e.target.value || null })}
-                      className="h-7 rounded-lg border border-gray-200 px-2 text-[11px] text-navy-700 outline-none focus:border-brand bg-white max-w-[120px]"
-                      title={c.job?.title || "关联 JD"}
+                  <select
+                    value={c.jobId || ""}
+                    onChange={(e) => onAssign(c.id, { jobId: e.target.value || null })}
+                    className="h-7 rounded-lg border border-gray-200 px-2 text-[11px] text-navy-700 outline-none focus:border-brand bg-white max-w-[120px] shrink-0"
+                    title={c.job?.title || "关联 JD"}
+                  >
+                    <option value="">— 未关联 JD —</option>
+                    {jobs.map((j) => (<option key={j.id} value={j.id}>{j.title}</option>))}
+                  </select>
+                  <select
+                    value={c.departmentId || ""}
+                    onChange={(e) => onAssign(c.id, { departmentId: e.target.value || null })}
+                    className="h-7 rounded-lg border border-gray-200 px-2 text-[11px] text-navy-700 outline-none focus:border-brand bg-white max-w-[100px] shrink-0"
+                    title={c.department?.name || "关联部门"}
+                  >
+                    <option value="">— 未关联部门 —</option>
+                    {departments.map((d) => (<option key={d.id} value={d.id}>{d.name}</option>))}
+                  </select>
+                  {llmStatus?.configured && c.attachment && (
+                    <button
+                      onClick={() => onReparse(c)}
+                      disabled={isReparsing}
+                      className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg bg-brand text-white text-[11px] font-bold hover:bg-brand-hover disabled:opacity-60 shrink-0"
                     >
-                      <option value="">— 未关联 JD —</option>
-                      {jobs.map((j) => (<option key={j.id} value={j.id}>{j.title}</option>))}
-                    </select>
-                    <select
-                      value={c.departmentId || ""}
-                      onChange={(e) => onAssign(c.id, { departmentId: e.target.value || null })}
-                      className="h-7 rounded-lg border border-gray-200 px-2 text-[11px] text-navy-700 outline-none focus:border-brand bg-white max-w-[100px]"
-                      title={c.department?.name || "关联部门"}
-                    >
-                      <option value="">— 未关联部门 —</option>
-                      {departments.map((d) => (<option key={d.id} value={d.id}>{d.name}</option>))}
-                    </select>
-                    {llmStatus?.configured && c.attachment && (
-                      <button
-                        onClick={() => onReparse(c)}
-                        disabled={isReparsing}
-                        className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg bg-brand text-white text-[11px] font-bold hover:bg-brand-hover disabled:opacity-60"
-                      >
-                        <I name={isReparsing ? "loader" : (c.parser ? "refresh-cw" : "sparkles")} size={10} className={isReparsing ? "animate-spin" : ""} />
-                        {isReparsing ? "解析中" : (c.parser ? "重新解析" : "解析")}
-                      </button>
-                    )}
-                  </div>
-
-                  <LiquidLoader size={40} level={c.jdMatch || 0} label={c.jdMatch || 0} />
-                  <div className="hidden md:flex flex-col items-end gap-1 w-20 shrink-0">
-                    <StatusPill status={c.status} />
-                    {c.parser && <AiBadge parser={c.parser} confidence={c.parserConfidence} />}
-                  </div>
+                      <I name={isReparsing ? "loader" : (c.parser ? "refresh-cw" : "sparkles")} size={10} className={isReparsing ? "animate-spin" : ""} />
+                      {isReparsing ? "解析中" : (c.parser ? "重新解析" : "解析")}
+                    </button>
+                  )}
+                  {c.jdMatch != null && <LiquidLoader size={36} level={c.jdMatch} label={c.jdMatch} />}
+                  {c.parser && <AiBadge parser={c.parser} confidence={c.parserConfidence} />}
+                  <StatusPill status={c.status} />
                 </li>
               );})}
             </ul>

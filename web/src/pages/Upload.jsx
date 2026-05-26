@@ -490,7 +490,50 @@ export default function Upload() {
         </div>
       </Card>
 
-      {/* 来源 + JD 关联(投递岗位),可选 */}
+      {/* 1) 文件上传 — 用户流程第一步:先选简历 */}
+      <Card className="p-8">
+        <label
+          htmlFor="resume-upload"
+          className="block border-2 border-dashed border-gray-200 rounded-card p-10 text-center cursor-pointer hover:border-brand hover:bg-lightPrimary transition"
+        >
+          <I name="file-up" size={36} className="text-brand mx-auto" />
+          <p className="mt-3 text-sm font-bold text-navy-700">点击或拖拽文件到这里</p>
+          <p className="text-xs text-gray-700 mt-1">单次最多 10 份 · 单文件 ≤ 20MB · PDF / DOCX / DOC</p>
+          <input
+            id="resume-upload"
+            type="file"
+            multiple
+            accept=".pdf,.docx,.doc,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            className="hidden"
+            onChange={onPick}
+          />
+        </label>
+
+        {files.length > 0 && (
+          <div className="mt-6">
+            <p className="text-xs font-bold text-gray-700 uppercase mb-3">待解析 ({files.length})</p>
+            <ul className="space-y-2">
+              {files.map((f, i) => (
+                <li key={i} className="flex items-center gap-3 px-4 py-3 bg-lightPrimary rounded-xl">
+                  <I name="file-text" size={18} className="text-brand" />
+                  <span className="flex-1 text-sm text-navy-700 truncate">{f.name}</span>
+                  <span className="text-xs text-gray-700">{(f.size / 1024).toFixed(1)} KB</span>
+                  <button
+                    onClick={() => setFiles(files.filter((_, j) => j !== i))}
+                    className="text-gray-400 hover:text-red-500"
+                    disabled={parsing}
+                  >
+                    <I name="x" size={16} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+
+          </div>
+        )}
+      </Card>
+
+      {/* 2) 来源 + 投递岗位 — 选好文件后填写,关联到本批简历 */}
       <Card className="p-5">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           {/* 来源 */}
@@ -545,53 +588,17 @@ export default function Upload() {
         </div>
       </Card>
 
-      <Card className="p-8">
-        <label
-          htmlFor="resume-upload"
-          className="block border-2 border-dashed border-gray-200 rounded-card p-10 text-center cursor-pointer hover:border-brand hover:bg-lightPrimary transition"
-        >
-          <I name="file-up" size={36} className="text-brand mx-auto" />
-          <p className="mt-3 text-sm font-bold text-navy-700">点击或拖拽文件到这里</p>
-          <p className="text-xs text-gray-700 mt-1">单次最多 10 份 · 单文件 ≤ 20MB · PDF / DOCX / DOC</p>
-          <input
-            id="resume-upload"
-            type="file"
-            multiple
-            accept=".pdf,.docx,.doc,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            className="hidden"
-            onChange={onPick}
-          />
-        </label>
-
-        {files.length > 0 && (
-          <div className="mt-6">
-            <p className="text-xs font-bold text-gray-700 uppercase mb-3">待解析 ({files.length})</p>
-            <ul className="space-y-2">
-              {files.map((f, i) => (
-                <li key={i} className="flex items-center gap-3 px-4 py-3 bg-lightPrimary rounded-xl">
-                  <I name="file-text" size={18} className="text-brand" />
-                  <span className="flex-1 text-sm text-navy-700 truncate">{f.name}</span>
-                  <span className="text-xs text-gray-700">{(f.size / 1024).toFixed(1)} KB</span>
-                  <button
-                    onClick={() => setFiles(files.filter((_, j) => j !== i))}
-                    className="text-gray-400 hover:text-red-500"
-                    disabled={parsing}
-                  >
-                    <I name="x" size={16} />
-                  </button>
-                </li>
-              ))}
-            </ul>
-
-            <div className="flex justify-end gap-3 mt-5">
-              <Button variant="ghost" onClick={() => setFiles([])} disabled={parsing}>清空</Button>
-              <Button onClick={onParse} disabled={parsing} icon={<I name={parsing ? "loader" : "sparkles"} size={14} className={parsing ? "animate-spin" : ""} />}>
-                {parsing ? "解析中(每份约 10-30 秒)..." : `${llmReady ? "AI 解析" : "上传入库"} (${files.length})`}
-              </Button>
-            </div>
+      {/* 3) 选好文件 + 关联后的提交按钮(单独 Card 以保持简洁) */}
+      {files.length > 0 && (
+        <Card className="p-5">
+          <div className="flex justify-end gap-3">
+            <Button variant="ghost" onClick={() => setFiles([])} disabled={parsing}>清空选择</Button>
+            <Button onClick={onParse} disabled={parsing} icon={<I name={parsing ? "loader" : "sparkles"} size={14} className={parsing ? "animate-spin" : ""} />}>
+              {parsing ? "解析中(每份约 10-30 秒)..." : `${llmReady ? "AI 解析" : "上传入库"} (${files.length})`}
+            </Button>
           </div>
-        )}
-      </Card>
+        </Card>
+      )}
 
       {parsing && <LoadingBlock label="Kimi 正在阅读简历,请稍候..." height="h-16" />}
 
@@ -677,7 +684,7 @@ export default function Upload() {
               const isSelected = selectedIds.has(c.id);
               const isReparsing = reparsingIds.has(c.id);
               return (
-              <li key={c.id} className={`py-3 flex items-center gap-3 flex-wrap lg:flex-nowrap ${isSelected ? "bg-brand/5 -mx-2 px-2 rounded-lg" : ""}`}>
+              <li key={c.id} className={`py-3 flex items-center gap-3 ${isSelected ? "bg-brand/5 -mx-2 px-2 rounded-lg" : ""}`}>
                 <input
                   type="checkbox"
                   checked={isSelected}
@@ -699,51 +706,44 @@ export default function Upload() {
                   </p>
                 </div>
 
-                {/* 单条 inline 操作:JD select / 部门 select / 解析按钮 */}
-                <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
-                  <select
-                    value={c.jobId || ""}
-                    onChange={(e) => onSingleAssign(c.id, { jobId: e.target.value || null })}
-                    className="h-7 rounded-lg border border-gray-200 px-2 text-[11px] text-navy-700 outline-none focus:border-brand bg-white max-w-[140px]"
-                    title={c.job?.title ? `关联到 JD: ${c.job.title}` : "未关联 JD,点击选择"}
+                <select
+                  value={c.jobId || ""}
+                  onChange={(e) => onSingleAssign(c.id, { jobId: e.target.value || null })}
+                  className="h-7 rounded-lg border border-gray-200 px-2 text-[11px] text-navy-700 outline-none focus:border-brand bg-white max-w-[140px] shrink-0"
+                  title={c.job?.title ? `关联到 JD: ${c.job.title}` : "未关联 JD,点击选择"}
+                >
+                  <option value="">— 未关联 JD —</option>
+                  {jobs.map((j) => (<option key={j.id} value={j.id}>{j.title}</option>))}
+                </select>
+                <select
+                  value={c.departmentId || ""}
+                  onChange={(e) => onSingleAssign(c.id, { departmentId: e.target.value || null })}
+                  className="h-7 rounded-lg border border-gray-200 px-2 text-[11px] text-navy-700 outline-none focus:border-brand bg-white max-w-[120px] shrink-0"
+                  title={c.department?.name ? `关联到部门: ${c.department.name}` : "未关联部门,点击选择"}
+                >
+                  <option value="">— 未关联部门 —</option>
+                  {departments.map((d) => (<option key={d.id} value={d.id}>{d.name}</option>))}
+                </select>
+                {llmStatus?.configured && (
+                  <button
+                    onClick={() => onReparse([c.id])}
+                    disabled={isReparsing}
+                    className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg bg-brand text-white text-[11px] font-bold hover:bg-brand-hover disabled:opacity-60 shrink-0"
+                    title={isReparsing ? "正在解析中" : (c.parser ? "用 Kimi 重新解析这份简历" : "用 Kimi 解析这份简历")}
                   >
-                    <option value="">— 未关联 JD —</option>
-                    {jobs.map((j) => (<option key={j.id} value={j.id}>{j.title}</option>))}
-                  </select>
-                  <select
-                    value={c.departmentId || ""}
-                    onChange={(e) => onSingleAssign(c.id, { departmentId: e.target.value || null })}
-                    className="h-7 rounded-lg border border-gray-200 px-2 text-[11px] text-navy-700 outline-none focus:border-brand bg-white max-w-[120px]"
-                    title={c.department?.name ? `关联到部门: ${c.department.name}` : "未关联部门,点击选择"}
-                  >
-                    <option value="">— 未关联部门 —</option>
-                    {departments.map((d) => (<option key={d.id} value={d.id}>{d.name}</option>))}
-                  </select>
-                  {llmStatus?.configured && (
-                    <button
-                      onClick={() => onReparse([c.id])}
-                      disabled={isReparsing}
-                      className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg bg-brand text-white text-[11px] font-bold hover:bg-brand-hover disabled:opacity-60"
-                      title={isReparsing ? "正在解析中" : (c.parser ? "用 Kimi 重新解析这份简历" : "用 Kimi 解析这份简历")}
-                    >
-                      <I name={isReparsing ? "loader" : (c.parser ? "refresh-cw" : "sparkles")} size={10} className={isReparsing ? "animate-spin" : ""} />
-                      {isReparsing ? "解析中" : (c.parser ? "重新解析" : "解析")}
-                    </button>
-                  )}
-                </div>
-
-                {/* 状态显示:LiquidLoader + AiBadge/StatusPill + 时间 */}
-                <div className="flex items-center gap-2 shrink-0">
-                  {c.jdMatch != null && <LiquidLoader size={36} level={c.jdMatch} label={c.jdMatch} />}
-                  {c.parser ? (
-                    <AiBadge parser={c.parser} confidence={c.parserConfidence} />
-                  ) : (
-                    <StatusPill status={c.status || "待筛选"} />
-                  )}
-                  <span className="text-[10px] text-gray-500 font-mono whitespace-nowrap" title="上传时间">
-                    {fmtDateTime(c.createdAt)}
-                  </span>
-                </div>
+                    <I name={isReparsing ? "loader" : (c.parser ? "refresh-cw" : "sparkles")} size={10} className={isReparsing ? "animate-spin" : ""} />
+                    {isReparsing ? "解析中" : (c.parser ? "重新解析" : "解析")}
+                  </button>
+                )}
+                {c.jdMatch != null && <LiquidLoader size={32} level={c.jdMatch} label={c.jdMatch} />}
+                {c.parser ? (
+                  <AiBadge parser={c.parser} confidence={c.parserConfidence} />
+                ) : (
+                  <StatusPill status={c.status || "待筛选"} />
+                )}
+                <span className="text-[10px] text-gray-500 font-mono whitespace-nowrap shrink-0" title="上传时间">
+                  {fmtDateTime(c.createdAt)}
+                </span>
               </li>
             );})}
           </ul>
