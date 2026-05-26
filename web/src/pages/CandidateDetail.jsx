@@ -29,7 +29,7 @@
 
 // 合入生产: V2 设计稿 1:1 接管 /candidates/:id。
 // mockApi → resources/api;接 useParams 拿真实候选人 id;新字段(documents/insights/aiSuggestedTags 等)生产 API 暂未返回,渲染处用 ?? [] / ?? null 兜底。
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import * as Lucide from "lucide-react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { api, resources, LONG_TIMEOUT } from "../lib/api.js";
@@ -1985,30 +1985,13 @@ const DOC_CATEGORIES = [
   { key: "portfolio", label: "作品集", icon: "image" },
 ];
 
-function DocCategoryChip({ category, count, active, onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`px-3.5 h-9 rounded-lg border-2 font-bold text-xs transition inline-flex items-center gap-1.5 ${
-        active
-          ? "bg-[#422AFB] text-white border-[#422AFB] shadow-sm"
-          : "border-[#422AFB]/40 text-[#422AFB] bg-white hover:bg-[#E9E3FF]"
-      }`}
-      aria-pressed={active}
-    >
-      <I name={category.icon} size={13} />
-      {category.label}
-      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${active ? "bg-white/25" : "bg-[#F4F7FE] text-[#422AFB]"}`}>{count}</span>
-    </button>
-  );
-}
-
-function DocItemRow({ item, onChange, onDelete }) {
+function DocItemRow({ item, onChange, onDelete, onDownload, selected, onToggleSelect, categoryLabel }) {
   const [editingName, setEditingName] = useState(false);
   const [editingContent, setEditingContent] = useState(false);
   const [draft, setDraft] = useState("");
 
+  // _readonly = 虚拟项(如 LLM 上传的原始简历自动同步到「简历」分类),禁止改名/删除,只能下载
+  const readonly = !!item._readonly;
   const displayName = item.kind === "file" ? item.name : item.label;
 
   function commit(field, next) {
@@ -2018,7 +2001,19 @@ function DocItemRow({ item, onChange, onDelete }) {
   }
 
   return (
-    <li className="group flex items-start gap-3 p-2.5 rounded-lg hover:bg-[#F4F7FE] transition">
+    <li className="group flex items-start gap-2.5 p-2.5 rounded-lg hover:bg-[#F4F7FE] transition">
+      {/* checkbox: 仅文件类可勾选下载,其他 kind 用占位保持对齐 */}
+      <div className="w-4 shrink-0 mt-1.5">
+        {item.kind === "file" && onToggleSelect && (
+          <input
+            type="checkbox"
+            checked={!!selected}
+            onChange={onToggleSelect}
+            className="w-4 h-4 rounded border-[#A3AED0] text-[#422AFB] focus:ring-[#422AFB] cursor-pointer"
+            aria-label={`选中 ${displayName}`}
+          />
+        )}
+      </div>
       <div className={`w-7 h-7 rounded-md flex items-center justify-center shrink-0 mt-0.5 ${
         item.kind === "file" ? "bg-[#E9E3FF] text-[#422AFB]" :
         item.kind === "link" ? "bg-blue-50 text-blue-600" :
@@ -2028,7 +2023,7 @@ function DocItemRow({ item, onChange, onDelete }) {
       </div>
       <div className="flex-1 min-w-0">
         {/* Name / label row */}
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center gap-2 min-w-0 flex-wrap">
           {editingName ? (
             <input
               autoFocus
@@ -2044,8 +2039,14 @@ function DocItemRow({ item, onChange, onDelete }) {
           ) : (
             <span className="text-xs font-bold text-[#1B254B] truncate min-w-0">{displayName}</span>
           )}
+          {categoryLabel && (
+            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#F4F7FE] text-[#707EAE] font-bold shrink-0">{categoryLabel}</span>
+          )}
           {item.kind === "file" && item.size && (
             <span className="text-[10px] text-[#A3AED0] shrink-0">{item.size}</span>
+          )}
+          {readonly && (
+            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#E9E3FF] text-[#422AFB] font-bold shrink-0" title="LLM 解析时上传的原始简历">原始</span>
           )}
         </div>
         {/* Subtitle: url for links, content for notes */}
@@ -2071,17 +2072,26 @@ function DocItemRow({ item, onChange, onDelete }) {
       </div>
       {/* Action row, visible on hover */}
       <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition shrink-0">
-        <button onClick={() => setEditingName(true)} className="w-6 h-6 rounded hover:bg-white text-[#707EAE] hover:text-[#422AFB] flex items-center justify-center" title="重命名">
-          <I name="pencil" size={11} />
-        </button>
-        {(item.kind === "link" || item.kind === "note") && (
+        {!readonly && (
+          <button onClick={() => setEditingName(true)} className="w-6 h-6 rounded hover:bg-white text-[#707EAE] hover:text-[#422AFB] flex items-center justify-center" title="重命名">
+            <I name="pencil" size={11} />
+          </button>
+        )}
+        {!readonly && (item.kind === "link" || item.kind === "note") && (
           <button onClick={() => setEditingContent(true)} className="w-6 h-6 rounded hover:bg-white text-[#707EAE] hover:text-[#422AFB] flex items-center justify-center" title={item.kind === "link" ? "编辑链接" : "编辑文字"}>
             <I name="edit-3" size={11} />
           </button>
         )}
         {item.kind === "file" && (
-          <button onClick={() => toast("(mock) 下载 " + item.name, "info")} className="w-6 h-6 rounded hover:bg-white text-[#707EAE] hover:text-[#422AFB] flex items-center justify-center" title="下载">
-            <I name="download" size={11} />
+          <button
+            onClick={() => {
+              if (item._sourceKey && onDownload) onDownload(item._sourceKey, item.name);
+              else toast("(mock) 下载 " + item.name, "info");
+            }}
+            className="w-6 h-6 rounded hover:bg-white text-[#707EAE] hover:text-[#422AFB] flex items-center justify-center"
+            title={item._sourceKey ? "在新标签打开" : "下载"}
+          >
+            <I name={item._sourceKey ? "external-link" : "download"} size={11} />
           </button>
         )}
         {item.kind === "link" && (
@@ -2089,101 +2099,163 @@ function DocItemRow({ item, onChange, onDelete }) {
             <I name="copy" size={11} />
           </button>
         )}
-        <button onClick={() => onDelete(item.id)} className="w-6 h-6 rounded hover:bg-white text-[#707EAE] hover:text-red-500 flex items-center justify-center" title="删除">
-          <I name="trash-2" size={11} />
-        </button>
+        {!readonly && (
+          <button onClick={() => onDelete(item.id)} className="w-6 h-6 rounded hover:bg-white text-[#707EAE] hover:text-red-500 flex items-center justify-center" title="删除">
+            <I name="trash-2" size={11} />
+          </button>
+        )}
       </div>
     </li>
   );
 }
 
-function DocsModule({ documents, onChange }) {
-  const [active, setActive] = useState("resume");
+function DocsModule({ documents, onChange, onDownload }) {
   const fileInputRef = React.useRef(null);
+  const [selected, setSelected] = useState(() => new Set());
+  // 新增项默认归类:中性的「个人材料」,避免覆盖「简历」的语义独立性
+  const DEFAULT_NEW_CATEGORY = "materials";
 
-  const items = documents[active] || [];
+  // 把分桶的 documents flatten 成单一列表,标 _category 以便回写时找回原桶
+  const flatItems = useMemo(() => {
+    return DOC_CATEGORIES.flatMap(cat =>
+      (Array.isArray(documents[cat.key]) ? documents[cat.key] : []).map(it => ({
+        ...it,
+        _category: cat.key,
+        _categoryLabel: cat.label,
+      })),
+    );
+  }, [documents]);
 
-  function updateItems(next) {
-    onChange({ ...documents, [active]: next });
+  const fileItems = flatItems.filter(it => it.kind === "file");
+  const fileIds = fileItems.map(it => it.id);
+  const allSelected = fileIds.length > 0 && fileIds.every(id => selected.has(id));
+  const someSelected = !allSelected && fileIds.some(id => selected.has(id));
+  const selectedCount = fileIds.filter(id => selected.has(id)).length;
+
+  // 把回写到父的 item 剥掉视图层注入字段
+  function stripMeta(it) {
+    const { _category, _categoryLabel, ...rest } = it;
+    return rest;
   }
 
-  function uploadFile() {
-    fileInputRef.current?.click();
+  function applyToCategory(cat, mutator) {
+    const current = Array.isArray(documents[cat]) ? documents[cat] : [];
+    onChange({ ...documents, [cat]: mutator(current) });
   }
+
+  function updateItem(updated) {
+    const cat = updated._category;
+    if (!cat) return;
+    applyToCategory(cat, list => list.map(it => it.id === updated.id ? stripMeta(updated) : it));
+  }
+  function deleteItem(item) {
+    if (!confirm("确定删除该项?")) return;
+    applyToCategory(item._category, list => list.filter(it => it.id !== item.id));
+    setSelected(prev => { const n = new Set(prev); n.delete(item.id); return n; });
+    toast("已删除", "success");
+  }
+
+  function appendNewItem(newItem) {
+    applyToCategory(DEFAULT_NEW_CATEGORY, list => [...list, newItem]);
+  }
+
+  function uploadFile() { fileInputRef.current?.click(); }
   function onFilePicked(e) {
     const file = e.target.files?.[0];
     if (!file) return;
     const size = file.size > 1024 * 1024
       ? `${(file.size / 1024 / 1024).toFixed(1)} MB`
       : `${Math.max(1, Math.round(file.size / 1024))} KB`;
-    updateItems([
-      ...items,
-      { id: `doc-${Date.now()}`, kind: "file", name: file.name, size, verified: false, url: "#" },
-    ]);
+    appendNewItem({ id: `doc-${Date.now()}`, kind: "file", name: file.name, size, verified: false, url: "#" });
     toast(`已上传 ${file.name}`, "success");
     e.target.value = "";
   }
   function addLink() {
-    updateItems([
-      ...items,
-      { id: `doc-${Date.now()}`, kind: "link", label: "新链接", url: "", verified: false },
-    ]);
+    appendNewItem({ id: `doc-${Date.now()}`, kind: "link", label: "新链接", url: "", verified: false });
   }
   function addNote() {
-    updateItems([
-      ...items,
-      { id: `doc-${Date.now()}`, kind: "note", label: "新说明", content: "", verified: false },
-    ]);
+    appendNewItem({ id: `doc-${Date.now()}`, kind: "note", label: "新说明", content: "", verified: false });
   }
 
-  function updateItem(updated) {
-    updateItems(items.map(it => it.id === updated.id ? updated : it));
+  function toggleSelect(id) {
+    setSelected(prev => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
   }
-  function deleteItem(id) {
-    if (!confirm("确定删除该项?")) return;
-    updateItems(items.filter(it => it.id !== id));
-    toast("已删除", "success");
+  function toggleSelectAll() {
+    setSelected(allSelected ? new Set() : new Set(fileIds));
   }
 
-  function downloadAll() {
-    const activeCat = DOC_CATEGORIES.find(c => c.key === active);
-    const fileCount = items.filter(i => i.kind === "file").length;
-    if (fileCount === 0) {
-      toast(`「${activeCat?.label || ""}」分类下没有可下载的文件`, "error");
+  // 顺序触发下载(并发开多个 tab 会被浏览器拦截),有 _sourceKey 走 signed-get-url,其他 mock
+  async function downloadList(items) {
+    if (items.length === 0) {
+      toast("没有可下载的文件", "error");
       return;
     }
-    toast(`(mock) 已发起「${activeCat?.label || ""}」${fileCount} 个文件的打包下载`, "info");
+    for (const it of items) {
+      if (it._sourceKey && onDownload) {
+        await onDownload(it._sourceKey, it.name);
+      } else {
+        toast("(mock) 下载 " + it.name, "info");
+      }
+      await new Promise(r => setTimeout(r, 200));
+    }
   }
+  function downloadSelected() {
+    downloadList(fileItems.filter(it => selected.has(it.id)));
+  }
+  function downloadAll() {
+    downloadList(fileItems);
+  }
+
+  // 全选 checkbox 的 indeterminate 状态:有选但未全选
+  const selectAllRef = React.useRef(null);
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = someSelected;
+  }, [someSelected]);
 
   return (
     <Card className="p-5">
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-3 gap-3">
         <h3 className="font-bold text-[#1B254B] flex items-center gap-2 text-sm">
           <I name="folder" size={16} className="text-[#422AFB]" />
           附件
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#F4F7FE] text-[#707EAE] font-bold">{flatItems.length}</span>
         </h3>
-        <span className="text-[11px] text-[#707EAE]">点击切换分类</span>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {DOC_CATEGORIES.map(cat => (
-          <DocCategoryChip
-            key={cat.key}
-            category={cat}
-            count={(documents[cat.key] || []).length}
-            active={active === cat.key}
-            onClick={() => setActive(cat.key)}
-          />
-        ))}
+        {fileIds.length > 0 && (
+          <label className="inline-flex items-center gap-1.5 text-[11px] text-[#707EAE] font-bold cursor-pointer select-none">
+            <input
+              ref={selectAllRef}
+              type="checkbox"
+              checked={allSelected}
+              onChange={toggleSelectAll}
+              className="w-4 h-4 rounded border-[#A3AED0] text-[#422AFB] focus:ring-[#422AFB] cursor-pointer"
+              aria-label="全选文件"
+            />
+            全选
+          </label>
+        )}
       </div>
 
       {/* Items list */}
-      <div className="mt-3">
-        {items.length === 0 ? (
-          <p className="text-[11px] text-[#A3AED0] py-4 text-center bg-[#F4F7FE] rounded-lg">该分类下暂无内容</p>
+      <div>
+        {flatItems.length === 0 ? (
+          <p className="text-[11px] text-[#A3AED0] py-4 text-center bg-[#F4F7FE] rounded-lg">暂无附件</p>
         ) : (
           <ul className="space-y-1 -mx-2">
-            {items.map(it => (
-              <DocItemRow key={it.id} item={it} onChange={updateItem} onDelete={deleteItem} />
+            {flatItems.map(it => (
+              <DocItemRow
+                key={`${it._category}:${it.id}`}
+                item={it}
+                onChange={updateItem}
+                onDelete={() => deleteItem(it)}
+                onDownload={onDownload}
+                selected={selected.has(it.id)}
+                onToggleSelect={() => toggleSelect(it.id)}
+                categoryLabel={it._categoryLabel}
+              />
             ))}
           </ul>
         )}
@@ -2203,11 +2275,22 @@ function DocsModule({ documents, onChange }) {
         <input ref={fileInputRef} type="file" className="hidden" onChange={onFilePicked} />
       </div>
 
-      {/* Footer: download all (active category only) */}
+      {/* Footer: 下载选中 + 下载全部 */}
       <div className="flex items-center gap-3 mt-3 pt-3 border-t border-[#E9ECEF]">
         <div className="flex-1" />
-        <button onClick={downloadAll} className="text-[11px] font-bold text-[#422AFB] hover:underline flex items-center gap-1">
-          <I name="download" size={11} /> 下载本分类全部文件
+        <button
+          onClick={downloadSelected}
+          disabled={selectedCount === 0}
+          className="text-[11px] font-bold text-[#422AFB] hover:underline flex items-center gap-1 disabled:text-[#A3AED0] disabled:no-underline disabled:cursor-not-allowed"
+        >
+          <I name="download" size={11} /> 下载选中{selectedCount > 0 ? `(${selectedCount})` : ""}
+        </button>
+        <button
+          onClick={downloadAll}
+          disabled={fileItems.length === 0}
+          className="text-[11px] font-bold text-[#422AFB] hover:underline flex items-center gap-1 disabled:text-[#A3AED0] disabled:no-underline disabled:cursor-not-allowed"
+        >
+          <I name="download-cloud" size={11} /> 下载全部
         </button>
       </div>
     </Card>
@@ -2245,7 +2328,8 @@ function RobotMascot() {
 
 function FeedbackHistoryCard({ notes, onDelete, onAdd, insights }) {
   const [tab, setTab] = useState("insights");
-  if (!notes || notes.length === 0) return null;
+  const safeNotes = Array.isArray(notes) ? notes : [];
+  const safeInsights = Array.isArray(insights) ? insights : [];
   return (
     <Card className="p-5">
       <div className="flex items-center gap-4 border-b border-[#E9ECEF] -mx-5 px-5 pb-2 mb-3">
@@ -2276,52 +2360,70 @@ function FeedbackHistoryCard({ notes, onDelete, onAdd, insights }) {
         )}
       </div>
       {tab === "feedback" ? (
-        <ul className="space-y-3">
-          {notes.map((n) => (
-            <li key={n.id} className="flex gap-3 p-3 rounded-xl bg-[#F4F7FE] group">
-              <div
-                className="w-8 h-8 rounded-full text-white flex items-center justify-center shrink-0 text-xs font-bold"
-                style={{ background: "linear-gradient(135deg, #868CFF 0%, #432CF3 50%, #422AFB 100%)" }}
-              >
-                {(n.authorName || "?").slice(0, 1).toUpperCase()}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs text-[#707EAE] truncate">
-                    <span className="font-bold text-[#1B254B]">{n.authorName || "匿名"}</span>
-                    <span className="ml-1">· {new Date(n.createdAt).toLocaleString("zh-CN")}</span>
-                  </p>
-                  {onDelete && (
-                    <button
-                      onClick={() => onDelete(n)}
-                      className="opacity-0 group-hover:opacity-100 transition text-red-500 hover:bg-red-50 w-6 h-6 rounded flex items-center justify-center shrink-0"
-                      aria-label="删除备注"
-                    >
-                      <I name="trash-2" size={12} />
-                    </button>
-                  )}
+        safeNotes.length === 0 ? (
+          <button
+            type="button"
+            onClick={onAdd}
+            disabled={!onAdd}
+            className="w-full flex flex-col items-center justify-center gap-2 py-6 rounded-xl border-2 border-dashed border-[#422AFB]/30 text-[#422AFB] hover:bg-[#E9E3FF]/40 hover:border-[#422AFB]/60 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <I name="plus" size={18} />
+            <span className="text-xs font-bold">新增备忘</span>
+            <span className="text-[10px] text-[#A3AED0] font-medium">点击新增第一条备注</span>
+          </button>
+        ) : (
+          <ul className="space-y-3">
+            {safeNotes.map((n) => (
+              <li key={n.id} className="flex gap-3 p-3 rounded-xl bg-[#F4F7FE] group">
+                <div
+                  className="w-8 h-8 rounded-full text-white flex items-center justify-center shrink-0 text-xs font-bold"
+                  style={{ background: "linear-gradient(135deg, #868CFF 0%, #432CF3 50%, #422AFB 100%)" }}
+                >
+                  {(n.authorName || "?").slice(0, 1).toUpperCase()}
                 </div>
-                <p className="text-sm text-[#1B254B] mt-1 whitespace-pre-wrap leading-relaxed break-words">{n.content}</p>
-              </div>
-            </li>
-          ))}
-        </ul>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs text-[#707EAE] truncate">
+                      <span className="font-bold text-[#1B254B]">{n.authorName || "匿名"}</span>
+                      <span className="ml-1">· {new Date(n.createdAt).toLocaleString("zh-CN")}</span>
+                    </p>
+                    {onDelete && (
+                      <button
+                        onClick={() => onDelete(n)}
+                        className="opacity-0 group-hover:opacity-100 transition text-red-500 hover:bg-red-50 w-6 h-6 rounded flex items-center justify-center shrink-0"
+                        aria-label="删除备注"
+                      >
+                        <I name="trash-2" size={12} />
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-sm text-[#1B254B] mt-1 whitespace-pre-wrap leading-relaxed break-words">{n.content}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )
       ) : (
-        <ul className="space-y-2.5 text-xs text-[#707EAE]">
-          {(Array.isArray(insights) ? insights : []).map((it, i) => (
-            <li key={i} className="flex items-start gap-2">
-              <I
-                name={it.kind === "down" ? "trending-down" : "trending-up"}
-                size={14}
-                className={`mt-0.5 shrink-0 ${it.kind === "down" ? "text-amber-500" : "text-green-500"}`}
-              />
-              {it.text}
-            </li>
-          ))}
-          {(!insights || insights.length === 0) && (
-            <li className="text-[#A3AED0]">暂无洞察 · 切换 JD 后将自动重新生成</li>
-          )}
-        </ul>
+        safeInsights.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-2 py-6 text-center">
+            <I name="sparkles" size={18} className="text-[#A3AED0]" />
+            <p className="text-xs font-bold text-[#707EAE]">待 AI 解析</p>
+            <p className="text-[10px] text-[#A3AED0]">切换 / 匹配 JD 后自动生成洞察</p>
+          </div>
+        ) : (
+          <ul className="space-y-2.5 text-xs text-[#707EAE]">
+            {safeInsights.map((it, i) => (
+              <li key={i} className="flex items-start gap-2">
+                <I
+                  name={it.kind === "down" ? "trending-down" : "trending-up"}
+                  size={14}
+                  className={`mt-0.5 shrink-0 ${it.kind === "down" ? "text-amber-500" : "text-green-500"}`}
+                />
+                {it.text}
+              </li>
+            ))}
+          </ul>
+        )
       )}
     </Card>
   );
@@ -2713,6 +2815,18 @@ function CandidateDetail() {
     finally { setMatching(false); }
   }
 
+  // 用 R2 key 拿短时效签名 URL,新 tab 打开预览(PDF/图片浏览器内置,doc/docx 触发下载)。
+  // 复用任意 R2 key 的简历/附件下载,不只限原始简历。
+  async function openR2Object(key, fallbackLabel) {
+    if (!key) return toast("无可预览文件", "error");
+    try {
+      const { data } = await api.post("/storage/signed-get-url", { key });
+      window.open(data.url, "_blank", "noopener,noreferrer");
+    } catch (e) {
+      toast(e.response?.data?.message || `预览 ${fallbackLabel || ""} 失败`, "error");
+    }
+  }
+
   if (err) return <Card className="p-6 text-red-500 text-sm">{err}</Card>;
   if (!c) return <LoadingBlock label="加载候选人..." height="h-64" />;
 
@@ -2945,11 +3059,37 @@ function CandidateDetail() {
           )}
         </Card>
 
-        {/* === Documents === */}
-        <DocsModule
-          documents={c.documents || { resume: [], materials: [], portfolio: [] }}
-          onChange={(next) => setC(prev => prev ? { ...prev, documents: next } : prev)}
-        />
+        {/* === Documents ===
+            把 c.attachment(LLM 解析时上传的原始简历 R2 key)虚拟同步到「简历」分类首位,
+            标 _readonly + _sourceKey,下载点击走 openR2Object(signed-get-url)。
+            onChange 写回 DB 时剥掉虚拟项,避免污染 documents JSON 列。 */}
+        {(() => {
+          const baseDocs = c.documents || { resume: [], materials: [], portfolio: [] };
+          const baseResume = Array.isArray(baseDocs.resume) ? baseDocs.resume : [];
+          const alreadyIn = baseResume.some(it => it && it._sourceKey === c.attachment);
+          const virtualResume = c.attachment && !alreadyIn
+            ? [{
+                id: `original:${c.attachment}`,
+                kind: "file",
+                name: c.attachment.split("/").pop() || "原始简历",
+                verified: true,
+                _sourceKey: c.attachment,
+                _readonly: true,
+              }]
+            : [];
+          const merged = { ...baseDocs, resume: [...virtualResume, ...baseResume] };
+          return (
+            <DocsModule
+              documents={merged}
+              onDownload={openR2Object}
+              onChange={(next) => setC(prev => {
+                if (!prev) return prev;
+                const cleanedResume = (next.resume || []).filter(it => !it?._readonly);
+                return { ...prev, documents: { ...next, resume: cleanedResume } };
+              })}
+            />
+          );
+        })()}
       </aside>
 
       {/* ╔═══ MIDDLE COLUMN: Stage controls + AI + Interview + Job overview + 经历 / 项目 / 教育 / 备注 ═══╗ */}
@@ -3001,24 +3141,56 @@ function CandidateDetail() {
             </div>
           </div>
 
-          {/* Stage tabs */}
-          <div className="-mx-4 md:-mx-5 mt-3 px-4 md:px-5 border-t border-[#E9ECEF] overflow-x-auto">
-            <div className="flex items-center gap-1 min-w-max -mb-px">
-              {STATUS_ORDER.map(s => {
-                const active = s === c.status;
-                return (
-                  <button
-                    key={s}
-                    onClick={() => changeStatus(s)}
-                    className={`relative px-3 md:px-4 py-3 text-sm transition whitespace-nowrap ${active ? "text-[#422AFB] font-bold" : "text-[#707EAE] hover:text-[#1B254B] font-medium"}`}
-                  >
-                    {s}
-                    {active && <span className="absolute left-2 right-2 -bottom-px h-[3px] rounded-full bg-[#422AFB]" />}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          {/* Stage tabs + progress — 7 tab 等宽两端对齐,进度条填到 active tab 中心 */}
+          {(() => {
+            const idx = STATUS_ORDER.indexOf(c.status);
+            const rejected = c.status === "已淘汰";
+            // 进度条对齐到当前 tab 中心: 每个 tab 占 1/7 宽度,中心 = (idx + 0.5)/7
+            const percent = idx < 0 ? 0 : ((idx + 0.5) / STATUS_ORDER.length) * 100;
+            return (
+              <div className="-mx-4 md:-mx-5 mt-3 px-4 md:px-5 border-t border-[#E9ECEF]">
+                {/* 进度轨 — 正向阶段填充品牌渐变,「已淘汰」红色 */}
+                <div className="h-1.5 mt-3 mb-2 bg-[#F4F7FE] rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-500 ease-out"
+                    style={{
+                      width: `${percent}%`,
+                      background: rejected
+                        ? "#FB6056"
+                        : "linear-gradient(90deg, #868CFF 0%, #432CF3 60%, #422AFB 100%)",
+                    }}
+                  />
+                </div>
+                <div className="flex w-full -mb-px">
+                  {STATUS_ORDER.map((s, i) => {
+                    const active = s === c.status;
+                    const isReject = s === "已淘汰";
+                    const passed = !rejected && !isReject && i < idx;
+                    const colorCls = active
+                      ? (isReject ? "text-[#FB6056] font-bold" : "text-[#422AFB] font-bold")
+                      : passed
+                        ? "text-[#1B254B] font-medium"
+                        : "text-[#707EAE] hover:text-[#1B254B] font-medium";
+                    return (
+                      <button
+                        key={s}
+                        onClick={() => changeStatus(s)}
+                        className={`relative flex-1 py-3 text-sm text-center transition whitespace-nowrap ${colorCls}`}
+                      >
+                        {s}
+                        {active && (
+                          <span
+                            className="absolute left-1/2 -translate-x-1/2 -bottom-px h-[3px] w-10 rounded-full"
+                            style={{ background: isReject ? "#FB6056" : "#422AFB" }}
+                          />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
         </Card>
 
         {/* === Action buttons === */}
@@ -3041,7 +3213,12 @@ function CandidateDetail() {
               <pre className="whitespace-pre-wrap text-xs font-mono text-[#1B254B] mt-3 leading-relaxed max-h-56 overflow-y-auto pr-2">{c.aiSummary}</pre>
             </div>
             <div className="relative flex items-center gap-3 mt-3 pt-3 border-t border-[#E9ECEF]">
-              <button onClick={() => toast("(mock) 打开原始简历", "info")} className="text-[#422AFB] text-xs font-bold hover:underline flex items-center gap-1">
+              <button
+                onClick={() => openR2Object(c.attachment, "原始简历")}
+                disabled={!c.attachment}
+                className="text-[#422AFB] text-xs font-bold hover:underline flex items-center gap-1 disabled:text-[#A3AED0] disabled:no-underline disabled:cursor-not-allowed"
+                title={c.attachment ? "在新标签打开" : "候选人无原始简历"}
+              >
                 <I name="file-text" size={12} /> 查看原始简历
               </button>
               <div className="flex-1" />
