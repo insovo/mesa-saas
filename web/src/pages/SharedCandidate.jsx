@@ -114,14 +114,24 @@ export default function SharedCandidate() {
               <div className="flex flex-wrap gap-1.5 mt-3">
                 {(c.tags || []).map((t) => <Tag key={t}>{t}</Tag>)}
               </div>
-              <div className="flex flex-wrap gap-x-4 md:gap-x-6 gap-y-2 mt-4 text-[11px] md:text-xs text-gray-700">
-                <span className="flex items-center gap-1"><I name="phone" size={12} /> {c.phone || "—"}</span>
-                <span className="flex items-center gap-1"><I name="mail" size={12} /> {c.email || "—"}</span>
-                <span className="flex items-center gap-1"><I name="briefcase" size={12} /> {c.appliedFor || "—"}</span>
-              </div>
-              <p className="text-[11px] text-amber-700 mt-2">
-                ⓘ 联系方式已自动打码,如需联系候选人请联系分享方
-              </p>
+              {/* 联系方式:share.showContact=true 时显示(已 mask),false 时整段隐藏 */}
+              {data?.share?.showContact !== false ? (
+                <>
+                  <div className="flex flex-wrap gap-x-4 md:gap-x-6 gap-y-2 mt-4 text-[11px] md:text-xs text-gray-700">
+                    <span className="flex items-center gap-1"><I name="phone" size={12} /> {c.phone || "—"}</span>
+                    <span className="flex items-center gap-1"><I name="mail" size={12} /> {c.email || "—"}</span>
+                    <span className="flex items-center gap-1"><I name="briefcase" size={12} /> {c.appliedFor || "—"}</span>
+                  </div>
+                  <p className="text-[11px] text-amber-700 mt-2">
+                    ⓘ 联系方式已自动打码,如需联系候选人请联系分享方
+                  </p>
+                </>
+              ) : (
+                <div className="flex flex-wrap gap-x-4 md:gap-x-6 gap-y-2 mt-4 text-[11px] md:text-xs text-gray-700">
+                  <span className="flex items-center gap-1"><I name="briefcase" size={12} /> {c.appliedFor || "—"}</span>
+                  <span className="flex items-center gap-1 text-gray-500"><I name="eye-off" size={12} /> 分享方已隐藏联系方式</span>
+                </div>
+              )}
             </div>
             {c.jdMatch != null && (
               <div className="flex flex-col items-center gap-2 px-4 py-3 rounded-2xl bg-lightPrimary">
@@ -309,6 +319,7 @@ export default function SharedCandidate() {
           candidate={c}
           token={token}
           replyTo={replyTo}
+          allowAttachments={data?.share?.showAttachments === true}
           onCreated={(r) => { setReviews((p) => [...p, r]); setReviewOpen(false); setReplyTo(null); }}
         />
       </main>
@@ -584,7 +595,7 @@ function PublicAttachmentChip({ a, token }) {
 
 const SAVED_NAMES_KEY = "mesa.public.review.names";
 
-function PublicReviewModal({ open, onClose, candidate, token, replyTo, onCreated }) {
+function PublicReviewModal({ open, onClose, candidate, token, replyTo, onCreated, allowAttachments }) {
   const [authorName, setAuthorName] = useState("");
   const [content, setContent] = useState("");
   const [linkInput, setLinkInput] = useState("");
@@ -775,6 +786,7 @@ function PublicReviewModal({ open, onClose, candidate, token, replyTo, onCreated
           <p className={`text-[11px] mt-1.5 ${content.length >= 500 ? "text-red-500" : "text-gray-600"}`}>{content.length} / 500 字符</p>
         </div>
 
+        {allowAttachments && (
         <div>
           <p className="text-xs font-bold text-gray-700 uppercase mb-2">附件(可选,总 ≤ 30MB)</p>
           {attachments.length > 0 && (
@@ -823,6 +835,7 @@ function PublicReviewModal({ open, onClose, candidate, token, replyTo, onCreated
             </div>
           </div>
         </div>
+        )}
 
         <div className="flex justify-end gap-2 pt-2 border-t border-gray-200">
           <Button variant="ghost" onClick={onClose} disabled={saving}>取消</Button>

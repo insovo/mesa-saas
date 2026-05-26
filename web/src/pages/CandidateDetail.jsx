@@ -971,19 +971,43 @@ function EditInterviewModal({ open, onClose, interview, onSave }) {
   );
 }
 
-function InterviewModal({ open, onClose, candidate, jobs }) {
+// 按方式给「面试地点 / 链接 / 电话」字段切换 label + placeholder
+const LINK_FIELD_BY_MODE = {
+  "线下": { label: "面试地点", placeholder: "如 北京朝阳区望京 SOHO T3 12 层 1201", icon: "map-pin" },
+  "视频": { label: "视频链接", placeholder: "如 https://meet.google.com/abc-defg-hij", icon: "video" },
+  "电话": { label: "联系电话",  placeholder: "如 138 0000 0000",                            icon: "phone" },
+};
+
+function InterviewModal({ open, onClose, candidate, jobs, reviews }) {
   const [jobId, setJobId] = useState("");
   const [round, setRound] = useState("一面");
   const [mode, setMode] = useState("线下");
   const [scheduledAt, setScheduledAt] = useState("");
   const [interviewer, setInterviewer] = useState("");
+  const [link, setLink] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setJobId(candidate?.jobId || "");
     setScheduledAt(new Date(Date.now() + 86400000).toISOString().slice(0, 16));
+    setLink("");
+    setInterviewer("");
+    setMode("线下");
+    setRound("一面");
   }, [open, candidate?.jobId]);
+
+  // 从评论模块抽 unique authorName 做快捷选项 — 过滤空 / 公开「匿名」/ deleted
+  const reviewAuthors = (() => {
+    if (!Array.isArray(reviews)) return [];
+    const set = new Set();
+    for (const r of reviews) {
+      if (r?.deletedAt) continue;
+      const n = (r?.authorName || "").trim();
+      if (n && n !== "匿名") set.add(n);
+    }
+    return Array.from(set).slice(0, 12);
+  })();
 
   async function submit() {
     if (!scheduledAt) return toast("请选时间", "error");
@@ -996,12 +1020,15 @@ function InterviewModal({ open, onClose, candidate, jobs }) {
         mode,
         scheduledAt: new Date(scheduledAt).toISOString(),
         interviewer: interviewer || null,
+        link: link.trim() || null,
       });
       toast("面试已安排", "success");
       onClose();
     } catch (e) { toast(e.message || "保存失败", "error"); }
     finally { setSaving(false); }
   }
+
+  const linkCfg = LINK_FIELD_BY_MODE[mode] || LINK_FIELD_BY_MODE["线下"];
 
   return (
     <Modal open={open} onClose={onClose} maxWidth="max-w-lg">
@@ -1037,7 +1064,50 @@ function InterviewModal({ open, onClose, candidate, jobs }) {
             <label className="text-sm text-[#1B254B] font-bold ml-3 block mb-2">时间</label>
             <input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} className="w-full h-11 rounded-xl border border-[#E9ECEF] px-3 text-sm outline-none focus:border-[#422AFB]" />
           </div>
-          <Input label="面试官" value={interviewer} onChange={(e) => setInterviewer(e.target.value)} placeholder="如 王浩" />
+          {/* 根据方式动态切换的输入框 (跨两列占满) */}
+          <div className="col-span-2">
+            <label className="text-sm text-[#1B254B] font-bold ml-3 block mb-2 flex items-center gap-1.5">
+              <I name={linkCfg.icon} size={13} className="text-[#422AFB]" />
+              {linkCfg.label}
+            </label>
+            <input
+              type="text"
+              value={link}
+              onChange={(e) => setLink(e.target.value)}
+              placeholder={linkCfg.placeholder}
+              className="w-full h-11 rounded-xl border border-[#E9ECEF] px-3 text-sm outline-none focus:border-[#422AFB]"
+            />
+          </div>
+          <div className="col-span-2">
+            <Input label="面试官" value={interviewer} onChange={(e) => setInterviewer(e.target.value)} placeholder="如 王浩 (多个面试官用逗号分隔)" />
+            {/* 快捷选评论作者 */}
+            {reviewAuthors.length > 0 && (
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <span className="text-[10px] text-[#A3AED0]">从评价人快选:</span>
+                {reviewAuthors.map((n) => {
+                  const already = interviewer.split(/[,，]/).map((s) => s.trim()).includes(n);
+                  return (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => {
+                        if (already) return;
+                        setInterviewer(interviewer ? `${interviewer.replace(/[,，]\s*$/, "")}, ${n}` : n);
+                      }}
+                      disabled={already}
+                      className={`text-[10px] px-2 py-0.5 rounded-full border transition ${
+                        already
+                          ? "bg-[#E9E3FF] text-[#422AFB] border-[#422AFB]/40 cursor-default"
+                          : "bg-white text-[#422AFB] border-[#422AFB]/40 hover:bg-[#E9E3FF]"
+                      }`}
+                    >
+                      {already ? "✓ " : "+ "}{n}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
         <div className="flex justify-end gap-2 mt-5">
           <Button variant="ghost" onClick={onClose} disabled={saving}>取消</Button>
@@ -1134,6 +1204,41 @@ function MaxViewsPicker({ maxViewsPreset, setMaxViewsPreset, customMaxViews, set
   );
 }
 
+// 公开页可见性 toggle 子组件 — ShareModal「已有 link」和「无 link」两个分支共用
+function ShareVisibilityToggles({ showContact, setShowContact, showAttachments, setShowAttachments }) {
+  return (
+    <div>
+      <p className="text-xs font-bold text-[#707EAE] uppercase mb-2">公开页可见性</p>
+      <div className="space-y-2">
+        <label className="flex items-start gap-2.5 p-2.5 rounded-lg border border-[#E9ECEF] hover:border-[#422AFB]/40 cursor-pointer transition">
+          <input
+            type="checkbox"
+            checked={!!showContact}
+            onChange={(e) => setShowContact(e.target.checked)}
+            className="mt-0.5 w-4 h-4 rounded border-[#A3AED0] text-[#422AFB] focus:ring-[#422AFB]"
+          />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-bold text-[#1B254B]">展示联系方式</p>
+            <p className="text-[10px] text-[#A3AED0] mt-0.5">关闭后访客看不到 phone / email,即便已 mask</p>
+          </div>
+        </label>
+        <label className="flex items-start gap-2.5 p-2.5 rounded-lg border border-[#E9ECEF] hover:border-[#422AFB]/40 cursor-pointer transition">
+          <input
+            type="checkbox"
+            checked={!!showAttachments}
+            onChange={(e) => setShowAttachments(e.target.checked)}
+            className="mt-0.5 w-4 h-4 rounded border-[#A3AED0] text-[#422AFB] focus:ring-[#422AFB]"
+          />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-bold text-[#1B254B]">允许访客上传评价附件</p>
+            <p className="text-[10px] text-[#A3AED0] mt-0.5">关闭后评价表单不显示「附件」输入,后端二道防线也拒</p>
+          </div>
+        </label>
+      </div>
+    </div>
+  );
+}
+
 function ShareModal({ open, onClose, candidate }) {
   const [link, setLink] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -1143,6 +1248,9 @@ function ShareModal({ open, onClose, candidate }) {
   const [maxViewsPreset, setMaxViewsPreset] = useState("unlimited");
   const [customMaxViews, setCustomMaxViews] = useState(100);
   const [nowTick, setNowTick] = useState(Date.now());
+  // 公开页可见性开关 — 默认: 联系方式露(mask), 评价附件关闭
+  const [showContact, setShowContact] = useState(true);
+  const [showAttachments, setShowAttachments] = useState(false);
 
   useEffect(() => {
     if (!open || !candidate?.id) return;
@@ -1153,6 +1261,13 @@ function ShareModal({ open, onClose, candidate }) {
         if (l.maxViews == null) setMaxViewsPreset("unlimited");
         else if ([10, 50, 100].includes(l.maxViews)) setMaxViewsPreset(String(l.maxViews));
         else { setMaxViewsPreset("custom"); setCustomMaxViews(l.maxViews); }
+        // sync toggle: 后端 default(true / false) 也覆盖
+        setShowContact(l.showContact !== false);
+        setShowAttachments(l.showAttachments === true);
+      } else {
+        // 重置回默认值
+        setShowContact(true);
+        setShowAttachments(false);
       }
     }).catch(() => setLink(null)).finally(() => setLoading(false));
   }, [open, candidate?.id]);
@@ -1181,7 +1296,12 @@ function ShareModal({ open, onClose, candidate }) {
   async function generate() {
     setLoading(true);
     try {
-      const l = await resources.share.create(candidate.id, { duration: effectiveDuration(), maxViews: effectiveMaxViews() });
+      const l = await resources.share.create(candidate.id, {
+        duration: effectiveDuration(),
+        maxViews: effectiveMaxViews(),
+        showContact,
+        showAttachments,
+      });
       setLink(l);
       toast(link ? "已重新生成链接" : "已生成分享链接", "success");
     } catch (e) { toast(e.message || "生成失败", "error"); }
@@ -1192,7 +1312,12 @@ function ShareModal({ open, onClose, candidate }) {
     if (!link) return;
     setLoading(true);
     try {
-      const l = await resources.share.update(candidate.id, { duration: effectiveDuration(), maxViews: effectiveMaxViews() });
+      const l = await resources.share.update(candidate.id, {
+        duration: effectiveDuration(),
+        maxViews: effectiveMaxViews(),
+        showContact,
+        showAttachments,
+      });
       setLink(l);
       toast("已修改配置", "success");
     } catch (e) { toast(e.message || "修改失败", "error"); }
@@ -1324,6 +1449,7 @@ function ShareModal({ open, onClose, candidate }) {
                   <p className="text-xs font-bold text-[#707EAE] uppercase mb-2">访问次数限制</p>
                   <MaxViewsPicker {...{ maxViewsPreset, setMaxViewsPreset, customMaxViews, setCustomMaxViews }} />
                 </div>
+                <ShareVisibilityToggles {...{ showContact, setShowContact, showAttachments, setShowAttachments }} />
                 <div className="flex gap-2 pt-2">
                   <Button variant="ghost" onClick={destroy} disabled={loading} icon={<I name="trash-2" size={12} />}>删除链接</Button>
                   <div className="flex-1" />
@@ -1350,6 +1476,7 @@ function ShareModal({ open, onClose, candidate }) {
               <p className="text-xs font-bold text-[#707EAE] uppercase mb-2">访问次数限制</p>
               <MaxViewsPicker {...{ maxViewsPreset, setMaxViewsPreset, customMaxViews, setCustomMaxViews }} />
             </div>
+            <ShareVisibilityToggles {...{ showContact, setShowContact, showAttachments, setShowAttachments }} />
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={onClose}>取消</Button>
               <Button onClick={generate} disabled={loading} icon={<I name={loading ? "loader" : "share-2"} size={12} className={loading ? "animate-spin" : ""} />}>
@@ -3547,7 +3674,7 @@ function CandidateDetail() {
       candidate={c} replyTo={replyTo}
       onCreated={(r) => { setReviews((p) => [...p, r]); setReviewOpen(false); setReplyTo(null); }}
     />
-    <InterviewModal open={interviewOpen} onClose={() => setInterviewOpen(false)} candidate={c} jobs={jobs} />
+    <InterviewModal open={interviewOpen} onClose={() => setInterviewOpen(false)} candidate={c} jobs={jobs} reviews={reviews} />
     <ShareModal open={shareOpen} onClose={() => setShareOpen(false)} candidate={c} />
     </>
   );

@@ -47,6 +47,8 @@ export default async function shareRoutes(app) {
           properties: {
             duration: { type: "string", maxLength: 20 },
             maxViews: { type: ["integer", "null"], minimum: 1, maximum: 9999 },
+            showContact:     { type: "boolean" },  // 默认 true
+            showAttachments: { type: "boolean" },  // 默认 false
           },
           additionalProperties: false,
         },
@@ -69,13 +71,15 @@ export default async function shareRoutes(app) {
           candidateId: req.params.id,
           expiresAt,
           maxViews: req.body?.maxViews ?? null,
+          showContact:     typeof req.body?.showContact     === "boolean" ? req.body.showContact     : true,
+          showAttachments: typeof req.body?.showAttachments === "boolean" ? req.body.showAttachments : false,
           createdBy: req.user.sub,
         },
       });
       return reply.code(201).send({ link });
     });
 
-    // PATCH 修改有效期 / 访问次数上限
+    // PATCH 修改有效期 / 访问次数上限 / 可见性 toggle
     admin.patch("/candidates/:id/share", {
       schema: {
         body: {
@@ -83,6 +87,8 @@ export default async function shareRoutes(app) {
           properties: {
             duration: { type: "string", maxLength: 20 },
             maxViews: { type: ["integer", "null"], minimum: 1, maximum: 9999 },
+            showContact:     { type: "boolean" },
+            showAttachments: { type: "boolean" },
           },
           additionalProperties: false,
         },
@@ -96,8 +102,10 @@ export default async function shareRoutes(app) {
       if (typeof req.body?.maxViews !== "undefined") {
         data.maxViews = req.body.maxViews;  // 可为 null 表示移除上限
       }
+      if (typeof req.body?.showContact     === "boolean") data.showContact = req.body.showContact;
+      if (typeof req.body?.showAttachments === "boolean") data.showAttachments = req.body.showAttachments;
       if (Object.keys(data).length === 0) {
-        return reply.code(400).send({ error: "no_fields", message: "duration 或 maxViews 至少一个" });
+        return reply.code(400).send({ error: "no_fields", message: "duration / maxViews / showContact / showAttachments 至少一个" });
       }
 
       const existing = await admin.prisma.shareLink.findFirst({ where: { candidateId: req.params.id } });
@@ -135,7 +143,9 @@ export default async function shareRoutes(app) {
     }).catch(() => {});
 
     // 严格只返回候选人,不附带其他敏感字段
+    // showContact=false 时 phone/email 完全不返回(连 mask 都不给,前端自己显示「未公开」)
     const c = link.candidate;
+    const showContact = link.showContact !== false;  // default true
     return {
       candidate: {
         id: c.id,
@@ -150,9 +160,9 @@ export default async function shareRoutes(app) {
         age: c.age,
         location: c.location,
         yearsExp: c.yearsExp,
-        // 注意:不返回 phone / email 真实联系方式给公开访问者
-        phone: c.phone ? c.phone.replace(/(\d{3})\d{4}(\d{4})/, "$1****$2") : null,
-        email: c.email ? c.email.replace(/(.{2}).+(@.+)/, "$1***$2") : null,
+        // 联系方式:showContact=true 时 mask 后返回,false 时直接 null(前端按 null 渲染「未公开」)
+        phone: showContact && c.phone ? c.phone.replace(/(\d{3})\d{4}(\d{4})/, "$1****$2") : null,
+        email: showContact && c.email ? c.email.replace(/(.{2}).+(@.+)/, "$1***$2") : null,
         appliedFor: c.appliedFor,
         jdMatch: c.jdMatch,
         status: c.status,
@@ -170,6 +180,8 @@ export default async function shareRoutes(app) {
         expiresAt: link.expiresAt,
         viewCount: link.viewCount,
         createdAt: link.createdAt,
+        showContact,
+        showAttachments: link.showAttachments === true,  // default false
       },
     };
   });

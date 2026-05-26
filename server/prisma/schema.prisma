@@ -339,6 +339,9 @@ model ShareLink {
   lastViewedAt DateTime? @map("last_viewed_at")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
+  // 公开端可见性开关 — 不修改候选人本身,只控制本 ShareLink 的展示策略
+  showContact     Boolean @default(true)  @map("show_contact")      // 联系方式(phone/email)是否露出(mask)
+  showAttachments Boolean @default(false) @map("show_attachments")  // 评价表单的「附件上传」input 是否开放
 
   @@index([candidateId])
   @@index([token])

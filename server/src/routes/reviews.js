@@ -470,7 +470,7 @@ export default async function reviewsRoutes(app) {
     return { review: publicShape(updated) };
   });
 
-  // 公开访客 presigned-url (附件上传)
+  // 公开访客 presigned-url (附件上传) — 受 ShareLink.showAttachments 控制
   app.post("/public/share/:token/presigned-url", {
     schema: {
       body: {
@@ -486,6 +486,10 @@ export default async function reviewsRoutes(app) {
     const link = await app.prisma.shareLink.findUnique({ where: { token: req.params.token } });
     if (!link) return reply.code(404).send({ error: "share_not_found" });
     if (link.expiresAt && link.expiresAt < new Date()) return reply.code(410).send({ error: "share_expired" });
+    if (link.showAttachments !== true) {
+      // 二道防线: 前端如果绕过 UI 直接 POST,后端也拒
+      return reply.code(403).send({ error: "attachments_disabled", message: "本分享链接已禁用附件上传" });
+    }
 
     if (!app.r2) return reply.code(503).send({ error: "r2_not_configured" });
 
