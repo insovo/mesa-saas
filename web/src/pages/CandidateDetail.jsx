@@ -335,6 +335,57 @@ function Empty({ icon = "inbox", title = "暂无数据", desc }) {
   );
 }
 
+// 渲染 matchAgainstJob 输出的 markdown 无序列表字符串(只支持 - / • / · / * 开头的 bullet)
+function MarkdownBullets({ md, bulletColor = "#422AFB", textSize = "text-sm" }) {
+  if (typeof md !== "string" || !md.trim()) return null;
+  const items = md
+    .split("\n")
+    .map((l) => l.replace(/^\s*[-•·*]\s+/, "").trim())
+    .filter(Boolean);
+  if (items.length === 0) return null;
+  return (
+    <ul className="space-y-2 mt-3">
+      {items.map((it, i) => (
+        <li key={i} className={`${textSize} text-[#1B254B] flex items-start gap-2 leading-relaxed`}>
+          <span style={{ color: bulletColor }} className="mt-1 shrink-0 font-bold">•</span>
+          <span className="whitespace-pre-wrap">{it}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// 候选人未关联 JD / 关联了但 LLM 还没产数据时的引导卡片
+function NeedJobPlaceholder({ hasJob, onPickJob, fieldName }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-8 text-center px-4">
+      <div className="w-12 h-12 rounded-full bg-[#E9E3FF] flex items-center justify-center mb-3">
+        <I name="sparkles" size={20} className="text-[#422AFB]" />
+      </div>
+      {hasJob ? (
+        <>
+          <p className="text-sm font-bold text-[#1B254B]">暂无{fieldName}</p>
+          <p className="text-[11px] text-[#A3AED0] mt-1">已关联 JD, 重新解析后自动生成</p>
+        </>
+      ) : (
+        <>
+          <p className="text-sm font-bold text-[#1B254B]">关联 JD 后自动生成</p>
+          <p className="text-[11px] text-[#A3AED0] mt-1 mb-3">{fieldName} 根据 JD 二次评估产出</p>
+          {onPickJob && (
+            <button
+              type="button"
+              onClick={onPickJob}
+              className="text-[11px] font-bold text-[#422AFB] hover:underline inline-flex items-center gap-1"
+            >
+              <I name="briefcase" size={11} /> 选择投递岗位
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function LoadingBlock({ height = "h-32", label = "加载中..." }) {
   return (
     <div className={`${height} w-full rounded-[20px] bg-white shadow-[14px_17px_40px_4px_rgba(112,144,176,0.08)] flex items-center justify-center text-sm text-[#707EAE]`}>
@@ -3329,14 +3380,25 @@ function CandidateDetail() {
               <I name="sparkles" size={14} className="text-[#422AFB]" />
               核心技能
             </h3>
-            <ul className="mt-3 space-y-1.5">
-              {(c.skills || []).map((s, i) => (
-                <li key={i} className="text-[11px] text-[#1B254B] flex items-start gap-1.5 leading-relaxed">
-                  <I name="check-circle-2" size={11} className="text-[#422AFB] mt-0.5 shrink-0" />
-                  <span>{s}</span>
-                </li>
-              ))}
-            </ul>
+            {/* 两阶段:阶段二由 JD match 产出 markdown 字符串;兼容旧 array 数据 */}
+            {(() => {
+              if (typeof c.skills === "string" && c.skills.trim()) {
+                return <MarkdownBullets md={c.skills} textSize="text-[11px]" />;
+              }
+              if (Array.isArray(c.skills) && c.skills.length > 0) {
+                return (
+                  <ul className="mt-3 space-y-1.5">
+                    {c.skills.map((s, i) => (
+                      <li key={i} className="text-[11px] text-[#1B254B] flex items-start gap-1.5 leading-relaxed">
+                        <I name="check-circle-2" size={11} className="text-[#422AFB] mt-0.5 shrink-0" />
+                        <span>{s}</span>
+                      </li>
+                    ))}
+                  </ul>
+                );
+              }
+              return <NeedJobPlaceholder hasJob={!!c.jobId} onPickJob={() => setJdPickerOpen(true)} fieldName="核心技能" />;
+            })()}
           </Card>
           <Card className="p-4">
             <h3 className="text-sm font-bold text-[#1B254B] flex items-center gap-2">
@@ -3374,16 +3436,23 @@ function CandidateDetail() {
             <I name="briefcase" size={16} className="text-[#422AFB]" />
             工作经历
           </h3>
-          {(!c.experience || c.experience.length === 0) ? (
-            <Empty title="暂无工作经历" />
-          ) : (
-            <ul className="mt-4 space-y-3 relative">
-              <span aria-hidden="true" className="absolute left-[3px] top-2 bottom-2 w-px bg-[#422AFB]/30" />
-              {c.experience.map((e, i) => (
-                <ExperienceItem key={i} e={e} projects={(c.projects || []).filter(p => p.companyTag && e.company.includes(p.companyTag))} />
-              ))}
-            </ul>
-          )}
+          {/* 两阶段:阶段二由 JD match 产出 markdown 字符串;兼容旧 array(结构化对象)数据 */}
+          {(() => {
+            if (typeof c.experience === "string" && c.experience.trim()) {
+              return <MarkdownBullets md={c.experience} />;
+            }
+            if (Array.isArray(c.experience) && c.experience.length > 0) {
+              return (
+                <ul className="mt-4 space-y-3 relative">
+                  <span aria-hidden="true" className="absolute left-[3px] top-2 bottom-2 w-px bg-[#422AFB]/30" />
+                  {c.experience.map((e, i) => (
+                    <ExperienceItem key={i} e={e} projects={(c.projects || []).filter(p => p.companyTag && e.company?.includes(p.companyTag))} />
+                  ))}
+                </ul>
+              );
+            }
+            return <NeedJobPlaceholder hasJob={!!c.jobId} onPickJob={() => setJdPickerOpen(true)} fieldName="工作经历" />;
+          })()}
         </Card>
 
         {/* === Education === */}
@@ -3392,21 +3461,27 @@ function CandidateDetail() {
             <I name="graduation-cap" size={16} className="text-[#422AFB]" />
             教育背景
           </h3>
-          {(!c.educationHistory || c.educationHistory.length === 0) ? (
-            <Empty title="暂无教育背景" />
-          ) : (
-            <ul className="mt-4 space-y-5 relative">
-              <span aria-hidden="true" className="absolute left-[3px] top-2 bottom-2 w-px bg-[#CBD5E0]" />
-              {c.educationHistory.map((e, i) => (
-                <li key={i} className="relative pl-6">
-                  <span className="absolute left-0 top-2 w-[7px] h-[7px] rounded-full bg-[#A0AEC0] ring-2 ring-white" />
-                  <p className="text-xs text-[#A3AED0]">{e.period}</p>
-                  <p className="text-sm font-bold text-[#1B254B] mt-0.5">{e.school}</p>
-                  <p className="text-xs text-[#707EAE]">{e.major} · {e.degree}</p>
-                </li>
-              ))}
-            </ul>
-          )}
+          {(() => {
+            if (typeof c.educationHistory === "string" && c.educationHistory.trim()) {
+              return <MarkdownBullets md={c.educationHistory} />;
+            }
+            if (Array.isArray(c.educationHistory) && c.educationHistory.length > 0) {
+              return (
+                <ul className="mt-4 space-y-5 relative">
+                  <span aria-hidden="true" className="absolute left-[3px] top-2 bottom-2 w-px bg-[#CBD5E0]" />
+                  {c.educationHistory.map((e, i) => (
+                    <li key={i} className="relative pl-6">
+                      <span className="absolute left-0 top-2 w-[7px] h-[7px] rounded-full bg-[#A0AEC0] ring-2 ring-white" />
+                      <p className="text-xs text-[#A3AED0]">{e.period}</p>
+                      <p className="text-sm font-bold text-[#1B254B] mt-0.5">{e.school}</p>
+                      <p className="text-xs text-[#707EAE]">{e.major} · {e.degree}</p>
+                    </li>
+                  ))}
+                </ul>
+              );
+            }
+            return <NeedJobPlaceholder hasJob={!!c.jobId} onPickJob={() => setJdPickerOpen(true)} fieldName="教育背景" />;
+          })()}
           {c.attachment && (
             <div className="mt-6 pt-4 border-t border-[#E9ECEF] flex items-center gap-2 text-xs text-[#707EAE]">
               <I name="paperclip" size={14} />
