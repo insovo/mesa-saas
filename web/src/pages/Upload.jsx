@@ -15,17 +15,17 @@ function fmtExpiresLabel(expiresAt) {
   return `${days} 天后失效`;
 }
 
-// 简历卡片右侧显示 "上传 X 时间"。<1m → 刚刚;<1h → N 分钟前;<24h → N 小时前;<30d → N 天前;其它 → 日期
-function fmtRelativeTime(iso) {
+// 简历卡片显示完整时间 yyyy-MM-dd HH:mm:ss(招聘官需要精确知道每份简历的上传时刻)
+function fmtDateTime(iso) {
   if (!iso) return "";
-  const ts = new Date(iso).getTime();
-  if (Number.isNaN(ts)) return "";
-  const secs = Math.max(0, (Date.now() - ts) / 1000);
-  if (secs < 60) return "刚刚";
-  if (secs < 3600) return `${Math.floor(secs / 60)} 分钟前`;
-  if (secs < 86400) return `${Math.floor(secs / 3600)} 小时前`;
-  if (secs < 86400 * 30) return `${Math.floor(secs / 86400)} 天前`;
-  return new Date(iso).toLocaleDateString();
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+function fmtSource(s) {
+  const trimmed = (s || "").trim();
+  return trimmed || "未提供";
 }
 
 // 本次已入库列表用 sessionStorage 持久化(切页/刷新都保留,关 tab 自动清,tab 间隔离防多用户串数据)
@@ -694,6 +694,9 @@ export default function Upload() {
                   <p className="text-xs text-gray-700 truncate">
                     {[c.education, c.school, c.major].filter(Boolean).join(" · ") || c.attachment}
                   </p>
+                  <p className="text-[11px] text-gray-500 truncate">
+                    <span className="text-gray-400">来源:</span> {fmtSource(c.source)}
+                  </p>
                 </div>
 
                 {/* 单条 inline 操作:JD select / 部门 select / 解析按钮 */}
@@ -737,8 +740,8 @@ export default function Upload() {
                   ) : (
                     <StatusPill status={c.status || "待筛选"} />
                   )}
-                  <span className="text-[10px] text-gray-500" title={c.createdAt ? new Date(c.createdAt).toLocaleString() : ""}>
-                    {fmtRelativeTime(c.createdAt)}
+                  <span className="text-[10px] text-gray-500 font-mono whitespace-nowrap" title="上传时间">
+                    {fmtDateTime(c.createdAt)}
                   </span>
                 </div>
               </li>

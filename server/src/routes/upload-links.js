@@ -190,7 +190,10 @@ export default async function uploadLinksRoutes(app) {
   });
 
   // POST submit — 完成 R2 上传后,创建 candidate + uploadCount++
-  // 入参: key (必填, presigned PUT 上传后的 key), filename, contentType, name, contact, source, note
+  // 入参: key (必填, presigned PUT 上传后的 key), filename, name, contact, source, uploaderNote
+  // 字段语义:
+  //   source       — 上传者填的"来源"(如 "xxx 推荐"/"罗卡"/"英国猎头"),直接写入 candidate.source 覆盖默认
+  //   uploaderNote — 上传者填的"备注"(任意自由文本),不污染 source,单独写入 CandidateNote 表
   // 简化策略: 不立即跑 LLM 解析(降级入库),admin 后续在详情页点"重新解析"再跑 Kimi
   app.post("/public/upload/:token/submit", {
     schema: {
@@ -202,7 +205,8 @@ export default async function uploadLinksRoutes(app) {
           filename: { type: "string", maxLength: 200 },
           name: { type: ["string", "null"], maxLength: 100 },         // 上传者填的候选人姓名(若知道)
           contact: { type: ["string", "null"], maxLength: 200 },      // 上传者填的联系方式
-          uploaderNote: { type: ["string", "null"], maxLength: 500 }, // 上传者备注 → 拼入 source
+          source: { type: ["string", "null"], maxLength: 500 },       // 上传者填的"来源",优先级 > link.defaultSource
+          uploaderNote: { type: ["string", "null"], maxLength: 2000 }, // 上传者备注 → 同步到 CandidateNote 表
         },
         additionalProperties: false,
       },
@@ -215,13 +219,13 @@ export default async function uploadLinksRoutes(app) {
       || req.body?.filename?.replace(/\.[^/.]+$/, "")?.slice(0, 100)
       || "待解析简历";
 
-    // 组合 source: 优先 link 预设 + 上传者备注 + 自动标记 [公开上传]
-    const sourceParts = ["[公开上传]"];
-    if (link.defaultSource) sourceParts.push(link.defaultSource);
-    if (req.body?.uploaderNote?.trim()) sourceParts.push(req.body.uploaderNote.trim().slice(0, 200));
-    const finalSource = sourceParts.join(" · ").slice(0, 500);
+    // 来源:用户填的 > link 预设的 > 默认"[公开上传]"
+    const userSource = req.body?.source?.trim()?.slice(0, 500);
+    const finalSource = userSource || link.defaultSource || "[公开上传]";
 
-    // 在一个事务里:创建 candidate + 更新 link 计数(任一失败就回滚)
+    const trimmedNote = req.body?.uploaderNote?.trim();
+
+    // 在一个事务里:创建 candidate + uploadCount++ + 备注非空时创建 CandidateNote(任一失败就回滚)
     const result = await app.prisma.$transaction(async (tx) => {
       const candidate = await tx.candidate.create({
         data: {
@@ -241,6 +245,19 @@ export default async function uploadLinksRoutes(app) {
           ownerId: link.createdBy || null,
         },
       });
+
+      // 备注 → CandidateNote(候选人详情页"洞察+备注"模块的备注卡片)
+      if (trimmedNote) {
+        await tx.candidateNote.create({
+          data: {
+            candidateId: candidate.id,
+            content: trimmedNote.slice(0, 2000),
+            authorId: null,                                  // 公开上传无登录态
+            authorName: candidateName || "公开上传访客",   // 用姓名作 author 显示
+          },
+        });
+      }
+
       const updated = await tx.uploadShareLink.update({
         where: { id: link.id },
         data: { uploadCount: { increment: 1 }, lastUploadAt: new Date() },

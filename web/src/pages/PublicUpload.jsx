@@ -63,7 +63,8 @@ export default function PublicUpload() {
   const [file, setFile] = useState(null);
   const [name, setName] = useState("");
   const [contact, setContact] = useState("");
-  const [uploaderNote, setUploaderNote] = useState("");
+  const [uploaderSource, setUploaderSource] = useState("");   // 来源(独立),如"xxx 推荐"/"罗卡"
+  const [uploaderNote, setUploaderNote] = useState("");        // 备注,会同步到候选人详情页"备注"卡
 
   // 提交后的成功元数据
   const [submitInfo, setSubmitInfo] = useState({ uploadCount: 0, maxUploads: null });
@@ -106,12 +107,13 @@ export default function PublicUpload() {
       await axios.put(presigned.uploadUrl, file, {
         headers: { "Content-Type": file.type || "application/octet-stream" },
       });
-      // 3) 后端创建 candidate
+      // 3) 后端创建 candidate(source 写入 candidate.source,uploaderNote 写入 CandidateNote 表)
       const { data } = await api.post(`/public/upload/${token}/submit`, {
         key: presigned.key,
         filename: file.name,
         name: name.trim() || null,
         contact: contact.trim() || null,
+        source: uploaderSource.trim() || null,
         uploaderNote: uploaderNote.trim() || null,
       });
       setSubmitInfo({ uploadCount: data.uploadCount, maxUploads: data.maxUploads });
@@ -218,17 +220,31 @@ export default function PublicUpload() {
           </div>
 
           <div className="mt-4">
+            <label className="text-sm text-navy-700 font-bold ml-3 block mb-2">来源 (可选)</label>
+            <input
+              type="text"
+              value={uploaderSource}
+              onChange={(e) => setUploaderSource(e.target.value)}
+              placeholder="如:xxx 推荐、罗卡、英国猎头等"
+              disabled={submitting}
+              maxLength={500}
+              className="w-full h-11 rounded-xl border border-gray-200 px-3 text-sm text-navy-700 outline-none focus:border-brand bg-white"
+            />
+            <p className="text-[11px] text-gray-500 mt-1 text-right">{uploaderSource.length} / 500</p>
+          </div>
+
+          <div className="mt-4">
             <label className="text-sm text-navy-700 font-bold ml-3 block mb-2">备注 (可选)</label>
             <textarea
               value={uploaderNote}
               onChange={(e) => setUploaderNote(e.target.value)}
-              placeholder="可填来源说明、推荐人、或对岗位的特别说明"
+              placeholder="添加备注信息"
               disabled={submitting}
               rows={3}
-              maxLength={500}
+              maxLength={2000}
               className="w-full rounded-xl border border-gray-200 p-3 text-sm text-navy-700 outline-none focus:border-brand bg-white resize-y"
             />
-            <p className="text-[11px] text-gray-500 mt-1 text-right">{uploaderNote.length} / 500</p>
+            <p className="text-[11px] text-gray-500 mt-1 text-right">{uploaderNote.length} / 2000</p>
           </div>
 
           <Button
