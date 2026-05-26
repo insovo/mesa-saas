@@ -84,6 +84,11 @@ const LIST_QUERY = {
     q: { type: "string", maxLength: 100 },
     status: { type: "string", maxLength: 50 },
     appliedFor: { type: "string", maxLength: 200 },
+    // ownerId: 传 "me" 会自动替换为当前 user 的 id;传 uuid 直接 filter;不传 = 不过滤
+    // 用于 Upload 页拉"我接收到的"候选人(本地手动上传 + 公开链接上传都会 ownerId=me)
+    ownerId: { type: "string", maxLength: 50 },
+    // orderBy: createdAt | updatedAt(默认 updatedAt 保持向后兼容)
+    orderBy: { type: "string", enum: ["createdAt", "updatedAt"], default: "updatedAt" },
     skip: { type: "integer", minimum: 0, default: 0 },
     take: { type: "integer", minimum: 1, maximum: 200, default: 50 },
   },
@@ -94,10 +99,12 @@ export default async function candidatesRoutes(app) {
 
   // List + filter + search
   app.get("/", { schema: { querystring: LIST_QUERY } }, async (req) => {
-    const { q, status, appliedFor, skip = 0, take = 50 } = req.query;
+    const { q, status, appliedFor, ownerId, orderBy = "updatedAt", skip = 0, take = 50 } = req.query;
     const where = {};
     if (status) where.status = status;
     if (appliedFor) where.appliedFor = appliedFor;
+    if (ownerId === "me") where.ownerId = req.user.sub;
+    else if (ownerId) where.ownerId = ownerId;
     if (q) {
       where.OR = [
         { name: { contains: q, mode: "insensitive" } },
@@ -109,7 +116,7 @@ export default async function candidatesRoutes(app) {
     const [items, total] = await Promise.all([
       app.prisma.candidate.findMany({
         where,
-        orderBy: { updatedAt: "desc" },
+        orderBy: { [orderBy]: "desc" },
         skip,
         take,
       }),

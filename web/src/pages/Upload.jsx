@@ -60,6 +60,25 @@ export default function Upload() {
   const [creatingLink, setCreatingLink] = useState(false);
   const qrRef = useRef(null);  // 用于保存二维码图片
 
+  // 拉当前用户最近的候选人(含本地手动上传 + 公开链接收到的)
+  // remote 优先,失败时保留 sessionStorage 兜底
+  const [refreshing, setRefreshing] = useState(false);
+  const [initialLoaded, setInitialLoaded] = useState(false);
+  async function refetchOwned(silent = false) {
+    if (!silent) setRefreshing(true);
+    try {
+      const { data } = await api.get("/candidates", {
+        params: { ownerId: "me", orderBy: "createdAt", take: PARSED_MAX },
+      });
+      setParsed(data.items || []);
+    } catch (e) {
+      if (!silent) toast(e.response?.data?.message || "刷新失败,请稍后再试", "error");
+    } finally {
+      setInitialLoaded(true);
+      if (!silent) setRefreshing(false);
+    }
+  }
+
   useEffect(() => {
     api.get("/resumes/llm-status").then((r) => setLlmStatus(r.data)).catch(() => setLlmStatus({ configured: false }));
     resources.jobs.list({ take: 200 }).then((d) => setJobs(d.items || [])).catch(() => setJobs([]));
@@ -67,6 +86,8 @@ export default function Upload() {
       .then((r) => setUploadLinks(r.data.links || []))
       .catch(() => setUploadLinks([]))
       .finally(() => setLinksLoading(false));
+    // mount 时拉一次远程(silent=true 不显示 loading,sessionStorage 已经秒级显示了)
+    refetchOwned(true);
   }, []);
 
   // parsed 改动同步写回 sessionStorage(切页/刷新后恢复)
@@ -323,6 +344,8 @@ export default function Upload() {
         real > 0 ? `已 AI 解析 ${real}/${results.length} 份简历` : `已入库 ${results.length} 份(LLM 未启用)`,
         "success",
       );
+      // 上传完成后从后端 refetch 一次,确保 list 跟 DB 真实状态对齐(去重 + 拿到公开链接收到的)
+      await refetchOwned(true);
     } catch (e) {
       toast(e.response?.data?.message || "解析失败", "error");
     } finally {
@@ -465,14 +488,24 @@ export default function Upload() {
       {parsed.length > 0 && (
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="title-card">本次已入库 ({parsed.length})</h3>
-            <button
-              onClick={() => setParsed([])}
-              className="text-[11px] text-gray-500 hover:text-red-500 inline-flex items-center gap-1"
-              title="清空显示(候选人不会从数据库删除)"
-            >
-              <I name="x-circle" size={11} /> 清空显示
-            </button>
+            <h3 className="title-card">我接收到的简历 ({parsed.length})</h3>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => refetchOwned(false)}
+                disabled={refreshing}
+                className="text-[11px] text-brand hover:text-brand-hover inline-flex items-center gap-1 disabled:opacity-50"
+                title="从服务器拉最新(含公开链接收到的)"
+              >
+                <I name="refresh-cw" size={11} className={refreshing ? "animate-spin" : ""} /> {refreshing ? "刷新中" : "刷新"}
+              </button>
+              <button
+                onClick={() => setParsed([])}
+                className="text-[11px] text-gray-500 hover:text-red-500 inline-flex items-center gap-1"
+                title="清空显示(候选人不会从数据库删除)"
+              >
+                <I name="x-circle" size={11} /> 清空显示
+              </button>
+            </div>
           </div>
           <ul className="divide-y divide-gray-200">
             {parsed.map((c) => (
@@ -503,9 +536,13 @@ export default function Upload() {
         </Card>
       )}
 
-      {parsed.length === 0 && files.length === 0 && (
+      {parsed.length === 0 && files.length === 0 && initialLoaded && (
         <Card className="p-6">
-          <Empty icon="inbox" title="收件箱为空" desc="上传简历后会自动出现在候选人列表里" />
+          <Empty
+            icon="inbox"
+            title="还没有接收到简历"
+            desc="本地手动上传 或 通过你的分享链接 / 扫码上传收到的简历都会出现在这里"
+          />
         </Card>
       )}
 
