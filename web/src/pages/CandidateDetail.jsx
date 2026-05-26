@@ -691,6 +691,70 @@ function JdSwitchConfirmModal({ open, onClose, onConfirm, currentJob, targetJob,
   );
 }
 
+function ReparseConfirmModal({ open, onClose, onConfirm, currentJob, jobs, candidateName, reparsing }) {
+  const [selectedJobId, setSelectedJobId] = useState(currentJob?.id || "");
+  useEffect(() => { if (open) setSelectedJobId(currentJob?.id || ""); }, [open, currentJob?.id]);
+  if (!open) return null;
+
+  const targetJob = jobs.find((j) => j.id === selectedJobId);
+  const willMatch = !!targetJob;
+
+  function handleConfirm() {
+    // 空串规范化为 null,后端识别为「取消 JD 关联」并清空 JD 相关字段
+    onConfirm(selectedJobId || null);
+  }
+
+  return (
+    <Modal open={open} onClose={reparsing ? () => {} : onClose} maxWidth="max-w-lg">
+      <div className="p-6">
+        <div className="flex items-start justify-between gap-4 mb-4">
+          <h3 className="text-lg font-bold text-[#1B254B] flex items-center gap-2">
+            <I name="sparkles" size={18} className="text-[#422AFB]" />
+            重新解析简历
+          </h3>
+          <button onClick={onClose} disabled={reparsing} className="text-gray-400 hover:text-[#1B254B] disabled:opacity-30"><I name="x" size={20} /></button>
+        </div>
+
+        <p className="text-sm text-[#707EAE] mb-4">
+          系统将重新调 Kimi 解析 <span className="font-bold text-[#1B254B]">{candidateName || "候选人"}</span> 的简历附件,
+          确认投递岗位 → 决定是否同步生成 JD 匹配评估。
+        </p>
+
+        <div className="mb-5">
+          <label className="text-[11px] font-bold uppercase tracking-wide text-[#A3AED0] mb-1.5 block">投递岗位</label>
+          <select
+            value={selectedJobId}
+            onChange={(e) => setSelectedJobId(e.target.value)}
+            disabled={reparsing}
+            className="w-full h-10 px-3 rounded-xl border border-[#E9ECEF] text-sm text-[#1B254B] bg-white focus:border-[#422AFB] focus:ring-2 focus:ring-[#422AFB]/20 outline-none transition disabled:opacity-50"
+          >
+            <option value="">— 不评估 JD(仅刷新简历字段)—</option>
+            {jobs.map((j) => (
+              <option key={j.id} value={j.id}>{j.title}{j.dept ? ` · ${j.dept}` : ""}</option>
+            ))}
+          </select>
+          <p className="text-[10px] text-[#A3AED0] mt-2">
+            {willMatch
+              ? "→ 跑 Kimi 二次评估,生成 JD 匹配度 / 风险 / 亮点 / 洞察"
+              : "→ 仅刷新工作经历、教育、技能等结构化字段,清空所有 JD 相关字段"}
+          </p>
+        </div>
+
+        <p className="text-[10px] text-[#A3AED0] mb-4">
+          ⚠ 已有的工作经历 / 教育 / 技能等字段会被新解析覆盖(LLM 返回空时保留旧值)。原始简历附件不变。
+        </p>
+
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose} disabled={reparsing}>取消</Button>
+          <Button onClick={handleConfirm} disabled={reparsing} icon={<I name={reparsing ? "loader" : "zap"} size={12} className={reparsing ? "animate-spin" : ""} />}>
+            {reparsing ? "解析中..." : "开始解析"}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function NoteModal({ open, onClose, candidate, onCreated }) {
   const [content, setContent] = useState("");
   const [saving, setSaving] = useState(false);
@@ -2704,17 +2768,26 @@ function CandidateDetail() {
     setPendingJobId(id);
   }
 
-  // 重新解析(异步): POST /resumes/parse {candidateId} 立即拿 taskId,
+  // 重新解析(异步): POST /resumes/parse {candidateId, jobId} 立即拿 taskId,
   // 轮询 GET /parse-tasks/:taskId 直到 done/failed。绕过 Cloudflare 100s 硬上限,
   // Kimi 跑多久都没事(单次轮询 < 100ms)。
+  // 入口走 ReparseConfirmModal,让用户先确认/修改投递岗位再开跑。
   const [reparsing, setReparsing] = useState(false);
-  async function reparse() {
+  const [reparseOpen, setReparseOpen] = useState(false);
+
+  function openReparse() {
     if (!c?.id) return;
     if (!c.attachment) return toast("候选人无简历附件,无法重新解析", "error");
+    setReparseOpen(true);
+  }
+
+  // jobId: uuid = 切换到该 JD; null = 取消 JD 关联(只刷简历字段)
+  async function doReparse(jobId) {
+    if (!c?.id) return;
     setReparsing(true);
     try {
-      // 1) 立即 POST 拿 taskId
-      const { data: { task: initialTask } } = await api.post("/resumes/parse", { candidateId: c.id });
+      // 1) 立即 POST 拿 taskId(透传 jobId 给后端决定是否跑 match)
+      const { data: { task: initialTask } } = await api.post("/resumes/parse", { candidateId: c.id, jobId });
       // 2) 轮询(每 2s 一次,最长 5 分钟)
       const taskId = initialTask.id;
       const startedAt = Date.now();
@@ -2731,6 +2804,7 @@ function CandidateDetail() {
       }
       if (finalTask.status === "done") {
         setC(finalTask.candidate);
+        setReparseOpen(false);
         toast(`✓ 已重新解析: ${finalTask.candidate.name}${finalTask.match ? ` · JD 匹配度 ${finalTask.candidate.jdMatch ?? "—"}` : ""}`, "success");
       } else {
         // failed — 完整错误信息复制到剪贴板 + console.error 完整 task 便于排查
@@ -2865,7 +2939,7 @@ function CandidateDetail() {
                 <p className="text-[10px] text-amber-700 mt-0.5 truncate" title={c.attachment}>简历附件已存档,但结构化字段未抽取</p>
               </div>
               <button
-                onClick={reparse}
+                onClick={openReparse}
                 disabled={reparsing}
                 className="text-[11px] font-bold text-amber-800 hover:underline whitespace-nowrap disabled:opacity-50 inline-flex items-center gap-1"
               >
@@ -3462,6 +3536,15 @@ function CandidateDetail() {
       currentJob={jobs.find(j => j.id === c.jobId)}
       targetJob={jobs.find(j => j.id === pendingJobId)}
       candidateName={c.name}
+    />
+    <ReparseConfirmModal
+      open={reparseOpen}
+      onClose={() => setReparseOpen(false)}
+      onConfirm={doReparse}
+      currentJob={jobs.find(j => j.id === c.jobId)}
+      jobs={jobs}
+      candidateName={c.name}
+      reparsing={reparsing}
     />
     <ReviewModal
       open={reviewOpen}

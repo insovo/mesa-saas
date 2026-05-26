@@ -68,7 +68,11 @@ async function streamToBuffer(stream) {
 // 把最终结果(或错误)写入 parseTaskStore。前端轮询 GET /parse-tasks/:taskId 拿状态。
 // 关键设计:这个函数 fire-and-forget(setImmediate 调用),HTTP handler 立即返回 taskId,
 // 彻底绕过 Cloudflare 100s origin response 硬上限。
-async function runReparse(app, taskId, candidateId, model) {
+// jobIdOverride 语义:
+//   undefined → 沿用候选人当前 jobId(不改 DB)
+//   null      → 取消 JD 关联(清空 candidate.jobId,跳过 match)
+//   uuid 串   → 切到这个 JD,跑 match,并把 candidate.jobId 也同步更新
+async function runReparse(app, taskId, candidateId, model, jobIdOverride) {
   try {
     await markRunning(app, taskId);
 
@@ -79,7 +83,8 @@ async function runReparse(app, taskId, candidateId, model) {
     if (!existingCandidate.attachment) throw Object.assign(new Error("候选人无简历附件"), { statusCode: 400, code: "no_attachment" });
 
     const key = existingCandidate.attachment;
-    const jobId = existingCandidate.jobId;
+    const jobIdChanged = jobIdOverride !== undefined && jobIdOverride !== existingCandidate.jobId;
+    const jobId = jobIdOverride === undefined ? existingCandidate.jobId : jobIdOverride;
 
     // 1) R2 拉文件
     let buffer;
@@ -149,15 +154,30 @@ async function runReparse(app, taskId, candidateId, model) {
       yearsExp: parsed.yearsExp ?? existingCandidate.yearsExp,
       phone: parsed.phone ?? existingCandidate.phone,
       email: parsed.email ?? existingCandidate.email,
-      tags: Array.isArray(parsed.tags) ? parsed.tags : existingCandidate.tags,
-      skills: Array.isArray(parsed.skills) ? parsed.skills : existingCandidate.skills,
-      experience: Array.isArray(parsed.experience) ? parsed.experience : existingCandidate.experience,
-      educationHistory: Array.isArray(parsed.educationHistory) ? parsed.educationHistory : existingCandidate.educationHistory,
-      languages: parsed.languages,
+      // 列表字段保护:LLM 偶尔结构化输出抖动(summary 文本完整但 JSON 漏字段 → []),
+      // 此时保留原值避免把已有内容清空。reparse 的本意是"刷新"不是"清空"。
+      // 用户想真正清空请走 PATCH /candidates 显式更新。
+      tags: (Array.isArray(parsed.tags) && parsed.tags.length > 0) ? parsed.tags : existingCandidate.tags,
+      skills: (Array.isArray(parsed.skills) && parsed.skills.length > 0) ? parsed.skills : existingCandidate.skills,
+      experience: (Array.isArray(parsed.experience) && parsed.experience.length > 0) ? parsed.experience : existingCandidate.experience,
+      educationHistory: (Array.isArray(parsed.educationHistory) && parsed.educationHistory.length > 0) ? parsed.educationHistory : existingCandidate.educationHistory,
+      languages: (Array.isArray(parsed.languages) && parsed.languages.length > 0) ? parsed.languages : existingCandidate.languages,
       aiSummary: result.summary,
       parser: "Kimi",
       parserConfidence: 92,
     };
+    // jobId 切换:用户在 reparse 前 modal 改了投递岗位 → 同步写 DB
+    if (jobIdChanged) updateData.jobId = jobId;
+    // jobId 设为 null(取消 JD)时,清空所有 JD 相关字段
+    if (jobIdOverride === null) {
+      updateData.jdMatch = null;
+      updateData.risks = [];
+      updateData.highlights = [];
+      updateData.aiSuggestedTags = [];
+      updateData.matchedFor = [];
+      updateData.againstFor = [];
+      updateData.insights = [];
+    }
     if (match) {
       updateData.jdMatch = llmFields.jdMatch;
       updateData.risks = llmFields.risks;
@@ -326,7 +346,10 @@ export default async function resumesRoutes(app) {
       }
       const task = await createTask(app, candidateId, "reparse");
       // fire-and-forget,HTTP handler 不等
-      setImmediate(() => runReparse(app, task.id, candidateId, model));
+      // jobId 透传:前端在 reparse 前的 modal 里选/确认了 JD,这里覆盖候选人原 jobId。
+      // 注意必须用 hasOwn 区分 undefined(沿用)和 null(显式取消 JD)。
+      const jobIdOverride = Object.prototype.hasOwnProperty.call(req.body, "jobId") ? req.body.jobId : undefined;
+      setImmediate(() => runReparse(app, task.id, candidateId, model, jobIdOverride));
       return reply.code(202).send({ task });
     }
 
