@@ -39,6 +39,29 @@ function loadParsedFromSession() {
     return Array.isArray(arr) ? arr.slice(0, PARSED_MAX) : [];
   } catch { return []; }
 }
+
+// 重新解析任务(reparsing)也持久化:切页/刷新后仍能显示"解析中"+继续轮询
+// key 形如 { [candidateId]: { taskId: string, startedAt: number } }
+// parseTaskStore TTL 1 小时,5 分钟外的任务我们当超时不再轮询
+const REPARSING_SS_KEY = "mesa.upload.reparsing.v1";
+const REPARSE_TTL_MS = 5 * 60 * 1000;
+function loadReparsingFromSession() {
+  try {
+    const raw = sessionStorage.getItem(REPARSING_SS_KEY);
+    if (!raw) return {};
+    const obj = JSON.parse(raw);
+    if (!obj || typeof obj !== "object") return {};
+    const now = Date.now();
+    const fresh = {};
+    for (const [cid, info] of Object.entries(obj)) {
+      if (info && info.taskId && now - (info.startedAt || 0) < REPARSE_TTL_MS) fresh[cid] = info;
+    }
+    return fresh;
+  } catch { return {}; }
+}
+function saveReparsingToSession(map) {
+  try { sessionStorage.setItem(REPARSING_SS_KEY, JSON.stringify(map)); } catch {}
+}
 const NEW_JOB_DEFAULT = { title: "", description: "", responsibilities: [], requirements: [], nice: [], benefits: [], employment: null, salary: null, levelRange: null, yearsExpRange: null, educationRequirement: null, languageRequirement: null };
 
 // 简历收件箱 · 真实流程
@@ -77,7 +100,10 @@ export default function Upload() {
   const [departments, setDepartments] = useState([]);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [bulkAssigning, setBulkAssigning] = useState(false);     // 批量改 JD/部门 loading
-  const [reparsingIds, setReparsingIds] = useState(() => new Set()); // 触发了 reparse 的 candidate id 集合(显示 spinner)
+  // reparsing 状态持久化在 sessionStorage,初始 mount 时从存储恢复 → 切页/刷新仍显示"解析中"
+  // 形状:{ [candidateId]: { taskId, startedAt } }
+  const [reparsingMap, setReparsingMap] = useState(loadReparsingFromSession);
+  const reparsingIds = new Set(Object.keys(reparsingMap));  // 给 UI 用的 set 视图
 
   // 拉当前用户最近的候选人(含本地手动上传 + 公开链接收到的)
   // remote 优先,失败时保留 sessionStorage 兜底
@@ -118,6 +144,17 @@ export default function Upload() {
       sessionStorage.setItem(PARSED_SS_KEY, JSON.stringify(trimmed));
     } catch { /* sessionStorage full / disabled,忽略 */ }
   }, [parsed]);
+
+  // reparsingMap 改动同步写回 sessionStorage
+  useEffect(() => { saveReparsingToSession(reparsingMap); }, [reparsingMap]);
+
+  // mount 时对每个已持久化的 reparsing 任务启动轮询(切页/刷新后继续等结果)
+  useEffect(() => {
+    for (const [candidateId, info] of Object.entries(reparsingMap)) {
+      pollReparseTask(candidateId, info.taskId, info.startedAt);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);  // 只在 mount 跑一次
 
   // ─── 批量操作 helpers ────────────────────────────────────
   function toggleSelect(id) {
@@ -178,33 +215,59 @@ export default function Upload() {
     }
   }
 
+  // 单个 reparsing 任务轮询(直到 done/failed/超时,自动清状态 + refetch 拿最新 candidate)
+  function pollReparseTask(candidateId, taskId, startedAt) {
+    const tick = async () => {
+      const elapsed = Date.now() - startedAt;
+      if (elapsed > REPARSE_TTL_MS) {
+        setReparsingMap((prev) => { const { [candidateId]: _, ...rest } = prev; return rest; });
+        refetchOwned(true);
+        return;
+      }
+      try {
+        const { data } = await api.get(`/resumes/parse-tasks/${taskId}`);
+        const task = data.task;
+        if (task.status === "done" || task.status === "failed") {
+          setReparsingMap((prev) => { const { [candidateId]: _, ...rest } = prev; return rest; });
+          await refetchOwned(true);
+          if (task.status === "failed") toast(`解析失败: ${task.error?.message || ""}`.slice(0, 200), "error");
+        } else {
+          setTimeout(tick, 2000);
+        }
+      } catch (e) {
+        if (e.response?.status === 404) {
+          setReparsingMap((prev) => { const { [candidateId]: _, ...rest } = prev; return rest; });
+          refetchOwned(true);
+        } else {
+          setTimeout(tick, 5000);
+        }
+      }
+    };
+    tick();
+  }
+
   // 批量 / 单个解析:复用 reparse 异步任务模式(POST /resumes/parse { candidateId } → 后台跑)
-  // 触发后立即 toast,5s 自动 refetch(给 Kimi 时间完成),已解析的 parser 字段会从 null 变 "Kimi"
+  // 2026-05-26 改造: 拿 taskId 写入 sessionStorage,即使用户切页/刷新也能继续轮询 task 直到完成
   async function onReparse(ids) {
     const toReparse = Array.from(ids);
     if (toReparse.length === 0) return;
-    setReparsingIds((prev) => new Set([...prev, ...toReparse]));
     try {
-      await Promise.all(toReparse.map((id) => api.post("/resumes/parse", { candidateId: id })));
-      toast(`已触发 ${toReparse.length} 份简历重新解析(后台处理 5-60 秒,会自动刷新)`, "success");
-      if (toReparse.length > 1) setSelectedIds(new Set());
-      // 5s 后 refetch,以及 30s 兜底再 refetch 一次(覆盖慢 Kimi)
-      setTimeout(() => refetchOwned(true), 5000);
-      setTimeout(() => {
-        refetchOwned(true);
-        setReparsingIds((prev) => {
-          const next = new Set(prev);
-          toReparse.forEach((id) => next.delete(id));
-          return next;
-        });
-      }, 30000);
-    } catch (e) {
-      toast(e.response?.data?.message || "触发解析失败", "error");
-      setReparsingIds((prev) => {
-        const next = new Set(prev);
-        toReparse.forEach((id) => next.delete(id));
+      // 串行触发(并行触发可能让 Kimi 一次性炸 5+ 请求,稳一点)— 拿到每个的 taskId
+      const tasks = await Promise.all(toReparse.map((id) =>
+        api.post("/resumes/parse", { candidateId: id }).then((r) => ({ candidateId: id, taskId: r.data.task.id, startedAt: Date.now() }))
+      ));
+      // 一次性写入 reparsingMap
+      setReparsingMap((prev) => {
+        const next = { ...prev };
+        for (const t of tasks) next[t.candidateId] = { taskId: t.taskId, startedAt: t.startedAt };
         return next;
       });
+      toast(`已触发 ${tasks.length} 份简历重新解析(后台处理中,会自动刷新)`, "success");
+      if (toReparse.length > 1) setSelectedIds(new Set());
+      // 立刻给每个任务启动轮询
+      for (const t of tasks) pollReparseTask(t.candidateId, t.taskId, t.startedAt);
+    } catch (e) {
+      toast(e.response?.data?.message || "触发解析失败", "error");
     }
   }
 
