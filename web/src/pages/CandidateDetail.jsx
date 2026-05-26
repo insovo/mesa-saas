@@ -36,6 +36,7 @@ import { api, resources, LONG_TIMEOUT } from "../lib/api.js";
 import { getUser } from "../lib/auth.js";
 import { LiquidLoader } from "../components/Primitives.jsx";
 import ReparseConfirmModal from "../components/ReparseConfirmModal.jsx";
+import MarkdownBullets from "../components/MarkdownBullets.jsx";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1) 设计常量 (内联自 web/src/lib/constants.js)
@@ -335,25 +336,7 @@ function Empty({ icon = "inbox", title = "暂无数据", desc }) {
   );
 }
 
-// 渲染 matchAgainstJob 输出的 markdown 无序列表字符串(只支持 - / • / · / * 开头的 bullet)
-function MarkdownBullets({ md, bulletColor = "#422AFB", textSize = "text-sm" }) {
-  if (typeof md !== "string" || !md.trim()) return null;
-  const items = md
-    .split("\n")
-    .map((l) => l.replace(/^\s*[-•·*]\s+/, "").trim())
-    .filter(Boolean);
-  if (items.length === 0) return null;
-  return (
-    <ul className="space-y-2 mt-3">
-      {items.map((it, i) => (
-        <li key={i} className={`${textSize} text-[#1B254B] flex items-start gap-2 leading-relaxed`}>
-          <span style={{ color: bulletColor }} className="mt-1 shrink-0 font-bold">•</span>
-          <span className="whitespace-pre-wrap">{it}</span>
-        </li>
-      ))}
-    </ul>
-  );
-}
+// MarkdownBullets 已抽到 ../components/MarkdownBullets.jsx (SharedCandidate 也用)
 
 // 候选人未关联 JD / 关联了但 LLM 还没产数据时的引导卡片
 function NeedJobPlaceholder({ hasJob, onPickJob, fieldName }) {
