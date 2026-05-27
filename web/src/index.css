@@ -19,6 +19,13 @@
   --gray-700: #707EAE;
   --border-default: #E9ECEF;
   --shadow-card: 14px 17px 40px 4px rgba(112, 144, 176, 0.08);
+
+  /* shadcn/ui chart palette — 对齐 brand + KPI 五卡色,Recharts 通过 var(--chart-N) 引用 */
+  --chart-1: #422AFB;  /* brand 紫蓝 — newResumes */
+  --chart-2: #22C55E;  /* emerald — candidates */
+  --chart-3: #F59E0B;  /* amber — activeJobs */
+  --chart-4: #3B82F6;  /* sky — interviewing */
+  --chart-5: #8B5CF6;  /* violet — onboarded */
 }
 
 html, body, #root {
