@@ -699,15 +699,16 @@ export default async function reportsRoutes(app) {
           { actualHireDate: { gte: start, lte: end } },
         ],
       },
-      select: { id: true, candidateId: true, plannedHireDate: true, actualHireDate: true, stage: true },
+      select: { id: true, candidateId: true, plannedHireDate: true, actualHireDate: true, stage: true, dropReason: true },
     });
 
     const total = employees.length;
     const onboarded = employees.filter((e) => e.actualHireDate).length;
-    const dropped = employees.filter(
+    const droppedList = employees.filter(
       (e) => e.stage === "已离职" ||
         (e.plannedHireDate && !e.actualHireDate && new Date(e.plannedHireDate) < new Date()),
-    ).length;
+    );
+    const dropped = droppedList.length;
     const pending = total - onboarded - dropped;
 
     const cycles = employees
@@ -715,13 +716,22 @@ export default async function reportsRoutes(app) {
       .map((e) => (new Date(e.actualHireDate) - new Date(e.plannedHireDate)) / 86400000);
     const avgCycleDays = cycles.length ? cycles.reduce((a, b) => a + b, 0) / cycles.length : null;
 
-    // 流失原因 — 当前系统无字段,占位 (设计文档二期 schema 加)
-    const dropReasons = [
-      { reason: "另选 Offer", count: Math.round(dropped * 0.55) },
-      { reason: "薪资不达预期", count: Math.round(dropped * 0.25) },
-      { reason: "个人原因", count: Math.round(dropped * 0.12) },
-      { reason: "其它", count: Math.max(0, dropped - Math.round(dropped * 0.92)) },
-    ].filter((r) => r.count > 0);
+    // 流失原因 — 优先用真实 employee.dropReason 字段,缺失时 fallback 估算
+    const realReasons = new Map();
+    let unfilledCount = 0;
+    for (const e of droppedList) {
+      const r = e.dropReason?.trim();
+      if (r) {
+        realReasons.set(r, (realReasons.get(r) || 0) + 1);
+      } else {
+        unfilledCount++;
+      }
+    }
+    let dropReasons = Array.from(realReasons, ([reason, count]) => ({ reason, count }));
+    if (unfilledCount > 0) {
+      dropReasons.push({ reason: "未填写", count: unfilledCount });
+    }
+    dropReasons.sort((a, b) => b.count - a.count);
 
     return {
       summary: {
