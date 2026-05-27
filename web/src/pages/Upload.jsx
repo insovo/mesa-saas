@@ -284,6 +284,7 @@ export default function Upload() {
   function onPick(e) {
     const fs = Array.from(e.target.files || []);
     setFiles((prev) => [...prev, ...fs]);
+    e.target.value = "";
   }
 
   // 2s 一次轮询 parse-task,直到 done/failed,或超过 maxAttempts(180 次 = 6 分钟,够 Kimi 任何慢 case)
