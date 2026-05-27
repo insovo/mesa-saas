@@ -3280,7 +3280,7 @@ function CandidateDetail() {
       </aside>
 
       {/* ╔═══ MIDDLE COLUMN: Stage controls + AI + Interview + Job overview + 经历 / 项目 / 教育 / 备注 ═══╗ */}
-      <div className="flex-1 min-w-0 space-y-4">
+      <div className="flex-1 min-w-0 space-y-4 xl:sticky xl:top-4 xl:self-start xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto xl:pr-1 xl:-mr-1">
 
         {/* === Top control row: stage + view CTC + job === */}
         <Card className="px-4 md:px-5 py-3">

@@ -241,7 +241,7 @@ export default function EmployeeDetail() {
 
       <div className="grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)_360px] gap-5 items-start">
         {/* ===== 左列 ===== */}
-        <div className="space-y-4 lg:sticky lg:top-4">
+        <div className="space-y-4 lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto lg:pr-1 lg:-mr-1">
           <Card className="p-5">
             <div className="flex flex-col items-center text-center">
               <Avatar name={emp.name} animal={emp.animal} src={emp.avatar} size={88} />
@@ -352,7 +352,7 @@ export default function EmployeeDetail() {
         </div>
 
         {/* ===== 中列 ===== */}
-        <div className="space-y-5 min-w-0">
+        <div className="space-y-5 min-w-0 lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto lg:pr-1 lg:-mr-1">
           <Card className="p-6">
             <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
               <h3 className="title-card flex items-center gap-2">
@@ -412,7 +412,7 @@ export default function EmployeeDetail() {
         </div>
 
         {/* ===== 右列 ===== */}
-        <div className="space-y-4 lg:sticky lg:top-4">
+        <div className="space-y-4 lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto lg:pr-1 lg:-mr-1">
           <Card className="p-5">
             <div className="flex items-center gap-1 mb-5 border-b border-gray-100">
               <button
