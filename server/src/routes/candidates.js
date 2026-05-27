@@ -3,6 +3,10 @@
 
 import { whereByIdOrExternal } from "../lib/idLookup.js";
 import { withDerivedCandidate as withDerived } from "../lib/derived.js";
+import {
+  candidateToEmployeeData,
+  mapStatusToStage,
+} from "../lib/candidateToEmployee.js";
 
 const CANDIDATE_BODY = {
   type: "object",
@@ -165,7 +169,25 @@ export default async function candidatesRoutes(app) {
       const updated = await app.prisma.candidate.update({
         where: { id },
         data,
+        include: { department: true },
       });
+      // 自动转化:candidate.status 切到「待入职」/「已入职」时, 自动创建 employee
+      // 策略:仅在 employee 不存在时 create。已存在则**不动 stage**(尊重 HR 已推进的进度),
+      // 避免把推进到「入职当天/试用期」的人回退到「待入职」。
+      const nextStage = mapStatusToStage(updated.status);
+      if (nextStage) {
+        try {
+          const existing = await app.prisma.employee.findUnique({
+            where: { candidateId: updated.id },
+          });
+          if (!existing) {
+            const empData = candidateToEmployeeData(updated);
+            if (empData) await app.prisma.employee.create({ data: empData });
+          }
+        } catch (e) {
+          app.log?.warn({ err: e?.message, candidateId: updated.id }, "auto-create employee failed");
+        }
+      }
       return { candidate: withDerived(updated) };
     } catch (err) {
       if (err.code === "P2025") return reply.code(404).send({ error: "not_found" });
