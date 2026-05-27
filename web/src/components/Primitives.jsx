@@ -400,7 +400,12 @@ export function Modal({ open, onClose, children, maxWidth = "max-w-2xl" }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-navy-900/30 backdrop-blur-sm" onClick={onClose}></div>
-      <div className={`relative w-full ${maxWidth} bg-white rounded-card shadow-card max-h-[90vh] overflow-auto`}>
+      {/* dvh = 浏览器实际可见视窗高度(扣除地址栏/书签栏/扩展工具条等 chrome) */}
+      {/* fallback 到 90vh,避免老浏览器不识别 dvh 时 modal 无高度限制 */}
+      <div
+        className={`relative w-full ${maxWidth} bg-white rounded-card shadow-card overflow-y-auto`}
+        style={{ maxHeight: "min(90vh, calc(100dvh - 2rem))" }}
+      >
         {children}
       </div>
     </div>
