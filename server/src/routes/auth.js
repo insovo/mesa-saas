@@ -26,6 +26,7 @@ export default async function authRoutes(app) {
       sub: user.id,
       email: user.email,
       role: user.role,
+      permissions: user.permissions || [],
     });
     return {
       token,
@@ -34,6 +35,7 @@ export default async function authRoutes(app) {
         email: user.email,
         name: user.name,
         role: user.role,
+        permissions: user.permissions || [],
       },
     };
   });
@@ -42,7 +44,7 @@ export default async function authRoutes(app) {
     const userId = req.user.sub;
     const user = await app.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, email: true, name: true, role: true, createdAt: true },
+      select: { id: true, email: true, name: true, role: true, permissions: true, createdAt: true },
     });
     return { user };
   });

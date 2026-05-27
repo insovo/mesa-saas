@@ -18,6 +18,7 @@ import Interviews from "./pages/Interviews.jsx";
 import Reports from "./pages/Reports.jsx";
 import SharedCandidate from "./pages/SharedCandidate.jsx";
 import PublicUpload from "./pages/PublicUpload.jsx";
+import Users from "./pages/Users.jsx";
 
 export default function App() {
   const navigate = useNavigate();
@@ -54,6 +55,7 @@ export default function App() {
         <Route path="/departments" element={<Departments />} />
         <Route path="/interviews" element={<Interviews />} />
         <Route path="/reports" element={<Reports />} />
+        <Route path="/users" element={<Users />} />
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

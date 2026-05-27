@@ -63,6 +63,10 @@ export const resources = {
     update: (id, data) => api.patch(`/employees/${id}`, data).then((r) => r.data.employee),
     remove: (id) => api.delete(`/employees/${id}`),
   },
+  users: {
+    list: () => api.get("/users").then((r) => r.data),
+    update: (id, data) => api.patch(`/users/${id}`, data).then((r) => r.data.user),
+  },
   departments: {
     list: () => api.get("/departments").then((r) => r.data),
     detail: (id) => api.get(`/departments/${id}`).then((r) => r.data.department),

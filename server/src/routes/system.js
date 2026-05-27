@@ -22,17 +22,28 @@ const SET_BODY = {
   additionalProperties: false,
 };
 
-function adminOnly(req, reply, done) {
-  if (req.user?.role !== "ADMIN") {
-    reply.code(403).send({ error: "forbidden", message: "需要管理员权限" });
-    return;
+// LLM 系统配置:允许 ADMIN, 或被 admin 显式授权 'system.llm_config' 的普通用户
+// 每次请求从 DB 拉最新 permissions,避免 JWT 过期前用户被收回权限仍可调用
+async function adminOrLlmPerm(req, reply) {
+  if (!req.user) return reply.code(401).send({ error: "unauthorized" });
+  if (req.user.role === "ADMIN") return;
+  try {
+    const u = await req.server.prisma.user.findUnique({
+      where: { id: req.user.sub },
+      select: { permissions: true },
+    });
+    if (!u || !(u.permissions || []).includes("system.llm_config")) {
+      return reply.code(403).send({ error: "forbidden", message: "需要 LLM 系统配置权限" });
+    }
+  } catch (err) {
+    req.server.log?.error({ err }, "system perm check failed");
+    return reply.code(500).send({ error: "internal" });
   }
-  done();
 }
 
 export default async function systemRoutes(app) {
   app.addHook("preHandler", app.authenticate);
-  app.addHook("preHandler", adminOnly);
+  app.addHook("preHandler", adminOrLlmPerm);
 
   // 列出全部 settings(api_key 已 mask;prompt 长内容也返回明文便于 admin 编辑)
   app.get("/settings", async () => ({ items: await listAll() }));

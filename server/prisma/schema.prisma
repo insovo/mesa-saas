@@ -29,6 +29,7 @@ model User {
   passwordHash String   @map("password_hash")
   name         String?
   role         Role     @default(RECRUITER)
+  permissions  String[] @default([])  // 细粒度能力,如 ['system.llm_config'] — admin 可在 /users 单独勾给非 admin
   avatar       String?    // 头像 URL,登录用户评价时自动带出
   jobTitle     String?  @map("job_title")  // 内部角色显示(如 HR · 负责人 / 技术面试官 / HRBP)
   createdAt    DateTime @default(now()) @map("created_at")

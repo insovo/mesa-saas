@@ -18,6 +18,7 @@ const ITEMS = [
   { to: "/departments", label: "部门管理", icon: "building-2", adminOnly: true },
   { to: "/interviews", label: "面试安排", icon: "calendar" },
   { to: "/reports", label: "数据报表", icon: "bar-chart-3" },
+  { to: "/users", label: "用户与权限", icon: "shield-check", adminOnly: true },
 ];
 
 const PROVIDER_LABELS = {
@@ -30,6 +31,8 @@ const COLLAPSED_KEY = "mesa.sidebar.collapsed";
 export default function Sidebar({ user, mobileOpen = false, onMobileClose, collapsed, onToggleCollapsed }) {
   const location = useLocation();
   const isAdmin = user?.role === "ADMIN";
+  const perms = user?.permissions || [];
+  const canLlmConfig = isAdmin || perms.includes("system.llm_config");
   const items = ITEMS.filter((it) => !it.adminOnly || isAdmin);
   const [llm, setLlm] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -53,11 +56,11 @@ export default function Sidebar({ user, mobileOpen = false, onMobileClose, colla
     // eslint-disable-next-line
   }, []);
 
-  // admin 打开 modal 时拉 settings
+  // admin 或被授权 system.llm_config 的用户打开 modal 时拉 settings
   useEffect(() => {
-    if (!modalOpen || !isAdmin) return;
+    if (!modalOpen || !canLlmConfig) return;
     api.get("/system/settings").then((r) => setAdminSettings(r.data.items)).catch(() => setAdminSettings([]));
-  }, [modalOpen, isAdmin]);
+  }, [modalOpen, canLlmConfig]);
 
   function onPickModel(modelId) {
     setSelectedModel(modelId);
@@ -259,7 +262,7 @@ export default function Sidebar({ user, mobileOpen = false, onMobileClose, colla
             })}
           </ul>
 
-          {isAdmin && (
+          {canLlmConfig && (
             <>
               {!collapsed && (
                 <>
