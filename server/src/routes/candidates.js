@@ -137,6 +137,7 @@ export default async function candidatesRoutes(app) {
       include: {
         job: { select: { id: true, title: true, dept: true } },
         department: { select: { id: true, name: true, code: true } },
+        interviews: { orderBy: { scheduledAt: "desc" } },
       },
     });
     if (!candidate) return reply.code(404).send({ error: "not_found" });

@@ -78,7 +78,16 @@ export default async function interviewsRoutes(app) {
       if (to) where.scheduledAt.lte = new Date(to);
     }
     const [items, total] = await Promise.all([
-      app.prisma.interview.findMany({ where, orderBy: { scheduledAt: "asc" }, skip, take }),
+      app.prisma.interview.findMany({
+        where,
+        orderBy: { scheduledAt: "asc" },
+        skip,
+        take,
+        include: {
+          candidate: { select: { id: true, name: true } },
+          job: { select: { id: true, title: true } },
+        },
+      }),
       app.prisma.interview.count({ where }),
     ]);
     return { items, total, skip, take };

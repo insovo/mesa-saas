@@ -110,7 +110,7 @@ export default function Interviews() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-bold text-navy-700">
-                        {iv.candidateName || "—"} · {iv.jobTitle || "—"}
+                        {iv.candidate?.name || iv.candidateName || "—"} · {iv.job?.title || iv.jobTitle || "—"}
                       </p>
                       <p className="text-xs text-gray-700 mt-1">
                         {iv.round || "—"} · 面试官 {iv.interviewer || "—"}
