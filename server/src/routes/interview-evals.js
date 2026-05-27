@@ -214,7 +214,7 @@ export default async function interviewEvalRoutes(app) {
             prefill:       { type: "boolean" },                        // 默认 true: 从 candidate/interview 拉取预填
             position:      { type: ["string", "null"], maxLength: 200 },
             department:    { type: ["string", "null"], maxLength: 100 },
-            region:        { type: ["string", "null"], maxLength: 100 },
+            region:        { type: ["string", "null"], maxLength: 200 },
             currentCity:   { type: ["string", "null"], maxLength: 100 },
             languageStrength:      { type: ["string", "null"], maxLength: 200 },
             timezoneCollaboration: { type: ["string", "null"], maxLength: 100 },
@@ -407,7 +407,7 @@ export default async function interviewEvalRoutes(app) {
         type: "object",
         properties: {
           position:              { type: ["string", "null"], maxLength: 200 },
-          region:                { type: ["string", "null"], maxLength: 100 },
+          region:                { type: ["string", "null"], maxLength: 200 },
           interviewDate:         { type: ["string", "null"], format: "date-time" },
           interviewer:           { type: ["string", "null"], maxLength: 100 },
           languageStrength:      { type: ["string", "null"], maxLength: 200 },

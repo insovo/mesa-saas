@@ -227,14 +227,17 @@ function RecommendChip({ recommendation }) {
   return <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${tone}`}>{recommendation}</span>;
 }
 
-// 通用 Combobox: 自由输入 + 下拉候选(支持分组与多选去重)
+// 通用 Combobox: chip-style 多选(value 内部仍是「、」分隔字符串,UI 是 tag 化)
+// 用户体验:已选项作为 chip 渲染,× 可移除,后跟自由输入区。无需用户手动输入分隔符。
 // - groups: [{group, items}] 分组候选 (优先于 options)
 // - options: string[] 单层候选
-// - multi=true 时 value 用「、」分隔,点击候选 toggle 加/移
-// - multi=false 时点击候选 = 替换 value + 关闭浮层
-function Combobox({ value, onChange, groups, options, multi = false, placeholder, disabled, maxLength = 200 }) {
+// - 始终多选 toggle;value 通过 join("、") 持久化兼容后端 string 字段
+function Combobox({ value, onChange, groups, options, placeholder, disabled, maxLength = 200 }) {
   const [open, setOpen] = useState(false);
+  const [inputText, setInputText] = useState("");
+  const isComposingRef = useRef(false);
   const wrapRef = useRef(null);
+  const inputRef = useRef(null);
 
   useEffect(() => {
     if (!open) return;
@@ -245,43 +248,48 @@ function Combobox({ value, onChange, groups, options, multi = false, placeholder
     return () => document.removeEventListener("mousedown", onDocMouseDown);
   }, [open]);
 
-  // 已选集合(用于 ✓ 标记与多选去重)
-  const selected = useMemo(() => {
+  // value 字符串 → 已选数组(保序)
+  const selectedList = useMemo(() => {
     const v = (value || "").trim();
-    if (!v) return new Set();
-    if (multi) return new Set(v.split(/[、,，]\s*/).map((s) => s.trim()).filter(Boolean));
-    return new Set([v]);
-  }, [value, multi]);
+    if (!v) return [];
+    return v.split(/[、,,]\s*/).map((s) => s.trim()).filter(Boolean);
+  }, [value]);
+  const selectedSet = useMemo(() => new Set(selectedList), [selectedList]);
 
-  // 过滤候选 — 多选用最后一段过滤,单选用整个 value
-  const filterKeyword = useMemo(() => {
-    const v = value || "";
-    if (multi) return v.split(/[、,，]/).pop().trim();
-    return v.trim();
-  }, [value, multi]);
+  function commit(nextList) {
+    onChange(nextList.join("、").slice(0, maxLength));
+  }
+  function addItem(item) {
+    const cleaned = item.trim();
+    if (!cleaned) return;
+    if (selectedSet.has(cleaned)) return;
+    commit([...selectedList, cleaned]);
+    setInputText("");
+  }
+  function removeItem(item) {
+    commit(selectedList.filter((s) => s !== item));
+  }
+  function toggleItem(item) {
+    if (selectedSet.has(item)) removeItem(item);
+    else addItem(item);
+  }
 
+  function handleKeyDown(e) {
+    if (isComposingRef.current) return; // IME 中文输入中,Enter 是确认而非提交
+    if ((e.key === "Enter" || e.key === "、" || e.key === ",") && inputText.trim()) {
+      e.preventDefault();
+      addItem(inputText);
+    } else if (e.key === "Backspace" && inputText === "" && selectedList.length > 0) {
+      e.preventDefault();
+      removeItem(selectedList[selectedList.length - 1]);
+    }
+  }
+
+  const filterKeyword = inputText.trim();
   function matches(item) {
     if (!filterKeyword) return true;
     return item.toLowerCase().includes(filterKeyword.toLowerCase());
   }
-
-  function pickItem(item) {
-    if (disabled) return;
-    if (multi) {
-      if (selected.has(item)) {
-        const next = Array.from(selected).filter((s) => s !== item).join("、");
-        onChange(next.slice(0, maxLength));
-      } else {
-        const parts = Array.from(selected);
-        parts.push(item);
-        onChange(parts.join("、").slice(0, maxLength));
-      }
-    } else {
-      onChange(item.slice(0, maxLength));
-      setOpen(false);
-    }
-  }
-
   const visibleGroups = groups
     ? groups.map((g) => ({ ...g, items: g.items.filter(matches) })).filter((g) => g.items.length > 0)
     : null;
@@ -289,13 +297,13 @@ function Combobox({ value, onChange, groups, options, multi = false, placeholder
   const hasResult = visibleGroups ? visibleGroups.length > 0 : (visibleOptions && visibleOptions.length > 0);
 
   function renderItem(item) {
-    const isSelected = selected.has(item);
+    const isSelected = selectedSet.has(item);
     return (
       <button
         key={item}
         type="button"
         onMouseDown={(e) => e.preventDefault()}
-        onClick={() => pickItem(item)}
+        onClick={() => { toggleItem(item); inputRef.current?.focus(); }}
         className={`w-full text-left px-3 py-1.5 text-sm flex items-center justify-between transition ${
           isSelected ? "text-brand font-bold bg-lightPrimary/60 hover:bg-lightPrimary" : "text-navy-700 hover:bg-lightPrimary/40"
         }`}
@@ -308,22 +316,50 @@ function Combobox({ value, onChange, groups, options, multi = false, placeholder
 
   return (
     <div className="relative" ref={wrapRef}>
-      <input
-        type="text"
-        value={value || ""}
-        onChange={(e) => { onChange(e.target.value); if (!open) setOpen(true); }}
-        onFocus={() => setOpen(true)}
-        onClick={() => setOpen(true)}
-        disabled={disabled}
-        placeholder={placeholder}
-        maxLength={maxLength}
-        className="flex h-12 w-full items-center rounded-xl border border-gray-200 bg-white p-3 pr-9 text-sm text-navy-700 outline-none focus:border-brand transition-colors disabled:bg-gray-100"
-      />
+      <div
+        onClick={() => { if (!disabled) { setOpen(true); inputRef.current?.focus(); } }}
+        className={`flex flex-wrap items-center gap-1.5 min-h-12 rounded-xl border bg-white px-2 py-1.5 pr-9 text-sm transition-colors ${
+          disabled ? "border-none bg-gray-100" : "border-gray-200 focus-within:border-brand cursor-text"
+        }`}
+      >
+        {selectedList.map((item) => (
+          <span
+            key={item}
+            className="inline-flex items-center gap-1 pl-2.5 pr-1 py-0.5 rounded-full bg-lightPrimary text-brand text-xs font-bold border border-brand/20"
+          >
+            {item}
+            {!disabled && (
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={(e) => { e.stopPropagation(); removeItem(item); }}
+                className="w-4 h-4 rounded-full hover:bg-brand hover:text-white flex items-center justify-center transition"
+                aria-label={`移除 ${item}`}
+              >
+                <I name="x" size={10} />
+              </button>
+            )}
+          </span>
+        ))}
+        <input
+          ref={inputRef}
+          type="text"
+          value={inputText}
+          onChange={(e) => { setInputText(e.target.value); if (!open) setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={handleKeyDown}
+          onCompositionStart={() => { isComposingRef.current = true; }}
+          onCompositionEnd={() => { isComposingRef.current = false; }}
+          disabled={disabled}
+          placeholder={selectedList.length === 0 ? placeholder : ""}
+          className="flex-1 min-w-[80px] h-7 px-1 bg-transparent outline-none text-navy-700 placeholder:text-gray-400 disabled:bg-transparent"
+        />
+      </div>
       {!disabled && (
         <button
           type="button"
-          onMouseDown={(e) => { e.preventDefault(); setOpen((o) => !o); }}
-          className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-400"
+          onMouseDown={(e) => { e.preventDefault(); setOpen((o) => !o); inputRef.current?.focus(); }}
+          className="absolute right-2 top-2 w-7 h-7 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-400"
           aria-label={open ? "收起" : "展开候选"}
         >
           <I name={open ? "chevron-up" : "chevron-down"} size={14} />
@@ -331,8 +367,18 @@ function Combobox({ value, onChange, groups, options, multi = false, placeholder
       )}
       {open && !disabled && (
         <div className="absolute z-20 left-0 right-0 top-full mt-1 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-card py-1">
-          {!hasResult && (
-            <p className="px-3 py-2 text-xs text-gray-400">无匹配候选,可继续手动输入</p>
+          {!hasResult && filterKeyword && (
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => addItem(filterKeyword)}
+              className="w-full text-left px-3 py-2 text-sm text-brand hover:bg-lightPrimary/40 flex items-center gap-2"
+            >
+              <I name="plus" size={14} /> 添加自定义:「{filterKeyword}」
+            </button>
+          )}
+          {!hasResult && !filterKeyword && (
+            <p className="px-3 py-2 text-xs text-gray-400">无候选,可输入回车添加</p>
           )}
           {visibleGroups && visibleGroups.map((g) => (
             <div key={g.group}>
@@ -341,15 +387,12 @@ function Combobox({ value, onChange, groups, options, multi = false, placeholder
             </div>
           ))}
           {visibleOptions && visibleOptions.map(renderItem)}
-          {multi && (
-            <p className="text-[10px] text-gray-400 px-3 py-1.5 border-t border-gray-100">提示:可多选,「、」分隔。点已选项可取消。</p>
-          )}
+          <p className="text-[10px] text-gray-400 px-3 py-1.5 border-t border-gray-100">点候选 toggle · 回车添加自定义 · Backspace 删最后一个</p>
         </div>
       )}
     </div>
   );
 }
-
 // ─── 主页面 ─────────────────────────────────────────────────────
 
 const STATE_LOADING = "loading";
@@ -659,10 +702,9 @@ export default function PublicInterviewEval() {
                         markDirty();
                       }}
                       groups={REGION_GROUPS}
-                      multi={false}
-                      placeholder="选择或输入,如「德国」"
+                      placeholder="选择或输入(可多个),如「德国、波兰」"
                       disabled={readonly}
-                      maxLength={100}
+                      maxLength={200}
                     />
                   </div>
                 );
@@ -678,8 +720,7 @@ export default function PublicInterviewEval() {
                         markDirty();
                       }}
                       options={LANGUAGE_QUICK_PICKS}
-                      multi
-                      placeholder="可多选,如「中文流利、英语流利」"
+                      placeholder="点击或输入(可多个),如「中文流利、英语流利」"
                       disabled={readonly}
                       maxLength={200}
                     />
@@ -763,49 +804,79 @@ export default function PublicInterviewEval() {
               { key: "risks", label: "主要风险", placeholder: "请记录稳定性、能力短板、到岗风险或其他疑虑" },
               { key: "followUpQuestions", label: "建议追问/复试方向", placeholder: "如需复试，建议重点验证的问题" },
               { key: "finalOpinion", label: "最终意见", required: true, placeholder: "请结合评分与事实，写出简洁结论", quickPicks: FINAL_OPINION_QUICK_PICKS },
-            ].map((f) => (
-              <div key={f.key}>
-                <label className="text-sm text-navy-700 font-bold ml-3 block mb-2">
-                  {f.label}
-                  {f.required && <RequiredMark />}
-                </label>
-                {f.quickPicks && !readonly && (
-                  <div className="flex flex-wrap gap-1.5 mb-2 ml-3">
-                    {f.quickPicks.map((p) => (
-                      <button
-                        key={p.label}
-                        type="button"
-                        onClick={() => {
-                          setForm((prev) => {
-                            const cur = (prev[f.key] || "").trim();
-                            const next = cur ? `${cur}\n${p.text}` : p.text;
-                            return { ...prev, [f.key]: next.slice(0, 500) };
-                          });
-                          markDirty();
-                        }}
-                        className="px-2.5 py-1 rounded-full text-[11px] bg-lightPrimary text-brand hover:bg-brand hover:text-white transition border border-brand/20"
-                        title="点击追加到内容末尾"
-                      >
-                        {p.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <textarea
-                  value={form[f.key] || ""}
-                  disabled={readonly}
-                  onChange={(e) => {
-                    setForm((prev) => ({ ...prev, [f.key]: e.target.value }));
-                    markDirty();
-                  }}
-                  placeholder={f.placeholder}
-                  rows={3}
-                  maxLength={500}
-                  className="w-full rounded-xl border border-gray-200 p-3 text-sm text-navy-700 outline-none focus:border-brand bg-white resize-y disabled:bg-gray-100"
-                />
-                <p className="text-[11px] text-gray-500 mt-1 text-right">{(form[f.key] || "").length} / 500</p>
-              </div>
-            ))}
+            ].map((f) => {
+              // 最终意见用精美卡片 — 视觉等级高于其他 3 段,吸引面试官完成必填项
+              const isFinal = f.required;
+              const wrapperCls = isFinal
+                ? "relative rounded-2xl p-5 bg-gradient-to-br from-lightPrimary via-white to-amber-50/40 ring-2 ring-brand/30 shadow-card/30 overflow-hidden"
+                : "";
+              const textareaCls = isFinal
+                ? "w-full rounded-xl border-2 border-brand/30 p-3 text-sm text-navy-700 outline-none focus:border-brand bg-white resize-y disabled:bg-gray-100"
+                : "w-full rounded-xl border border-gray-200 p-3 text-sm text-navy-700 outline-none focus:border-brand bg-white resize-y disabled:bg-gray-100";
+              return (
+                <div key={f.key} className={wrapperCls}>
+                  {isFinal && (
+                    <div className="absolute -right-12 -top-12 w-32 h-32 rounded-full bg-brand-gradient opacity-10 blur-2xl pointer-events-none" />
+                  )}
+                  {isFinal ? (
+                    <div className="relative flex items-center gap-2.5 mb-1">
+                      <div className="w-9 h-9 rounded-full bg-brand-gradient text-white flex items-center justify-center shrink-0 shadow">
+                        <I name="sparkles" size={16} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-base font-bold text-navy-700 flex items-center gap-1">
+                          {f.label}
+                          <RequiredMark />
+                        </h4>
+                        <p className="text-[11px] text-gray-700">面试官的核心结论 · 决定候选人是否进入下一轮</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <label className="text-sm text-navy-700 font-bold ml-3 block mb-2">
+                      {f.label}
+                      {f.required && <RequiredMark />}
+                    </label>
+                  )}
+                  {f.quickPicks && !readonly && (
+                    <div className={`relative flex flex-wrap gap-1.5 ${isFinal ? "mt-3 mb-3" : "mb-2 ml-3"}`}>
+                      {f.quickPicks.map((p) => (
+                        <button
+                          key={p.label}
+                          type="button"
+                          onClick={() => {
+                            setForm((prev) => {
+                              const cur = (prev[f.key] || "").trim();
+                              const next = cur ? `${cur}\n${p.text}` : p.text;
+                              return { ...prev, [f.key]: next.slice(0, 500) };
+                            });
+                            markDirty();
+                          }}
+                          className="px-2.5 py-1 rounded-full text-[11px] bg-white text-brand hover:bg-brand hover:text-white transition border border-brand/30 font-bold shadow-sm"
+                          title="点击追加到内容末尾"
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <textarea
+                    value={form[f.key] || ""}
+                    disabled={readonly}
+                    onChange={(e) => {
+                      setForm((prev) => ({ ...prev, [f.key]: e.target.value }));
+                      markDirty();
+                    }}
+                    placeholder={f.placeholder}
+                    rows={isFinal ? 4 : 3}
+                    maxLength={500}
+                    className={`relative ${textareaCls}`}
+                  />
+                  <p className={`relative text-[11px] mt-1 text-right ${isFinal ? "text-brand/70" : "text-gray-500"}`}>
+                    {(form[f.key] || "").length} / 500
+                  </p>
+                </div>
+              );
+            })}
           </div>
         </Card>
 
