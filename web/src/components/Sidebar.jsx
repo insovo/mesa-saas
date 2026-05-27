@@ -259,29 +259,33 @@ export default function Sidebar({ user, mobileOpen = false, onMobileClose, colla
             })}
           </ul>
 
-          {!collapsed && (
+          {isAdmin && (
             <>
-              <div className="mt-7 mx-9 h-px bg-gray-200"></div>
-              <div className="px-9 mt-5 mb-3 text-[11px] tracking-wide font-bold text-gray-600">AI 配置</div>
+              {!collapsed && (
+                <>
+                  <div className="mt-7 mx-9 h-px bg-gray-200"></div>
+                  <div className="px-9 mt-5 mb-3 text-[11px] tracking-wide font-bold text-gray-600">AI 配置</div>
+                </>
+              )}
+              <button
+                onClick={() => setModalOpen(true)}
+                className={`
+                  ${collapsed ? "md:mx-3 md:px-2 md:py-2 md:justify-center" : "mx-7 px-3 py-2"}
+                  rounded-xl bg-lightPrimary flex items-center gap-2 hover:ring-2 hover:ring-brand/20 transition
+                `}
+                title={collapsed ? "LLM 配置" : undefined}
+                style={collapsed ? {} : { width: "calc(100% - 3.5rem)" }}
+              >
+                <I name="key-round" size={16} className="text-brand" />
+                {!collapsed && (
+                  <>
+                    <span className="text-sm font-bold text-navy-700">LLM Key</span>
+                    <span className={`ml-auto text-[10px] px-2 py-0.5 rounded-full font-bold ${chipClass}`}>{chipLabel}</span>
+                  </>
+                )}
+              </button>
             </>
           )}
-          <button
-            onClick={() => setModalOpen(true)}
-            className={`
-              ${collapsed ? "md:mx-3 md:px-2 md:py-2 md:justify-center" : "mx-7 px-3 py-2"}
-              rounded-xl bg-lightPrimary flex items-center gap-2 hover:ring-2 hover:ring-brand/20 transition
-            `}
-            title={collapsed ? "LLM 配置" : undefined}
-            style={collapsed ? {} : { width: "calc(100% - 3.5rem)" }}
-          >
-            <I name="key-round" size={16} className="text-brand" />
-            {!collapsed && (
-              <>
-                <span className="text-sm font-bold text-navy-700">LLM Key</span>
-                <span className={`ml-auto text-[10px] px-2 py-0.5 rounded-full font-bold ${chipClass}`}>{chipLabel}</span>
-              </>
-            )}
-          </button>
         </nav>
       </aside>
 
