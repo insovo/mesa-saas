@@ -6,6 +6,7 @@ import { setAuth } from "../lib/auth.js";
 import { Card, Button, Input, I, Modal, toast } from "../components/Primitives.jsx";
 import { useAuth } from "../lib/authContext.jsx";
 import PasswordStrengthMeter from "../components/PasswordStrengthMeter.jsx";
+import BrandLogo from "../components/BrandLogo.jsx";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -73,12 +74,11 @@ export default function Login() {
 
       <div className="relative w-full max-w-md">
         <div className="flex items-center justify-center mb-6">
-          <span
-            className="brand-logo text-[32px]"
+          <BrandLogo
+            text="Overseas R&D"
+            size="text-[32px]"
             style={{ fontFamily: "Poppins, sans-serif", fontWeight: 700, letterSpacing: "-0.3px" }}
-          >
-            Overseas <span style={{ fontWeight: 500 }}>R&amp;D</span>
-          </span>
+          />
         </div>
 
         <Card className="p-10">
