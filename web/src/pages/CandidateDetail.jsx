@@ -978,7 +978,7 @@ const LINK_FIELD_BY_MODE = {
   "电话": { label: "联系电话",  placeholder: "如 138 0000 0000",                            icon: "phone" },
 };
 
-function InterviewModal({ open, onClose, candidate, jobs, reviews }) {
+function InterviewModal({ open, onClose, candidate, jobs, reviews, onCreated }) {
   const [jobId, setJobId] = useState("");
   const [round, setRound] = useState("一面");
   const [mode, setMode] = useState("线下");
@@ -1013,7 +1013,7 @@ function InterviewModal({ open, onClose, candidate, jobs, reviews }) {
     if (!scheduledAt) return toast("请选时间", "error");
     setSaving(true);
     try {
-      await resources.interviews.create({
+      const created = await resources.interviews.create({
         candidateId: candidate.id,
         jobId: jobId || null,
         round,
@@ -1023,6 +1023,7 @@ function InterviewModal({ open, onClose, candidate, jobs, reviews }) {
         link: link.trim() || null,
       });
       toast("面试已安排", "success");
+      onCreated?.(created);
       onClose();
     } catch (e) { toast(e.message || "保存失败", "error"); }
     finally { setSaving(false); }
@@ -3674,7 +3675,7 @@ function CandidateDetail() {
       candidate={c} replyTo={replyTo}
       onCreated={(r) => { setReviews((p) => [...p, r]); setReviewOpen(false); setReplyTo(null); }}
     />
-    <InterviewModal open={interviewOpen} onClose={() => setInterviewOpen(false)} candidate={c} jobs={jobs} reviews={reviews} />
+    <InterviewModal open={interviewOpen} onClose={() => setInterviewOpen(false)} candidate={c} jobs={jobs} reviews={reviews} onCreated={load} />
     <ShareModal open={shareOpen} onClose={() => setShareOpen(false)} candidate={c} />
     </>
   );
