@@ -266,7 +266,7 @@ const RANGE_PRESETS = [
   { key: "year",    label: "本年" },
 ];
 
-function FilterBar({ params, setParams, jobs, depts, onRefresh, onExport }) {
+function FilterBar({ params, setParams, jobs, depts, onRefresh, onExport, onSubscribe }) {
   const range = params.get("range") || "month";
   const selectedJobs = (params.get("jobIds") || "").split(",").filter(Boolean);
   const selectedDepts = (params.get("deptIds") || "").split(",").filter(Boolean);
@@ -424,6 +424,13 @@ function FilterBar({ params, setParams, jobs, depts, onRefresh, onExport }) {
             className="w-8 h-8 rounded-lg border border-gray-200 hover:border-brand hover:text-brand transition flex items-center justify-center"
           >
             <I name="download" size={13} />
+          </button>
+          <button
+            onClick={onSubscribe}
+            title="订阅周报 / 月报"
+            className="w-8 h-8 rounded-lg border border-gray-200 hover:border-brand hover:text-brand transition flex items-center justify-center"
+          >
+            <I name="bell" size={13} />
           </button>
         </div>
       </div>
@@ -674,6 +681,191 @@ function DrilldownDrawer({ open, onClose, drilldown, loading }) {
               </tbody>
             </table>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ╔══════════════════════════════════════════════════════════════╗
+// ║  二期-9 洞察 Banner — 异常预警 Top 轮播
+// ╚══════════════════════════════════════════════════════════════╝
+
+const INSIGHT_TONE = {
+  alert: { bg: "bg-red-50", fg: "text-red-700", border: "border-red-200" },
+  warn:  { bg: "bg-amber-50", fg: "text-amber-700", border: "border-amber-200" },
+  ok:    { bg: "bg-emerald-50", fg: "text-emerald-700", border: "border-emerald-200" },
+};
+
+function InsightsBanner({ items, onAction }) {
+  const [idx, setIdx] = useState(0);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!items || items.length <= 1) return;
+    const t = setInterval(() => setIdx((i) => (i + 1) % items.length), 6000);
+    return () => clearInterval(t);
+  }, [items]);
+  useGSAP(() => {
+    if (!ref.current) return;
+    gsap.fromTo(ref.current, { opacity: 0, y: -8 }, { opacity: 1, y: 0, duration: D.fast, ease: E.out });
+  }, { dependencies: [idx] });
+  if (!items || items.length === 0) return null;
+  const cur = items[idx];
+  const tone = INSIGHT_TONE[cur.severity] || INSIGHT_TONE.warn;
+  return (
+    <div ref={ref} className={`flex items-center justify-between gap-3 px-4 py-2.5 rounded-card border ${tone.bg} ${tone.fg} ${tone.border}`}>
+      <div className="flex items-center gap-3 min-w-0">
+        <I name={cur.icon || "alert-triangle"} size={16} />
+        <div className="min-w-0">
+          <p className="text-xs font-bold leading-tight">{cur.title}</p>
+          <p className="text-[11px] mt-0.5 truncate">{cur.message}</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        {cur.action && onAction && (
+          <button
+            onClick={() => onAction(cur.action)}
+            className="text-[11px] font-bold underline-offset-2 hover:underline"
+          >
+            查看 →
+          </button>
+        )}
+        {items.length > 1 && (
+          <div className="flex gap-1">
+            {items.map((_, i) => (
+              <span
+                key={i}
+                className={`w-1.5 h-1.5 rounded-full transition ${i === idx ? "bg-current" : "bg-current opacity-25"}`}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ╔══════════════════════════════════════════════════════════════╗
+// ║  二期-5 面试官分析 — 表
+// ╚══════════════════════════════════════════════════════════════╝
+
+function InterviewerTable({ items }) {
+  if (!items || items.length === 0) return <Empty title="暂无面试官数据" icon="users" />;
+  const maxCount = Math.max(...items.map((i) => i.interviewCount), 1);
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-left text-gray-500 border-b border-gray-100">
+            <th className="py-2.5 px-2 font-bold">面试官</th>
+            <th className="py-2.5 px-2 font-bold text-right">面试场数</th>
+            <th className="py-2.5 px-2 font-bold text-right">候选人数</th>
+            <th className="py-2.5 px-2 font-bold text-right">推荐率</th>
+            <th className="py-2.5 px-2 font-bold text-right">推进率</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((u) => (
+            <tr key={u.name} className="border-b border-gray-50 hover:bg-lightPrimary/40">
+              <td className="py-2.5 px-2 font-bold text-navy-700">{u.name}</td>
+              <td className="py-2.5 px-2 text-right font-bold text-navy-700">
+                <div className="inline-block w-10">{u.interviewCount}</div>
+                <div className="inline-block w-16 ml-2 align-middle">
+                  <Bar value={u.interviewCount} max={maxCount} color="#422AFB" />
+                </div>
+              </td>
+              <td className="py-2.5 px-2 text-right text-gray-700">{u.candidateCount}</td>
+              <td className="py-2.5 px-2 text-right text-gray-700">{u.recommendRate != null ? (u.recommendRate * 100).toFixed(0) + "%" : "—"}</td>
+              <td className="py-2.5 px-2 text-right text-emerald-700 font-bold">{u.advanceRate != null ? (u.advanceRate * 100).toFixed(0) + "%" : "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ╔══════════════════════════════════════════════════════════════╗
+// ║  二期-7 订阅弹窗(简化版骨架,提示后续完善)
+// ╚══════════════════════════════════════════════════════════════╝
+
+function SubscribeModal({ open, onClose }) {
+  const [frequency, setFrequency] = useState("weekly");
+  const [channel, setChannel] = useState("email");
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
+      <div
+        className="w-full max-w-md bg-white rounded-card shadow-2xl p-6"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold text-navy-700 flex items-center gap-2">
+            <I name="bell" size={18} className="text-brand" />
+            订阅报表
+          </h3>
+          <button onClick={onClose} className="w-8 h-8 hover:bg-gray-100 rounded-lg transition">
+            <I name="x" size={16} />
+          </button>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs text-gray-700 font-bold block mb-2">频率</label>
+            <div className="flex gap-2">
+              {["daily", "weekly", "monthly"].map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setFrequency(f)}
+                  className={`flex-1 py-2 text-xs font-bold rounded-lg border transition ${
+                    frequency === f ? "bg-brand text-white border-brand" : "border-gray-200 text-gray-700 hover:border-brand/40"
+                  }`}
+                >
+                  {f === "daily" ? "每日" : f === "weekly" ? "每周" : "每月"}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-gray-700 font-bold block mb-2">推送渠道</label>
+            <div className="flex gap-2">
+              {[
+                { k: "email", l: "邮件" },
+                { k: "lark", l: "飞书" },
+                { k: "wecom", l: "企微" },
+              ].map((c) => (
+                <button
+                  key={c.k}
+                  onClick={() => setChannel(c.k)}
+                  className={`flex-1 py-2 text-xs font-bold rounded-lg border transition ${
+                    channel === c.k ? "bg-brand text-white border-brand" : "border-gray-200 text-gray-700 hover:border-brand/40"
+                  }`}
+                >
+                  {c.l}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-[11px] text-amber-700 flex items-start gap-2">
+            <I name="info" size={12} className="mt-0.5 shrink-0" />
+            <span>订阅推送服务正在搭建,本期保存的设置会在服务上线后自动启用。详见 设计规划 §二期-7。</span>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 mt-5">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg border border-gray-200 text-xs font-bold text-gray-700 hover:border-gray-300"
+          >
+            取消
+          </button>
+          <button
+            onClick={() => {
+              toast("订阅设置已保存(待推送服务上线)", "success");
+              onClose();
+            }}
+            className="px-4 py-2 rounded-lg bg-brand text-white text-xs font-bold hover:bg-brand-hover"
+          >
+            保存订阅
+          </button>
         </div>
       </div>
     </div>
@@ -1031,6 +1223,9 @@ export default function Reports() {
   const [byHr, setByHr] = useState(null);
   const [offerCycle, setOfferCycle] = useState(null);
   const [targets, setTargets] = useState(null);
+  const [byInterviewer, setByInterviewer] = useState(null);
+  const [insights, setInsights] = useState(null);
+  const [subscribeOpen, setSubscribeOpen] = useState(false);
   const pageRef = useRef(null);
 
   // GSAP: prefers-reduced-motion 适配 + JD/部门区 ScrollTrigger 进入视口入场
@@ -1069,7 +1264,7 @@ export default function Reports() {
 
   async function loadAll() {
     try {
-      const [overview, jobsData, deptsData, channelData, hrData, offerData, targetData] = await Promise.all([
+      const [overview, jobsData, deptsData, channelData, hrData, offerData, targetData, ivrData, insightsData] = await Promise.all([
         resources.reports.overview(queryParams),
         resources.reports.byJob(queryParams),
         resources.reports.byDepartment(queryParams),
@@ -1077,6 +1272,8 @@ export default function Reports() {
         resources.reports.byHr(queryParams),
         resources.reports.offerCycle(queryParams),
         resources.reports.targets(queryParams),
+        resources.reports.byInterviewer(queryParams),
+        resources.reports.insights(queryParams),
       ]);
       setReport(overview);
       setByJob(jobsData);
@@ -1085,6 +1282,8 @@ export default function Reports() {
       setByHr(hrData);
       setOfferCycle(offerData);
       setTargets(targetData);
+      setByInterviewer(ivrData);
+      setInsights(insightsData);
     } catch (e) {
       toast(e.message || "加载失败", "error");
     }
@@ -1150,6 +1349,14 @@ export default function Reports() {
         depts={depts}
         onRefresh={loadAll}
         onExport={onExport}
+        onSubscribe={() => setSubscribeOpen(true)}
+      />
+
+      <InsightsBanner
+        items={insights?.items || []}
+        onAction={(a) => {
+          if (a.type === "kpi" || a.type === "funnel" || a.type === "job") openDrill(a.type, a.key);
+        }}
       />
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-5">
@@ -1270,6 +1477,17 @@ export default function Reports() {
         <OfferCycleCard data={offerCycle} />
       </div>
 
+      <Card className="p-6" data-scroll-reveal>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="title-card flex items-center gap-2">
+            <I name="user-check" size={18} className="text-brand" />
+            面试官分析
+          </h3>
+          <span className="text-[11px] text-gray-500">基于 interview.interviewer 字段(分隔多人)</span>
+        </div>
+        <InterviewerTable items={byInterviewer?.items || []} />
+      </Card>
+
       {/* ╔══ 旧分布块(M1 兼容) ══╗ */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <Card className="p-6">
@@ -1331,6 +1549,7 @@ export default function Reports() {
         drilldown={drilldown}
         loading={drillLoading}
       />
+      <SubscribeModal open={subscribeOpen} onClose={() => setSubscribeOpen(false)} />
     </div>
   );
 }
