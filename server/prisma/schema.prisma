@@ -214,6 +214,10 @@ model Employee {
   probationEndDate    DateTime? @map("probation_end_date")
   regularizeDate      DateTime? @map("regularize_date")
   regularizeAdvice    String?   @map("regularize_advice")
+  // 二期-4 流失原因 (Offer 已发但未入职 / 入职后离职):枚举存字符串
+  // "另选 Offer" / "薪资不达预期" / "个人原因" / "岗位变更" / "其它"
+  dropReason          String?   @map("drop_reason")
+  dropReasonDetail    String?   @map("drop_reason_detail") @db.Text
   hrbp                String?
   directManager       String?   @map("direct_manager")
 
