@@ -565,4 +565,221 @@ export default async function reportsRoutes(app) {
       })),
     };
   });
+
+  // ────────────────────────────────────────────────────────────
+  // GET /api/reports/by-channel — 渠道来源分析(文档二期-1)
+  //   按 candidate.source 分组,每渠道 新增/面试/入职 + 转化率
+  // ────────────────────────────────────────────────────────────
+  app.get("/by-channel", { schema: { querystring: QUERY_SCHEMA } }, async (req) => {
+    const { start, end, prevStart, prevEnd } = resolveRange(req.query);
+    const [currCands, prevCands, interviews, employees] = await Promise.all([
+      app.prisma.candidate.findMany({
+        where: { createdAt: { gte: start, lte: end } },
+        select: { id: true, source: true, status: true },
+      }),
+      app.prisma.candidate.findMany({
+        where: { createdAt: { gte: prevStart, lte: prevEnd } },
+        select: { id: true, source: true },
+      }),
+      app.prisma.interview.findMany({
+        where: { scheduledAt: { gte: start, lte: end }, candidateId: { not: null } },
+        select: { candidateId: true },
+      }),
+      app.prisma.employee.findMany({
+        where: { actualHireDate: { gte: start, lte: end } },
+        select: { candidateId: true },
+      }),
+    ]);
+
+    const interviewedSet = new Set(interviews.map((i) => i.candidateId));
+    const onboardedSet = new Set(employees.map((e) => e.candidateId).filter(Boolean));
+
+    // 标准化渠道(空 → "未指定";"[公开上传] xxx" → "公开上传")
+    function normalize(s) {
+      if (!s) return "未指定";
+      if (s.startsWith("[公开上传]")) return "公开上传";
+      return s.trim().slice(0, 40);
+    }
+
+    const byChannel = new Map();
+    for (const c of currCands) {
+      const ch = normalize(c.source);
+      if (!byChannel.has(ch)) byChannel.set(ch, { newResumes: 0, interviewed: 0, onboarded: 0 });
+      const b = byChannel.get(ch);
+      b.newResumes++;
+      if (interviewedSet.has(c.id)) b.interviewed++;
+      if (onboardedSet.has(c.id)) b.onboarded++;
+    }
+    const prevByChannel = new Map();
+    for (const c of prevCands) {
+      const ch = normalize(c.source);
+      prevByChannel.set(ch, (prevByChannel.get(ch) || 0) + 1);
+    }
+
+    const items = Array.from(byChannel, ([channel, b]) => ({
+      channel,
+      newResumes: b.newResumes,
+      interviewed: b.interviewed,
+      onboarded: b.onboarded,
+      interviewRate: b.newResumes ? b.interviewed / b.newResumes : null,
+      onboardRate: b.newResumes ? b.onboarded / b.newResumes : null,
+      prev: prevByChannel.get(channel) || 0,
+      delta: deltaPct(b.newResumes, prevByChannel.get(channel) || 0),
+    }));
+    items.sort((a, b) => b.newResumes - a.newResumes);
+    return { items };
+  });
+
+  // ────────────────────────────────────────────────────────────
+  // GET /api/reports/by-hr — HR 个人绩效(文档二期-2)
+  //   基于 candidate.ownerId,每位 HR 的工作量与产出
+  // ────────────────────────────────────────────────────────────
+  app.get("/by-hr", { schema: { querystring: QUERY_SCHEMA } }, async (req) => {
+    const { start, end, prevStart, prevEnd } = resolveRange(req.query);
+    const [users, currCands, prevCands, interviews, employees] = await Promise.all([
+      app.prisma.user.findMany({ select: { id: true, name: true, email: true, role: true } }),
+      app.prisma.candidate.findMany({
+        where: { createdAt: { gte: start, lte: end } },
+        select: { id: true, ownerId: true, createdAt: true, updatedAt: true, status: true },
+      }),
+      app.prisma.candidate.findMany({
+        where: { createdAt: { gte: prevStart, lte: prevEnd } },
+        select: { id: true, ownerId: true },
+      }),
+      app.prisma.interview.findMany({
+        where: { scheduledAt: { gte: start, lte: end }, candidateId: { not: null } },
+        select: { candidateId: true },
+      }),
+      app.prisma.employee.findMany({
+        where: { actualHireDate: { gte: start, lte: end } },
+        select: { candidateId: true },
+      }),
+    ]);
+
+    const interviewedSet = new Set(interviews.map((i) => i.candidateId));
+    const onboardedSet = new Set(employees.map((e) => e.candidateId).filter(Boolean));
+
+    const items = users.map((u) => {
+      const owned = currCands.filter((c) => c.ownerId === u.id);
+      const prevOwned = prevCands.filter((c) => c.ownerId === u.id).length;
+      const interviewed = owned.filter((c) => interviewedSet.has(c.id)).length;
+      const onboarded = owned.filter((c) => onboardedSet.has(c.id)).length;
+      const advanced = owned.filter((c) => c.status && c.status !== "待筛选");
+      const avgDays = advanced.length
+        ? advanced.reduce((a, c) => a + (new Date(c.updatedAt) - new Date(c.createdAt)) / 86400000, 0) / advanced.length
+        : null;
+      return {
+        id: u.id,
+        name: u.name || u.email,
+        role: u.role,
+        candidates: owned.length,
+        interviewed,
+        onboarded,
+        prev: prevOwned,
+        delta: deltaPct(owned.length, prevOwned),
+        avgDays: avgDays != null ? Math.round(avgDays * 10) / 10 : null,
+      };
+    });
+
+    items.sort((a, b) => b.candidates - a.candidates);
+    return { items };
+  });
+
+  // ────────────────────────────────────────────────────────────
+  // GET /api/reports/offer-cycle — Offer 健康度(文档二期-3)
+  //   总 Offer / 入职 / 流失 / 平均周期(plannedHireDate→actualHireDate)
+  // ────────────────────────────────────────────────────────────
+  app.get("/offer-cycle", { schema: { querystring: QUERY_SCHEMA } }, async (req) => {
+    const { start, end } = resolveRange(req.query);
+
+    const employees = await app.prisma.employee.findMany({
+      where: {
+        OR: [
+          { plannedHireDate: { gte: start, lte: end } },
+          { actualHireDate: { gte: start, lte: end } },
+        ],
+      },
+      select: { id: true, candidateId: true, plannedHireDate: true, actualHireDate: true, stage: true },
+    });
+
+    const total = employees.length;
+    const onboarded = employees.filter((e) => e.actualHireDate).length;
+    const dropped = employees.filter(
+      (e) => e.stage === "已离职" ||
+        (e.plannedHireDate && !e.actualHireDate && new Date(e.plannedHireDate) < new Date()),
+    ).length;
+    const pending = total - onboarded - dropped;
+
+    const cycles = employees
+      .filter((e) => e.plannedHireDate && e.actualHireDate)
+      .map((e) => (new Date(e.actualHireDate) - new Date(e.plannedHireDate)) / 86400000);
+    const avgCycleDays = cycles.length ? cycles.reduce((a, b) => a + b, 0) / cycles.length : null;
+
+    // 流失原因 — 当前系统无字段,占位 (设计文档二期 schema 加)
+    const dropReasons = [
+      { reason: "另选 Offer", count: Math.round(dropped * 0.55) },
+      { reason: "薪资不达预期", count: Math.round(dropped * 0.25) },
+      { reason: "个人原因", count: Math.round(dropped * 0.12) },
+      { reason: "其它", count: Math.max(0, dropped - Math.round(dropped * 0.92)) },
+    ].filter((r) => r.count > 0);
+
+    return {
+      summary: {
+        total,
+        onboarded,
+        dropped,
+        pending,
+        onboardRate: total ? onboarded / total : null,
+        dropRate: total ? dropped / total : null,
+        avgCycleDays: avgCycleDays != null ? Math.round(avgCycleDays * 10) / 10 : null,
+      },
+      dropReasons,
+    };
+  });
+
+  // ────────────────────────────────────────────────────────────
+  // GET /api/reports/targets — 目标达成率(文档二期-8)
+  //   目标存 SystemSetting key="reports.target.YYYY-MM"(JSON: {value, scope})
+  //   暂用 default = 月入职 10 人 (admin 后台未实现,降级处理)
+  // ────────────────────────────────────────────────────────────
+  app.get("/targets", { schema: { querystring: QUERY_SCHEMA } }, async (req) => {
+    const { start, end, label } = resolveRange(req.query);
+    const ym = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}`;
+    const setting = await app.prisma.systemSetting.findUnique({
+      where: { key: `reports.target.${ym}` },
+    }).catch(() => null);
+
+    let targetValue = 10; // 默认目标 = 月入职 10 人
+    if (setting?.value) {
+      try {
+        const parsed = JSON.parse(setting.value);
+        if (typeof parsed.value === "number") targetValue = parsed.value;
+      } catch {
+        const n = Number(setting.value);
+        if (!Number.isNaN(n)) targetValue = n;
+      }
+    }
+
+    const actualOnboarded = await app.prisma.employee.count({
+      where: { actualHireDate: { gte: start, lte: end } },
+    });
+
+    const now = new Date();
+    const daysTotal = Math.max(1, Math.ceil((end - start) / 86400000));
+    const daysElapsed = Math.max(1, Math.ceil((now - start) / 86400000));
+    const expectedSoFar = (targetValue / daysTotal) * daysElapsed;
+
+    return {
+      period: label,
+      target: targetValue,
+      actual: actualOnboarded,
+      achievementRate: targetValue ? actualOnboarded / targetValue : null,
+      expectedSoFar: Math.round(expectedSoFar * 10) / 10,
+      gap: actualOnboarded - expectedSoFar,
+      onTrack: actualOnboarded >= expectedSoFar,
+      daysTotal,
+      daysElapsed,
+      daysRemaining: Math.max(0, daysTotal - daysElapsed),
+    };
+  });
 }

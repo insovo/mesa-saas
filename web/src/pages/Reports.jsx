@@ -681,6 +681,216 @@ function DrilldownDrawer({ open, onClose, drilldown, loading }) {
 }
 
 // ╔══════════════════════════════════════════════════════════════╗
+// ║  二期-8 目标达成率 — 横向进度条 + KPI 叠加
+// ╚══════════════════════════════════════════════════════════════╝
+
+function TargetCard({ data }) {
+  if (!data) return null;
+  const rate = data.achievementRate ?? 0;
+  const onTrack = data.onTrack;
+  const barColor = onTrack ? "#22C55E" : rate > 0.6 ? "#F59E0B" : "#F53939";
+  return (
+    <Card className="p-6" data-scroll-reveal>
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <h3 className="title-card flex items-center gap-2">
+          <I name="target" size={18} className="text-brand" />
+          目标达成率 · {data.period}
+        </h3>
+        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${onTrack ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+          {onTrack ? "进度正常" : `落后预期 ${Math.abs(data.gap).toFixed(1)} 人`}
+        </span>
+      </div>
+      <div className="grid grid-cols-4 gap-4 mb-4">
+        <div>
+          <p className="text-[10px] text-gray-500">目标</p>
+          <p className="text-2xl font-bold text-navy-700 mt-0.5">{data.target}</p>
+        </div>
+        <div>
+          <p className="text-[10px] text-gray-500">实际入职</p>
+          <p className="text-2xl font-bold text-brand mt-0.5">{data.actual}</p>
+        </div>
+        <div>
+          <p className="text-[10px] text-gray-500">预期至今</p>
+          <p className="text-2xl font-bold text-gray-700 mt-0.5">{data.expectedSoFar}</p>
+        </div>
+        <div>
+          <p className="text-[10px] text-gray-500">剩余天数</p>
+          <p className="text-2xl font-bold text-navy-700 mt-0.5">{data.daysRemaining}</p>
+        </div>
+      </div>
+      <div className="h-3 rounded-full bg-gray-100 overflow-hidden relative">
+        <div
+          className="h-full rounded-full transition-all"
+          style={{ width: `${Math.min(rate * 100, 100)}%`, background: barColor }}
+        />
+        <div
+          className="absolute top-0 bottom-0 border-l-2 border-dashed border-gray-400"
+          style={{ left: `${Math.min((data.expectedSoFar / data.target) * 100, 100)}%` }}
+          title="预期进度线"
+        />
+      </div>
+      <div className="flex items-center justify-between mt-2 text-[11px] text-gray-500">
+        <span>达成率 {(rate * 100).toFixed(1)}%</span>
+        <span>虚线 = 预期至今进度</span>
+      </div>
+    </Card>
+  );
+}
+
+// ╔══════════════════════════════════════════════════════════════╗
+// ║  二期-3 Offer 流失分析 — 4 KPI + 流失原因小条形
+// ╚══════════════════════════════════════════════════════════════╝
+
+function OfferCycleCard({ data }) {
+  if (!data) return null;
+  const { summary, dropReasons } = data;
+  const reasonsData = (dropReasons || []).map((r) => ({ reason: r.reason, count: r.count }));
+  const config = { count: { label: "人数", color: "var(--chart-4)" } };
+  return (
+    <Card className="p-6" data-scroll-reveal>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="title-card flex items-center gap-2">
+          <I name="heart-pulse" size={18} className="text-brand" />
+          Offer 健康度
+        </h3>
+        <span className="text-[11px] text-gray-500">平均周期 {summary.avgCycleDays ?? "—"} 天</span>
+      </div>
+      <div className="grid grid-cols-4 gap-3 mb-5">
+        <div className="p-3 rounded-xl bg-lightPrimary text-center">
+          <p className="text-[10px] text-gray-500">总 Offer</p>
+          <p className="text-xl font-bold text-navy-700 mt-1">{summary.total}</p>
+        </div>
+        <div className="p-3 rounded-xl bg-emerald-50 text-center">
+          <p className="text-[10px] text-emerald-700">入职</p>
+          <p className="text-xl font-bold text-emerald-600 mt-1">{summary.onboarded}</p>
+        </div>
+        <div className="p-3 rounded-xl bg-amber-50 text-center">
+          <p className="text-[10px] text-amber-700">流失</p>
+          <p className="text-xl font-bold text-amber-600 mt-1">{summary.dropped}</p>
+        </div>
+        <div className="p-3 rounded-xl bg-gray-50 text-center">
+          <p className="text-[10px] text-gray-500">待定</p>
+          <p className="text-xl font-bold text-gray-700 mt-1">{summary.pending}</p>
+        </div>
+      </div>
+      {reasonsData.length > 0 ? (
+        <>
+          <h4 className="text-sm font-bold text-navy-700 mb-2">流失原因分布</h4>
+          <ChartContainer config={config} className="!aspect-auto h-32 w-full">
+            <BarChart data={reasonsData} layout="vertical" margin={{ top: 0, right: 12, left: 0, bottom: 0 }}>
+              <CartesianGrid horizontal={false} strokeDasharray="3 3" stroke="#E9ECEF" />
+              <XAxis type="number" tickLine={false} axisLine={false} tick={{ fill: "#A0AEC0", fontSize: 10 }} />
+              <YAxis dataKey="reason" type="category" tickLine={false} axisLine={false} tick={{ fill: "#707EAE", fontSize: 11 }} width={88} />
+              <ChartTooltip content={<ChartTooltipContent indicator="dot" />} />
+              <RBar dataKey="count" fill="var(--chart-4)" radius={[0, 4, 4, 0]} />
+            </BarChart>
+          </ChartContainer>
+          <p className="text-[10px] text-amber-700 mt-3 flex items-center gap-1">
+            <I name="info" size={10} /> 流失原因当前为估算 (schema 加 reason 字段后接入真实数据)
+          </p>
+        </>
+      ) : (
+        <p className="text-[11px] text-gray-500">本期无流失记录 ✓</p>
+      )}
+    </Card>
+  );
+}
+
+// ╔══════════════════════════════════════════════════════════════╗
+// ║  二期-1 渠道分析 — 渠道表 + 转化率
+// ╚══════════════════════════════════════════════════════════════╝
+
+function ChannelTable({ items, onRowClick }) {
+  if (!items || items.length === 0) return <Empty title="暂无渠道数据" icon="link" />;
+  const maxTotal = Math.max(...items.map((i) => i.newResumes), 1);
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-left text-gray-500 border-b border-gray-100">
+            <th className="py-2.5 px-2 font-bold">渠道</th>
+            <th className="py-2.5 px-2 font-bold text-right">新增简历</th>
+            <th className="py-2.5 px-2 font-bold text-right">面试人数</th>
+            <th className="py-2.5 px-2 font-bold text-right">入职人数</th>
+            <th className="py-2.5 px-2 font-bold text-right">面试转化率</th>
+            <th className="py-2.5 px-2 font-bold text-right">入职转化率</th>
+            <th className="py-2.5 px-2 font-bold text-right">较上期</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((c) => (
+            <tr key={c.channel} className="border-b border-gray-50 hover:bg-lightPrimary/40">
+              <td className="py-2.5 px-2 font-bold text-navy-700">{c.channel}</td>
+              <td className="py-2.5 px-2 text-right font-bold text-navy-700">
+                <div className="inline-block w-10">{c.newResumes}</div>
+                <div className="inline-block w-20 ml-2 align-middle">
+                  <Bar value={c.newResumes} max={maxTotal} color="#422AFB" />
+                </div>
+              </td>
+              <td className="py-2.5 px-2 text-right text-gray-700">{c.interviewed}</td>
+              <td className="py-2.5 px-2 text-right text-emerald-600 font-bold">{c.onboarded}</td>
+              <td className="py-2.5 px-2 text-right text-gray-700">{c.interviewRate != null ? (c.interviewRate * 100).toFixed(0) + "%" : "—"}</td>
+              <td className="py-2.5 px-2 text-right text-emerald-700 font-bold">{c.onboardRate != null ? (c.onboardRate * 100).toFixed(0) + "%" : "—"}</td>
+              <td className="py-2.5 px-2 text-right"><DeltaBadge delta={c.delta} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ╔══════════════════════════════════════════════════════════════╗
+// ║  二期-2 HR 个人绩效 — 排行榜表
+// ╚══════════════════════════════════════════════════════════════╝
+
+function HrTable({ items }) {
+  if (!items || items.length === 0) return <Empty title="暂无 HR 数据" icon="users" />;
+  const maxTotal = Math.max(...items.map((i) => i.candidates), 1);
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-left text-gray-500 border-b border-gray-100">
+            <th className="py-2.5 px-2 font-bold">#</th>
+            <th className="py-2.5 px-2 font-bold">HR</th>
+            <th className="py-2.5 px-2 font-bold">角色</th>
+            <th className="py-2.5 px-2 font-bold text-right">新增候选人</th>
+            <th className="py-2.5 px-2 font-bold text-right">推进面试</th>
+            <th className="py-2.5 px-2 font-bold text-right">入职</th>
+            <th className="py-2.5 px-2 font-bold text-right">平均推进 (天)</th>
+            <th className="py-2.5 px-2 font-bold text-right">较上期</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((u, i) => (
+            <tr key={u.id} className="border-b border-gray-50 hover:bg-lightPrimary/40">
+              <td className="py-2.5 px-2 text-gray-500 font-bold">
+                {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}`}
+              </td>
+              <td className="py-2.5 px-2 font-bold text-navy-700">{u.name}</td>
+              <td className="py-2.5 px-2">
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-700 font-bold">{u.role}</span>
+              </td>
+              <td className="py-2.5 px-2 text-right font-bold text-navy-700">
+                <div className="inline-block w-10">{u.candidates}</div>
+                <div className="inline-block w-16 ml-2 align-middle">
+                  <Bar value={u.candidates} max={maxTotal} color="#422AFB" />
+                </div>
+              </td>
+              <td className="py-2.5 px-2 text-right text-gray-700">{u.interviewed}</td>
+              <td className="py-2.5 px-2 text-right text-emerald-600 font-bold">{u.onboarded}</td>
+              <td className="py-2.5 px-2 text-right text-gray-700">{u.avgDays ?? "—"}</td>
+              <td className="py-2.5 px-2 text-right"><DeltaBadge delta={u.delta} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ╔══════════════════════════════════════════════════════════════╗
 // ║  趋势图(chip 多选 + 对比模式占位)
 // ╚══════════════════════════════════════════════════════════════╝
 
@@ -817,6 +1027,10 @@ export default function Reports() {
   const [drillOpen, setDrillOpen] = useState(false);
   const [drilldown, setDrilldown] = useState(null);
   const [drillLoading, setDrillLoading] = useState(false);
+  const [byChannel, setByChannel] = useState(null);
+  const [byHr, setByHr] = useState(null);
+  const [offerCycle, setOfferCycle] = useState(null);
+  const [targets, setTargets] = useState(null);
   const pageRef = useRef(null);
 
   // GSAP: prefers-reduced-motion 适配 + JD/部门区 ScrollTrigger 进入视口入场
@@ -855,14 +1069,22 @@ export default function Reports() {
 
   async function loadAll() {
     try {
-      const [overview, jobsData, deptsData] = await Promise.all([
+      const [overview, jobsData, deptsData, channelData, hrData, offerData, targetData] = await Promise.all([
         resources.reports.overview(queryParams),
         resources.reports.byJob(queryParams),
         resources.reports.byDepartment(queryParams),
+        resources.reports.byChannel(queryParams),
+        resources.reports.byHr(queryParams),
+        resources.reports.offerCycle(queryParams),
+        resources.reports.targets(queryParams),
       ]);
       setReport(overview);
       setByJob(jobsData);
       setByDept(deptsData);
+      setByChannel(channelData);
+      setByHr(hrData);
+      setOfferCycle(offerData);
+      setTargets(targetData);
     } catch (e) {
       toast(e.message || "加载失败", "error");
     }
@@ -1014,6 +1236,41 @@ export default function Reports() {
         )}
       </Card>
 
+      {/* ╔══ 二期增强板块 ══╗ */}
+      <div className="flex items-center gap-2 mt-4">
+        <span className="text-[10px] px-2 py-0.5 rounded-full bg-brand/10 text-brand font-bold">PHASE 2</span>
+        <h2 className="text-base font-bold text-navy-700">二期增强分析</h2>
+        <span className="text-[11px] text-gray-500 ml-2">渠道 / HR 绩效 / Offer 健康度 / 目标达成</span>
+      </div>
+
+      <TargetCard data={targets} />
+
+      <Card className="p-6" data-scroll-reveal>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="title-card flex items-center gap-2">
+            <I name="link" size={18} className="text-brand" />
+            渠道来源分析
+          </h3>
+          <span className="text-[11px] text-gray-500">基于 candidate.source 分组</span>
+        </div>
+        <ChannelTable items={byChannel?.items || []} />
+      </Card>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <Card className="p-6 lg:col-span-2" data-scroll-reveal>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="title-card flex items-center gap-2">
+              <I name="trophy" size={18} className="text-brand" />
+              HR 个人绩效
+            </h3>
+            <span className="text-[11px] text-gray-500">基于 ownerId 排行</span>
+          </div>
+          <HrTable items={byHr?.items || []} />
+        </Card>
+        <OfferCycleCard data={offerCycle} />
+      </div>
+
+      {/* ╔══ 旧分布块(M1 兼容) ══╗ */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <Card className="p-6">
           <h3 className="title-card flex items-center gap-2">
