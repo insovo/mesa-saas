@@ -30,6 +30,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/prisma ./prisma
 COPY package*.json ./
 COPY src ./src
+COPY assets ./assets
 
 # 健康检查 — docker-compose 也会依赖
 HEALTHCHECK --interval=20s --timeout=5s --start-period=15s --retries=3 \
