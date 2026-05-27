@@ -124,7 +124,7 @@ SystemSetting (KV, admin only · AES-256-GCM 加密敏感 value)
 | 表 | 用途 |
 |----|------|
 | `User` | 系统账号(ADMIN/RECRUITER/VIEWER 三角色) |
-| `Candidate` | 候选人,带 LLM 解析结果(aiSummary/skills/tags/risks/highlights)+ jobId 关联 JD |
+| `Candidate` | 候选人,阶段一字段(aiSummary/tags/基础信息)+ 阶段二字段(skills/experience/educationHistory markdown · risks/highlights/insights · jdMatch/matchedFor/againstFor/aiSuggestedTags)+ jobId 关联 JD |
 | `Job` | 岗位,`description` 字段给 LLM 二次评估用 |
 | `Department` | 部门(自关联树) |
 | `Employee` | 已入职员工(候选人 → 员工转化) |
@@ -141,25 +141,42 @@ SystemSetting (KV, admin only · AES-256-GCM 加密敏感 value)
 
 以下为 demo.md 六阶段之外、上线后扩展实现的子系统:
 
-## 5A.1 LLM 简历解析(Kimi · Moonshot AI)
+## 5A.1 LLM 两阶段简历解析(Kimi · Moonshot AI)
 
+**阶段一 parseResume — 只产简报 + tags + 基础字段**:
 ```
 [ Upload UI ] -> [ POST /api/storage/presigned-url ] -> R2 mesa-resumes
         ↓
 [ POST /api/resumes/parse ] -> [ Kimi Files API 上传 ] -> [ /v1/chat/completions JSON mode ]
         ↓
-[ aiSummary (HR 简报纯文本) + 结构化字段 ] -> [ 写入 Candidate ]
+[ summary 纯文本简报 + name/phone/email/school/major/yearsExp/tags/languages ]
+        ↓
+[ 写入 Candidate (skills/experience/educationHistory 留空, 等阶段二) ]
 ```
 
 - 系统级配置:`SystemSetting (kimi.api_key/model/prompt)` · `api_key` AES-256-GCM 加密(密钥从 `JWT_SECRET` HKDF 派生)
 - admin 在 UI(Sidebar 弹 Modal)可改 key/model(从 `/v1/models` 动态拉)/prompt(20000 字符)
-- 一次 chat 同时产出 summary + 结构化(节省 token,详见 CLAUDE.md §1.1)
+- summary 是模板化纯文本(HR 可读),包含教育/工作/项目/技能 section,作为阶段二的唯一上下文
 
-## 5A.2 JD 二次匹配评估
+## 5A.2 JD 二次匹配评估 — 阶段二 matchAgainstJob
 
-- 用 candidate.aiSummary + job.description 调 Kimi 输出 `{ jdMatch, risks, highlights, matchReason }`
-- 触发时机:Upload 时关联 JD 自动触发;或详情页 MatchRing 点击换 JD 触发
+**只在关联 JD 时跑**(reparse 前 ReparseConfirmModal 让用户先选/确认 JD):
+```
+[ candidate.aiSummary + job.description ] -> [ Kimi /v1/chat/completions ]
+        ↓
+[ jdMatch + risks/highlights + insights(up/down) ]
+[ + matchedFor / againstFor / aiSuggestedTags ]
+[ + skills / experience / educationHistory (markdown bullet 字符串) ]
+        ↓
+[ 写入 Candidate (覆盖阶段二字段) ]
+```
+
+设计要点:
+- skills/experience/educationHistory **针对 JD** 输出:核心技能选支持得起 JD 要求的、工作经历按相关度排序、教育按时间倒序
+- 前端 `MarkdownBullets` 组件渲染(split "\n" + 去 `- ` 前缀 → li)
+- 未关联 JD 候选人这三个 section 显示「关联 JD 后自动生成」引导,点击触发 JD picker
 - 强 prompt:禁用"可能/或许"含糊词,无强匹配点必须写"未发现"
+- 触发时机:Upload 时关联 JD 自动跑;或 ReparseConfirmModal 用户切 JD 时跑;或 `POST /api/resumes/match` 显式 sync 调用
 
 ## 5A.3 分享给招聘官(公开页 `/share/<token>`)
 
@@ -167,12 +184,15 @@ SystemSetting (KV, admin only · AES-256-GCM 加密敏感 value)
 [ admin 创建 ShareLink ] -> [ 32 字符 URL-safe token ]
         ↓
 [ 公开页 /share/:token ] -> [ GET /api/public/share/:token ]
-        ↓ (phone/email 自动 mask)
+        ↓ (按 ShareLink.showContact/showAttachments 应用可见性)
 [ 只读 候选人视图 + 评价 ]
 ```
 
 - 有效期:60s ~ 30d / 无限期
 - 访问次数上限:可选 10/50/100/自定义 1-9999/不限
+- 可见性 toggle(2026-05 加):
+  - `showContact` 默认 true → phone/email mask 后显示;false → 完全 null,前端渲染「分享方已隐藏联系方式」
+  - `showAttachments` 默认 false → 评价表单不显示附件 input,**后端 presigned-url 二道防线**也返回 403
 - 公开页不在 AuthGuard 内,**不含 Sidebar/Topbar**(防泄漏其他页面信息)
 
 ## 5A.4 评价对话系统

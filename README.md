@@ -39,15 +39,23 @@ npm run dev
 git worktree add .worktrees/feature/upload  -b feature/upload  origin/main
 git worktree add .worktrees/fix/jwt-renew   -b fix/jwt-renew   origin/main
 
-# 进 worktree 开发(各自独立 node_modules / .env)
+# 进 worktree 开发(各自独立 node_modules / .env / web/.env 含 VITE_DEV_PORT)
 cd .worktrees/feature/upload
 npm install   # 首次需要装
-# ... 改代码 → commit → push origin feature/upload → PR → merge main → 触发部署
+
+# 改代码 → commit → push feature 分支 → PR → merge → 自动部署
+# main 已加 branch protection (3 status check 必过), 不能直接 push origin main
+git push -u origin feature/upload
+gh pr create --base main --head feature/upload --title "..." --body "..."
+gh pr checks <num> --watch
+gh pr merge <num> --merge --admin
 
 # 清理
 git worktree remove .worktrees/feature/upload
 git branch -d feature/upload
 ```
+
+端口分配登记表见项目根 [`.worktree-ports.json`](./.worktree-ports.json) — 多 worktree 并行时各占 slot,避免 3001/5173 冲突。
 
 完整流程(含 CI/CD 衔接 + 多 AI 协作约束 + 踩坑速查)见 [`delivery-docs/src/03_deploy.md` §5.5](./delivery-docs/src/03_deploy.md)。
 
@@ -98,6 +106,8 @@ mesa/
 | ⑧ 后端 DTO 扩展(Candidate/Job/Interview 共 23 V2 字段 + LLM 写新字段) | ✅ |
 | ⑨ Reparse 异步任务化(POST 立即 202 + 前端轮询,绕 Cloudflare 100s 上限) | ✅ |
 | ⑩ Kimi 鲁棒性(4 层 JSON fallback + jsonrepair + 429/5xx 指数 backoff retry) | ✅ |
+| ⑪ 两阶段简历解析(parseResume 只产简报 + tags;matchAgainstJob 产 jdMatch/insights/skills/experience/educationHistory markdown) | ✅ |
+| ⑫ ShareLink 可见性 toggle(showContact / showAttachments) + 面试 modal 动态字段 + ReparseConfirmModal 前置 JD 确认 | ✅ |
 
 ## License
 
