@@ -196,8 +196,9 @@ export default function Sidebar({ user, mobileOpen = false, onMobileClose, colla
 
       <aside
         className={`
-          bg-white shrink-0 min-h-screen flex flex-col pb-8 shadow-sidebar transition-all duration-200
+          bg-white shrink-0 flex flex-col pb-8 shadow-sidebar transition-all duration-200
           fixed md:sticky top-0 z-50 md:z-30
+          h-screen md:h-screen md:overflow-y-auto
           ${collapsed ? "md:w-[80px]" : "md:w-[268px]"}
           ${mobileOpen ? "translate-x-0 w-[268px]" : "-translate-x-full md:translate-x-0 w-[268px]"}
         `}
