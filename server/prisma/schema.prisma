@@ -169,11 +169,13 @@ model Department {
   head        String?
   headcount   Int      @default(0)
   openHc      Int      @default(0) @map("open_hc")
+  sortOrder   Int      @default(0) @map("sort_order")
 
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   @@index([parentId])
+  @@index([parentId, sortOrder])
   @@map("departments")
 }
 
