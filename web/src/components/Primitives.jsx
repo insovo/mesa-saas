@@ -398,15 +398,16 @@ export function Modal({ open, onClose, children, maxWidth = "max-w-2xl" }) {
   }, [open, onClose]);
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-navy-900/30 backdrop-blur-sm" onClick={onClose}></div>
-      {/* dvh = 浏览器实际可见视窗高度(扣除地址栏/书签栏/扩展工具条等 chrome) */}
-      {/* fallback 到 90vh,避免老浏览器不识别 dvh 时 modal 无高度限制 */}
-      <div
-        className={`relative w-full ${maxWidth} bg-white rounded-card shadow-card overflow-y-auto`}
-        style={{ maxHeight: "min(90vh, calc(100dvh - 2rem))" }}
-      >
-        {children}
+      {/* 外层容器自身滚动 — Modal 内容无论多高,容器内部滚条接管,顶部 header 永远可见。 */}
+      {/* 旧方案 max-h + items-center 在视窗矮 + modal 高时居中后顶部贴 viewport top,被书签栏/扩展栏挡。 */}
+      <div className="relative h-full overflow-y-auto">
+        <div className="min-h-full flex items-center justify-center p-4">
+          <div className={`relative w-full ${maxWidth} bg-white rounded-card shadow-card my-auto`}>
+            {children}
+          </div>
+        </div>
       </div>
     </div>
   );
