@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { resources } from "../lib/api.js";
 import {
   Card,
@@ -10,8 +10,54 @@ import {
   Modal,
   toast,
 } from "../components/Primitives.jsx";
+import OrgChartTree from "../components/OrgChartTree.jsx";
 
 const EMPTY_FORM = { name: "", code: "", head: "", headcount: 0, openHc: 0 };
+
+function ExportMenu({ rootCandidates, onExport }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    function onDocClick(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [open]);
+  return (
+    <div className="relative" ref={ref}>
+      <Button
+        variant="ghost"
+        onClick={() => setOpen((v) => !v)}
+        icon={<I name="download" size={14} />}
+        disabled={!rootCandidates.length}
+      >
+        导出
+      </Button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-30 min-w-[180px] bg-white rounded-xl shadow-card border border-gray-100 overflow-hidden">
+          <div className="px-3 py-2 text-[11px] text-gray-700 bg-lightPrimary">
+            选择导出根部门 (xlsx)
+          </div>
+          {rootCandidates.map((d) => (
+            <button
+              key={d.id}
+              onClick={() => {
+                setOpen(false);
+                onExport(d.id, d.name);
+              }}
+              className="w-full text-left px-3 py-2 text-sm text-navy-700 hover:bg-lightPrimary flex items-center gap-2"
+            >
+              <I name="building-2" size={14} className="text-brand" />
+              {d.name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function Departments() {
   const [items, setItems] = useState([]);
@@ -74,8 +120,77 @@ export default function Departments() {
     }
   }
 
+  async function onExport(rootId, name) {
+    try {
+      const res = await resources.departments.exportXlsx(rootId);
+      const blob = new Blob([res.data], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const today = new Date().toISOString().slice(0, 10);
+      a.href = url;
+      a.download = `${name}_人员统计_${today}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast("已导出", "success");
+    } catch (e) {
+      toast(e.response?.data?.message || e.message || "导出失败", "error");
+    }
+  }
+
+  async function onReorder(moves) {
+    // 乐观更新:本地立即应用,失败再 revert via reload
+    const prev = items;
+    const next = items.map((d) => {
+      const m = moves.find((x) => x.id === d.id);
+      if (!m) return d;
+      return {
+        ...d,
+        ...(Object.prototype.hasOwnProperty.call(m, "parentId") ? { parentId: m.parentId } : {}),
+        sortOrder: m.sortOrder,
+      };
+    });
+    setItems(next);
+    try {
+      await resources.departments.reorder(moves);
+    } catch (e) {
+      setItems(prev);
+      const msg = e.response?.data?.message || e.message || "调整失败";
+      toast(msg, "error");
+    }
+  }
+
   return (
     <div className="space-y-6">
+      <Card className="p-6">
+        <div className="flex items-center justify-between flex-wrap gap-3 mb-5">
+          <div>
+            <h2 className="title-card flex items-center gap-2">
+              <I name="network" size={18} className="text-brand" />
+              组织架构图
+            </h2>
+            <p className="text-xs text-gray-700 mt-1">拖动节点调整父子关系 · 顶部根区可拖出顶级部门</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <ExportMenu
+              rootCandidates={items.filter((d) => !d.parentId)}
+              onExport={onExport}
+            />
+            <Button onClick={openCreate} icon={<I name="plus" size={16} />}>新建部门</Button>
+          </div>
+        </div>
+        {loading ? (
+          <LoadingBlock height="h-40" />
+        ) : items.length === 0 ? (
+          <Empty icon="network" title="还没有部门,先新建一个" />
+        ) : (
+          <OrgChartTree items={items} onReorder={onReorder} />
+        )}
+      </Card>
+
       <Card className="p-6">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
@@ -85,7 +200,6 @@ export default function Departments() {
             </h2>
             <p className="text-xs text-gray-700 mt-1">管理员视角的组织结构 · 含编制与缺员视图</p>
           </div>
-          <Button onClick={openCreate} icon={<I name="plus" size={16} />}>新建部门</Button>
         </div>
 
         {loading ? (
@@ -105,7 +219,7 @@ export default function Departments() {
                     <p className="text-xs text-gray-700">{d.code || "—"}</p>
                   </div>
                 </div>
-                <div className="grid grid-cols-3 gap-2 mt-4 text-xs">
+                <div className="grid grid-cols-4 gap-2 mt-4 text-xs">
                   <div className="bg-white rounded-xl p-2.5">
                     <p className="text-gray-700">部门负责人</p>
                     <p className="text-sm font-bold text-navy-700 mt-0.5 truncate">{d.head || "—"}</p>
@@ -117,6 +231,10 @@ export default function Departments() {
                   <div className="bg-white rounded-xl p-2.5">
                     <p className="text-gray-700">缺员</p>
                     <p className="text-lg font-bold text-amber-500 mt-0.5">{d.openHc}</p>
+                  </div>
+                  <div className="bg-white rounded-xl p-2.5">
+                    <p className="text-gray-700">已关联候选人</p>
+                    <p className="text-lg font-bold text-brand mt-0.5">{d.directCount ?? 0}</p>
                   </div>
                 </div>
                 <div className="opacity-0 group-hover:opacity-100 transition absolute bottom-3 right-3 flex gap-1.5">
@@ -143,7 +261,7 @@ export default function Departments() {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <Input containerClassName="col-span-2" label="部门名 *" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-            <Input label="部门代码" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} />
+              <Input label="部门代码" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} />
             <Input label="负责人" value={form.head} onChange={(e) => setForm({ ...form, head: e.target.value })} />
             <Input label="现编人数" type="number" min="0" value={form.headcount} onChange={(e) => setForm({ ...form, headcount: e.target.value })} />
             <Input label="缺员数" type="number" min="0" value={form.openHc} onChange={(e) => setForm({ ...form, openHc: e.target.value })} />

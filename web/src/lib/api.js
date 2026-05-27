@@ -69,6 +69,9 @@ export const resources = {
     create: (data) => api.post("/departments", data).then((r) => r.data.department),
     update: (id, data) => api.patch(`/departments/${id}`, data).then((r) => r.data.department),
     remove: (id) => api.delete(`/departments/${id}`),
+    reorder: (moves) => api.post("/departments/reorder", { moves }).then((r) => r.data),
+    exportXlsx: (rootId) =>
+      api.get(`/departments/${rootId}/export.xlsx`, { responseType: "blob" }),
   },
   interviews: {
     list: (params) => api.get("/interviews", { params }).then((r) => r.data),
