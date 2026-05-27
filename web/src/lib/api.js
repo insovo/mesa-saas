@@ -83,7 +83,10 @@ export const resources = {
     overview: () => api.get("/dashboard/overview").then((r) => r.data),
   },
   reports: {
-    overview: () => api.get("/reports/overview").then((r) => r.data),
+    overview: (params) => api.get("/reports/overview", { params }).then((r) => r.data),
+    byJob: (params) => api.get("/reports/by-job", { params }).then((r) => r.data),
+    byDepartment: (params) => api.get("/reports/by-department", { params }).then((r) => r.data),
+    drilldown: (params) => api.get("/reports/drilldown", { params }).then((r) => r.data),
   },
   notes: {
     list: (candidateId) => api.get(`/candidates/${candidateId}/notes`).then((r) => r.data.notes),
