@@ -34,6 +34,7 @@ import * as Lucide from "lucide-react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { api, resources, LONG_TIMEOUT } from "../lib/api.js";
 import { getUser } from "../lib/auth.js";
+import { useHasModule } from "../lib/authContext.jsx";
 import { LiquidLoader } from "../components/Primitives.jsx";
 import ReparseConfirmModal from "../components/ReparseConfirmModal.jsx";
 import MarkdownBullets from "../components/MarkdownBullets.jsx";
@@ -2791,6 +2792,10 @@ function TagsModule({ tags, suggestions, onChange }) {
 function CandidateDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  // 模块权限 — 没权限的入口按钮直接隐藏(后端也会拒)
+  const canShare = useHasModule("candidate.share");
+  const canDelete = useHasModule("candidate.delete");
+  const canEdit = useHasModule("candidate.edit");
   const [c, setC] = useState(null);
   const [err, setErr] = useState("");
   const [jobs, setJobs] = useState([]);
@@ -3368,11 +3373,15 @@ function CandidateDetail() {
 
         {/* === Action buttons === */}
         <div className="flex flex-wrap gap-2">
-          <Button onClick={pushNextStatus} icon={<I name="zap" size={14} />}>推进到下一阶段</Button>
+          {canEdit && <Button onClick={pushNextStatus} icon={<I name="zap" size={14} />}>推进到下一阶段</Button>}
           <Button variant="ghost" onClick={() => setJdDescOpen(true)} icon={<I name="file-text" size={14} />}>JD 描述</Button>
-          <Button variant="ghost" onClick={() => setShareOpen(true)} icon={<I name="share-2" size={14} />}>分享</Button>
+          {canShare && (
+            <Button variant="ghost" onClick={() => setShareOpen(true)} icon={<I name="share-2" size={14} />}>分享</Button>
+          )}
           <div className="flex-1" />
-          <Button variant="danger" onClick={onDelete} icon={<I name="trash-2" size={14} />}>删除候选人</Button>
+          {canDelete && (
+            <Button variant="danger" onClick={onDelete} icon={<I name="trash-2" size={14} />}>删除候选人</Button>
+          )}
         </div>
 
         {/* === AI Summary === */}

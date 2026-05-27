@@ -4,6 +4,13 @@
 import { whereByIdOrExternal } from "../lib/idLookup.js";
 import { withDerivedCandidate as withDerived } from "../lib/derived.js";
 import {
+  loadUserAccess,
+  buildCandidateScopeWhere,
+  assertCandidateAccess,
+  filterCandidateByModules,
+  hasModule,
+} from "../lib/permissions.js";
+import {
   candidateToEmployeeData,
   mapStatusToStage,
 } from "../lib/candidateToEmployee.js";
@@ -102,8 +109,9 @@ const LIST_QUERY = {
 export default async function candidatesRoutes(app) {
   app.addHook("preHandler", app.authenticate);
 
-  // List + filter + search
+  // List + filter + search — 接入数据范围
   app.get("/", { schema: { querystring: LIST_QUERY } }, async (req) => {
+    const access = await loadUserAccess(req);
     const { q, status, appliedFor, ownerId, orderBy = "updatedAt", skip = 0, take = 50 } = req.query;
     const where = {};
     if (status) where.status = status;
@@ -118,9 +126,13 @@ export default async function candidatesRoutes(app) {
         { appliedFor: { contains: q, mode: "insensitive" } },
       ];
     }
+
+    const scopeWhere = await buildCandidateScopeWhere(req);
+    const finalWhere = scopeWhere ? { AND: [where, scopeWhere] } : where;
+
     const [items, total] = await Promise.all([
       app.prisma.candidate.findMany({
-        where,
+        where: finalWhere,
         orderBy: { [orderBy]: "desc" },
         skip,
         take,
@@ -129,15 +141,22 @@ export default async function candidatesRoutes(app) {
           department: { select: { id: true, name: true, code: true } },
         },
       }),
-      app.prisma.candidate.count({ where }),
+      app.prisma.candidate.count({ where: finalWhere }),
     ]);
-    return { items: items.map(withDerived), total, skip, take };
+    const shaped = items
+      .map(withDerived)
+      .map((c) => filterCandidateByModules(c, access));
+    return { items: shaped, total, skip, take };
   });
 
-  // Detail
+  // Detail — 接入数据范围 + 模块字段剥离
   app.get("/:id", async (req, reply) => {
+    const access = await loadUserAccess(req);
+    const scopeWhere = await buildCandidateScopeWhere(req);
+    const idWhere = whereByIdOrExternal(req.params.id);
+    const where = scopeWhere ? { AND: [idWhere, scopeWhere] } : idWhere;
     const candidate = await app.prisma.candidate.findFirst({
-      where: whereByIdOrExternal(req.params.id),
+      where,
       include: {
         job: { select: { id: true, title: true, dept: true } },
         department: { select: { id: true, name: true, code: true } },
@@ -145,22 +164,28 @@ export default async function candidatesRoutes(app) {
       },
     });
     if (!candidate) return reply.code(404).send({ error: "not_found" });
-    return { candidate: withDerived(candidate) };
+    return { candidate: filterCandidateByModules(withDerived(candidate), access) };
   });
 
-  // Create
+  // Create — 普通用户也能创建,但 ownerId 强制为本人
   app.post("/", { schema: { body: { ...CANDIDATE_BODY, required: ["name"] } } }, async (req, reply) => {
     const ownerId = req.user.sub;
     const data = { ...req.body, ownerId };
     if (data.pushedAt) data.pushedAt = new Date(data.pushedAt);
-    // profileCompletion 是 derived,不接受外部写入
     delete data.profileCompletion;
     const created = await app.prisma.candidate.create({ data });
     return reply.code(201).send({ candidate: withDerived(created) });
   });
 
-  // Update
+  // Update — 需 candidate.edit + 数据范围内
   app.patch("/:id", { schema: { body: CANDIDATE_BODY } }, async (req, reply) => {
+    const access = await loadUserAccess(req);
+    if (!hasModule(access, "candidate.edit")) {
+      return reply.code(403).send({ error: "forbidden", message: "无编辑权限" });
+    }
+    const accessCheck = await assertCandidateAccess(req, reply, req.params.id);
+    if (!accessCheck) return;
+
     const { id } = req.params;
     const data = { ...req.body };
     if (data.pushedAt) data.pushedAt = new Date(data.pushedAt);
@@ -195,8 +220,14 @@ export default async function candidatesRoutes(app) {
     }
   });
 
-  // ─── 备注 ──────────────────────────────────────────────────
-  app.get("/:id/notes", async (req) => {
+  // ─── 备注 ─────────────────────────────────────────────
+  app.get("/:id/notes", async (req, reply) => {
+    const access = await loadUserAccess(req);
+    if (!hasModule(access, "candidate.notes")) {
+      return reply.code(403).send({ error: "forbidden", message: "无备注模块权限" });
+    }
+    const ok = await assertCandidateAccess(req, reply, req.params.id);
+    if (!ok) return;
     const notes = await app.prisma.candidateNote.findMany({
       where: { candidateId: req.params.id },
       orderBy: { createdAt: "desc" },
@@ -213,6 +244,12 @@ export default async function candidatesRoutes(app) {
       },
     },
   }, async (req, reply) => {
+    const access = await loadUserAccess(req);
+    if (!hasModule(access, "candidate.notes")) {
+      return reply.code(403).send({ error: "forbidden", message: "无备注模块权限" });
+    }
+    const ok = await assertCandidateAccess(req, reply, req.params.id);
+    if (!ok) return;
     const note = await app.prisma.candidateNote.create({
       data: {
         candidateId: req.params.id,
@@ -225,6 +262,12 @@ export default async function candidatesRoutes(app) {
   });
 
   app.delete("/:id/notes/:noteId", async (req, reply) => {
+    const access = await loadUserAccess(req);
+    if (!hasModule(access, "candidate.notes")) {
+      return reply.code(403).send({ error: "forbidden", message: "无备注模块权限" });
+    }
+    const ok = await assertCandidateAccess(req, reply, req.params.id);
+    if (!ok) return;
     try {
       await app.prisma.candidateNote.delete({ where: { id: req.params.noteId } });
       return reply.code(204).send();
@@ -234,8 +277,14 @@ export default async function candidatesRoutes(app) {
     }
   });
 
-  // Delete
+  // Delete — 需 candidate.delete + 数据范围内
   app.delete("/:id", async (req, reply) => {
+    const access = await loadUserAccess(req);
+    if (!hasModule(access, "candidate.delete")) {
+      return reply.code(403).send({ error: "forbidden", message: "无删除权限" });
+    }
+    const ok = await assertCandidateAccess(req, reply, req.params.id);
+    if (!ok) return;
     const { id } = req.params;
     try {
       await app.prisma.candidate.delete({ where: { id } });

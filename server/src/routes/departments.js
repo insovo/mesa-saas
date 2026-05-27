@@ -2,6 +2,11 @@
 
 import ExcelJS from "exceljs";
 import { whereByIdOrExternal } from "../lib/idLookup.js";
+import {
+  loadUserAccess,
+  buildDepartmentScopeWhere,
+  hasModule,
+} from "../lib/permissions.js";
 
 function colLetter(n) {
   let s = "";
@@ -74,8 +79,10 @@ function collectDescendantIds(flat, rootId) {
 export default async function departmentsRoutes(app) {
   app.addHook("preHandler", app.authenticate);
 
-  app.get("/", async () => {
+  app.get("/", async (req) => {
+    const scopeWhere = await buildDepartmentScopeWhere(req);
     const items = await app.prisma.department.findMany({
+      where: scopeWhere || undefined,
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
       include: { _count: { select: { candidates: true, children: true } } },
     });
@@ -98,8 +105,11 @@ export default async function departmentsRoutes(app) {
   });
 
   app.get("/:id", async (req, reply) => {
+    const scopeWhere = await buildDepartmentScopeWhere(req);
+    const idWhere = whereByIdOrExternal(req.params.id);
+    const where = scopeWhere ? { AND: [idWhere, scopeWhere] } : idWhere;
     const dept = await app.prisma.department.findFirst({
-      where: whereByIdOrExternal(req.params.id),
+      where,
       include: { children: true, parent: true },
     });
     if (!dept) return reply.code(404).send({ error: "not_found" });
@@ -107,11 +117,27 @@ export default async function departmentsRoutes(app) {
   });
 
   app.post("/", { schema: { body: { ...DEPT_BODY, required: ["name"] } } }, async (req, reply) => {
+    const access = await loadUserAccess(req);
+    if (!hasModule(access, "department.create")) {
+      return reply.code(403).send({ error: "forbidden", message: "无创建部门权限" });
+    }
     const created = await app.prisma.department.create({ data: req.body });
     return reply.code(201).send({ department: created });
   });
 
   app.patch("/:id", { schema: { body: DEPT_BODY } }, async (req, reply) => {
+    const access = await loadUserAccess(req);
+    if (!hasModule(access, "department.edit")) {
+      return reply.code(403).send({ error: "forbidden", message: "无编辑部门权限" });
+    }
+    const scopeWhere = await buildDepartmentScopeWhere(req);
+    if (scopeWhere) {
+      const inScope = await app.prisma.department.findFirst({
+        where: { AND: [{ id: req.params.id }, scopeWhere] },
+        select: { id: true },
+      });
+      if (!inScope) return reply.code(404).send({ error: "not_found" });
+    }
     const { id } = req.params;
     const data = req.body;
     if (Object.prototype.hasOwnProperty.call(data, "parentId") && data.parentId) {
@@ -134,6 +160,18 @@ export default async function departmentsRoutes(app) {
   });
 
   app.delete("/:id", async (req, reply) => {
+    const access = await loadUserAccess(req);
+    if (!hasModule(access, "department.delete")) {
+      return reply.code(403).send({ error: "forbidden", message: "无删除部门权限" });
+    }
+    const scopeWhere = await buildDepartmentScopeWhere(req);
+    if (scopeWhere) {
+      const inScope = await app.prisma.department.findFirst({
+        where: { AND: [{ id: req.params.id }, scopeWhere] },
+        select: { id: true },
+      });
+      if (!inScope) return reply.code(404).send({ error: "not_found" });
+    }
     const { id } = req.params;
     try {
       await app.prisma.department.delete({ where: { id } });
@@ -146,6 +184,10 @@ export default async function departmentsRoutes(app) {
 
   // 批量重排 — 组织树拖拽时一次性提交多个节点的新 (parentId, sortOrder)
   app.post("/reorder", { schema: { body: REORDER_BODY } }, async (req, reply) => {
+    const access = await loadUserAccess(req);
+    if (!hasModule(access, "department.edit")) {
+      return reply.code(403).send({ error: "forbidden", message: "无编辑部门权限" });
+    }
     const { moves } = req.body;
     const flat = await app.prisma.department.findMany({ select: { id: true, parentId: true } });
     const proposed = new Map(flat.map((d) => [d.id, { ...d }]));
@@ -202,6 +244,11 @@ export default async function departmentsRoutes(app) {
   // 排版:三级合并表头 (root → 分中心 → 国家 → 完成/总数) + 末列合计 + 末行合计
   //       下半部分紧凑「分子/分母」版,公式联动上半部分
   app.get("/:id/export.xlsx", async (req, reply) => {
+    const access = await loadUserAccess(req);
+    // 仅 ADMIN 或拥有 departments page 权限的用户可导出(避免外部用户拿到全公司人员统计)
+    if (!access.isAdmin && !access.pageKeys.includes("departments")) {
+      return reply.code(403).send({ error: "forbidden", message: "无导出权限" });
+    }
     const all = await app.prisma.department.findMany({
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
       include: { _count: { select: { candidates: true } } },

@@ -7,17 +7,21 @@ import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { I, Modal, Button, toast } from "./Primitives.jsx";
 import { api } from "../lib/api.js";
+import { useMe } from "../lib/authContext.jsx";
+import { hasPage as canSeePage, isAdmin as checkIsAdmin } from "../lib/permissions.js";
 
 const ITEMS = [
-  { to: "/dashboard", label: "概览", icon: "layout-dashboard" },
-  { to: "/candidates", label: "候选人", icon: "users" },
-  { to: "/jobs", label: "岗位", icon: "briefcase" },
-  { to: "/upload", label: "简历收件箱", icon: "upload-cloud" },
-  { to: "/staff", label: "现有人员", icon: "users-round" },
-  { to: "/newhire", label: "入职管理", icon: "user-plus" },
-  { to: "/departments", label: "部门管理", icon: "building-2", adminOnly: true },
-  { to: "/interviews", label: "面试安排", icon: "calendar" },
-  { to: "/reports", label: "数据报表", icon: "bar-chart-3" },
+  { to: "/dashboard",    label: "概览",       icon: "layout-dashboard", pageKey: "dashboard" },
+  { to: "/candidates",   label: "候选人",     icon: "users",            pageKey: "candidates" },
+  { to: "/jobs",         label: "岗位",       icon: "briefcase",        pageKey: "jobs" },
+  { to: "/upload",       label: "简历收件箱", icon: "upload-cloud",     pageKey: "upload" },
+  { to: "/staff",        label: "现有人员",   icon: "users-round",      pageKey: "staff" },
+  { to: "/newhire",      label: "入职管理",   icon: "user-plus",        pageKey: "newhire" },
+  { to: "/departments",  label: "部门管理",   icon: "building-2",       pageKey: "departments" },
+  { to: "/interviews",   label: "面试安排",   icon: "calendar",         pageKey: "interviews" },
+  { to: "/reports",      label: "数据报表",   icon: "bar-chart-3",      pageKey: "reports" },
+  { to: "/users",        label: "用户管理",   icon: "shield-check",     pageKey: "users", adminOnly: true },
+  { to: "/audit",        label: "审计日志",   icon: "scroll-text",      pageKey: "audit", adminOnly: true },
 ];
 
 const PROVIDER_LABELS = {
@@ -29,8 +33,15 @@ const COLLAPSED_KEY = "mesa.sidebar.collapsed";
 
 export default function Sidebar({ user, mobileOpen = false, onMobileClose, collapsed, onToggleCollapsed }) {
   const location = useLocation();
-  const isAdmin = user?.role === "ADMIN";
-  const items = ITEMS.filter((it) => !it.adminOnly || isAdmin);
+  const me = useMe();
+  // 兼容旧调用方:user prop 仍用,但 page 过滤优先看 me(权限策略)
+  const isAdmin = checkIsAdmin(me) || user?.role === "ADMIN";
+  const items = ITEMS.filter((it) => {
+    if (it.adminOnly && !isAdmin) return false;
+    if (it.pageKey && me) return canSeePage(me, it.pageKey);
+    // me 还在加载时,先展示非 adminOnly 项,避免菜单闪烁
+    return true;
+  });
   const [llm, setLlm] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem("mesa.llm.model") || "");

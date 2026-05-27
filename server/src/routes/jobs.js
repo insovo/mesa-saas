@@ -1,6 +1,11 @@
 // /api/jobs — CRUD + 列表过滤
 
 import { whereByIdOrExternal } from "../lib/idLookup.js";
+import {
+  loadUserAccess,
+  buildJobScopeWhere,
+  hasModule,
+} from "../lib/permissions.js";
 
 const JOB_BODY = {
   type: "object",
@@ -59,24 +64,27 @@ export default async function jobsRoutes(app) {
         { owner: { contains: q, mode: "insensitive" } },
       ];
     }
+    const scopeWhere = await buildJobScopeWhere(req);
+    const finalWhere = scopeWhere ? { AND: [where, scopeWhere] } : where;
     const [items, total] = await Promise.all([
       app.prisma.job.findMany({
-        where,
+        where: finalWhere,
         orderBy: { updatedAt: "desc" },
         skip,
         take,
-        // 动态统计: 已关联此 JD 的候选人数 + 已入职到此岗位的员工数
-        // 取代 Job.candidates 这个 int 字段的固定值
         include: { _count: { select: { linkedCandidates: true, employees: true } } },
       }),
-      app.prisma.job.count({ where }),
+      app.prisma.job.count({ where: finalWhere }),
     ]);
     return { items, total, skip, take };
   });
 
   app.get("/:id", async (req, reply) => {
+    const scopeWhere = await buildJobScopeWhere(req);
+    const idWhere = whereByIdOrExternal(req.params.id);
+    const where = scopeWhere ? { AND: [idWhere, scopeWhere] } : idWhere;
     const job = await app.prisma.job.findFirst({
-      where: whereByIdOrExternal(req.params.id),
+      where,
       include: { _count: { select: { linkedCandidates: true, employees: true } } },
     });
     if (!job) return reply.code(404).send({ error: "not_found" });
@@ -84,6 +92,10 @@ export default async function jobsRoutes(app) {
   });
 
   app.post("/", { schema: { body: { ...JOB_BODY, required: ["title"] } } }, async (req, reply) => {
+    const access = await loadUserAccess(req);
+    if (!hasModule(access, "job.create")) {
+      return reply.code(403).send({ error: "forbidden", message: "无创建岗位权限" });
+    }
     const data = { ...req.body };
     if (data.publishedAt) data.publishedAt = new Date(data.publishedAt);
     if (data.deadline) data.deadline = new Date(data.deadline);
@@ -92,6 +104,19 @@ export default async function jobsRoutes(app) {
   });
 
   app.patch("/:id", { schema: { body: JOB_BODY } }, async (req, reply) => {
+    const access = await loadUserAccess(req);
+    if (!hasModule(access, "job.edit")) {
+      return reply.code(403).send({ error: "forbidden", message: "无编辑岗位权限" });
+    }
+    // 数据范围校验
+    const scopeWhere = await buildJobScopeWhere(req);
+    if (scopeWhere) {
+      const inScope = await app.prisma.job.findFirst({
+        where: { AND: [{ id: req.params.id }, scopeWhere] },
+        select: { id: true },
+      });
+      if (!inScope) return reply.code(404).send({ error: "not_found" });
+    }
     const { id } = req.params;
     const data = { ...req.body };
     if (data.publishedAt) data.publishedAt = new Date(data.publishedAt);
@@ -106,6 +131,18 @@ export default async function jobsRoutes(app) {
   });
 
   app.delete("/:id", async (req, reply) => {
+    const access = await loadUserAccess(req);
+    if (!hasModule(access, "job.delete")) {
+      return reply.code(403).send({ error: "forbidden", message: "无删除岗位权限" });
+    }
+    const scopeWhere = await buildJobScopeWhere(req);
+    if (scopeWhere) {
+      const inScope = await app.prisma.job.findFirst({
+        where: { AND: [{ id: req.params.id }, scopeWhere] },
+        select: { id: true },
+      });
+      if (!inScope) return reply.code(404).send({ error: "not_found" });
+    }
     const { id } = req.params;
     try {
       await app.prisma.job.delete({ where: { id } });

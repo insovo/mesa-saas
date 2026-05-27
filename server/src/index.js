@@ -19,6 +19,8 @@ import systemRoutes from "./routes/system.js";
 import shareRoutes from "./routes/share.js";
 import uploadLinksRoutes from "./routes/upload-links.js";
 import reviewsRoutes from "./routes/reviews.js";
+import usersRoutes from "./routes/users.js";
+import auditRoutes from "./routes/audit.js";
 
 const requiredEnv = ["DATABASE_URL", "JWT_SECRET", "WEB_ORIGIN"];
 for (const key of requiredEnv) {
@@ -66,6 +68,8 @@ await app.register(shareRoutes, { prefix: "/api" });
 // upload-links: admin 在 /api/upload-links,公开在 /api/public/upload/:token
 await app.register(uploadLinksRoutes, { prefix: "/api" });
 await app.register(reviewsRoutes, { prefix: "/api" });
+await app.register(usersRoutes, { prefix: "/api/users" });
+await app.register(auditRoutes, { prefix: "/api/audit-logs" });
 
 app.setErrorHandler((err, req, reply) => {
   const status = err.statusCode || 500;
