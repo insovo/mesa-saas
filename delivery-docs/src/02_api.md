@@ -71,8 +71,12 @@ Query:
 | `q` | string | — | 模糊匹配 name / school / major / appliedFor |
 | `status` | string | — | 精确过滤当前状态 |
 | `appliedFor` | string | — | 按应聘岗位过滤 |
+| `ownerId` | string | — | V3 — 传 `"me"` 自动替换为当前 user.sub;传 uuid 直接过滤;不传 = 不限。Upload 页拉"我接收到的简历"用 |
+| `orderBy` | string | `updatedAt` | V3 — `createdAt` 或 `updatedAt`,desc 排序 |
 | `skip` | int | 0 | 分页偏移 |
 | `take` | int | 50 | 单页大小,1-200 |
+
+响应每条 candidate 自动 include `job: {id, title, dept}` + `department: {id, name, code}`(V3 加,给前端 chip 显示用)。
 
 ## 3.2 GET /api/candidates/:id
 
@@ -368,27 +372,33 @@ Query: `status` / `candidateId` / `jobId` / `from`(date-time) / `to`(date-time) 
 
 ## 12.2 POST /api/resumes/parse
 
-两种调用模式(请求体 `key` 与 `candidateId` 互斥,schema oneOf 强制二选一):
+两种调用模式(请求体 `key` 与 `candidateId` 互斥,schema oneOf 强制二选一)。**自 2026-05-26 起两种模式均异步任务化**(根治 `.doc` 等格式 Kimi >90s timeout)。
 
-### (a) 新建候选人(同步)— 传 `key`
+### (a) 新建候选人(异步,V3)— 传 `key`
 
 ```json
 {
   "key": "uploads/abc.pdf",       // R2 object key
   "contentType": "application/pdf",
   "model": "moonshot-v1-32k",      // 可选, 不传用 SystemSetting 配置
-  "jobId": "uuid"                   // 可选, 传了会自动跑 JD 二次评估
+  "jobId": "uuid",                  // 可选, 传了会自动跑 JD 二次评估
+  "filename": "candidate.pdf",      // 可选, 用于降级时 candidate.name
+  "source": "罗卡推荐"             // 可选, 覆盖默认 "自动上传"
 }
 ```
 
-流程:R2 拉文件 → Kimi /files 上传 + 抽文本 → /chat/completions JSON 输出 → 若有 jobId 跑 matchAgainstJob。
+后端立即 202 返回 `task`,setImmediate(runParseAndCreate) 跑:R2 拉文件 → Kimi /files extract → /chat/completions JSON → 若 jobId 跑 matchAgainstJob → **Prisma create candidate**(已写 DB,owner=req.user.sub)→ markDone。前端 2s 轮询 §12.3 直到 done/failed。
 
-响应 200:
+响应 202(mode="create"):
 ```json
 {
-  "candidate": { /* 未存 DB 的 candidate object, 前端再 POST /candidates 创建 */ },
-  "meta": { "model": "...", "usage": {...} },
-  "match": null  // 或 { jdMatch, risks, highlights, matchReason, matchedFor, againstFor, aiSuggestedTags, insights }
+  "task": {
+    "id": "uuid",
+    "candidateId": null,           // mode=create 时 task 完成后 candidate.id 在 task.candidate 字段
+    "mode": "create",
+    "status": "pending",
+    "startedAt": "2026-05-26T..."
+  }
 }
 ```
 
@@ -407,21 +417,22 @@ Query: `status` / `candidateId` / `jobId` / `from`(date-time) / `to`(date-time) 
 - **传 `null`**:取消 JD 关联,清空 `candidate.jobId` + jdMatch/risks/highlights/insights/skills/experience/educationHistory
 - **传 uuid**:切到该 JD,跑 matchAgainstJob,并同步把 `candidate.jobId` 也更新
 
-后端立即 202 返回 taskId,fire-and-forget 跑 Kimi(后端用 `candidate.attachment` 作 R2 key,UPDATE 现有 DB 行,不破坏 status/appliedFor/source/owner/documents)。绕过 Cloudflare 100s origin response 硬上限。
+后端立即 202 返回 taskId,fire-and-forget 跑 Kimi(后端用 `candidate.attachment` 作 R2 key,**UPDATE** 现有 DB 行,不破坏 status/appliedFor/source/owner/documents)。绕过 Cloudflare 100s origin response 硬上限。
 
 **两阶段解析**(2026-05 改造):
 - parseResume 只产 `summary` + 基础字段(name/phone/email/school/major/yearsExp/...) + `tags`
 - matchAgainstJob(如有 jobId)二阶段产出 jdMatch + risks/highlights/insights/aiSuggestedTags/matchedFor/againstFor + skills/experience/educationHistory(markdown bullet 字符串)
 - 阶段一字段在 LLM 偶尔输出空数组时**保留旧值**(防 .doc 抖动清空旧数据)
 
-响应 202:
+响应 202(mode="reparse"):
 ```json
 {
   "task": {
     "id": "uuid",
     "candidateId": "uuid",
+    "mode": "reparse",
     "status": "pending",
-    "startedAt": "2026-05-25T..."
+    "startedAt": "2026-05-26T..."
   }
 }
 ```
@@ -430,6 +441,45 @@ Query: `status` / `candidateId` / `jobId` / `from`(date-time) / `to`(date-time) 
 - 424 `kimi_not_configured` / `r2_not_configured`
 - 404 `candidate_not_found`
 - 400 `no_attachment`(候选人无简历附件)
+
+## 12.2a POST /api/resumes/parse-jd  (V3, 2026-05-26)
+
+JD 文件 AI 抽取 — 用户在 Upload 页"新建 JD"弹窗上传 JD 文件(PDF/DOCX/DOC,≤20MB),后端调 Kimi 抽取成 `Job` 模型对齐的结构化字段,前端弹窗展示供用户编辑确认再 POST /jobs 落库。
+
+```json
+{
+  "key": "uploads/jd-xxx.pdf",     // R2 object key (presigned + confirm 同款流程)
+  "contentType": "application/pdf",
+  "model": "moonshot-v1-32k"        // 可选
+}
+```
+
+响应 200:
+```json
+{
+  "job": {
+    "title": "高级前端工程师",
+    "description": "整段 JD 描述, ≤10000 字符",
+    "responsibilities": ["职责 1", "职责 2", ...],
+    "requirements": ["要求 1", ...],
+    "nice": [...],
+    "benefits": [...],
+    "employment": "全职",
+    "salary": "30K-40K · 16薪",
+    "levelRange": "P6-P7",
+    "yearsExpRange": "5-7 年",
+    "educationRequirement": "本科及以上",
+    "languageRequirement": "英语 CEFR B2+"
+  },
+  "meta": { "fileId": "...", "model": "...", "usage": {...} }
+}
+```
+
+错误响应:
+- 424 `kimi_not_configured` / `r2_not_configured`
+- 404 `r2_object_not_found`
+- 400 `empty_file`,413 `file_too_large`(>20MB)
+- 502 `kimi_error`(LLM 上游错)
 
 ## 12.3 GET /api/resumes/parse-tasks/:taskId
 
@@ -642,6 +692,114 @@ duration / maxViews / showContact / showAttachments 至少给一个。
 | POST | `/api/public/share/:token/signed-get-url` | 下载附件(key 必须以 `reviews/` 开头) |
 
 错误码同 14.5。
+
+---
+
+# 16. UploadShareLink · 公开上传简历(V3, 2026-05-26)
+
+ShareLink (§14) 是「候选人简报对外」,UploadShareLink 是镜像反向 — 招聘官生成 token,候选人本人 / 同事 / 猎头通过公开链接上传简历。完整设计见 CLAUDE.md §11.5。
+
+## 16.1 GET /api/upload-links  (admin)
+
+列出当前用户创建的所有上传链接(单用户允许多个并存,each 独立 token)。
+
+响应 200:
+```json
+{
+  "links": [{
+    "id": "uuid", "token": "32 字符 URL-safe",
+    "defaultJobId": "uuid|null", "defaultJob": { "id":"uuid","title":"...","dept":"..." } | null,
+    "defaultSource": "罗卡推荐|null", "note": "招聘官给上传者的提示|null",
+    "expiresAt": "ISO|null", "maxUploads": 200|null, "uploadCount": 0,
+    "createdBy": "uuid", "lastUploadAt": "ISO|null",
+    "createdAt": "ISO", "updatedAt": "ISO"
+  }, ...]
+}
+```
+
+## 16.2 POST /api/upload-links  (admin)
+
+创建新上传链接。
+
+```json
+{
+  "defaultJobId": "uuid|null",       // 可选, 预填到 candidate.jobId
+  "defaultSource": "罗卡推荐|null",   // 可选, ≤500 字符, 预填到 candidate.source(被外部用户覆盖)
+  "note": "请上传 PDF, 24h 内联系|null",  // 可选, ≤1000 字符, 公开页头部 amber 提示卡显示
+  "duration": "30d",                 // 必填, 同 14.2(60s-30d / forever)
+  "maxUploads": 200                  // 可选, null=不限, 1-9999
+}
+```
+
+响应 201:同 16.1 单条 `{ link }`。
+
+## 16.3 DELETE /api/upload-links/:id  (admin)
+
+删除自己的链接(非自己创建的返回 403,ADMIN 可强删任何人的)。响应 204。
+
+## 16.4 GET /api/public/upload/:token  (公开,无鉴权)
+
+公开页打开时调用,拿元数据渲染表单。
+
+响应 200(剔除敏感字段):
+```json
+{
+  "link": {
+    "token": "...",
+    "defaultJob": { "id": "uuid", "title": "高级前端工程师" } | null,
+    "defaultSource": "罗卡推荐|null",
+    "note": "招聘官留言|null",
+    "expiresAt": "ISO|null",
+    "maxUploads": 200|null, "uploadCount": 5
+  }
+}
+```
+
+错误响应:
+- 404 `link_not_found`(token 无效或已删)
+- 410 `link_expired`(`expiresAt < now`)
+- 410 `link_quota_exceeded`(`uploadCount >= maxUploads`)
+
+## 16.5 POST /api/public/upload/:token/presigned-url  (公开)
+
+给公开页上传文件用,token-gated 签发 R2 presigned PUT URL。
+
+```json
+{ "filename": "abc.pdf", "contentType": "application/pdf", "expectedSize": 1024 }
+```
+
+仅接受 MIME:`application/pdf` / `application/msword` / `application/vnd.openxmlformats-officedocument.wordprocessingml.document`。Key 生成规则:`resumes/public-uploads/<YYYY-MM>/<uuid>.<ext>`(跟 admin 主桶 `resumes/<YYYY-MM>/` 分离便于审计)。
+
+响应 200:`{ uploadUrl, key, expiresIn: 900 }`。
+
+错误同 16.4 + 503 `r2_not_configured` + 400 `unsupported_type`。
+
+## 16.6 POST /api/public/upload/:token/submit  (公开)
+
+完成 R2 PUT 上传后,提交创建 candidate + uploadCount++。
+
+```json
+{
+  "key": "resumes/public-uploads/2026-05/abc.pdf",   // 必填, presigned 拿到的 key
+  "filename": "abc.pdf",                              // 可选, 降级时用
+  "name": "张三|null",                                // 可选, 上传者填的姓名(降级时用作 candidate.name)
+  "contact": "138****5678|null",                      // 可选, 联系方式 → candidate.phone
+  "source": "猎头-罗卡推荐|null",                    // 可选, 覆盖 link.defaultSource
+  "uploaderNote": "毕业 985, 期待背景|null"          // 可选, ≤2000 字符 → 写入 CandidateNote 表
+}
+```
+
+后端事务:
+1. `prisma.candidate.create({ ownerId: link.createdBy, jobId: link.defaultJobId, appliedFor: link.defaultJob.title, source: 用户填 || link.defaultSource || "[公开上传]", tags: ["待解析","公开上传"] })`
+2. uploaderNote 非空时 `prisma.candidateNote.create({ candidateId, content, authorName: name || "公开上传访客" })` → 候选人详情页"备注"卡显示
+3. `prisma.uploadShareLink.update({ uploadCount: +1, lastUploadAt: now })`
+
+响应 201(不返回 candidate 详细给陌生上传者):
+```json
+{ "ok": true, "uploadCount": 6, "maxUploads": 200 }
+```
+
+错误同 16.4 + 简化策略:**公开上传不立即跑 LLM 解析**,降级入库 tags `["待解析","公开上传"]`,admin 后续在 Upload 列表点"解析"按钮(§12.2 reparse 路径)触发 Kimi。
 
 ---
 
