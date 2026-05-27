@@ -6,6 +6,7 @@
 import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { I, Modal, Button, toast } from "./Primitives.jsx";
+import BrandLogo from "./BrandLogo.jsx";
 import { api } from "../lib/api.js";
 import { useMe } from "../lib/authContext.jsx";
 import { hasPage as canSeePage, isAdmin as checkIsAdmin } from "../lib/permissions.js";
@@ -206,14 +207,19 @@ export default function Sidebar({ user, mobileOpen = false, onMobileClose, colla
         {/* 头部 · logo + 收起按钮 */}
         <div className="flex items-center justify-between px-6 pt-9 md:pt-11">
           {!collapsed ? (
-            <span
-              className="brand-logo text-[22px] md:text-[24px] tracking-tight"
+            <BrandLogo
+              text="Overseas R&D"
+              size="text-[22px] md:text-[24px]"
+              className="tracking-tight"
               style={{ fontFamily: "Poppins, sans-serif", fontWeight: 700 }}
-            >
-              Overseas <span style={{ fontWeight: 500 }}>R&amp;D</span>
-            </span>
+            />
           ) : (
-            <span className="brand-logo text-[22px] font-bold mx-auto" style={{ fontFamily: "Poppins" }}>O</span>
+            <BrandLogo
+              text="O"
+              size="text-[22px]"
+              className="font-bold mx-auto"
+              style={{ fontFamily: "Poppins" }}
+            />
           )}
           {/* 桌面端收起按钮 */}
           <button
