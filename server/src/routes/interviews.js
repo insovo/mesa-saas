@@ -5,6 +5,7 @@ import {
   buildJobScopeWhere,
   loadUserAccess,
 } from "../lib/permissions.js";
+import { shouldAutoAdvanceToInterviewing } from "../lib/candidateToEmployee.js";
 
 const INTERVIEW_BODY = {
   type: "object",
@@ -117,6 +118,26 @@ export default async function interviewsRoutes(app) {
     const data = { ...req.body };
     if (data.scheduledAt) data.scheduledAt = new Date(data.scheduledAt);
     const created = await app.prisma.interview.create({ data });
+
+    // 自动推进 candidate.status:面试已安排,如果还在「面试前」阶段 → 推到「面试中」
+    // 已经在「面试中/待定中/待入职/已入职/已淘汰」的不动(尊重 HR 手工设的状态)
+    if (created.candidateId) {
+      try {
+        const cand = await app.prisma.candidate.findUnique({
+          where: { id: created.candidateId },
+          select: { status: true },
+        });
+        if (cand && shouldAutoAdvanceToInterviewing(cand.status)) {
+          await app.prisma.candidate.update({
+            where: { id: created.candidateId },
+            data: { status: "面试中" },
+          });
+          app.log.info({ candidateId: created.candidateId, interviewId: created.id }, "auto-advanced status to 面试中");
+        }
+      } catch (err) {
+        app.log.warn({ err: err?.message, candidateId: created.candidateId }, "auto-advance status failed");
+      }
+    }
     return reply.code(201).send({ interview: created });
   });
 
