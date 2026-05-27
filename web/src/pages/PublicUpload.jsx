@@ -156,7 +156,7 @@ export default function PublicUpload() {
                 <I name="upload-cloud" size={22} />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-navy-700">MESA Recruit · 简历上传</h2>
+                <h2 className="text-xl font-bold text-navy-700">Overseas R&amp;D · 简历上传</h2>
                 <p className="text-xs text-gray-700">通过分享链接安全上传,无需登录</p>
               </div>
             </div>
@@ -264,7 +264,7 @@ export default function PublicUpload() {
         </Card>
 
         <p className="text-center text-[11px] text-gray-400">
-          由 MESA Recruit 提供安全上传服务 · 您的简历仅会被招聘官查看
+          由 Overseas R&amp;D 提供安全上传服务 · 您的简历仅会被招聘官查看
         </p>
       </div>
       <ToastHost />
