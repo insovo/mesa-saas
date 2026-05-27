@@ -227,6 +227,129 @@ function RecommendChip({ recommendation }) {
   return <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${tone}`}>{recommendation}</span>;
 }
 
+// 通用 Combobox: 自由输入 + 下拉候选(支持分组与多选去重)
+// - groups: [{group, items}] 分组候选 (优先于 options)
+// - options: string[] 单层候选
+// - multi=true 时 value 用「、」分隔,点击候选 toggle 加/移
+// - multi=false 时点击候选 = 替换 value + 关闭浮层
+function Combobox({ value, onChange, groups, options, multi = false, placeholder, disabled, maxLength = 200 }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDocMouseDown(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, [open]);
+
+  // 已选集合(用于 ✓ 标记与多选去重)
+  const selected = useMemo(() => {
+    const v = (value || "").trim();
+    if (!v) return new Set();
+    if (multi) return new Set(v.split(/[、,，]\s*/).map((s) => s.trim()).filter(Boolean));
+    return new Set([v]);
+  }, [value, multi]);
+
+  // 过滤候选 — 多选用最后一段过滤,单选用整个 value
+  const filterKeyword = useMemo(() => {
+    const v = value || "";
+    if (multi) return v.split(/[、,，]/).pop().trim();
+    return v.trim();
+  }, [value, multi]);
+
+  function matches(item) {
+    if (!filterKeyword) return true;
+    return item.toLowerCase().includes(filterKeyword.toLowerCase());
+  }
+
+  function pickItem(item) {
+    if (disabled) return;
+    if (multi) {
+      if (selected.has(item)) {
+        const next = Array.from(selected).filter((s) => s !== item).join("、");
+        onChange(next.slice(0, maxLength));
+      } else {
+        const parts = Array.from(selected);
+        parts.push(item);
+        onChange(parts.join("、").slice(0, maxLength));
+      }
+    } else {
+      onChange(item.slice(0, maxLength));
+      setOpen(false);
+    }
+  }
+
+  const visibleGroups = groups
+    ? groups.map((g) => ({ ...g, items: g.items.filter(matches) })).filter((g) => g.items.length > 0)
+    : null;
+  const visibleOptions = options ? options.filter(matches) : null;
+  const hasResult = visibleGroups ? visibleGroups.length > 0 : (visibleOptions && visibleOptions.length > 0);
+
+  function renderItem(item) {
+    const isSelected = selected.has(item);
+    return (
+      <button
+        key={item}
+        type="button"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => pickItem(item)}
+        className={`w-full text-left px-3 py-1.5 text-sm flex items-center justify-between transition ${
+          isSelected ? "text-brand font-bold bg-lightPrimary/60 hover:bg-lightPrimary" : "text-navy-700 hover:bg-lightPrimary/40"
+        }`}
+      >
+        <span>{item}</span>
+        {isSelected && <I name="check" size={14} className="text-brand shrink-0" />}
+      </button>
+    );
+  }
+
+  return (
+    <div className="relative" ref={wrapRef}>
+      <input
+        type="text"
+        value={value || ""}
+        onChange={(e) => { onChange(e.target.value); if (!open) setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onClick={() => setOpen(true)}
+        disabled={disabled}
+        placeholder={placeholder}
+        maxLength={maxLength}
+        className="flex h-12 w-full items-center rounded-xl border border-gray-200 bg-white p-3 pr-9 text-sm text-navy-700 outline-none focus:border-brand transition-colors disabled:bg-gray-100"
+      />
+      {!disabled && (
+        <button
+          type="button"
+          onMouseDown={(e) => { e.preventDefault(); setOpen((o) => !o); }}
+          className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-400"
+          aria-label={open ? "收起" : "展开候选"}
+        >
+          <I name={open ? "chevron-up" : "chevron-down"} size={14} />
+        </button>
+      )}
+      {open && !disabled && (
+        <div className="absolute z-20 left-0 right-0 top-full mt-1 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-card py-1">
+          {!hasResult && (
+            <p className="px-3 py-2 text-xs text-gray-400">无匹配候选,可继续手动输入</p>
+          )}
+          {visibleGroups && visibleGroups.map((g) => (
+            <div key={g.group}>
+              <p className="text-[10px] text-gray-400 px-3 pt-2 pb-1 font-bold uppercase tracking-wide">{g.group}</p>
+              {g.items.map(renderItem)}
+            </div>
+          ))}
+          {visibleOptions && visibleOptions.map(renderItem)}
+          {multi && (
+            <p className="text-[10px] text-gray-400 px-3 py-1.5 border-t border-gray-100">提示:可多选,「、」分隔。点已选项可取消。</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── 主页面 ─────────────────────────────────────────────────────
 
 const STATE_LOADING = "loading";
@@ -517,79 +640,49 @@ export default function PublicInterviewEval() {
             {[
               { key: "candidateName", label: "姓名", required: true },
               { key: "position", label: "应聘岗位", required: true },
-              { key: "region", label: "属地国家/地区", kind: "region-select" },
+              { key: "region", label: "属地国家/地区", kind: "region-combobox" },
               { key: "interviewDate", label: "面试日期", type: "date", required: true },
               { key: "interviewer", label: "面试官", required: true },
-              { key: "languageStrength", label: "语言/沟通优势", kind: "language" },
+              { key: "languageStrength", label: "语言/沟通优势", kind: "language-combobox" },
               { key: "currentCity", label: "当前城市" },
               { key: "department", label: "应聘部门" },
               { key: "timezoneCollaboration", label: "跨时区协作" },
             ].map((f) => {
-              if (f.kind === "region-select") {
+              if (f.kind === "region-combobox") {
                 return (
                   <div key={f.key}>
-                    <label className="text-sm text-navy-700 font-bold ml-3 block mb-2">
-                      {f.label}
-                    </label>
-                    <select
+                    <label className="text-sm text-navy-700 font-bold ml-3 block mb-2">{f.label}</label>
+                    <Combobox
                       value={form[f.key] || ""}
-                      disabled={readonly}
-                      onChange={(e) => {
-                        setForm((prev) => ({ ...prev, [f.key]: e.target.value }));
+                      onChange={(v) => {
+                        setForm((prev) => ({ ...prev, [f.key]: v }));
                         markDirty();
                       }}
-                      className="flex h-12 w-full items-center rounded-xl border border-gray-200 bg-white p-3 text-sm text-navy-700 outline-none focus:border-brand disabled:bg-gray-100"
-                    >
-                      <option value="">— 请选择 —</option>
-                      {REGION_GROUPS.map((g) => (
-                        <optgroup key={g.group} label={g.group}>
-                          {g.items.map((item) => (
-                            <option key={item} value={item}>{item}</option>
-                          ))}
-                        </optgroup>
-                      ))}
-                    </select>
+                      groups={REGION_GROUPS}
+                      multi={false}
+                      placeholder="选择或输入,如「德国」"
+                      disabled={readonly}
+                      maxLength={100}
+                    />
                   </div>
                 );
               }
-              if (f.kind === "language") {
+              if (f.kind === "language-combobox") {
                 return (
                   <div key={f.key}>
-                    <Input
-                      label={f.label}
-                      type="text"
+                    <label className="text-sm text-navy-700 font-bold ml-3 block mb-2">{f.label}</label>
+                    <Combobox
                       value={form[f.key] || ""}
-                      disabled={readonly}
-                      maxLength={200}
-                      onChange={(e) => {
-                        setForm((prev) => ({ ...prev, [f.key]: e.target.value }));
+                      onChange={(v) => {
+                        setForm((prev) => ({ ...prev, [f.key]: v }));
                         markDirty();
                       }}
+                      options={LANGUAGE_QUICK_PICKS}
+                      multi
+                      placeholder="可多选,如「中文流利、英语流利」"
+                      disabled={readonly}
+                      maxLength={200}
                     />
-                    {!readonly && (
-                      <div className="flex flex-wrap gap-1 mt-2 ml-3">
-                        {LANGUAGE_QUICK_PICKS.map((p) => (
-                          <button
-                            key={p}
-                            type="button"
-                            onClick={() => {
-                              setForm((prev) => {
-                                const cur = (prev[f.key] || "").trim();
-                                const parts = cur ? cur.split(/[,、，]\s*/).map((s) => s.trim()).filter(Boolean) : [];
-                                if (parts.includes(p)) return prev;
-                                const next = [...parts, p].join("、").slice(0, 200);
-                                return { ...prev, [f.key]: next };
-                              });
-                              markDirty();
-                            }}
-                            className="px-2 py-0.5 rounded-full text-[10px] bg-lightPrimary text-brand hover:bg-brand hover:text-white transition border border-brand/20"
-                            title="点击追加"
-                          >
-                            {p}
-                          </button>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 );
               }
