@@ -782,4 +782,149 @@ export default async function reportsRoutes(app) {
       daysRemaining: Math.max(0, daysTotal - daysElapsed),
     };
   });
+
+  // ────────────────────────────────────────────────────────────
+  // GET /api/reports/by-interviewer — 面试官打分分布(文档二期-5 简化版)
+  //   基于 interview.interviewer 字符串字段 + 期内 interview 量
+  //   注:无结构化打分卡,推荐通过率用 candidate 后续推进比例近似
+  // ────────────────────────────────────────────────────────────
+  app.get("/by-interviewer", { schema: { querystring: QUERY_SCHEMA } }, async (req) => {
+    const { start, end } = resolveRange(req.query);
+
+    const interviews = await app.prisma.interview.findMany({
+      where: { scheduledAt: { gte: start, lte: end }, interviewer: { not: null } },
+      select: { id: true, candidateId: true, interviewer: true, scheduledAt: true, status: true, recommendation: true },
+    });
+
+    const candidateIds = [...new Set(interviews.map((i) => i.candidateId).filter(Boolean))];
+    const candidates = await app.prisma.candidate.findMany({
+      where: { id: { in: candidateIds } },
+      select: { id: true, status: true },
+    });
+    const candById = Object.fromEntries(candidates.map((c) => [c.id, c]));
+
+    // 分组(支持 interviewer 字段是逗号分隔的多人)
+    const byPerson = new Map();
+    for (const iv of interviews) {
+      const names = (iv.interviewer || "").split(/[,、，]/).map((n) => n.trim()).filter(Boolean);
+      for (const name of names) {
+        if (!byPerson.has(name)) {
+          byPerson.set(name, { count: 0, recommended: 0, advanced: 0, candidates: new Set() });
+        }
+        const b = byPerson.get(name);
+        b.count++;
+        if (iv.recommendation && /推荐|通过/.test(iv.recommendation)) b.recommended++;
+        const cand = iv.candidateId && candById[iv.candidateId];
+        if (cand && ["已入职", "待入职", "面试中", "待定中"].includes(cand.status)) b.advanced++;
+        if (iv.candidateId) b.candidates.add(iv.candidateId);
+      }
+    }
+
+    const items = Array.from(byPerson, ([name, b]) => ({
+      name,
+      interviewCount: b.count,
+      candidateCount: b.candidates.size,
+      recommendRate: b.count ? b.recommended / b.count : null,
+      advanceRate: b.candidates.size ? b.advanced / b.candidates.size : null,
+    }));
+    items.sort((a, b) => b.interviewCount - a.interviewCount);
+    return { items };
+  });
+
+  // ────────────────────────────────────────────────────────────
+  // GET /api/reports/insights — 异常预警/自动洞察(文档二期-9 简化版)
+  //   规则引擎:基于现有数据推断 Top 3 异常
+  // ────────────────────────────────────────────────────────────
+  app.get("/insights", { schema: { querystring: QUERY_SCHEMA } }, async (req) => {
+    const { start, end, prevStart, prevEnd } = resolveRange(req.query);
+
+    const [jobs, currCands, prevCands, currOnboard, prevOnboard, interviews] = await Promise.all([
+      app.prisma.job.findMany({ where: { status: "招聘中" }, select: { id: true, title: true, dept: true, createdAt: true } }),
+      app.prisma.candidate.findMany({
+        where: { createdAt: { gte: start, lte: end } },
+        select: { id: true, jobId: true, status: true, departmentId: true },
+      }),
+      app.prisma.candidate.findMany({
+        where: { createdAt: { gte: prevStart, lte: prevEnd } },
+        select: { id: true, jobId: true, departmentId: true },
+      }),
+      app.prisma.employee.count({ where: { actualHireDate: { gte: start, lte: end } } }),
+      app.prisma.employee.count({ where: { actualHireDate: { gte: prevStart, lte: prevEnd } } }),
+      app.prisma.interview.findMany({
+        where: { scheduledAt: { gte: start, lte: end } },
+        select: { candidateId: true, jobId: true },
+      }),
+    ]);
+
+    const now = new Date();
+    const insights = [];
+
+    // 规则 1: JD 30 天无新增 → 冷启动
+    const candByJob = currCands.reduce((acc, c) => {
+      if (c.jobId) acc[c.jobId] = (acc[c.jobId] || 0) + 1;
+      return acc;
+    }, {});
+    for (const j of jobs) {
+      const daysSinceCreated = (now - new Date(j.createdAt)) / 86400000;
+      if (daysSinceCreated > 30 && !candByJob[j.id]) {
+        insights.push({
+          severity: "warn",
+          icon: "alert-triangle",
+          title: "JD 冷启动",
+          message: `${j.title} 已开放 ${Math.round(daysSinceCreated)} 天,本期 0 新增`,
+          action: { type: "job", key: j.id },
+        });
+      }
+    }
+
+    // 规则 2: 入职环比跌幅 > 30%
+    if (prevOnboard > 0 && (currOnboard - prevOnboard) / prevOnboard < -0.3) {
+      insights.push({
+        severity: "alert",
+        icon: "trending-down",
+        title: "入职跌幅告警",
+        message: `本期入职 ${currOnboard} 较上期 ${prevOnboard} 下降 ${(((prevOnboard - currOnboard) / prevOnboard) * 100).toFixed(0)}%`,
+        action: { type: "kpi", key: "onboarded" },
+      });
+    }
+
+    // 规则 3: 新增简历跌幅 > 50%
+    if (prevCands.length > 0 && (currCands.length - prevCands.length) / prevCands.length < -0.5) {
+      insights.push({
+        severity: "warn",
+        icon: "file-minus",
+        title: "简历流入异常",
+        message: `本期新增 ${currCands.length} 较上期 ${prevCands.length} 下降 ${(((prevCands.length - currCands.length) / prevCands.length) * 100).toFixed(0)}%`,
+        action: { type: "kpi", key: "candidates" },
+      });
+    }
+
+    // 规则 4: 面试通过率 - 用 interview 上推进到 已入职 的比例 < 20%
+    const interviewedCandidateIds = [...new Set(interviews.map((i) => i.candidateId).filter(Boolean))];
+    if (interviewedCandidateIds.length >= 5) {
+      const advanced = currCands.filter((c) => interviewedCandidateIds.includes(c.id) && ["待入职", "已入职"].includes(c.status));
+      const advanceRate = advanced.length / interviewedCandidateIds.length;
+      if (advanceRate < 0.2) {
+        insights.push({
+          severity: "warn",
+          icon: "alert-octagon",
+          title: "面试推进率偏低",
+          message: `本期 ${interviewedCandidateIds.length} 位候选人进入面试,仅 ${advanced.length} 位推进到 Offer/入职(${(advanceRate * 100).toFixed(0)}%)`,
+          action: { type: "funnel", key: "面试中" },
+        });
+      }
+    }
+
+    // 默认健康洞察(没异常时给个正向反馈)
+    if (insights.length === 0) {
+      insights.push({
+        severity: "ok",
+        icon: "check-circle",
+        title: "数据健康",
+        message: "未检测到异常,继续保持 ✓",
+      });
+    }
+
+    return { items: insights.slice(0, 5) };
+  });
 }

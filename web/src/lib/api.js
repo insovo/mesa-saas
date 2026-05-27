@@ -91,6 +91,8 @@ export const resources = {
     byHr: (params) => api.get("/reports/by-hr", { params }).then((r) => r.data),
     offerCycle: (params) => api.get("/reports/offer-cycle", { params }).then((r) => r.data),
     targets: (params) => api.get("/reports/targets", { params }).then((r) => r.data),
+    byInterviewer: (params) => api.get("/reports/by-interviewer", { params }).then((r) => r.data),
+    insights: (params) => api.get("/reports/insights", { params }).then((r) => r.data),
   },
   notes: {
     list: (candidateId) => api.get(`/candidates/${candidateId}/notes`).then((r) => r.data.notes),
