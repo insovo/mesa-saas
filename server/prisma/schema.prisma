@@ -24,24 +24,24 @@ enum Urgency {
 }
 
 model User {
-  id           String   @id @default(uuid()) @db.Uuid
-  email        String   @unique
-  passwordHash String   @map("password_hash")
-  name         String?
-  role         Role     @default(RECRUITER)
-  avatar       String? // 头像 URL,登录用户评价时自动带出
-  jobTitle     String?  @map("job_title") // 内部角色显示(如 HR · 负责人 / 技术面试官 / HRBP)
-  isActive     Boolean  @default(true) @map("is_active") // 停用 → 不能登录、所分享的 ShareLink 失效(返回 410)
-  deactivatedReason String?  @map("deactivated_reason")     // 停用原因(可选,登录被拒时返回)
+  id                String    @id @default(uuid()) @db.Uuid
+  email             String    @unique
+  passwordHash      String    @map("password_hash")
+  name              String?
+  role              Role      @default(RECRUITER)
+  avatar            String? // 头像 URL,登录用户评价时自动带出
+  jobTitle          String?   @map("job_title") // 内部角色显示(如 HR · 负责人 / 技术面试官 / HRBP)
+  isActive          Boolean   @default(true) @map("is_active") // 停用 → 不能登录、所分享的 ShareLink 失效(返回 410)
+  deactivatedReason String?   @map("deactivated_reason") // 停用原因(可选,登录被拒时返回)
   deactivatedAt     DateTime? @map("deactivated_at")
   // === 第三阶段+:tokenVersion 强制下线 + TOTP 2FA ===
-  tokenVersion        Int       @default(0) @map("token_version")          // JWT payload 带此值,改密/重置/强制下线时 ++
-  totpEnabled         Boolean   @default(false) @map("totp_enabled")
-  totpSecret          String?   @map("totp_secret")                         // base32,启用后才有
-  totpEnabledAt       DateTime? @map("totp_enabled_at")
-  totpRecoveryCodes   String[]  @default([]) @map("totp_recovery_codes")    // 备份码 bcrypt 哈希数组(10 个,用一个移除一个)
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  tokenVersion      Int       @default(0) @map("token_version") // JWT payload 带此值,改密/重置/强制下线时 ++
+  totpEnabled       Boolean   @default(false) @map("totp_enabled")
+  totpSecret        String?   @map("totp_secret") // base32,启用后才有
+  totpEnabledAt     DateTime? @map("totp_enabled_at")
+  totpRecoveryCodes String[]  @default([]) @map("totp_recovery_codes") // 备份码 bcrypt 哈希数组(10 个,用一个移除一个)
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
 
   candidates Candidate[] @relation("CandidateOwner")
   reviews    Review[]
@@ -60,16 +60,16 @@ model User {
 // codeHash 用 bcrypt 存,避免日志/DB 备份泄露明文
 // purpose: CHANGE_EMAIL(校验当前邮箱) / CHANGE_EMAIL_NEW(校验目标新邮箱) / CHANGE_PASSWORD / RESET_PASSWORD
 model EmailVerificationCode {
-  id           String   @id @default(uuid()) @db.Uuid
-  email        String   // 收件邮箱(可与 user.email 不同 — 比如改邮箱场景下的"新邮箱")
-  userId       String?  @map("user_id") @db.Uuid   // 登录态发起的验证码会带 userId;忘记密码场景为 null
-  purpose      String   // CHANGE_EMAIL | CHANGE_EMAIL_NEW | CHANGE_PASSWORD | RESET_PASSWORD
-  codeHash     String   @map("code_hash")
-  expiresAt    DateTime @map("expires_at")
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String // 收件邮箱(可与 user.email 不同 — 比如改邮箱场景下的"新邮箱")
+  userId       String?   @map("user_id") @db.Uuid // 登录态发起的验证码会带 userId;忘记密码场景为 null
+  purpose      String // CHANGE_EMAIL | CHANGE_EMAIL_NEW | CHANGE_PASSWORD | RESET_PASSWORD
+  codeHash     String    @map("code_hash")
+  expiresAt    DateTime  @map("expires_at")
   consumedAt   DateTime? @map("consumed_at")
-  attemptCount Int      @default(0) @map("attempt_count")
+  attemptCount Int       @default(0) @map("attempt_count")
   ip           String?
-  createdAt    DateTime @default(now()) @map("created_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
 
   @@index([email, purpose])
   @@index([userId])
@@ -180,11 +180,12 @@ model Candidate {
   departmentId String?     @map("department_id") @db.Uuid
   department   Department? @relation("CandidateDepartment", fields: [departmentId], references: [id], onDelete: SetNull)
 
-  interviews Interview[]
-  employee   Employee?
-  notes      CandidateNote[]
-  shareLinks ShareLink[]
-  reviews    Review[]
+  interviews           Interview[]
+  employee             Employee?
+  notes                CandidateNote[]
+  shareLinks           ShareLink[]
+  reviews              Review[]
+  interviewEvaluations InterviewEvaluation[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -224,11 +225,12 @@ model Job {
   nice                 String[]  @default([])
   benefits             String[]  @default([])
 
-  interviews       Interview[]
-  employees        Employee[]
-  linkedCandidates Candidate[]       @relation("CandidateJob")
-  uploadLinks      UploadShareLink[] @relation("UploadLinkJob")
-  userScopes       UserJobScope[]
+  interviews           Interview[]
+  employees            Employee[]
+  linkedCandidates     Candidate[]           @relation("CandidateJob")
+  uploadLinks          UploadShareLink[]     @relation("UploadLinkJob")
+  userScopes           UserJobScope[]
+  interviewEvaluations InterviewEvaluation[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -290,18 +292,18 @@ model Employee {
   workLocation String? @map("work_location")
   jdMatch      Int?    @map("jd_match")
 
-  stage               String?
-  plannedHireDate     DateTime? @map("planned_hire_date")
-  actualHireDate      DateTime? @map("actual_hire_date")
-  probationEndDate    DateTime? @map("probation_end_date")
-  regularizeDate      DateTime? @map("regularize_date")
-  regularizeAdvice    String?   @map("regularize_advice")
+  stage            String?
+  plannedHireDate  DateTime? @map("planned_hire_date")
+  actualHireDate   DateTime? @map("actual_hire_date")
+  probationEndDate DateTime? @map("probation_end_date")
+  regularizeDate   DateTime? @map("regularize_date")
+  regularizeAdvice String?   @map("regularize_advice")
   // 二期-4 流失原因 (Offer 已发但未入职 / 入职后离职):枚举存字符串
   // "另选 Offer" / "薪资不达预期" / "个人原因" / "岗位变更" / "其它"
-  dropReason          String?   @map("drop_reason")
-  dropReasonDetail    String?   @map("drop_reason_detail") @db.Text
-  hrbp                String?
-  directManager       String?   @map("direct_manager")
+  dropReason       String?   @map("drop_reason")
+  dropReasonDetail String?   @map("drop_reason_detail") @db.Text
+  hrbp             String?
+  directManager    String?   @map("direct_manager")
 
   checklist Json @default("{}")
   probation Json @default("{}")
@@ -511,6 +513,8 @@ model Interview {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  interviewEvaluations InterviewEvaluation[]
+
   @@index([candidateId])
   @@index([jobId])
   @@index([status])
@@ -522,12 +526,12 @@ model Interview {
 // action 命名约定: <entity>.<verb>  如 user.create / user.deactivate / user.policy.update / share.create / candidate.delete / auth.login / auth.login_failed
 model AuditLog {
   id         String   @id @default(uuid()) @db.Uuid
-  actorId    String?  @map("actor_id") @db.Uuid        // 触发动作的登录用户 id;系统/匿名场景为 null
-  actorEmail String?  @map("actor_email")               // 快照,即便 User 删了仍能看
-  action     String                                      // 见上方约定
-  entityType String?  @map("entity_type")                // user / candidate / job / department / share_link / ...
-  entityId   String?  @map("entity_id")                  // 可能不是 uuid(比如 share token),用 string
-  diff       Json     @default("{}")                    // { before?, after?, message? }
+  actorId    String?  @map("actor_id") @db.Uuid // 触发动作的登录用户 id;系统/匿名场景为 null
+  actorEmail String?  @map("actor_email") // 快照,即便 User 删了仍能看
+  action     String // 见上方约定
+  entityType String?  @map("entity_type") // user / candidate / job / department / share_link / ...
+  entityId   String?  @map("entity_id") // 可能不是 uuid(比如 share token),用 string
+  diff       Json     @default("{}") // { before?, after?, message? }
   ip         String?
   userAgent  String?  @map("user_agent")
   createdAt  DateTime @default(now()) @map("created_at")
@@ -549,4 +553,74 @@ model PasswordHistory {
 
   @@index([userId, createdAt])
   @@map("password_history")
+}
+
+// 面试评价 — 招聘官生成 token,面试官(无登录)通过公开链接填写
+// 提交后可导出与原 Excel 模板版式一致的 .xlsx 文件
+// 详见 /Users/mysaria/Project/mesa/面试评价模块设计规划.md
+model InterviewEvaluation {
+  id String @id @default(uuid()) @db.Uuid
+
+  candidateId String     @map("candidate_id") @db.Uuid
+  candidate   Candidate  @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  interviewId String?    @map("interview_id") @db.Uuid
+  interview   Interview? @relation(fields: [interviewId], references: [id], onDelete: SetNull)
+  jobId       String?    @map("job_id") @db.Uuid
+  job         Job?       @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  // 公开 token (32 字符 URL-safe random, 沿用 ShareLink 设计)
+  token     String    @unique
+  // 状态机: link_sent(初建) → draft(面试官保存过) → submitted(已提交) → revoked
+  status    String    @default("link_sent")
+  expiresAt DateTime? @map("expires_at")
+
+  // 候选人信息快照(创建邀请时预填,面试官可改;后续 candidate 改名不回填)
+  candidateName         String    @map("candidate_name")
+  position              String?
+  region                String?
+  interviewDate         DateTime? @map("interview_date")
+  interviewer           String // 面试官姓名,识别评价来源(必填)
+  languageStrength      String?   @map("language_strength")
+  currentCity           String?   @map("current_city")
+  department            String?
+  timezoneCollaboration String?   @map("timezone_collaboration")
+
+  // 评分数组快照: [{ key, score, remark }] - key 对应 lib/interviewEvalTemplate.js SCORE_DIMENSIONS
+  // 权重不存,从 templateVersion 反查代码常量
+  scores Json @default("[]")
+
+  // 纪要(对应 Excel B20/B22/B24/B26 合并块)
+  strengths         String? @db.Text
+  risks             String? @db.Text
+  followUpQuestions String? @map("follow_up_questions") @db.Text
+  finalOpinion      String? @map("final_opinion") @db.Text
+
+  // 汇总(提交时算并存,导出兜底 + 列表展示用,无需打开 xlsx)
+  totalScore     Float?  @map("total_score")
+  recommendation String?
+
+  // 模板版本管理 — 升级模板时旧记录仍能溯源
+  templateVersion  String  @default("v1") @map("template_version")
+  templateFileHash String? @map("template_file_hash")
+
+  // 元信息
+  createdBy     String?   @map("created_by") @db.Uuid
+  submittedAt   DateTime? @map("submitted_at")
+  exportedAt    DateTime? @map("exported_at")
+  exportedCount Int       @default(0) @map("exported_count")
+  lastViewedAt  DateTime? @map("last_viewed_at")
+  viewCount     Int       @default(0) @map("view_count")
+  revokedAt     DateTime? @map("revoked_at")
+  revokedBy     String?   @map("revoked_by") @db.Uuid
+  deletedAt     DateTime? @map("deleted_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([candidateId])
+  @@index([interviewId])
+  @@index([token])
+  @@index([createdBy])
+  @@index([status])
+  @@map("interview_evaluations")
 }

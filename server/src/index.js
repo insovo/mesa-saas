@@ -21,6 +21,8 @@ import uploadLinksRoutes from "./routes/upload-links.js";
 import reviewsRoutes from "./routes/reviews.js";
 import usersRoutes from "./routes/users.js";
 import auditRoutes from "./routes/audit.js";
+import interviewEvalsRoutes from "./routes/interview-evals.js";
+import { verifyTemplateOnBoot } from "./lib/interviewEvalTemplate.js";
 
 const requiredEnv = ["DATABASE_URL", "JWT_SECRET", "WEB_ORIGIN"];
 for (const key of requiredEnv) {
@@ -70,6 +72,17 @@ await app.register(uploadLinksRoutes, { prefix: "/api" });
 await app.register(reviewsRoutes, { prefix: "/api" });
 await app.register(usersRoutes, { prefix: "/api/users" });
 await app.register(auditRoutes, { prefix: "/api/audit-logs" });
+// interview-evals: admin 在 /api/candidates/:id/interview-evals + /api/interview-evals/:id,公开在 /api/public/interview-eval/:token
+await app.register(interviewEvalsRoutes, { prefix: "/api" });
+
+// 启动时校验面试评价模板 hash — 不一致就抛错(模板被改过 / 版本不对)
+try {
+  const tplHash = verifyTemplateOnBoot();
+  app.log.info({ tplHash }, "interview eval template verified");
+} catch (err) {
+  app.log.fatal({ err }, "interview eval template verification failed");
+  process.exit(1);
+}
 
 app.setErrorHandler((err, req, reply) => {
   const status = err.statusCode || 500;

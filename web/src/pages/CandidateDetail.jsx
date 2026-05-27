@@ -38,6 +38,7 @@ import { useHasModule } from "../lib/authContext.jsx";
 import { LiquidLoader } from "../components/Primitives.jsx";
 import ReparseConfirmModal from "../components/ReparseConfirmModal.jsx";
 import MarkdownBullets from "../components/MarkdownBullets.jsx";
+import InterviewEvalCard from "../components/InterviewEvalCard.jsx";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1) 设计常量 (内联自 web/src/lib/constants.js)
@@ -3245,6 +3246,9 @@ function CandidateDetail() {
             </div>
           )}
         </Card>
+
+        {/* === 面试评价 (新增, 嵌入「面试安排」与「附件」之间) === */}
+        <InterviewEvalCard candidate={c} currentUser={me} />
 
         {/* === Documents ===
             把 c.attachment(LLM 解析时上传的原始简历 R2 key)虚拟同步到「简历」分类首位,

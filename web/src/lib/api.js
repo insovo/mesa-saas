@@ -127,4 +127,15 @@ export const resources = {
     update: (candidateId, body) => api.patch(`/candidates/${candidateId}/share`, body).then((r) => r.data.link),
     remove: (candidateId) => api.delete(`/candidates/${candidateId}/share`),
   },
+  interviewEvals: {
+    listByCandidate: (candidateId) =>
+      api.get(`/candidates/${candidateId}/interview-evals`).then((r) => r.data.items),
+    create: (candidateId, body) =>
+      api.post(`/candidates/${candidateId}/interview-evals`, body).then((r) => r.data.item),
+    detail: (id) => api.get(`/interview-evals/${id}`).then((r) => r.data.item),
+    update: (id, body) => api.patch(`/interview-evals/${id}`, body).then((r) => r.data.item),
+    remove: (id) => api.delete(`/interview-evals/${id}`),
+    // 触发浏览器下载,后端响应带 Content-Disposition
+    exportUrl: (id) => `/api/interview-evals/${id}/export.xlsx`,
+  },
 };
