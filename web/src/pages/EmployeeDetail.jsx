@@ -12,6 +12,7 @@ import {
   Empty,
   LoadingBlock,
   Button,
+  LiquidLoader,
   toast,
 } from "../components/Primitives.jsx";
 import { HIRE_CHECKLIST_KEYS } from "../lib/constants.js";
@@ -32,37 +33,6 @@ function eventTone(cat) {
   if (cat === "入职前工作") return { dot: "#EF4444", pillBg: "#FEE2E2", pillFg: "#B91C1C" };
   if (cat === "教育") return { dot: "#94A3B8", pillBg: "#E0E7FF", pillFg: "#3730A3" };
   return { dot: "#422AFB", pillBg: "#E9E3FF", pillFg: "#2111A5" };
-}
-
-// JD 匹配 SVG 圆环
-function MatchRing({ value }) {
-  const v = Math.max(0, Math.min(100, value || 0));
-  const r = 52;
-  const c = 2 * Math.PI * r;
-  const offset = c * (1 - v / 100);
-  return (
-    <div className="relative inline-block">
-      <svg width={130} height={130} viewBox="0 0 130 130">
-        <circle cx="65" cy="65" r={r} fill="none" stroke="#F4F7FE" strokeWidth="9" />
-        <circle
-          cx="65" cy="65" r={r}
-          fill="none" stroke="url(#matchGrad)"
-          strokeWidth="9" strokeLinecap="round"
-          strokeDasharray={c} strokeDashoffset={offset}
-          transform="rotate(-90 65 65)"
-        />
-        <defs>
-          <linearGradient id="matchGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#22C55E" />
-            <stop offset="100%" stopColor="#15803D" />
-          </linearGradient>
-        </defs>
-      </svg>
-      <div className="absolute inset-0 flex items-center justify-center">
-        <span className="text-3xl font-bold text-navy-700 tabular-nums">{v}</span>
-      </div>
-    </div>
-  );
 }
 
 // 5 阶段 stepper
@@ -336,7 +306,11 @@ export default function EmployeeDetail() {
 
           <Card className="p-5">
             <div className="flex flex-col items-center">
-              <MatchRing value={emp.jdMatch || 0} />
+              <LiquidLoader
+                size={110}
+                level={emp.jdMatch ?? 0}
+                label={emp.jdMatch ?? "—"}
+              />
               <p className="text-xs text-gray-700 mt-3">招聘期 JD 匹配</p>
               {emp.parser && (
                 <p className="text-[11px] text-gray-600 mt-0.5">
