@@ -13,6 +13,7 @@ import {
 import {
   candidateToEmployeeData,
   mapStatusToStage,
+  cleanupEmployeeOnJobChange,
 } from "../lib/candidateToEmployee.js";
 
 const CANDIDATE_BODY = {
@@ -190,12 +191,34 @@ export default async function candidatesRoutes(app) {
     const data = { ...req.body };
     if (data.pushedAt) data.pushedAt = new Date(data.pushedAt);
     delete data.profileCompletion;
+
+    // 切 JD 自动同步:先 fetch before, 若 jobId 真的换了且调用方没明确设 status,
+    // 强制 status="待筛选"。前端 confirmSwitchJob 切 JD 后会调 PATCH 持久化 jobId,
+    // 命中此分支;入职管理那边的 employee 也跟着按 cleanupEmployeeOnJobChange 清理。
+    let jobIdChanged = false;
+    if (data.jobId !== undefined) {
+      const before = await app.prisma.candidate.findUnique({
+        where: { id },
+        select: { jobId: true },
+      });
+      if (before && before.jobId !== data.jobId) {
+        jobIdChanged = true;
+        if (data.status === undefined) data.status = "待筛选";
+      }
+    }
+
     try {
       const updated = await app.prisma.candidate.update({
         where: { id },
         data,
         include: { department: true },
       });
+
+      // 切 JD 后清理 employee(只清「待入职」未推进的, 已推进的保留)
+      if (jobIdChanged) {
+        await cleanupEmployeeOnJobChange(app.prisma, updated.id, app.log);
+      }
+
       // 自动转化:candidate.status 切到「待入职」/「已入职」时, 自动创建 employee
       // 策略:仅在 employee 不存在时 create。已存在则**不动 stage**(尊重 HR 已推进的进度),
       // 避免把推进到「入职当天/试用期」的人回退到「待入职」。

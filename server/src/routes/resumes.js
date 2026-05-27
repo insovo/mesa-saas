@@ -11,6 +11,7 @@ import { Readable } from "node:stream";
 import { parseResume, parseJobDescription, matchAgainstJob, isKimiConfigured, listModels } from "../lib/kimi.js";
 import { withDerivedCandidate } from "../lib/derived.js";
 import { createTask, getTask, markRunning, markDone, markFailed } from "../lib/parseTaskStore.js";
+import { cleanupEmployeeOnJobChange } from "../lib/candidateToEmployee.js";
 
 const PARSE_BODY = {
   type: "object",
@@ -217,17 +218,7 @@ async function runReparse(app, taskId, candidateId, model, jobIdOverride) {
     // 换 JD 后:若对应 employee 还停留在「待入职」(HR 未推进入职流程)就清掉,
     // 已经手工推进过(入职准备/入职当天/试用期/已转正/延期试用)的保留,不破坏 HR 数据。
     if (jobIdChanged) {
-      try {
-        const emp = await app.prisma.employee.findUnique({
-          where: { candidateId: existingCandidate.id },
-        });
-        if (emp && emp.stage === "待入职") {
-          await app.prisma.employee.delete({ where: { id: emp.id } });
-          app.log.info({ candidateId, empId: emp.id }, "reparse: removed unactivated employee");
-        }
-      } catch (err) {
-        app.log.warn({ err: err?.message, candidateId }, "reparse: employee cleanup failed");
-      }
+      await cleanupEmployeeOnJobChange(app.prisma, existingCandidate.id, app.log);
     }
 
     await markDone(app, taskId, { candidate: withDerivedCandidate(updated), match, reparsed: true });
@@ -536,24 +527,33 @@ export default async function resumesRoutes(app) {
           .slice(0, 20)
           .map((i) => ({ kind: i.kind, text: i.text.slice(0, 300) }))
       : [];
+    // 切 JD 同步:jobId 真换了 → status 回「待筛选」+ 清理「待入职」状态的 employee
+    // (与 reparse 切 JD 路径完全对齐,见上方 runReparse + lib/candidateToEmployee.js)
+    const jobIdChanged = candidate.jobId !== jobId;
+    const updateData = {
+      jdMatch: match.jdMatch ?? null,
+      risks: Array.isArray(match.risks) ? match.risks : [],
+      highlights: Array.isArray(match.highlights) ? match.highlights : [],
+      appliedFor: job.title,
+      jobId,
+      aiSuggestedTags: Array.isArray(match.aiSuggestedTags) ? match.aiSuggestedTags.slice(0, 12) : [],
+      matchedFor: Array.isArray(match.matchedFor) ? match.matchedFor.slice(0, 12) : [],
+      againstFor: Array.isArray(match.againstFor) ? match.againstFor.slice(0, 12) : [],
+      insights: filteredInsights,
+      // 两阶段产出的 3 个 markdown 字段
+      skills: safeMd(match.skillsMd),
+      experience: safeMd(match.experienceMd),
+      educationHistory: safeMd(match.educationMd),
+    };
+    if (jobIdChanged) updateData.status = "待筛选";
     const updated = await app.prisma.candidate.update({
       where: { id: candidateId },
-      data: {
-        jdMatch: match.jdMatch ?? null,
-        risks: Array.isArray(match.risks) ? match.risks : [],
-        highlights: Array.isArray(match.highlights) ? match.highlights : [],
-        appliedFor: job.title,
-        jobId,
-        aiSuggestedTags: Array.isArray(match.aiSuggestedTags) ? match.aiSuggestedTags.slice(0, 12) : [],
-        matchedFor: Array.isArray(match.matchedFor) ? match.matchedFor.slice(0, 12) : [],
-        againstFor: Array.isArray(match.againstFor) ? match.againstFor.slice(0, 12) : [],
-        insights: filteredInsights,
-        // 两阶段产出的 3 个 markdown 字段
-        skills: safeMd(match.skillsMd),
-        experience: safeMd(match.experienceMd),
-        educationHistory: safeMd(match.educationMd),
-      },
+      data: updateData,
     });
+
+    if (jobIdChanged) {
+      await cleanupEmployeeOnJobChange(app.prisma, updated.id, app.log);
+    }
 
     return { candidate: withDerivedCandidate(updated), match };
   });
