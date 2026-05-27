@@ -984,7 +984,8 @@ export default function Upload() {
 
           {/* 岗位名称 */}
           <Input
-            label="岗位名称 *"
+            label="岗位名称"
+            required
             value={newJob.title}
             onChange={(e) => setNewJob((p) => ({ ...p, title: e.target.value }))}
             placeholder="如:高级前端工程师"

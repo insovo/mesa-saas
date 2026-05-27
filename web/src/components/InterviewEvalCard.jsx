@@ -127,7 +127,8 @@ function NewEvalModal({ open, onClose, candidate, onCreated }) {
           )}
 
           <Input
-            label="面试官姓名 *"
+            label="面试官姓名"
+            required
             value={interviewer}
             onChange={(e) => setInterviewer(e.target.value)}
             placeholder="如:王浩"
