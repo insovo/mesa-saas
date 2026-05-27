@@ -9,7 +9,13 @@ import gsap from "gsap";
 import { I, Avatar, Modal, Input, Button, toast } from "./Primitives.jsx";
 import { QRCodeSVG } from "qrcode.react";
 import { api } from "../lib/api.js";
-import { clearAuth } from "../lib/auth.js";
+import {
+  clearAuth,
+  getSavedAccounts,
+  switchToSavedAccount,
+  removeSavedAccount,
+  addSavedAccount,
+} from "../lib/auth.js";
 import { useAuth } from "../lib/authContext.jsx";
 import PasswordStrengthMeter from "./PasswordStrengthMeter.jsx";
 
@@ -82,10 +88,39 @@ export default function Topbar() {
     navigate("/login", { replace: true });
   }
 
-  function onSwitchAccount() {
-    logout();
-    clearAuth();
+  // 「切换账号」展开子菜单(在主菜单内 inline 显示)
+  const [switchOpen, setSwitchOpen] = useState(false);
+
+  function onPickSaved(email) {
+    if (email === me?.email) {
+      setMenuOpen(false);
+      setSwitchOpen(false);
+      return;
+    }
+    if (switchToSavedAccount(email)) {
+      // 直接 reload 让所有 hook 用新 token 重新拉数据,最稳
+      window.location.assign("/dashboard");
+    } else {
+      toast("该账号已失效,请重新登录", "error");
+      logout();
+      clearAuth();
+      navigate("/login", { replace: true });
+    }
+  }
+
+  function onAddNewAccount() {
+    // 跳 Login 但不清当前 token — 当前账号若已 saved 会保留;登入新账号后两边都能切
+    setMenuOpen(false);
+    setSwitchOpen(false);
     navigate("/login", { replace: true });
+  }
+
+  function onRemoveSaved(email, ev) {
+    ev.stopPropagation();
+    removeSavedAccount(email);
+    // 强制刷新当前下拉
+    setSwitchOpen((v) => v);
+    setSwitchOpen(true);
   }
 
   const title = pageTitleFor(location.pathname);
@@ -192,12 +227,55 @@ export default function Topbar() {
                   </Link>
                 )}
                 <button
-                  onClick={onSwitchAccount}
+                  onClick={() => setSwitchOpen((v) => !v)}
                   className="tb-menu-item w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-lightPrimary flex items-center gap-2 border-t border-gray-200"
                 >
                   <I name="refresh-cw" size={16} />
                   切换账号
+                  <I name={switchOpen ? "chevron-up" : "chevron-down"} size={14} className="ml-auto text-gray-400" />
                 </button>
+                {switchOpen && (
+                  <div className="bg-lightPrimary/60 border-y border-gray-100 max-h-[260px] overflow-y-auto">
+                    {(() => {
+                      const accounts = getSavedAccounts().filter((a) => a.email !== me?.email);
+                      if (accounts.length === 0) {
+                        return (
+                          <p className="px-4 py-3 text-[11px] text-gray-700">
+                            还没保存其他账号。在 Login 页勾「记住账号」即可。
+                          </p>
+                        );
+                      }
+                      return accounts.map((a) => (
+                        <button
+                          key={a.email}
+                          onClick={() => onPickSaved(a.email)}
+                          className="w-full text-left px-4 py-2.5 text-sm hover:bg-white flex items-center gap-2 group"
+                        >
+                          <Avatar name={a.user?.name || a.email} src={a.user?.avatar} size={28} />
+                          <span className="flex-1 min-w-0">
+                            <span className="block text-sm text-navy-700 truncate">{a.user?.name || a.email}</span>
+                            <span className="block text-[11px] text-gray-700 truncate">{a.email}</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(ev) => onRemoveSaved(a.email, ev)}
+                            className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 p-1 rounded transition"
+                            title="移除"
+                          >
+                            <I name="x" size={12} />
+                          </button>
+                        </button>
+                      ));
+                    })()}
+                    <button
+                      onClick={onAddNewAccount}
+                      className="w-full text-left px-4 py-2.5 text-[12px] text-brand hover:bg-white flex items-center gap-2 border-t border-gray-200"
+                    >
+                      <I name="plus" size={14} />
+                      用其他账号登录
+                    </button>
+                  </div>
+                )}
                 <button
                   onClick={onLogout}
                   className="tb-menu-item w-full text-left px-4 py-3 text-sm text-red-500 hover:bg-red-50 flex items-center gap-2"
