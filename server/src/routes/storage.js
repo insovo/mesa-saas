@@ -5,6 +5,7 @@
 //   3. ContentType 严格白名单,防止伪装可执行文件
 
 import { randomUUID } from "node:crypto";
+import { loadUserAccess, hasModule } from "../lib/permissions.js";
 
 const ALLOWED_MIME = new Set([
   "application/pdf",
@@ -45,6 +46,11 @@ export default async function storageRoutes(app) {
     if (!app.r2) {
       return reply.code(503).send({ error: "r2_not_configured", message: "R2 凭证未配置" });
     }
+    // 上传简历/附件需要 candidate.attachments 模块权限
+    const access = await loadUserAccess(req);
+    if (!hasModule(access, "candidate.attachments")) {
+      return reply.code(403).send({ error: "forbidden", message: "无附件上传权限" });
+    }
     if (!ALLOWED_MIME.has(req.body.contentType)) {
       return reply.code(400).send({ error: "unsupported_type", message: "仅支持 PDF / Word / 图片" });
     }
@@ -82,6 +88,10 @@ export default async function storageRoutes(app) {
     },
   }, async (req, reply) => {
     if (!app.r2) return reply.code(503).send({ error: "r2_not_configured" });
+    const access = await loadUserAccess(req);
+    if (!hasModule(access, "candidate.attachments")) {
+      return reply.code(403).send({ error: "forbidden", message: "无附件查看权限" });
+    }
     const url = await app.r2.presignGet({ key: req.body.key, expiresIn: 600 });
     return { url, expiresIn: 600 };
   });

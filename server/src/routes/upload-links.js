@@ -64,6 +64,13 @@ export default async function uploadLinksRoutes(app) {
   // ─── Admin 端 ────────────────────────────────────────────────
   app.register(async (admin) => {
     admin.addHook("preHandler", admin.authenticate);
+    admin.addHook("preHandler", async (req, reply) => {
+      const { loadUserAccess, hasModule } = await import("../lib/permissions.js");
+      const access = await loadUserAccess(req);
+      if (!hasModule(access, "candidate.share")) {
+        reply.code(403).send({ error: "forbidden", message: "无分享权限" });
+      }
+    });
 
     // GET 列出当前用户创建的所有上传链接
     admin.get("/upload-links", async (req) => {

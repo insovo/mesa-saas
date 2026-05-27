@@ -367,6 +367,15 @@ export default async function resumesRoutes(app) {
 
     // ─── 路径 A:已有候选人「重新解析」(reparse 模式) ───
     if (candidateId) {
+      // 数据范围 + 编辑权限校验
+      const { loadUserAccess, hasModule, assertCandidateAccess } = await import("../lib/permissions.js");
+      const access = await loadUserAccess(req);
+      if (!hasModule(access, "candidate.edit")) {
+        return reply.code(403).send({ error: "forbidden", message: "无编辑权限" });
+      }
+      const ok = await assertCandidateAccess(req, reply, candidateId);
+      if (!ok) return;
+
       // 提前 sanity check 防止异步任务起后才报「候选人不存在」
       const exists = await app.prisma.candidate.findUnique({
         where: { id: candidateId },
@@ -464,6 +473,15 @@ export default async function resumesRoutes(app) {
       return reply.code(424).send({ error: "kimi_not_configured", message: "KIMI_API_KEY 未配置" });
     }
     const { candidateId, jobId, model } = req.body;
+
+    // 数据范围 + 编辑权限校验
+    const { loadUserAccess, hasModule, assertCandidateAccess } = await import("../lib/permissions.js");
+    const access = await loadUserAccess(req);
+    if (!hasModule(access, "candidate.edit")) {
+      return reply.code(403).send({ error: "forbidden", message: "无编辑权限" });
+    }
+    const ok = await assertCandidateAccess(req, reply, candidateId);
+    if (!ok) return;
 
     const [candidate, job] = await Promise.all([
       app.prisma.candidate.findUnique({ where: { id: candidateId } }),

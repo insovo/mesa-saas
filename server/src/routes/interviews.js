@@ -1,5 +1,11 @@
 // /api/interviews — CRUD + 日期范围过滤
 
+import {
+  buildCandidateScopeWhere,
+  buildJobScopeWhere,
+  loadUserAccess,
+} from "../lib/permissions.js";
+
 const INTERVIEW_BODY = {
   type: "object",
   properties: {
@@ -76,6 +82,20 @@ export default async function interviewsRoutes(app) {
       where.scheduledAt = {};
       if (from) where.scheduledAt.gte = new Date(from);
       if (to) where.scheduledAt.lte = new Date(to);
+    }
+    // 范围过滤:Interview 关联 candidate/job;普通用户只能看到自己 scope 内的 candidate 或 job 上的面试
+    const access = await loadUserAccess(req);
+    if (!access.isAdmin) {
+      const candScope = await buildCandidateScopeWhere(req);
+      const jobScope = await buildJobScopeWhere(req);
+      const scopeFilters = [];
+      if (candScope) scopeFilters.push({ candidate: candScope });
+      if (jobScope) scopeFilters.push({ job: jobScope });
+      // 没绑 candidate / job 的孤立 interview 普通用户看不见(防数据泄露)
+      where.AND = [
+        ...(where.AND || []),
+        scopeFilters.length > 0 ? { OR: scopeFilters } : { id: { in: [] } },
+      ];
     }
     const [items, total] = await Promise.all([
       app.prisma.interview.findMany({

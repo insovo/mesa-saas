@@ -100,10 +100,28 @@ function internalShape(r, isAdmin) {
   };
 }
 
+import {
+  loadUserAccess,
+  hasModule,
+  assertCandidateAccess,
+} from "../lib/permissions.js";
+
 export default async function reviewsRoutes(app) {
   // ─── 内部端: 登录用户 ────────────────────────────────────
   app.register(async (internal) => {
     internal.addHook("preHandler", internal.authenticate);
+    internal.addHook("preHandler", async (req, reply) => {
+      const access = await loadUserAccess(req);
+      if (!hasModule(access, "candidate.reviews")) {
+        reply.code(403).send({ error: "forbidden", message: "无评价模块权限" });
+        return;
+      }
+      // 路径含 /candidates/:id/ 时,顺带做数据范围校验
+      if (req.params?.id) {
+        const ok = await assertCandidateAccess(req, reply, req.params.id);
+        if (!ok) return;
+      }
+    });
 
     // 列表 (admin 看全部,普通用户看 !hidden)
     internal.get("/candidates/:id/reviews", async (req) => {

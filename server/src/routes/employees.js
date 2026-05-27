@@ -1,6 +1,7 @@
 // /api/employees — CRUD + 阶段过滤
 
 import { whereByIdOrExternal } from "../lib/idLookup.js";
+import { buildEmployeeScopeWhere } from "../lib/permissions.js";
 
 const EMPLOYEE_BODY = {
   type: "object",
@@ -82,16 +83,21 @@ export default async function employeesRoutes(app) {
         { school: { contains: q, mode: "insensitive" } },
       ];
     }
+    const scopeWhere = await buildEmployeeScopeWhere(req);
+    const finalWhere = scopeWhere ? { AND: [where, scopeWhere] } : where;
     const [items, total] = await Promise.all([
-      app.prisma.employee.findMany({ where, orderBy: { updatedAt: "desc" }, skip, take }),
-      app.prisma.employee.count({ where }),
+      app.prisma.employee.findMany({ where: finalWhere, orderBy: { updatedAt: "desc" }, skip, take }),
+      app.prisma.employee.count({ where: finalWhere }),
     ]);
     return { items, total, skip, take };
   });
 
   app.get("/:id", async (req, reply) => {
+    const scopeWhere = await buildEmployeeScopeWhere(req);
+    const idWhere = whereByIdOrExternal(req.params.id);
+    const where = scopeWhere ? { AND: [idWhere, scopeWhere] } : idWhere;
     const emp = await app.prisma.employee.findFirst({
-      where: whereByIdOrExternal(req.params.id),
+      where,
       include: { candidate: true, job: true },
     });
     if (!emp) return reply.code(404).send({ error: "not_found" });

@@ -1,16 +1,21 @@
-// /api/candidates/:id/share — ShareLink CRUD (admin only)
-// /api/public/share/:token — 公开访问入口(无鉴权,但 token 不可猜 + 过期校验)
+// /api/candidates/:id/share — ShareLink CRUD (登录用户,需 candidate.share 模块 + 数据范围)
+// /api/public/share/:token — 公开访问入口(无鉴权,但 token 不可猜 + 过期校验 + 创建者权限继承)
 
 import { randomBytes } from "node:crypto";
+import {
+  loadUserAccess,
+  hasModule,
+  assertCandidateAccess,
+  buildCandidateScopeWhere,
+  computeAllowedModules,
+  isAdmin,
+} from "../lib/permissions.js";
+import { ALL_MODULE_KEYS_SET } from "../lib/permissionKeys.js";
 
 function tokenGen() {
-  // 32 字符 URL-safe (24 字节 base64url)
   return randomBytes(24).toString("base64url");
 }
 
-// 把 duration 字符串转 expiresAt (Date 或 null)
-// presets: "1d" / "3d" / "7d" / "30d" / "60s" / "Nd" / "forever"
-// 自定义: number + unit (s/m/h/d), 范围 60s - 30d
 function computeExpiresAt(duration) {
   if (!duration || duration === "forever") return null;
   const match = duration.match(/^(\d+)\s*(s|m|h|d)$/i);
@@ -25,13 +30,24 @@ function computeExpiresAt(duration) {
   return new Date(Date.now() + secs * 1000);
 }
 
+// 把 admin 端 body.allowedModules 收敛到合法 key 集合
+function sanitizeAllowedModules(body) {
+  if (!Array.isArray(body?.allowedModules)) return null;
+  return body.allowedModules.filter((k) => typeof k === "string" && ALL_MODULE_KEYS_SET.has(k));
+}
+
 export default async function shareRoutes(app) {
-  // ─── Admin 端: 在 candidates 路由前缀下挂载 ──────────────────
+  // ─── 登录用户端 ─────────────────────────────────────
   app.register(async (admin) => {
     admin.addHook("preHandler", admin.authenticate);
 
-    // GET 查询某候选人当前 ShareLink
-    admin.get("/candidates/:id/share", async (req) => {
+    admin.get("/candidates/:id/share", async (req, reply) => {
+      const access = await loadUserAccess(req);
+      if (!hasModule(access, "candidate.share")) {
+        return reply.code(403).send({ error: "forbidden", message: "无分享权限" });
+      }
+      const ok = await assertCandidateAccess(req, reply, req.params.id);
+      if (!ok) return;
       const link = await admin.prisma.shareLink.findFirst({
         where: { candidateId: req.params.id },
         orderBy: { createdAt: "desc" },
@@ -39,7 +55,6 @@ export default async function shareRoutes(app) {
       return { link };
     });
 
-    // POST 创建 / 重置 ShareLink (重新生成新 token)
     admin.post("/candidates/:id/share", {
       schema: {
         body: {
@@ -47,13 +62,22 @@ export default async function shareRoutes(app) {
           properties: {
             duration: { type: "string", maxLength: 20 },
             maxViews: { type: ["integer", "null"], minimum: 1, maximum: 9999 },
-            showContact:     { type: "boolean" },  // 默认 true
-            showAttachments: { type: "boolean" },  // 默认 false
+            showContact:     { type: "boolean" },
+            showAttachments: { type: "boolean" },
+            // 创建者最多能允许的模块,会和创建者自身的模块权限取交集
+            allowedModules: { type: "array", items: { type: "string", maxLength: 64 } },
           },
           additionalProperties: false,
         },
       },
     }, async (req, reply) => {
+      const access = await loadUserAccess(req);
+      if (!hasModule(access, "candidate.share")) {
+        return reply.code(403).send({ error: "forbidden", message: "无分享权限" });
+      }
+      const ok = await assertCandidateAccess(req, reply, req.params.id);
+      if (!ok) return;
+
       const candidate = await admin.prisma.candidate.findUnique({ where: { id: req.params.id } });
       if (!candidate) return reply.code(404).send({ error: "candidate_not_found" });
 
@@ -61,6 +85,20 @@ export default async function shareRoutes(app) {
       let expiresAt;
       try { expiresAt = computeExpiresAt(duration); }
       catch (err) { return reply.code(400).send({ error: err.code, message: err.message }); }
+
+      // showAttachments 必须创建者拥有 candidate.attachments 才允许
+      const askShowAttachments = req.body?.showAttachments === true;
+      const canShowAttachments = hasModule(access, "candidate.attachments");
+      const showAttachments = askShowAttachments && canShowAttachments;
+
+      // showContact 必须创建者拥有 candidate.contact 才允许
+      const askShowContact = req.body?.showContact !== false; // default true
+      const canShowContact = hasModule(access, "candidate.contact");
+      const showContact = askShowContact && canShowContact;
+
+      // 计算 allowedModules 快照
+      const requestedModules = sanitizeAllowedModules(req.body);
+      const allowedModules = computeAllowedModules(access, requestedModules);
 
       // 先删旧 link (1 candidate : 1 active link)
       await admin.prisma.shareLink.deleteMany({ where: { candidateId: req.params.id } });
@@ -71,15 +109,15 @@ export default async function shareRoutes(app) {
           candidateId: req.params.id,
           expiresAt,
           maxViews: req.body?.maxViews ?? null,
-          showContact:     typeof req.body?.showContact     === "boolean" ? req.body.showContact     : true,
-          showAttachments: typeof req.body?.showAttachments === "boolean" ? req.body.showAttachments : false,
+          showContact,
+          showAttachments,
+          allowedModules,
           createdBy: req.user.sub,
         },
       });
       return reply.code(201).send({ link });
     });
 
-    // PATCH 修改有效期 / 访问次数上限 / 可见性 toggle
     admin.patch("/candidates/:id/share", {
       schema: {
         body: {
@@ -89,23 +127,47 @@ export default async function shareRoutes(app) {
             maxViews: { type: ["integer", "null"], minimum: 1, maximum: 9999 },
             showContact:     { type: "boolean" },
             showAttachments: { type: "boolean" },
+            allowedModules: { type: "array", items: { type: "string", maxLength: 64 } },
           },
           additionalProperties: false,
         },
       },
     }, async (req, reply) => {
+      const access = await loadUserAccess(req);
+      if (!hasModule(access, "candidate.share")) {
+        return reply.code(403).send({ error: "forbidden", message: "无分享权限" });
+      }
+      const ok = await assertCandidateAccess(req, reply, req.params.id);
+      if (!ok) return;
+
       const data = {};
       if (typeof req.body?.duration !== "undefined") {
         try { data.expiresAt = computeExpiresAt(req.body.duration); }
         catch (err) { return reply.code(400).send({ error: err.code, message: err.message }); }
       }
       if (typeof req.body?.maxViews !== "undefined") {
-        data.maxViews = req.body.maxViews;  // 可为 null 表示移除上限
+        data.maxViews = req.body.maxViews;
       }
-      if (typeof req.body?.showContact     === "boolean") data.showContact = req.body.showContact;
-      if (typeof req.body?.showAttachments === "boolean") data.showAttachments = req.body.showAttachments;
+      if (typeof req.body?.showContact === "boolean") {
+        const want = req.body.showContact;
+        if (want && !hasModule(access, "candidate.contact")) {
+          return reply.code(403).send({ error: "forbidden", message: "您没有联系方式模块权限,无法对外开放" });
+        }
+        data.showContact = want;
+      }
+      if (typeof req.body?.showAttachments === "boolean") {
+        const want = req.body.showAttachments;
+        if (want && !hasModule(access, "candidate.attachments")) {
+          return reply.code(403).send({ error: "forbidden", message: "您没有附件模块权限,无法对外开放" });
+        }
+        data.showAttachments = want;
+      }
+      if (req.body?.allowedModules) {
+        const requested = sanitizeAllowedModules(req.body);
+        data.allowedModules = computeAllowedModules(access, requested);
+      }
       if (Object.keys(data).length === 0) {
-        return reply.code(400).send({ error: "no_fields", message: "duration / maxViews / showContact / showAttachments 至少一个" });
+        return reply.code(400).send({ error: "no_fields", message: "至少传 1 个字段" });
       }
 
       const existing = await admin.prisma.shareLink.findFirst({ where: { candidateId: req.params.id } });
@@ -115,18 +177,39 @@ export default async function shareRoutes(app) {
       return { link };
     });
 
-    // DELETE 删除 ShareLink
     admin.delete("/candidates/:id/share", async (req, reply) => {
+      const access = await loadUserAccess(req);
+      if (!hasModule(access, "candidate.share")) {
+        return reply.code(403).send({ error: "forbidden", message: "无分享权限" });
+      }
+      const ok = await assertCandidateAccess(req, reply, req.params.id);
+      if (!ok) return;
       await admin.prisma.shareLink.deleteMany({ where: { candidateId: req.params.id } });
       return reply.code(204).send();
     });
   });
 
-  // ─── 公开端: 不鉴权,只能通过 token 访问对应候选人 ─────────
+  // ─── 公开端 ─────────────────────────────────────────
+  // 应用创建者权限继承规则(规划文档第十节):
+  //   1. 创建者被停用 → 410 share_disabled
+  //   2. 创建者已无该候选人访问权限 → 410 share_disabled
+  //   3. 最终模块 = link.allowedModules ∩ 创建者当前权限 (向后兼容: allowedModules 为空 = 全开)
   app.get("/public/share/:token", async (req, reply) => {
     const link = await app.prisma.shareLink.findUnique({
       where: { token: req.params.token },
-      include: { candidate: true },
+      include: {
+        candidate: true,
+        creator: {
+          select: {
+            id: true,
+            role: true,
+            isActive: true,
+            accessPolicy: { select: { moduleKeys: true } },
+            departmentScopes: { select: { departmentId: true, includeChildren: true } },
+            jobScopes: { select: { jobId: true } },
+          },
+        },
+      },
     });
     if (!link) return reply.code(404).send({ error: "share_not_found", message: "链接无效" });
     if (link.expiresAt && link.expiresAt < new Date()) {
@@ -136,16 +219,79 @@ export default async function shareRoutes(app) {
       return reply.code(410).send({ error: "share_quota_exceeded", message: `此链接访问次数已达上限 (${link.maxViews} 次)` });
     }
 
+    // 创建者权限继承校验
+    const creator = link.creator;
+    let creatorModules;
+    if (!creator) {
+      // 历史 ShareLink: createdBy 为 NULL 或被删用户 → 视为 ADMIN 全开(向后兼容旧数据)
+      creatorModules = Array.from(ALL_MODULE_KEYS_SET);
+    } else {
+      if (creator.isActive === false) {
+        return reply.code(410).send({ error: "share_disabled", message: "分享链接已被禁用" });
+      }
+      // 校验创建者是否仍能访问该候选人(非 ADMIN 才查)
+      if (!isAdmin(creator.role)) {
+        const c = link.candidate;
+        const dirCandSelfOwned = c.ownerId === creator.id;
+        const jobAllowed = c.jobId && creator.jobScopes.some((s) => s.jobId === c.jobId);
+        let deptAllowed = false;
+        if (c.departmentId && creator.departmentScopes.length > 0) {
+          const directIds = new Set(creator.departmentScopes.map((s) => s.departmentId));
+          if (directIds.has(c.departmentId)) deptAllowed = true;
+          else {
+            // 递归看子部门
+            const expand = creator.departmentScopes.filter((s) => s.includeChildren).map((s) => s.departmentId);
+            if (expand.length > 0) {
+              const set = new Set();
+              let frontier = expand;
+              while (frontier.length > 0) {
+                const children = await app.prisma.department.findMany({
+                  where: { parentId: { in: frontier } },
+                  select: { id: true },
+                });
+                const next = [];
+                for (const ch of children) {
+                  if (!set.has(ch.id)) {
+                    set.add(ch.id);
+                    next.push(ch.id);
+                  }
+                }
+                frontier = next;
+              }
+              if (set.has(c.departmentId)) deptAllowed = true;
+            }
+          }
+        }
+        if (!(dirCandSelfOwned || jobAllowed || deptAllowed)) {
+          return reply.code(410).send({ error: "share_disabled", message: "分享链接已被禁用" });
+        }
+      }
+      creatorModules = isAdmin(creator.role)
+        ? Array.from(ALL_MODULE_KEYS_SET)
+        : (creator.accessPolicy?.moduleKeys || []);
+    }
+
+    // 最终 module 集合 = allowedModules ∩ 创建者现有 module 权限
+    // 向后兼容:link.allowedModules 为空数组 → 仅靠 showContact/showAttachments 控,等同旧行为(全开)
+    const linkAllowed = link.allowedModules || [];
+    const effective = new Set(linkAllowed.length > 0
+      ? linkAllowed.filter((k) => creatorModules.includes(k))
+      : creatorModules
+    );
+
     // 记录访问
     await app.prisma.shareLink.update({
       where: { id: link.id },
       data: { viewCount: { increment: 1 }, lastViewedAt: new Date() },
     }).catch(() => {});
 
-    // 严格只返回候选人,不附带其他敏感字段
-    // showContact=false 时 phone/email 完全不返回(连 mask 都不给,前端自己显示「未公开」)
     const c = link.candidate;
-    const showContact = link.showContact !== false;  // default true
+    // showContact / showAttachments 也叠加 effective(双闸,任一关闭就关)
+    const showContact = link.showContact !== false && effective.has("candidate.contact");
+    const showAttachments = link.showAttachments === true && effective.has("candidate.attachments");
+    const showAiInsights = effective.has("candidate.aiInsights");
+    const showJdMatch = effective.has("candidate.jdMatch");
+
     return {
       candidate: {
         id: c.id,
@@ -160,28 +306,28 @@ export default async function shareRoutes(app) {
         age: c.age,
         location: c.location,
         yearsExp: c.yearsExp,
-        // 联系方式:showContact=true 时 mask 后返回,false 时直接 null(前端按 null 渲染「未公开」)
         phone: showContact && c.phone ? c.phone.replace(/(\d{3})\d{4}(\d{4})/, "$1****$2") : null,
         email: showContact && c.email ? c.email.replace(/(.{2}).+(@.+)/, "$1***$2") : null,
         appliedFor: c.appliedFor,
-        jdMatch: c.jdMatch,
+        jdMatch: showJdMatch ? c.jdMatch : null,
         status: c.status,
         parser: c.parser,
         parserConfidence: c.parserConfidence,
         tags: c.tags,
         skills: c.skills,
-        risks: c.risks,
-        highlights: c.highlights,
+        risks: showAiInsights ? c.risks : [],
+        highlights: showAiInsights ? c.highlights : [],
         experience: c.experience,
         educationHistory: c.educationHistory,
-        aiSummary: c.aiSummary,
+        aiSummary: showAiInsights ? c.aiSummary : null,
       },
       share: {
         expiresAt: link.expiresAt,
         viewCount: link.viewCount,
         createdAt: link.createdAt,
         showContact,
-        showAttachments: link.showAttachments === true,  // default false
+        showAttachments,
+        allowedModules: Array.from(effective),
       },
     };
   });

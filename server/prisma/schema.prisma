@@ -29,85 +29,165 @@ model User {
   passwordHash String   @map("password_hash")
   name         String?
   role         Role     @default(RECRUITER)
-  avatar       String?    // 头像 URL,登录用户评价时自动带出
-  jobTitle     String?  @map("job_title")  // 内部角色显示(如 HR · 负责人 / 技术面试官 / HRBP)
+  avatar       String? // 头像 URL,登录用户评价时自动带出
+  jobTitle     String?  @map("job_title") // 内部角色显示(如 HR · 负责人 / 技术面试官 / HRBP)
+  isActive     Boolean  @default(true) @map("is_active") // 停用 → 不能登录、所分享的 ShareLink 失效(返回 410)
+  deactivatedReason String?  @map("deactivated_reason")     // 停用原因(可选,登录被拒时返回)
+  deactivatedAt     DateTime? @map("deactivated_at")
+  // === 第三阶段+:tokenVersion 强制下线 + TOTP 2FA ===
+  tokenVersion        Int       @default(0) @map("token_version")          // JWT payload 带此值,改密/重置/强制下线时 ++
+  totpEnabled         Boolean   @default(false) @map("totp_enabled")
+  totpSecret          String?   @map("totp_secret")                         // base32,启用后才有
+  totpEnabledAt       DateTime? @map("totp_enabled_at")
+  totpRecoveryCodes   String[]  @default([]) @map("totp_recovery_codes")    // 备份码 bcrypt 哈希数组(10 个,用一个移除一个)
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
   candidates Candidate[] @relation("CandidateOwner")
   reviews    Review[]
 
+  accessPolicy      UserAccessPolicy?
+  departmentScopes  UserDepartmentScope[]
+  jobScopes         UserJobScope[]
+  createdShareLinks ShareLink[]           @relation("ShareLinkCreator")
+  passwordHistory   PasswordHistory[]
+
   @@index([email])
   @@map("users")
 }
 
+// 邮箱验证码 — 自助修改邮箱/密码 + 忘记密码 都走此表
+// codeHash 用 bcrypt 存,避免日志/DB 备份泄露明文
+// purpose: CHANGE_EMAIL(校验当前邮箱) / CHANGE_EMAIL_NEW(校验目标新邮箱) / CHANGE_PASSWORD / RESET_PASSWORD
+model EmailVerificationCode {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   // 收件邮箱(可与 user.email 不同 — 比如改邮箱场景下的"新邮箱")
+  userId       String?  @map("user_id") @db.Uuid   // 登录态发起的验证码会带 userId;忘记密码场景为 null
+  purpose      String   // CHANGE_EMAIL | CHANGE_EMAIL_NEW | CHANGE_PASSWORD | RESET_PASSWORD
+  codeHash     String   @map("code_hash")
+  expiresAt    DateTime @map("expires_at")
+  consumedAt   DateTime? @map("consumed_at")
+  attemptCount Int      @default(0) @map("attempt_count")
+  ip           String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([email, purpose])
+  @@index([userId])
+  @@map("email_verification_codes")
+}
+
+// 用户访问策略 — 仅普通用户(非 ADMIN)生效。ADMIN 拥有全部页面/模块权限。
+// pageKeys / moduleKeys 是字符串数组,具体可选值见 server/src/lib/permissionKeys.js
+model UserAccessPolicy {
+  userId             String   @id @map("user_id") @db.Uuid
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pageKeys           String[] @default([]) @map("page_keys")
+  moduleKeys         String[] @default([]) @map("module_keys")
+  mustChangePassword Boolean  @default(false) @map("must_change_password")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  @@map("user_access_policies")
+}
+
+// 用户部门数据范围授权 — includeChildren 默认 true(部门授权默认包含子部门)
+model UserDepartmentScope {
+  id              String     @id @default(uuid()) @db.Uuid
+  userId          String     @map("user_id") @db.Uuid
+  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  departmentId    String     @map("department_id") @db.Uuid
+  department      Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  includeChildren Boolean    @default(true) @map("include_children")
+  createdAt       DateTime   @default(now()) @map("created_at")
+
+  @@unique([userId, departmentId])
+  @@index([userId])
+  @@index([departmentId])
+  @@map("user_department_scopes")
+}
+
+// 用户 JD 数据范围授权
+model UserJobScope {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobId     String   @map("job_id") @db.Uuid
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, jobId])
+  @@index([userId])
+  @@index([jobId])
+  @@map("user_job_scopes")
+}
+
 model Candidate {
-  id                String   @id @default(uuid()) @db.Uuid
-  externalId        String?  @unique @map("external_id")
+  id         String  @id @default(uuid()) @db.Uuid
+  externalId String? @unique @map("external_id")
 
-  name              String
-  gender            String?
-  animal            String?
-  avatar            String?
+  name   String
+  gender String?
+  animal String?
+  avatar String?
 
-  education         String?
-  school            String?
-  major             String?
-  age               Int?
-  location          String?
-  yearsExp          Int?     @map("years_exp")
-  phone             String?
-  email             String?
+  education String?
+  school    String?
+  major     String?
+  age       Int?
+  location  String?
+  yearsExp  Int?    @map("years_exp")
+  phone     String?
+  email     String?
 
-  appliedFor        String?  @map("applied_for")
-  jdMatch           Int?     @map("jd_match")
-  status            String?
-  source            String?
-  pushedAt          DateTime? @map("pushed_at")
+  appliedFor String?   @map("applied_for")
+  jdMatch    Int?      @map("jd_match")
+  status     String?
+  source     String?
+  pushedAt   DateTime? @map("pushed_at")
 
-  parser            String?
-  parserConfidence  Int?     @map("parser_confidence")
+  parser           String?
+  parserConfidence Int?    @map("parser_confidence")
 
-  tags              String[] @default([])
+  tags             String[] @default([])
   // 两阶段:skills / experience / educationHistory 由 matchAgainstJob (阶段二) 产出 markdown bullet 字符串,
   // 详见 server/src/lib/kimi.js + routes/resumes.js 写入逻辑。
-  skills            String?  @db.Text                                              // markdown bullet 字符串("- xxx\n- yyy")
-  risks             String[] @default([])
-  highlights        String[] @default([])
-  experience        String?  @db.Text                                              // markdown bullet 字符串
-  educationHistory  String?  @db.Text @map("education_history")                    // markdown bullet 字符串
-  attachment        String?
-  aiSummary         String?  @db.Text @map("ai_summary")  // LLM 输出的纯文本简报(HR 可读)
+  skills           String?  @db.Text // markdown bullet 字符串("- xxx\n- yyy")
+  risks            String[] @default([])
+  highlights       String[] @default([])
+  experience       String?  @db.Text // markdown bullet 字符串
+  educationHistory String?  @map("education_history") @db.Text // markdown bullet 字符串
+  attachment       String?
+  aiSummary        String?  @map("ai_summary") @db.Text // LLM 输出的纯文本简报(HR 可读)
 
   // === V2 新字段(2026-05-24 新增,与 candidate-detail-flat 设计稿对齐) ===
   // 部分由 LLM 在 parseResume + matchAgainstJob 阶段输出(见 lib/kimi.js),部分由 admin 手动维护
-  aiSuggestedTags   String[] @default([]) @map("ai_suggested_tags")           // LLM 建议标签,左侧 TagsModule 「+ 添加」可选
-  insights          Json     @default("[]")                                    // [{kind:"up"|"down", text:""}] LLM 输出洞察
-  matchedFor        String[] @default([]) @map("matched_for")                  // 相对当前 JD 的匹配维度 ["教育背景","技能栈","工作经验"]
-  againstFor        String[] @default([]) @map("against_for")                  // 不匹配维度
-  profileCompletion Int      @default(0) @map("profile_completion")            // 资料完整度 0-100,后端按字段填充率算
-  languages         Json     @default("[]")                                    // [{name:"中文",level:"母语"}, {name:"英语",level:"CEFR C1"}]
-  documents         Json     @default("{\"resume\":[],\"materials\":[],\"portfolio\":[]}")  // 附件分类: resume/materials/portfolio,每项 [{id,kind:"file"|"link"|"note",name/label,url?,size?,verified?,content?}]
+  aiSuggestedTags   String[] @default([]) @map("ai_suggested_tags") // LLM 建议标签,左侧 TagsModule 「+ 添加」可选
+  insights          Json     @default("[]") // [{kind:"up"|"down", text:""}] LLM 输出洞察
+  matchedFor        String[] @default([]) @map("matched_for") // 相对当前 JD 的匹配维度 ["教育背景","技能栈","工作经验"]
+  againstFor        String[] @default([]) @map("against_for") // 不匹配维度
+  profileCompletion Int      @default(0) @map("profile_completion") // 资料完整度 0-100,后端按字段填充率算
+  languages         Json     @default("[]") // [{name:"中文",level:"母语"}, {name:"英语",level:"CEFR C1"}]
+  documents         Json     @default("{\"resume\":[],\"materials\":[],\"portfolio\":[]}") // 附件分类: resume/materials/portfolio,每项 [{id,kind:"file"|"link"|"note",name/label,url?,size?,verified?,content?}]
 
-  ownerId           String?  @map("owner_id") @db.Uuid
-  owner             User?    @relation("CandidateOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  ownerId String? @map("owner_id") @db.Uuid
+  owner   User?   @relation("CandidateOwner", fields: [ownerId], references: [id], onDelete: SetNull)
 
   // 关联的 JD(可选) — 设置后 jdMatch/risks/highlights 才有意义
-  jobId             String?  @map("job_id") @db.Uuid
-  job               Job?     @relation("CandidateJob", fields: [jobId], references: [id], onDelete: SetNull)
+  jobId String? @map("job_id") @db.Uuid
+  job   Job?    @relation("CandidateJob", fields: [jobId], references: [id], onDelete: SetNull)
 
   // 关联部门(可选) — 独立于 JD,允许"先归到某部门,后续再定具体 JD"的工作流
-  departmentId      String?  @map("department_id") @db.Uuid
-  department        Department? @relation("CandidateDepartment", fields: [departmentId], references: [id], onDelete: SetNull)
+  departmentId String?     @map("department_id") @db.Uuid
+  department   Department? @relation("CandidateDepartment", fields: [departmentId], references: [id], onDelete: SetNull)
 
-  interviews        Interview[]
-  employee          Employee?
-  notes             CandidateNote[]
-  shareLinks        ShareLink[]
-  reviews           Review[]
+  interviews Interview[]
+  employee   Employee?
+  notes      CandidateNote[]
+  shareLinks ShareLink[]
+  reviews    Review[]
 
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([appliedFor])
   @@index([status])
@@ -117,40 +197,41 @@ model Candidate {
 }
 
 model Job {
-  id          String   @id @default(uuid()) @db.Uuid
-  externalId  String?  @unique @map("external_id")
+  id          String  @id @default(uuid()) @db.Uuid
+  externalId  String? @unique @map("external_id")
   title       String
   dept        String?
   owner       String?
-  openings    Int      @default(1)
-  candidates  Int      @default(0)
+  openings    Int     @default(1)
+  candidates  Int     @default(0)
   level       String?
   location    String?
-  urgency     Urgency  @default(mid)
-  status      String?  @default("招聘中")
-  description String?  @db.Text  // JD 详情(职责/要求/福利) — LLM 用作 JD 匹配度评估的素材
+  urgency     Urgency @default(mid)
+  status      String? @default("招聘中")
+  description String? @db.Text // JD 详情(职责/要求/福利) — LLM 用作 JD 匹配度评估的素材
 
   // === V2 新字段(JD 详情弹窗 + 岗位概览 Card 用)===
-  employment          String?                                                  // "全职" / "兼职" / "实习" / "合同制"
-  salary              String?                                                  // "30K-40K · 16薪"
-  levelRange          String?  @map("level_range")                              // "P6-P7" (跟 level 字段不同语义,level=单一职级)
-  yearsExpRange       String?  @map("years_exp_range")                          // "5-7 年" (字符串,跟 Candidate.yearsExp Int 不同)
-  educationRequirement String? @map("education_requirement")                    // "本科及以上"
-  languageRequirement String?  @map("language_requirement")                     // "英语 CEFR B2+"
-  publishedAt         DateTime? @map("published_at")
-  deadline            DateTime?
-  responsibilities    String[] @default([])
-  requirements        String[] @default([])
-  nice                String[] @default([])
-  benefits            String[] @default([])
+  employment           String? // "全职" / "兼职" / "实习" / "合同制"
+  salary               String? // "30K-40K · 16薪"
+  levelRange           String?   @map("level_range") // "P6-P7" (跟 level 字段不同语义,level=单一职级)
+  yearsExpRange        String?   @map("years_exp_range") // "5-7 年" (字符串,跟 Candidate.yearsExp Int 不同)
+  educationRequirement String?   @map("education_requirement") // "本科及以上"
+  languageRequirement  String?   @map("language_requirement") // "英语 CEFR B2+"
+  publishedAt          DateTime? @map("published_at")
+  deadline             DateTime?
+  responsibilities     String[]  @default([])
+  requirements         String[]  @default([])
+  nice                 String[]  @default([])
+  benefits             String[]  @default([])
 
-  interviews    Interview[]
-  employees     Employee[]
-  linkedCandidates Candidate[] @relation("CandidateJob")
-  uploadLinks   UploadShareLink[] @relation("UploadLinkJob")
+  interviews       Interview[]
+  employees        Employee[]
+  linkedCandidates Candidate[]       @relation("CandidateJob")
+  uploadLinks      UploadShareLink[] @relation("UploadLinkJob")
+  userScopes       UserJobScope[]
 
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([dept])
   @@index([urgency])
@@ -158,21 +239,22 @@ model Job {
 }
 
 model Department {
-  id          String   @id @default(uuid()) @db.Uuid
-  externalId  String?  @unique @map("external_id")
-  name        String
-  code        String?
-  parentId    String?  @map("parent_id") @db.Uuid
-  parent      Department?  @relation("DeptParent", fields: [parentId], references: [id], onDelete: SetNull)
-  children    Department[] @relation("DeptParent")
-  candidates  Candidate[] @relation("CandidateDepartment")
-  head        String?
-  headcount   Int      @default(0)
-  openHc      Int      @default(0) @map("open_hc")
-  sortOrder   Int      @default(0) @map("sort_order")
+  id         String                @id @default(uuid()) @db.Uuid
+  externalId String?               @unique @map("external_id")
+  name       String
+  code       String?
+  parentId   String?               @map("parent_id") @db.Uuid
+  parent     Department?           @relation("DeptParent", fields: [parentId], references: [id], onDelete: SetNull)
+  children   Department[]          @relation("DeptParent")
+  candidates Candidate[]           @relation("CandidateDepartment")
+  userScopes UserDepartmentScope[]
+  head       String?
+  headcount  Int                   @default(0)
+  openHc     Int                   @default(0) @map("open_hc")
+  sortOrder  Int                   @default(0) @map("sort_order")
 
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([parentId])
   @@index([parentId, sortOrder])
@@ -180,33 +262,33 @@ model Department {
 }
 
 model Employee {
-  id                  String    @id @default(uuid()) @db.Uuid
-  externalId          String?   @unique @map("external_id")
+  id         String  @id @default(uuid()) @db.Uuid
+  externalId String? @unique @map("external_id")
 
-  candidateId         String?   @unique @map("candidate_id") @db.Uuid
-  candidate           Candidate? @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+  candidateId String?    @unique @map("candidate_id") @db.Uuid
+  candidate   Candidate? @relation(fields: [candidateId], references: [id], onDelete: SetNull)
 
-  name                String
-  gender              String?
-  animal              String?
-  avatar              String?
-  education           String?
-  school              String?
-  major               String?
-  age                 Int?
-  location            String?
-  yearsExp            Int?      @map("years_exp")
-  phone               String?
-  email               String?
+  name      String
+  gender    String?
+  animal    String?
+  avatar    String?
+  education String?
+  school    String?
+  major     String?
+  age       Int?
+  location  String?
+  yearsExp  Int?    @map("years_exp")
+  phone     String?
+  email     String?
 
-  appliedFor          String?   @map("applied_for")
-  jobId               String?   @map("job_id") @db.Uuid
-  job                 Job?      @relation(fields: [jobId], references: [id], onDelete: SetNull)
-  dept                String?
-  jdOwner             String?   @map("jd_owner")
-  level               String?
-  workLocation        String?   @map("work_location")
-  jdMatch             Int?      @map("jd_match")
+  appliedFor   String? @map("applied_for")
+  jobId        String? @map("job_id") @db.Uuid
+  job          Job?    @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  dept         String?
+  jdOwner      String? @map("jd_owner")
+  level        String?
+  workLocation String? @map("work_location")
+  jdMatch      Int?    @map("jd_match")
 
   stage               String?
   plannedHireDate     DateTime? @map("planned_hire_date")
@@ -221,19 +303,19 @@ model Employee {
   hrbp                String?
   directManager       String?   @map("direct_manager")
 
-  checklist           Json      @default("{}")
-  probation           Json      @default("{}")
-  events              Json      @default("[]")
-  riskItems           Json      @default("[]") @map("risk_items")
+  checklist Json @default("{}")
+  probation Json @default("{}")
+  events    Json @default("[]")
+  riskItems Json @default("[]") @map("risk_items")
 
-  parser              String?
-  parserConfidence    Int?      @map("parser_confidence")
-  source              String?
-  attachment          String?
-  tags                String[]  @default([])
+  parser           String?
+  parserConfidence Int?     @map("parser_confidence")
+  source           String?
+  attachment       String?
+  tags             String[] @default([])
 
-  createdAt           DateTime  @default(now()) @map("created_at")
-  updatedAt           DateTime  @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([dept])
   @@index([stage])
@@ -245,56 +327,56 @@ model Employee {
 // Review 可以由登录用户 + 公开访客(经 ShareLink token)都提交
 // 公开提交的 authorName 强制必填,内部提交自动从登录 User 拿
 model Review {
-  id           String    @id @default(uuid()) @db.Uuid
-  candidateId  String    @map("candidate_id") @db.Uuid
-  candidate    Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  id          String    @id @default(uuid()) @db.Uuid
+  candidateId String    @map("candidate_id") @db.Uuid
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
 
   // 作者信息(快照,即便 User 删了也能展示)
-  authorName   String    @map("author_name")
-  authorRole   String?   @map("author_role")    // 如 "HR · 负责人" / "技术面试官"
-  authorAvatar String?   @map("author_avatar")
+  authorName   String  @map("author_name")
+  authorRole   String? @map("author_role") // 如 "HR · 负责人" / "技术面试官"
+  authorAvatar String? @map("author_avatar")
 
   // 关联用户(仅登录用户),公开评论为 null
-  userId       String?   @map("user_id") @db.Uuid
-  user         User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId String? @map("user_id") @db.Uuid
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
 
-  via          String    @default("internal")   // 提交渠道: "internal" | "public"
-  shareToken   String?   @map("share_token")    // 公开提交时记录是经哪个 share token
+  via        String  @default("internal") // 提交渠道: "internal" | "public"
+  shareToken String? @map("share_token") // 公开提交时记录是经哪个 share token
 
   // 可见范围: "public"(全员) | "internal"(仅登录账号) | "admin"(仅 ADMIN)
-  visibility   String    @default("public")
+  visibility String @default("public")
 
-  content      String    @db.Text               // ≤500 字符
+  content     String @db.Text // ≤500 字符
   // attachments: [{ type: "image"|"file"|"link", name, url, size?, contentType? }]
-  attachments  Json      @default("[]")
+  attachments Json   @default("[]")
 
   // 回复 — 1 级嵌套(主父亲, 兼容旧数据)
-  parentId     String?   @map("parent_id") @db.Uuid
-  parent       Review?   @relation("ReviewParent", fields: [parentId], references: [id], onDelete: SetNull)
-  replies      Review[]  @relation("ReviewParent")
+  parentId String?  @map("parent_id") @db.Uuid
+  parent   Review?  @relation("ReviewParent", fields: [parentId], references: [id], onDelete: SetNull)
+  replies  Review[] @relation("ReviewParent")
 
   // 批量回复时记录额外引用的多条评价 id (JSON 数组), 至少 1 个 = parentId
   // 单次回复时此字段可为 [] 或 [parentId]
-  referencedIds Json     @default("[]") @map("referenced_ids")
+  referencedIds Json @default("[]") @map("referenced_ids")
 
   // 删除流: 普通作者只能"请求删除",admin 批准后才真删除(deletedAt 标记 soft-delete)
-  deletedAt           DateTime? @map("deleted_at")
-  deleteRequested     DateTime? @map("delete_requested")
-  deleteRequestedBy   String?   @map("delete_requested_by")  // authorName 或 userId
+  deletedAt         DateTime? @map("deleted_at")
+  deleteRequested   DateTime? @map("delete_requested")
+  deleteRequestedBy String?   @map("delete_requested_by") // authorName 或 userId
 
   // admin 隐藏 — 普通用户看不到,admin 视角显示"已隐藏"标记
-  hidden       Boolean   @default(false)
+  hidden Boolean @default(false)
 
   // 表决态度(用于回复评价): "approve" | "reject" | null(不表态)
-  stance       String?
+  stance String?
 
   // 表决票数(用于显示与排序)
-  upvotes      Int       @default(0)
-  downvotes    Int       @default(0)
+  upvotes   Int @default(0)
+  downvotes Int @default(0)
 
-  votes        ReviewVote[]
+  votes ReviewVote[]
 
-  createdAt    DateTime  @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at")
 
   @@index([candidateId])
   @@index([userId])
@@ -309,7 +391,7 @@ model ReviewVote {
   reviewId  String   @map("review_id") @db.Uuid
   review    Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
   userId    String   @map("user_id") @db.Uuid
-  value     Int      // +1 | -1
+  value     Int // +1 | -1
   createdAt DateTime @default(now()) @map("created_at")
 
   @@unique([reviewId, userId])
@@ -334,23 +416,28 @@ model CandidateNote {
 // token 是不可猜的 UUID,公开页只能通过 token 访问对应候选人
 // expiresAt = null 表示无限期,否则到期后接口返回 410
 model ShareLink {
-  id           String    @id @default(uuid()) @db.Uuid
-  token        String    @unique  // 用于公开 URL
-  candidateId  String    @map("candidate_id") @db.Uuid
-  candidate    Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  expiresAt    DateTime? @map("expires_at")  // null = 无限期
-  maxViews     Int?      @map("max_views")    // null = 不限制访问次数,否则达 maxViews 后接口拒绝
-  createdBy    String?   @map("created_by") @db.Uuid
-  viewCount    Int       @default(0) @map("view_count")
-  lastViewedAt DateTime? @map("last_viewed_at")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  id              String    @id @default(uuid()) @db.Uuid
+  token           String    @unique // 用于公开 URL
+  candidateId     String    @map("candidate_id") @db.Uuid
+  candidate       Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  expiresAt       DateTime? @map("expires_at") // null = 无限期
+  maxViews        Int?      @map("max_views") // null = 不限制访问次数,否则达 maxViews 后接口拒绝
+  createdBy       String?   @map("created_by") @db.Uuid
+  creator         User?     @relation("ShareLinkCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  viewCount       Int       @default(0) @map("view_count")
+  lastViewedAt    DateTime? @map("last_viewed_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
   // 公开端可见性开关 — 不修改候选人本身,只控制本 ShareLink 的展示策略
-  showContact     Boolean @default(true)  @map("show_contact")      // 联系方式(phone/email)是否露出(mask)
-  showAttachments Boolean @default(false) @map("show_attachments")  // 评价表单的「附件上传」input 是否开放
+  showContact     Boolean   @default(true) @map("show_contact") // 联系方式(phone/email)是否露出(mask)
+  showAttachments Boolean   @default(false) @map("show_attachments") // 评价表单的「附件上传」input 是否开放
+  // 创建时快照:允许公开展示的 module key 数组 ["candidate.contact","candidate.reviews",...]
+  // 公开访问最终模块 = allowedModules ∩ 创建者当前权限,创建者被停用则整链接 410
+  allowedModules  String[]  @default([]) @map("allowed_modules")
 
   @@index([candidateId])
   @@index([token])
+  @@index([createdBy])
   @@map("share_links")
 }
 
@@ -365,13 +452,13 @@ model ShareLink {
 //   - defaultJobId 让外部"自动关联到这个 JD"(招聘官分享时常用),外部上传者也可改选其它 JD
 model UploadShareLink {
   id            String    @id @default(uuid()) @db.Uuid
-  token         String    @unique  // 公开 URL 的 path 参数,不可猜
+  token         String    @unique // 公开 URL 的 path 参数,不可猜
   defaultJobId  String?   @map("default_job_id") @db.Uuid
   defaultJob    Job?      @relation("UploadLinkJob", fields: [defaultJobId], references: [id], onDelete: SetNull)
-  defaultSource String?   @map("default_source")  // 预填来源,如"罗卡推荐",外部上传时默认带上(可被外部覆盖)
-  note          String?   @db.Text                // 给外部上传者的提示文案,如"请上传 PDF 简历,我们会在 24h 内联系您"
-  expiresAt     DateTime? @map("expires_at")      // null = 无限期
-  maxUploads    Int?      @map("max_uploads")     // null = 不限制,否则达 maxUploads 后接口拒绝(对应截图"最多 200 份")
+  defaultSource String?   @map("default_source") // 预填来源,如"罗卡推荐",外部上传时默认带上(可被外部覆盖)
+  note          String?   @db.Text // 给外部上传者的提示文案,如"请上传 PDF 简历,我们会在 24h 内联系您"
+  expiresAt     DateTime? @map("expires_at") // null = 无限期
+  maxUploads    Int?      @map("max_uploads") // null = 不限制,否则达 maxUploads 后接口拒绝(对应截图"最多 200 份")
   uploadCount   Int       @default(0) @map("upload_count")
   createdBy     String?   @map("created_by") @db.Uuid
   lastUploadAt  DateTime? @map("last_upload_at")
@@ -387,45 +474,79 @@ model UploadShareLink {
 // 用于覆盖 .env 默认值,例如 kimi.api_key / kimi.model
 // value 字段: 当 encrypted=true 时存 base64(iv:authTag:ciphertext) — AES-256-GCM
 model SystemSetting {
-  key        String   @id              // "kimi.api_key", "kimi.model", ...
-  value      String                    // 加密或明文,看 encrypted 字段
-  encrypted  Boolean  @default(false)
-  updatedBy  String?  @map("updated_by") @db.Uuid
-  updatedAt  DateTime @updatedAt        @map("updated_at")
-  createdAt  DateTime @default(now())  @map("created_at")
+  key       String   @id // "kimi.api_key", "kimi.model", ...
+  value     String // 加密或明文,看 encrypted 字段
+  encrypted Boolean  @default(false)
+  updatedBy String?  @map("updated_by") @db.Uuid
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
 
   @@map("system_settings")
 }
 
 model Interview {
-  id              String    @id @default(uuid()) @db.Uuid
-  externalId      String?   @unique @map("external_id")
+  id         String  @id @default(uuid()) @db.Uuid
+  externalId String? @unique @map("external_id")
 
-  candidateId     String?   @map("candidate_id") @db.Uuid
-  candidate       Candidate? @relation(fields: [candidateId], references: [id], onDelete: SetNull)
-  candidateName   String?   @map("candidate_name")
+  candidateId   String?    @map("candidate_id") @db.Uuid
+  candidate     Candidate? @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+  candidateName String?    @map("candidate_name")
 
-  jobId           String?   @map("job_id") @db.Uuid
-  job             Job?      @relation(fields: [jobId], references: [id], onDelete: SetNull)
-  jobTitle        String?   @map("job_title")
+  jobId    String? @map("job_id") @db.Uuid
+  job      Job?    @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  jobTitle String? @map("job_title")
 
-  round           String?
-  category        String?    // V2 新增: "技术" / "HR" / "业务" / 自定义
-  mode            String?
-  status          String?
-  recommendation  String?
-  scheduledAt     DateTime? @map("scheduled_at")
-  interviewer     String?   // 老字段,保留向后兼容(单 string,展示用)
-  managers        Json      @default("[]")  // V2 新增: HR/招聘官列表 [{name,role,animal,avatar}]
-  interviewers    Json      @default("[]")  // V2 新增: 面试官列表(多人)[{name,role,animal,avatar}]
-  link            String?    // V2 新增: 会议链接 / 线下地址
-  notes           String?
+  round          String?
+  category       String? // V2 新增: "技术" / "HR" / "业务" / 自定义
+  mode           String?
+  status         String?
+  recommendation String?
+  scheduledAt    DateTime? @map("scheduled_at")
+  interviewer    String? // 老字段,保留向后兼容(单 string,展示用)
+  managers       Json      @default("[]") // V2 新增: HR/招聘官列表 [{name,role,animal,avatar}]
+  interviewers   Json      @default("[]") // V2 新增: 面试官列表(多人)[{name,role,animal,avatar}]
+  link           String? // V2 新增: 会议链接 / 线下地址
+  notes          String?
 
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([candidateId])
   @@index([jobId])
   @@index([status])
   @@map("interviews")
+}
+
+// 审计日志 — 记录关键操作便于追溯
+// 写入入口在 server/src/lib/audit.js writeLog
+// action 命名约定: <entity>.<verb>  如 user.create / user.deactivate / user.policy.update / share.create / candidate.delete / auth.login / auth.login_failed
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String?  @map("actor_id") @db.Uuid        // 触发动作的登录用户 id;系统/匿名场景为 null
+  actorEmail String?  @map("actor_email")               // 快照,即便 User 删了仍能看
+  action     String                                      // 见上方约定
+  entityType String?  @map("entity_type")                // user / candidate / job / department / share_link / ...
+  entityId   String?  @map("entity_id")                  // 可能不是 uuid(比如 share token),用 string
+  diff       Json     @default("{}")                    // { before?, after?, message? }
+  ip         String?
+  userAgent  String?  @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
+
+// 密码历史 — 防止重复使用最近 N 次密码
+// 每次改密成功就写一条,后台保留最近 5 条(超出由 lib/passwordHistory.js prune)
+model PasswordHistory {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([userId, createdAt])
+  @@map("password_history")
 }
