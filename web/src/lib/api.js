@@ -82,6 +82,9 @@ export const resources = {
   dashboard: {
     overview: () => api.get("/dashboard/overview").then((r) => r.data),
   },
+  reports: {
+    overview: () => api.get("/reports/overview").then((r) => r.data),
+  },
   notes: {
     list: (candidateId) => api.get(`/candidates/${candidateId}/notes`).then((r) => r.data.notes),
     create: (candidateId, content) => api.post(`/candidates/${candidateId}/notes`, { content }).then((r) => r.data.note),
