@@ -9,6 +9,7 @@
 
 import { ping, DEFAULT_PROMPT, listModels } from "../lib/kimi.js";
 import { getEffective, listAll, setOne, deleteOne, SETTING_KEYS } from "../lib/settings.js";
+import { loadUserAccess, hasPage } from "../lib/permissions.js";
 
 const ALLOWED_KEYS = new Set(Object.values(SETTING_KEYS));
 
@@ -22,17 +23,31 @@ const SET_BODY = {
   additionalProperties: false,
 };
 
-function adminOnly(req, reply, done) {
-  if (req.user?.role !== "ADMIN") {
-    reply.code(403).send({ error: "forbidden", message: "需要管理员权限" });
-    return;
+// LLM 系统配置:允许 ADMIN, 或被 admin 在 /users 勾过 'system.llm' pageKey 的用户
+// 每次请求从 DB 拉最新 access policy, 避免 JWT 过期前用户被收回权限仍可调用
+async function requireLlmAccess(req, reply) {
+  if (req.user?.role === "ADMIN") return;
+  const access = await loadUserAccess(req);
+  if (!access.isActive) {
+    return reply.code(403).send({ error: "user_inactive", message: "账号已停用" });
+  }
+  if (!hasPage(access, "system.llm")) {
+    return reply.code(403).send({ error: "forbidden", message: "需要 LLM 系统配置权限" });
+  }
+}
+
+// API Key 写操作仅 admin (高敏感凭证, 不开给被授权的普通用户)
+function adminOnlyForApiKey(req, reply, done) {
+  if (req.user?.role === "ADMIN") return done();
+  if (req.params?.key === SETTING_KEYS.KIMI_API_KEY) {
+    return reply.code(403).send({ error: "forbidden", message: "仅管理员可修改 API Key" });
   }
   done();
 }
 
 export default async function systemRoutes(app) {
   app.addHook("preHandler", app.authenticate);
-  app.addHook("preHandler", adminOnly);
+  app.addHook("preHandler", requireLlmAccess);
 
   // 列出全部 settings(api_key 已 mask;prompt 长内容也返回明文便于 admin 编辑)
   app.get("/settings", async () => ({ items: await listAll() }));
@@ -61,8 +76,8 @@ export default async function systemRoutes(app) {
     }
   });
 
-  // 单 key 写入
-  app.put("/settings/:key", { schema: { body: SET_BODY } }, async (req, reply) => {
+  // 单 key 写入 — API Key 仅 admin
+  app.put("/settings/:key", { schema: { body: SET_BODY }, preHandler: adminOnlyForApiKey }, async (req, reply) => {
     const { key } = req.params;
     if (!ALLOWED_KEYS.has(key)) {
       return reply.code(400).send({ error: "unknown_key", message: `不支持的 setting key: ${key}` });
@@ -71,8 +86,8 @@ export default async function systemRoutes(app) {
     return { ok: true, key: row.key, updatedAt: row.updatedAt };
   });
 
-  // 删除(回退到 env fallback)
-  app.delete("/settings/:key", async (req, reply) => {
+  // 删除(回退到 env fallback) — API Key 仅 admin
+  app.delete("/settings/:key", { preHandler: adminOnlyForApiKey }, async (req, reply) => {
     const { key } = req.params;
     if (!ALLOWED_KEYS.has(key)) {
       return reply.code(400).send({ error: "unknown_key" });

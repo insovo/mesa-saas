@@ -36,6 +36,8 @@ export default function Sidebar({ user, mobileOpen = false, onMobileClose, colla
   const me = useMe();
   // 兼容旧调用方:user prop 仍用,但 page 过滤优先看 me(权限策略)
   const isAdmin = checkIsAdmin(me) || user?.role === "ADMIN";
+  // LLM 配置入口:admin 或被授权 system.llm pageKey 的用户都能看见
+  const canLlmAccess = isAdmin || (me ? canSeePage(me, "system.llm") : false);
   const items = ITEMS.filter((it) => {
     if (it.adminOnly && !isAdmin) return false;
     if (it.pageKey && me) return canSeePage(me, it.pageKey);
@@ -64,11 +66,11 @@ export default function Sidebar({ user, mobileOpen = false, onMobileClose, colla
     // eslint-disable-next-line
   }, []);
 
-  // admin 打开 modal 时拉 settings
+  // admin 或被授权 system.llm 的用户打开 modal 时拉 settings
   useEffect(() => {
-    if (!modalOpen || !isAdmin) return;
+    if (!modalOpen || !canLlmAccess) return;
     api.get("/system/settings").then((r) => setAdminSettings(r.data.items)).catch(() => setAdminSettings([]));
-  }, [modalOpen, isAdmin]);
+  }, [modalOpen, canLlmAccess]);
 
   function onPickModel(modelId) {
     setSelectedModel(modelId);
@@ -270,7 +272,7 @@ export default function Sidebar({ user, mobileOpen = false, onMobileClose, colla
             })}
           </ul>
 
-          {isAdmin && (
+          {canLlmAccess && (
             <>
               {!collapsed && (
                 <>
