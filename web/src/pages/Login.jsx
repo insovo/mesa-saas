@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import gsap from "gsap";
 import { api } from "../lib/api.js";
-import { setAuth } from "../lib/auth.js";
+import { setAuth, addSavedAccount } from "../lib/auth.js";
 import { Card, Button, Input, I, Modal, toast } from "../components/Primitives.jsx";
 import { useAuth } from "../lib/authContext.jsx";
 import PasswordStrengthMeter from "../components/PasswordStrengthMeter.jsx";
@@ -21,6 +21,7 @@ export default function Login() {
   const [deactivated, setDeactivated] = useState(null); // { reason }
   const [forgotOpen, setForgotOpen] = useState(false);
   const [mfaToken, setMfaToken] = useState(null); // 进入 MFA 第二步时持有
+  const [remember, setRemember] = useState(false);
 
   async function onSubmit(e) {
     e.preventDefault();
@@ -35,6 +36,7 @@ export default function Login() {
         return;
       }
       setAuth(data.token, data.user);
+      if (remember) addSavedAccount(data.token, data.user);
       await refetch();
       navigate(from, { replace: true });
     } catch (err) {
@@ -53,6 +55,7 @@ export default function Login() {
 
   async function onMfaSuccess(data) {
     setAuth(data.token, data.user);
+    if (remember) addSavedAccount(data.token, data.user);
     await refetch();
     if (data.recoveryCodeUsed) {
       toast(`已用 1 个备份码登录,剩余 ${data.remainingRecoveryCodes} 个`, "info");
@@ -141,7 +144,16 @@ export default function Login() {
               )}
             </Button>
 
-            <div className="text-right">
+            <div className="flex items-center justify-between gap-2">
+              <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={remember}
+                  onChange={(e) => setRemember(e.target.checked)}
+                  className="accent-brand w-4 h-4"
+                />
+                <span className="text-xs text-gray-700">记住账号 (可在右上「切换账号」一键登入)</span>
+              </label>
               <button
                 type="button"
                 onClick={() => setForgotOpen(true)}
