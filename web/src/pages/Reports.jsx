@@ -1,5 +1,6 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useGSAP } from "@gsap/react";
 import { resources } from "../lib/api.js";
 import {
   Card,
@@ -24,6 +25,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { gsap, ScrollTrigger, D, E, ensureMotionPref } from "../anim/gsap.js";
 
 // ╔══════════════════════════════════════════════════════════════╗
 // ║  共享小组件
@@ -54,6 +56,27 @@ function Sparkline({ data, color = "var(--chart-1)", colorKey = "chart-1" }) {
   );
 }
 
+// 数字滚动 0 → target (GSAP duration D.slow, ease expo.out)
+function AnimatedNumber({ value, className }) {
+  const ref = useRef(null);
+  const prev = useRef(0);
+  useGSAP(() => {
+    if (!ref.current) return;
+    const obj = { v: prev.current };
+    const target = Number(value) || 0;
+    gsap.to(obj, {
+      v: target,
+      duration: D.slow,
+      ease: E.expo,
+      onUpdate: () => {
+        if (ref.current) ref.current.textContent = Math.round(obj.v).toLocaleString();
+      },
+      onComplete: () => { prev.current = target; },
+    });
+  }, { dependencies: [value] });
+  return <span ref={ref} className={className}>{value.toLocaleString()}</span>;
+}
+
 function DeltaBadge({ delta }) {
   if (delta == null) return <span className="text-[11px] text-gray-400 font-bold">—</span>;
   const pct = (delta * 100).toFixed(1);
@@ -82,10 +105,31 @@ const KPI_META = {
   onboarded:    { icon: "user-check",    color: "#8B5CF6", chartVar: "--chart-5", key: "chart-5" },
 };
 
-function KpiCard({ kpi, onClick }) {
+function KpiCard({ kpi, onClick, index }) {
   const meta = KPI_META[kpi.key] || KPI_META.candidates;
+  const cardRef = useRef(null);
+  // 入场: y 24 → 0, opacity 0 → 1, stagger by index, 涨/跌脉冲
+  useGSAP(() => {
+    if (!cardRef.current) return;
+    gsap.fromTo(
+      cardRef.current,
+      { y: 24, opacity: 0 },
+      { y: 0, opacity: 1, duration: D.base, ease: E.out, delay: index * 0.08 },
+    );
+    // 涨跌脉冲
+    if (kpi.delta != null && Math.abs(kpi.delta) > 0.001) {
+      const color = kpi.delta > 0 ? "rgba(34,197,94,0.22)" : "rgba(245,57,57,0.22)";
+      gsap.fromTo(
+        cardRef.current,
+        { boxShadow: `0 0 0 0 ${color}` },
+        { boxShadow: `0 0 0 0 ${color.replace(/0\.22/, "0")}`, duration: 1.4, ease: "power1.out", delay: index * 0.08 + 0.3 },
+      );
+    }
+  }, { scope: cardRef, dependencies: [kpi.value, index] });
+
   return (
     <Card
+      ref={cardRef}
       className="p-5 relative overflow-hidden cursor-pointer hover:shadow-lg transition group"
       onClick={onClick}
     >
@@ -104,7 +148,7 @@ function KpiCard({ kpi, onClick }) {
           <DeltaBadge delta={kpi.delta} />
         </div>
         <p className="text-3xl font-bold text-navy-700 mt-3 leading-none">
-          {(kpi.value ?? 0).toLocaleString()}
+          <AnimatedNumber value={kpi.value ?? 0} />
         </p>
         <p className="text-[11px] text-gray-500 mt-1.5">
           {kpi.prev == null ? "无对比数据" : `对比期 ${kpi.prev.toLocaleString()}`}
@@ -118,11 +162,35 @@ function KpiCard({ kpi, onClick }) {
   );
 }
 
-function FunnelStage({ stage, maxCount, isLast, onClick }) {
+function FunnelStage({ stage, maxCount, isLast, onClick, index, onEnter, onLeave }) {
   const tone = STATUS_TONE[stage.status] || STATUS_TONE["待筛选"];
   const pct = maxCount ? (stage.count / maxCount) * 100 : 0;
+  const wrapRef = useRef(null);
+  const barRef = useRef(null);
+
+  useGSAP(() => {
+    if (!wrapRef.current || !barRef.current) return;
+    gsap.fromTo(
+      wrapRef.current,
+      { opacity: 0, x: -16 },
+      { opacity: 1, x: 0, duration: D.base, ease: E.out, delay: (index || 0) * 0.06 },
+    );
+    gsap.fromTo(
+      barRef.current,
+      { width: "0%" },
+      { width: `${Math.max(pct, 2)}%`, duration: D.slow, ease: E.expo, delay: (index || 0) * 0.06 + 0.1 },
+    );
+  }, { scope: wrapRef, dependencies: [pct, index] });
+
   return (
-    <div className="group cursor-pointer transition" onClick={onClick}>
+    <div
+      ref={wrapRef}
+      data-funnel-stage
+      className="group cursor-pointer transition"
+      onClick={onClick}
+      onMouseEnter={() => onEnter?.(index)}
+      onMouseLeave={() => onLeave?.()}
+    >
       <div className="flex items-center gap-3 mb-1.5">
         <span
           className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-bold"
@@ -133,8 +201,9 @@ function FunnelStage({ stage, maxCount, isLast, onClick }) {
         </span>
         <div className="flex-1 h-6 rounded-md bg-gray-100 overflow-hidden relative group-hover:ring-2 group-hover:ring-brand/30 transition">
           <div
-            className="h-full transition-all"
-            style={{ width: `${Math.max(pct, 2)}%`, background: tone.dot, opacity: 0.85 }}
+            ref={barRef}
+            className="h-full"
+            style={{ width: "0%", background: tone.dot, opacity: 0.85 }}
           />
         </div>
         <span className="text-sm font-bold text-navy-700 w-12 text-right">{stage.count}</span>
@@ -518,11 +587,26 @@ function exportCsv(drilldown) {
 }
 
 function DrilldownDrawer({ open, onClose, drilldown, loading }) {
+  const maskRef = useRef(null);
+  const panelRef = useRef(null);
+  useGSAP(() => {
+    if (!open) return;
+    const tl = gsap.timeline();
+    if (maskRef.current) tl.fromTo(maskRef.current, { autoAlpha: 0 }, { autoAlpha: 1, duration: D.fast });
+    if (panelRef.current)
+      tl.fromTo(panelRef.current, { xPercent: 100 }, { xPercent: 0, duration: D.base, ease: E.out }, "<");
+    tl.fromTo(
+      "[data-drawer-row]",
+      { opacity: 0, x: 16 },
+      { opacity: 1, x: 0, duration: D.fast, ease: E.out, stagger: 0.03 },
+      "-=0.1",
+    );
+  }, { dependencies: [open, drilldown] });
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex">
-      <div className="flex-1 bg-black/30" onClick={onClose} />
-      <div className="w-full max-w-[60vw] bg-white shadow-2xl flex flex-col">
+      <div ref={maskRef} className="flex-1 bg-black/30" onClick={onClose} />
+      <div ref={panelRef} className="w-full max-w-[60vw] bg-white shadow-2xl flex flex-col">
         <div className="flex items-center justify-between p-5 border-b border-gray-100">
           <div>
             <p className="text-[11px] text-gray-500">数据报表 / 下钻</p>
@@ -561,7 +645,7 @@ function DrilldownDrawer({ open, onClose, drilldown, loading }) {
                 {drilldown.items.map((c) => {
                   const tone = STATUS_TONE[c.status] || STATUS_TONE["待筛选"];
                   return (
-                    <tr key={c.id} className="border-b border-gray-50 hover:bg-lightPrimary/40">
+                    <tr key={c.id} data-drawer-row className="border-b border-gray-50 hover:bg-lightPrimary/40">
                       <td className="py-2 px-2 text-navy-700 font-bold">
                         <a href={`/candidates/${c.id}`} target="_blank" rel="noreferrer" className="hover:text-brand">
                           {c.name}
@@ -733,6 +817,26 @@ export default function Reports() {
   const [drillOpen, setDrillOpen] = useState(false);
   const [drilldown, setDrilldown] = useState(null);
   const [drillLoading, setDrillLoading] = useState(false);
+  const pageRef = useRef(null);
+
+  // GSAP: prefers-reduced-motion 适配 + JD/部门区 ScrollTrigger 进入视口入场
+  useGSAP(() => {
+    ensureMotionPref();
+    // 等数据 + DOM 都 ready 后启 ScrollTrigger
+    if (!report || !byJob || !byDept) return;
+    const triggers = [];
+    document.querySelectorAll("[data-scroll-reveal]").forEach((el) => {
+      gsap.set(el, { opacity: 0, y: 32 });
+      const tr = ScrollTrigger.create({
+        trigger: el,
+        start: "top 85%",
+        once: true,
+        onEnter: () => gsap.to(el, { opacity: 1, y: 0, duration: D.base, ease: E.out }),
+      });
+      triggers.push(tr);
+    });
+    return () => { triggers.forEach((t) => t.kill()); };
+  }, { dependencies: [report, byJob, byDept] });
 
   const queryParams = useMemo(() => {
     const q = {};
@@ -827,8 +931,8 @@ export default function Reports() {
       />
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-5">
-        {report.kpis.map((kpi) => (
-          <KpiCard key={kpi.key} kpi={kpi} onClick={() => openDrill("kpi", kpi.key)} />
+        {report.kpis.map((kpi, i) => (
+          <KpiCard key={kpi.key} kpi={kpi} onClick={() => openDrill("kpi", kpi.key)} index={i} />
         ))}
       </div>
 
@@ -854,6 +958,12 @@ export default function Reports() {
                   maxCount={funnelMax}
                   isLast={i === report.funnel.main.length - 1}
                   onClick={() => openDrill("funnel", s.status)}
+                  index={i}
+                  onEnter={(idx) => gsap.to("[data-funnel-stage]", {
+                    opacity: (i) => i === idx ? 1 : 0.35,
+                    duration: D.fast,
+                  })}
+                  onLeave={() => gsap.to("[data-funnel-stage]", { opacity: 1, duration: D.fast })}
                 />
               ))}
             </div>
@@ -876,7 +986,7 @@ export default function Reports() {
         </Card>
       </div>
 
-      <Card className="p-6">
+      <Card className="p-6" data-scroll-reveal>
         <div className="flex items-center justify-between mb-4">
           <h3 className="title-card flex items-center gap-2">
             <I name="briefcase" size={18} className="text-brand" />
@@ -887,7 +997,7 @@ export default function Reports() {
         <ByJobTable items={byJob?.items || []} onRowClick={(j) => openDrill("job", j.id)} />
       </Card>
 
-      <Card className="p-6">
+      <Card className="p-6" data-scroll-reveal>
         <div className="flex items-center justify-between mb-4">
           <h3 className="title-card flex items-center gap-2">
             <I name="users-round" size={18} className="text-brand" />
