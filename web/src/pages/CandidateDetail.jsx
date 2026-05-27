@@ -3021,6 +3021,15 @@ function CandidateDetail() {
 
   return (
     <>
+    <div className="mb-4">
+      <Link
+        to="/candidates"
+        className="text-sm text-[#422AFB] hover:underline inline-flex items-center gap-1"
+      >
+        <I name="arrow-left" size={14} />
+        返回候选人列表
+      </Link>
+    </div>
     <div className="flex flex-col xl:flex-row gap-4 xl:gap-5 items-start">
 
       {/* ╔═══ LEFT COLUMN: Profile · Details · Documents ═══╗ */}
@@ -3601,9 +3610,9 @@ function CandidateDetail() {
         </Card>
 
         <div className="pt-2">
-          <button onClick={() => toast("(mock) 返回列表", "info")} className="text-sm text-[#422AFB] hover:underline inline-flex items-center gap-1">
+          <Link to="/candidates" className="text-sm text-[#422AFB] hover:underline inline-flex items-center gap-1">
             <I name="arrow-left" size={14} /> 返回候选人列表
-          </button>
+          </Link>
         </div>
       </div>
 
