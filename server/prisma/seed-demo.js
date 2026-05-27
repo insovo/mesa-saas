@@ -245,8 +245,13 @@ const EMPLOYEES_SAMPLE = [
       day90: { date: "2026-08-30", status: "待开始" },
     },
     events: [
-      { date: "2026-05-14", type: "Offer", title: "Offer 已签字", desc: "年薪 78W + 期权", owner: "李薇" },
-      { date: "2026-05-09", type: "招聘", title: "通过终面", desc: "JD 匹配度 93/100", owner: "王浩" },
+      { date: "2026-05-14", type: "Offer", title: "Offer 已签字", desc: "候选人接受 Offer · 年薪 78W + 期权", owner: "李薇" },
+      { date: "2026-05-09", type: "招聘", title: "通过终面", desc: "感知方向终面通过, JD 匹配度 93/100", owner: "王浩" },
+      { date: "2023.6 – 至今", type: "入职前工作", title: "小鹏汽车 XNGP · 高级感知算法工程师", desc: "XNet 2.0 Occupancy 网络优化, 量产部署。", owner: "2023.6 – 至今" },
+      { date: "2021.3 – 2023.6", type: "入职前工作", title: "蔚来 NIO Autonomous Driving · 感知算法工程师", desc: "ET7 多目融合与车道线检测。", owner: "2021.3 – 2023.6" },
+      { date: "2017.7 – 2021.3", type: "入职前工作", title: "上汽集团前瞻技术研究院 · 感知算法工程师", desc: "激光雷达点云分割、前端预处理。", owner: "2017.7 – 2021.3" },
+      { date: "2015.9 – 2017.6", type: "教育", title: "硕士 · 同济大学", desc: "车辆工程", owner: "2015.9 – 2017.6" },
+      { date: "2011.9 – 2015.6", type: "教育", title: "本科 · 同济大学", desc: "车辆工程", owner: "2011.9 – 2015.6" },
     ],
     riskItems: [
       { item: "5 年内 3 家公司", level: "中", source: "AI风险项", owner: "陈璐", action: "入职前再访谈", dueDate: "2026-05-28", status: "进行中" },
@@ -274,6 +279,9 @@ const EMPLOYEES_SAMPLE = [
     events: [
       { date: "2026-05-12", type: "关键项目", title: "主导 800V 电驱平台 v2.0 立项", owner: "李薇" },
       { date: "2026-03-17", type: "入职", title: "入职 电驱系统专家", desc: "JD 匹配度 96/100", owner: "李薇" },
+      { date: "2018.4 – 2026.2", type: "入职前工作", title: "比亚迪 第十一事业部 · 电驱主管工程师", desc: "SiC 模块封装与 800V 平台量产", owner: "2018.4 – 2026.2" },
+      { date: "2014.7 – 2018.3", type: "入职前工作", title: "中车株洲所 · 电力电子工程师", desc: "高铁辅助变流器", owner: "2014.7 – 2018.3" },
+      { date: "2009.9 – 2014.6", type: "教育", title: "博士 · 上海交通大学", desc: "电力电子与电力传动", owner: "2009.9 – 2014.6" },
     ],
     riskItems: [],
     parser: "Kimi", parserConfidence: 97, source: "内推", attachment: "黄启航-电驱-博士-202602.pdf",
@@ -380,6 +388,64 @@ const EMPLOYEES_SAMPLE = [
     parser: "DeepSeek", parserConfidence: 87, source: "BOSS 直聘", attachment: "王思雨-BMS-202604.pdf",
     tags: ["BMS", "Python"],
   },
+  {
+    externalId: "E-0015", name: "吴敏", gender: "female", animal: "fox",
+    education: "硕士", school: "华中科技大学", major: "工业工程", age: 34, location: "北京·朝阳",
+    yearsExp: 10, phone: "138-7700-8866", email: "wu.min@example.com",
+    appliedFor: "车身工艺经理", jobExternalId: "j-005", dept: "车身·工艺", jdOwner: "吴敏",
+    level: "M2", workLocation: "北京", jdMatch: 88, stage: "待入职",
+    plannedHireDate: new Date("2026-06-09"), probationEndDate: new Date("2026-09-09"),
+    regularizeAdvice: "—", hrbp: "陈璐", directManager: "吴敏",
+    checklist: {
+      offer: { status: "已完成", date: "2026-05-20", owner: "李薇" },
+      bgCheck: { status: "进行中", owner: "李薇" },
+      medical: { status: "待开始", owner: "陈璐" },
+      materials: { status: "待开始", owner: "吴敏" },
+      account: { status: "待开始", owner: "IT" },
+      equipment: { status: "待开始", owner: "IT" },
+      training: { status: "待开始", owner: "L&D" },
+    },
+    probation: {
+      day30: { date: "2026-07-09", status: "待开始" },
+      day60: { date: "2026-08-08", status: "待开始" },
+      day90: { date: "2026-09-09", status: "待开始" },
+    },
+    events: [
+      { date: "2026-05-20", type: "Offer", title: "Offer 已签字", desc: "年薪 92W + 期权", owner: "李薇" },
+    ],
+    riskItems: [],
+    parser: "Kimi", parserConfidence: 90, source: "猎头", attachment: "吴敏-车身-202605.pdf",
+    tags: ["工艺", "六西格玛"],
+  },
+  {
+    externalId: "E-0016", name: "张磊", gender: "male", animal: "tiger",
+    education: "博士", school: "清华大学", major: "自动化", age: 31, location: "北京·海淀",
+    yearsExp: 7, phone: "133-2266-7788", email: "zhang.lei@example.com",
+    appliedFor: "智驾感知总监", jobExternalId: "j-002", dept: "智驾·感知", jdOwner: "王浩",
+    level: "M3", workLocation: "北京", jdMatch: 84, stage: "延期试用",
+    plannedHireDate: new Date("2025-12-10"), actualHireDate: new Date("2025-12-10"),
+    probationEndDate: new Date("2026-06-10"),
+    regularizeAdvice: "试用期延期 90 天", hrbp: "陈璐", directManager: "王浩",
+    checklist: {
+      offer: { status: "已完成" }, bgCheck: { status: "已完成" }, medical: { status: "已完成" },
+      materials: { status: "已完成" }, account: { status: "已完成" }, equipment: { status: "已完成" }, training: { status: "已完成" },
+    },
+    probation: {
+      day30: { date: "2026-01-09", status: "已完成" },
+      day60: { date: "2026-02-08", status: "已完成", notes: "团队磨合期" },
+      day90: { date: "2026-03-10", status: "已完成", completion: 0.62, notes: "OKR 进度低,试用期延期" },
+    },
+    events: [
+      { date: "2026-03-10", type: "试用期评估", title: "试用期延期 90 天", desc: "技术方案推进达成度 62%", owner: "王浩" },
+      { date: "2025-12-10", type: "入职", title: "入职 智驾感知总监", owner: "李薇" },
+    ],
+    riskItems: [
+      { item: "试用期 OKR 完成度 62%", level: "高", owner: "王浩", action: "延期方案 + 每周 1-1", dueDate: "2026-06-10", status: "进行中" },
+      { item: "团队磨合反馈不一致", level: "中", owner: "陈璐", action: "skip-level 访谈", dueDate: "2026-05-30", status: "进行中" },
+    ],
+    parser: "Kimi", parserConfidence: 86, source: "猎头", attachment: "张磊-智驾感知-202511.pdf",
+    tags: ["智驾", "AI 算法", "管理"],
+  },
 ];
 
 const INTERVIEWS_SAMPLE = [
@@ -424,7 +490,16 @@ async function main() {
 
   console.log("[seed] seeding candidates...");
   const candidateIdByExternal = {};
-  for (const c of CANDIDATES_SAMPLE) {
+  // 兼容 schema:skills/experience/educationHistory 已改为 markdown bullet 字符串
+  const toBullets = (v) =>
+    Array.isArray(v) ? v.map((s) => `- ${s}`).join("\n") : v ?? null;
+  for (const raw of CANDIDATES_SAMPLE) {
+    const c = {
+      ...raw,
+      skills: toBullets(raw.skills),
+      experience: toBullets(raw.experience),
+      educationHistory: toBullets(raw.educationHistory),
+    };
     const cand = await prisma.candidate.upsert({
       where: { externalId: c.externalId },
       update: c,
