@@ -179,7 +179,11 @@ async function runReparse(app, taskId, candidateId, model, jobIdOverride) {
       parserConfidence: 92,
     };
     // jobId 切换:用户在 reparse 前 modal 改了投递岗位 → 同步写 DB
-    if (jobIdChanged) updateData.jobId = jobId;
+    // 同时把候选人 status 退回「待筛选」(换 JD = 重新评估), 让入职管理那边的 employee 也跟着清理
+    if (jobIdChanged) {
+      updateData.jobId = jobId;
+      updateData.status = "待筛选";
+    }
     // jobId 设为 null(取消 JD)时,清空所有 JD 相关字段 + 三个 markdown
     if (jobIdOverride === null) {
       updateData.jdMatch = null;
@@ -209,6 +213,22 @@ async function runReparse(app, taskId, candidateId, model, jobIdOverride) {
       where: { id: existingCandidate.id },
       data: updateData,
     });
+
+    // 换 JD 后:若对应 employee 还停留在「待入职」(HR 未推进入职流程)就清掉,
+    // 已经手工推进过(入职准备/入职当天/试用期/已转正/延期试用)的保留,不破坏 HR 数据。
+    if (jobIdChanged) {
+      try {
+        const emp = await app.prisma.employee.findUnique({
+          where: { candidateId: existingCandidate.id },
+        });
+        if (emp && emp.stage === "待入职") {
+          await app.prisma.employee.delete({ where: { id: emp.id } });
+          app.log.info({ candidateId, empId: emp.id }, "reparse: removed unactivated employee");
+        }
+      } catch (err) {
+        app.log.warn({ err: err?.message, candidateId }, "reparse: employee cleanup failed");
+      }
+    }
 
     await markDone(app, taskId, { candidate: withDerivedCandidate(updated), match, reparsed: true });
     app.log.info({ taskId, candidateId, jdMatch: updated.jdMatch }, "reparse task done");
