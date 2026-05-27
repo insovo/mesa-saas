@@ -71,8 +71,14 @@ export function Button({
 }
 
 // === Input ==========================================================
+// 必填红 *,全项目规范统一通过此组件渲染。手写 label 也用 <RequiredMark /> 替换 " *" 字符。
+export function RequiredMark({ className = "" }) {
+  return <span className={`text-red-500 ml-0.5 select-none ${className}`} aria-hidden="true">*</span>;
+}
+
 export function Input({
   label, id, type = "text", placeholder, state, disabled, icon, value, onChange,
+  required = false,
   className = "", containerClassName = "", ...rest
 }) {
   const stateCls = disabled
@@ -87,6 +93,7 @@ export function Input({
       {label && (
         <label htmlFor={id} className="text-sm text-navy-700 font-bold ml-3 block mb-2">
           {label}
+          {required && <RequiredMark />}
         </label>
       )}
       <div className="relative">
@@ -100,6 +107,7 @@ export function Input({
           value={value}
           onChange={onChange}
           placeholder={placeholder}
+          required={required}
           className={`flex h-12 w-full items-center rounded-xl border bg-white/0 p-3 text-sm outline-none placeholder:text-gray-400 focus:border-brand transition-colors ${icon ? "pl-10" : ""} ${stateCls} ${className}`}
           {...rest}
         />

@@ -203,7 +203,7 @@ export default function Jobs() {
             </button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Input containerClassName="md:col-span-2" label="岗位名 *" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required />
+            <Input containerClassName="md:col-span-2" label="岗位名" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required />
 
             {/* JD 描述 — 关键信息,放在显眼位置 */}
             <div className="md:col-span-2">

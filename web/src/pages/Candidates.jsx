@@ -529,7 +529,7 @@ export default function Candidates() {
             </button>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Input label="姓名 *" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+            <Input label="姓名" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
             <Input label="学校" value={form.school} onChange={(e) => setForm({ ...form, school: e.target.value })} />
             <Input label="应聘岗位" value={form.appliedFor} onChange={(e) => setForm({ ...form, appliedFor: e.target.value })} />
             <Input

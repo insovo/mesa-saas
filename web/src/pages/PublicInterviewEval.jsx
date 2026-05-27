@@ -11,7 +11,32 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "../lib/api.js";
-import { Card, Button, Input, I, toast, LoadingBlock, ToastHost, Modal, LiquidLoader } from "../components/Primitives.jsx";
+import { Card, Button, Input, I, toast, LoadingBlock, ToastHost, Modal, LiquidLoader, RequiredMark } from "../components/Primitives.jsx";
+
+// 海外研究院地区分组 — 来源:海外研究院人员统计.xlsx
+const REGION_GROUPS = [
+  { group: "欧洲研发中心", items: ["德国", "西班牙", "法国", "波兰", "意大利"] },
+  { group: "右舵研发中心", items: ["马来", "印尼", "泰国", "南非", "澳新"] },
+  { group: "其他", items: ["英国", "巴西", "墨西哥", "土耳其", "中东", "以色列", "乌兹", "越南", "阿尔及利亚"] },
+];
+
+// 语言/沟通优势快捷短语
+const LANGUAGE_QUICK_PICKS = [
+  "中文流利", "英语流利", "英语母语级", "西语流利", "法语流利", "德语流利",
+  "葡语流利", "阿语流利", "俄语流利", "马来语流利", "印尼语流利", "泰语流利",
+  "双语沟通无障碍", "可独立对外谈判",
+];
+
+// 最终意见快捷短语 — 点击追加到 textarea 末尾,降低面试官写作摩擦
+const FINAL_OPINION_QUICK_PICKS = [
+  { label: "建议录用", text: "综合评分较高,核心能力满足岗位要求,建议录用。" },
+  { label: "建议复试", text: "整体表现良好,部分维度需要进一步验证,建议安排复试。" },
+  { label: "谨慎考虑", text: "存在一定能力或匹配度风险,建议谨慎考虑,可对比其他候选人后再定。" },
+  { label: "不建议录用", text: "核心维度未达岗位要求,不建议进入下一轮。" },
+  { label: "语言能力突出", text: "语言/沟通能力突出,可独立对外协作。" },
+  { label: "经验不足", text: "实战经验较少,需要较长培养周期。" },
+  { label: "态度积极", text: "学习意愿强、态度积极,具备成长潜力。" },
+];
 
 // 后端字段名 → label 对齐 (用于错误提示)
 const FIELD_LABELS = {
@@ -161,7 +186,7 @@ function ScoreRow({ dim, item, onChange, readonly }) {
       <div className="flex flex-wrap items-start gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <p className="text-sm font-bold text-navy-700">{dim.name}</p>
+            <p className="text-sm font-bold text-navy-700">{dim.name}<RequiredMark /></p>
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-lightPrimary text-brand font-bold">权重 {dim.weight}%</span>
           </div>
           <p className="text-[12px] text-gray-700 leading-relaxed">{dim.observation}</p>
@@ -331,6 +356,54 @@ export default function PublicInterviewEval() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, readonly]);
 
+  // 提交前的前端镜像校验 — 与后端 validateForSubmit 对齐,避免 422 才报错
+  function validatePreSubmit() {
+    if (!form) return { ok: false, message: "表单尚未就绪", anchor: null };
+    // 候选人信息必填
+    const requiredInfo = [
+      { key: "candidateName", label: "姓名" },
+      { key: "position", label: "应聘岗位" },
+      { key: "interviewDate", label: "面试日期" },
+      { key: "interviewer", label: "面试官" },
+    ];
+    for (const f of requiredInfo) {
+      if (!form[f.key] || !String(form[f.key]).trim()) {
+        return { ok: false, message: `${f.label} 不能为空`, anchor: "info" };
+      }
+    }
+    // 7 项评分必须 1-10 整数
+    const scoresByKey = new Map((form.scores || []).map((s) => [s.key, s.score]));
+    for (const dim of dimensions) {
+      const v = scoresByKey.get(dim.key);
+      if (v == null || !Number.isInteger(Number(v)) || Number(v) < 1 || Number(v) > 10) {
+        return { ok: false, message: `${dim.name} 评分必填 (1-10 整数)`, anchor: "scores" };
+      }
+    }
+    // 最终意见必填
+    if (!form.finalOpinion || !form.finalOpinion.trim()) {
+      return { ok: false, message: "最终意见 不能为空", anchor: "final" };
+    }
+    return { ok: true };
+  }
+
+  // 「提交评价」按钮点击 — 先校验,通过才弹确认 Modal
+  function onSubmitClick() {
+    const v = validatePreSubmit();
+    if (!v.ok) {
+      toast(v.message, "error");
+      // 滚到对应区域,方便面试官定位
+      const anchor = v.anchor;
+      if (anchor) {
+        const el = document.querySelector(`[data-eval-anchor="${anchor}"]`);
+        if (el && typeof el.scrollIntoView === "function") {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }
+      return;
+    }
+    setConfirmSubmit(true);
+  }
+
   // 提交
   async function doSubmit() {
     // 提交前先把当前未保存草稿冲一次
@@ -435,7 +508,7 @@ export default function PublicInterviewEval() {
         )}
 
         {/* ── 一、候选人信息 ── */}
-        <Card className="p-7">
+        <Card className="p-7" data-eval-anchor="info">
           <h3 className="text-base font-bold text-navy-700 mb-5 flex items-center gap-2">
             <span className="w-7 h-7 rounded-full bg-brand-gradient text-white inline-flex items-center justify-center text-xs">一</span>
             候选人信息
@@ -444,32 +517,103 @@ export default function PublicInterviewEval() {
             {[
               { key: "candidateName", label: "姓名", required: true },
               { key: "position", label: "应聘岗位", required: true },
-              { key: "region", label: "属地国家/地区" },
+              { key: "region", label: "属地国家/地区", kind: "region-select" },
               { key: "interviewDate", label: "面试日期", type: "date", required: true },
               { key: "interviewer", label: "面试官", required: true },
-              { key: "languageStrength", label: "语言/沟通优势" },
+              { key: "languageStrength", label: "语言/沟通优势", kind: "language" },
               { key: "currentCity", label: "当前城市" },
               { key: "department", label: "应聘部门" },
               { key: "timezoneCollaboration", label: "跨时区协作" },
-            ].map((f) => (
-              <Input
-                key={f.key}
-                label={f.label + (f.required ? " *" : "")}
-                type={f.type || "text"}
-                value={form[f.key] || ""}
-                disabled={readonly}
-                maxLength={200}
-                onChange={(e) => {
-                  setForm((prev) => ({ ...prev, [f.key]: e.target.value }));
-                  markDirty();
-                }}
-              />
-            ))}
+            ].map((f) => {
+              if (f.kind === "region-select") {
+                return (
+                  <div key={f.key}>
+                    <label className="text-sm text-navy-700 font-bold ml-3 block mb-2">
+                      {f.label}
+                    </label>
+                    <select
+                      value={form[f.key] || ""}
+                      disabled={readonly}
+                      onChange={(e) => {
+                        setForm((prev) => ({ ...prev, [f.key]: e.target.value }));
+                        markDirty();
+                      }}
+                      className="flex h-12 w-full items-center rounded-xl border border-gray-200 bg-white p-3 text-sm text-navy-700 outline-none focus:border-brand disabled:bg-gray-100"
+                    >
+                      <option value="">— 请选择 —</option>
+                      {REGION_GROUPS.map((g) => (
+                        <optgroup key={g.group} label={g.group}>
+                          {g.items.map((item) => (
+                            <option key={item} value={item}>{item}</option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                  </div>
+                );
+              }
+              if (f.kind === "language") {
+                return (
+                  <div key={f.key}>
+                    <Input
+                      label={f.label}
+                      type="text"
+                      value={form[f.key] || ""}
+                      disabled={readonly}
+                      maxLength={200}
+                      onChange={(e) => {
+                        setForm((prev) => ({ ...prev, [f.key]: e.target.value }));
+                        markDirty();
+                      }}
+                    />
+                    {!readonly && (
+                      <div className="flex flex-wrap gap-1 mt-2 ml-3">
+                        {LANGUAGE_QUICK_PICKS.map((p) => (
+                          <button
+                            key={p}
+                            type="button"
+                            onClick={() => {
+                              setForm((prev) => {
+                                const cur = (prev[f.key] || "").trim();
+                                const parts = cur ? cur.split(/[,、，]\s*/).map((s) => s.trim()).filter(Boolean) : [];
+                                if (parts.includes(p)) return prev;
+                                const next = [...parts, p].join("、").slice(0, 200);
+                                return { ...prev, [f.key]: next };
+                              });
+                              markDirty();
+                            }}
+                            className="px-2 py-0.5 rounded-full text-[10px] bg-lightPrimary text-brand hover:bg-brand hover:text-white transition border border-brand/20"
+                            title="点击追加"
+                          >
+                            {p}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+              return (
+                <Input
+                  key={f.key}
+                  label={f.label}
+                  required={f.required}
+                  type={f.type || "text"}
+                  value={form[f.key] || ""}
+                  disabled={readonly}
+                  maxLength={200}
+                  onChange={(e) => {
+                    setForm((prev) => ({ ...prev, [f.key]: e.target.value }));
+                    markDirty();
+                  }}
+                />
+              );
+            })}
           </div>
         </Card>
 
         {/* ── 二、核心评分项 ── */}
-        <Card className="p-7">
+        <Card className="p-7" data-eval-anchor="scores">
           <div className="flex items-start justify-between gap-3 flex-wrap mb-5">
             <h3 className="text-base font-bold text-navy-700 flex items-center gap-2">
               <span className="w-7 h-7 rounded-full bg-brand-gradient text-white inline-flex items-center justify-center text-xs">二</span>
@@ -515,7 +659,7 @@ export default function PublicInterviewEval() {
         </Card>
 
         {/* ── 三、面试纪要 ── */}
-        <Card className="p-7">
+        <Card className="p-7" data-eval-anchor="final">
           <h3 className="text-base font-bold text-navy-700 mb-5 flex items-center gap-2">
             <span className="w-7 h-7 rounded-full bg-brand-gradient text-white inline-flex items-center justify-center text-xs">三</span>
             面试纪要
@@ -525,10 +669,35 @@ export default function PublicInterviewEval() {
               { key: "strengths", label: "优势亮点", placeholder: "请记录候选人最突出的能力、案例或潜力" },
               { key: "risks", label: "主要风险", placeholder: "请记录稳定性、能力短板、到岗风险或其他疑虑" },
               { key: "followUpQuestions", label: "建议追问/复试方向", placeholder: "如需复试，建议重点验证的问题" },
-              { key: "finalOpinion", label: "最终意见 *", placeholder: "请结合评分与事实，写出简洁结论" },
+              { key: "finalOpinion", label: "最终意见", required: true, placeholder: "请结合评分与事实，写出简洁结论", quickPicks: FINAL_OPINION_QUICK_PICKS },
             ].map((f) => (
               <div key={f.key}>
-                <label className="text-sm text-navy-700 font-bold ml-3 block mb-2">{f.label}</label>
+                <label className="text-sm text-navy-700 font-bold ml-3 block mb-2">
+                  {f.label}
+                  {f.required && <RequiredMark />}
+                </label>
+                {f.quickPicks && !readonly && (
+                  <div className="flex flex-wrap gap-1.5 mb-2 ml-3">
+                    {f.quickPicks.map((p) => (
+                      <button
+                        key={p.label}
+                        type="button"
+                        onClick={() => {
+                          setForm((prev) => {
+                            const cur = (prev[f.key] || "").trim();
+                            const next = cur ? `${cur}\n${p.text}` : p.text;
+                            return { ...prev, [f.key]: next.slice(0, 500) };
+                          });
+                          markDirty();
+                        }}
+                        className="px-2.5 py-1 rounded-full text-[11px] bg-lightPrimary text-brand hover:bg-brand hover:text-white transition border border-brand/20"
+                        title="点击追加到内容末尾"
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <textarea
                   value={form[f.key] || ""}
                   disabled={readonly}
@@ -572,7 +741,7 @@ export default function PublicInterviewEval() {
             )}
             {!readonly && (
               <Button
-                onClick={() => setConfirmSubmit(true)}
+                onClick={onSubmitClick}
                 icon={<I name="send" size={14} />}
                 disabled={state === STATE_SUBMITTING}
               >

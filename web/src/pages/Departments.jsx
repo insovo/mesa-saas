@@ -260,7 +260,7 @@ export default function Departments() {
             </button>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Input containerClassName="col-span-2" label="部门名 *" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+            <Input containerClassName="col-span-2" label="部门名" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
               <Input label="部门代码" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} />
             <Input label="负责人" value={form.head} onChange={(e) => setForm({ ...form, head: e.target.value })} />
             <Input label="现编人数" type="number" min="0" value={form.headcount} onChange={(e) => setForm({ ...form, headcount: e.target.value })} />

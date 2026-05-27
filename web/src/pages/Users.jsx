@@ -12,7 +12,7 @@
 import { useEffect, useRef, useState, useMemo } from "react";
 import gsap from "gsap";
 import { api } from "../lib/api.js";
-import { I, Avatar, Button, Input, Modal, Empty, LoadingBlock, toast } from "../components/Primitives.jsx";
+import { I, Avatar, Button, Input, Modal, Empty, LoadingBlock, toast, RequiredMark } from "../components/Primitives.jsx";
 import {
   PAGE_KEYS, MODULE_KEYS, PAGE_LABELS, MODULE_LABELS, MODULE_GROUPS,
 } from "../lib/permissions.js";
@@ -770,10 +770,13 @@ function KV({ label, value, valueClass = "" }) {
   );
 }
 
-function Field({ label, children }) {
+function Field({ label, required, children }) {
   return (
     <label className="block">
-      <p className="text-[11px] text-gray-600 mb-1">{label}</p>
+      <p className="text-[11px] text-gray-600 mb-1">
+        {label}
+        {required && <RequiredMark />}
+      </p>
       {children}
     </label>
   );
@@ -833,7 +836,7 @@ function UserCreateModal({ onClose, onCreated, departments, jobs }) {
         <p className="text-xs text-gray-600">
           创建后默认 ownerId 只能看到自己上传的候选人。需在右侧权限策略给具体页面/模块/数据范围。
         </p>
-        <Field label="邮箱 *">
+        <Field label="邮箱" required>
           <Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="user@example.com" type="email" />
         </Field>
         <Field label="昵称">
