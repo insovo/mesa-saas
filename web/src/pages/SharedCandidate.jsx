@@ -310,7 +310,7 @@ export default function SharedCandidate() {
         </Card>
 
         <footer className="text-center text-[11px] text-gray-600 pt-4">
-          MESA Recruit · 此页面为只读分享链接 · 已被访问 {share.viewCount} 次
+          Overseas R&amp;D · 此页面为只读分享链接 · 已被访问 {share.viewCount} 次
         </footer>
 
         <PublicReviewModal

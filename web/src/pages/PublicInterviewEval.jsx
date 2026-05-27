@@ -548,7 +548,7 @@ export default function PublicInterviewEval() {
         </Card>
 
         <p className="text-center text-[11px] text-gray-400">
-          由 MESA Recruit 提供 · 您的评价仅用于本次招聘
+          由 Overseas R&amp;D 提供 · 您的评价仅用于本次招聘
         </p>
       </div>
 

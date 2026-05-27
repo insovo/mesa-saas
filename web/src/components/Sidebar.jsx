@@ -207,13 +207,13 @@ export default function Sidebar({ user, mobileOpen = false, onMobileClose, colla
         <div className="flex items-center justify-between px-6 pt-9 md:pt-11">
           {!collapsed ? (
             <span
-              className="text-[22px] md:text-[24px] uppercase text-navy-700 tracking-tight"
+              className="brand-logo text-[22px] md:text-[24px] tracking-tight"
               style={{ fontFamily: "Poppins, sans-serif", fontWeight: 700 }}
             >
-              MESA <span style={{ fontWeight: 500 }}>RECRUIT</span>
+              Overseas <span style={{ fontWeight: 500 }}>R&amp;D</span>
             </span>
           ) : (
-            <span className="text-[22px] text-brand font-bold mx-auto" style={{ fontFamily: "Poppins" }}>M</span>
+            <span className="brand-logo text-[22px] font-bold mx-auto" style={{ fontFamily: "Poppins" }}>O</span>
           )}
           {/* 桌面端收起按钮 */}
           <button

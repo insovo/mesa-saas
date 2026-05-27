@@ -74,10 +74,10 @@ export default function Login() {
       <div className="relative w-full max-w-md">
         <div className="flex items-center justify-center mb-6">
           <span
-            className="text-[32px] uppercase text-navy-700"
+            className="brand-logo text-[32px]"
             style={{ fontFamily: "Poppins, sans-serif", fontWeight: 700, letterSpacing: "-0.3px" }}
           >
-            MESA <span style={{ fontWeight: 500 }}>RECRUIT</span>
+            Overseas <span style={{ fontWeight: 500 }}>R&amp;D</span>
           </span>
         </div>
 
@@ -161,7 +161,7 @@ export default function Login() {
         </Card>
 
         <p className="text-center text-xs text-gray-600 mt-6">
-          © 2026 MESA Recruit · 由 LLM 解析驱动的招聘工作台
+          © 2026 Overseas R&amp;D · 由 LLM 解析驱动的招聘工作台
         </p>
       </div>
 
