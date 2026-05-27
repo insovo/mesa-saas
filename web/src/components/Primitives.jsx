@@ -1,7 +1,7 @@
 // MESA Recruit · 共享原子组件
 // 迁自 ui_kits/mesa-recruit/Primitives.jsx,改为 ESM 导出,图标用 lucide-react。
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, forwardRef } from "react";
 import * as Lucide from "lucide-react";
 import { STATUS_TONE, HIRE_STAGE_TONE, TASK_STATUS_TONE, URGENCY_TONE } from "../lib/constants.js";
 
@@ -18,16 +18,20 @@ export function I({ name, size = 18, strokeWidth = 2, className = "", ...rest })
 }
 
 // === Card ===========================================================
-export function Card({ children, className = "", extra = "", as: As = "div", ...rest }) {
+export const Card = forwardRef(function Card(
+  { children, className = "", extra = "", as: As = "div", ...rest },
+  ref,
+) {
   return (
     <As
+      ref={ref}
       className={`relative flex flex-col rounded-card bg-white bg-clip-border shadow-card ${className} ${extra}`}
       {...rest}
     >
       {children}
     </As>
   );
-}
+});
 
 // === Button =========================================================
 const BTN_SIZES = {
