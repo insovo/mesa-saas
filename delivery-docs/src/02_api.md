@@ -395,10 +395,24 @@ Query: `status` / `candidateId` / `jobId` / `from`(date-time) / `to`(date-time) 
 ### (b) 重新解析已有候选人(异步)— 传 `candidateId`
 
 ```json
-{ "candidateId": "uuid", "model": "moonshot-v1-32k" /* 可选 */ }
+{
+  "candidateId": "uuid",
+  "model": "moonshot-v1-32k",    // 可选
+  "jobId": "uuid" | null         // 可选,前端 ReparseConfirmModal 用户确认/切换的投递岗位
+}
 ```
 
+`jobId` 语义(`hasOwnProperty` 区分 undefined / null):
+- **不传字段**:沿用候选人当前 `candidate.jobId`,不改 DB
+- **传 `null`**:取消 JD 关联,清空 `candidate.jobId` + jdMatch/risks/highlights/insights/skills/experience/educationHistory
+- **传 uuid**:切到该 JD,跑 matchAgainstJob,并同步把 `candidate.jobId` 也更新
+
 后端立即 202 返回 taskId,fire-and-forget 跑 Kimi(后端用 `candidate.attachment` 作 R2 key,UPDATE 现有 DB 行,不破坏 status/appliedFor/source/owner/documents)。绕过 Cloudflare 100s origin response 硬上限。
+
+**两阶段解析**(2026-05 改造):
+- parseResume 只产 `summary` + 基础字段(name/phone/email/school/major/yearsExp/...) + `tags`
+- matchAgainstJob(如有 jobId)二阶段产出 jdMatch + risks/highlights/insights/aiSuggestedTags/matchedFor/againstFor + skills/experience/educationHistory(markdown bullet 字符串)
+- 阶段一字段在 LLM 偶尔输出空数组时**保留旧值**(防 .doc 抖动清空旧数据)
 
 响应 202:
 ```json
@@ -524,20 +538,27 @@ Query: `status` / `candidateId` / `jobId` / `from`(date-time) / `to`(date-time) 
 创建或**重置**(会先删旧 link):
 ```json
 {
-  "duration": "3d",         // 1d/3d/7d/30d/forever/自定义 (60s-30d, 形如 "10m" "12h" "5d")
-  "maxViews": 10            // 1-9999 或 null (不限)
+  "duration": "3d",            // 1d/3d/7d/30d/forever/自定义 (60s-30d, 形如 "10m" "12h" "5d")
+  "maxViews": 10,              // 1-9999 或 null (不限)
+  "showContact": true,         // 可选, 默认 true — 公开页是否露 mask 后的 phone/email
+  "showAttachments": false     // 可选, 默认 false — 公开评价表单是否允许上传附件
 }
 ```
 
-响应 201 含 `link`。
+响应 201 含 `link`(含 showContact / showAttachments 字段)。
 
 ## 14.3 PATCH /api/candidates/:id/share
 
-仅改有效期 / 上限(不重置 token):
+部分修改(不重置 token):
 ```json
-{ "duration": "7d", "maxViews": 100 }
+{
+  "duration": "7d",
+  "maxViews": 100,
+  "showContact": false,
+  "showAttachments": true
+}
 ```
-duration 或 maxViews 至少给一个。
+duration / maxViews / showContact / showAttachments 至少给一个。
 
 ## 14.4 DELETE /api/candidates/:id/share
 
@@ -545,7 +566,26 @@ duration 或 maxViews 至少给一个。
 
 ## 14.5 GET /api/public/share/:token  (公开,无鉴权)
 
-返回候选人简报 + 分享元数据。**只返回此候选人**,phone/email 自动 mask。
+返回候选人简报 + 分享元数据 + 可见性 flag。**只返回此候选人**。
+
+可见性策略:
+- `showContact=true`  → phone/email 自动 mask(`138****5678` / `ab***@x.com`)
+- `showContact=false` → phone/email 字段返回 `null`,前端按 null 渲染「分享方已隐藏联系方式」
+- `showAttachments`   → 透传到响应的 `share.showAttachments`,前端控制附件 input 显隐
+
+响应结构:
+```json
+{
+  "candidate": { /* 已 mask 的候选人字段 */ },
+  "share": {
+    "expiresAt": "...",
+    "viewCount": 3,
+    "createdAt": "...",
+    "showContact": true,
+    "showAttachments": false
+  }
+}
+```
 
 错误:
 - 404 `share_not_found` — token 无效
@@ -598,7 +638,7 @@ duration 或 maxViews 至少给一个。
 | POST | `/api/public/share/:token/reviews/:rid/request-delete` | 必填 authorName, 校验匹配后请求删除 |
 | POST | `/api/public/share/:token/reviews/:rid/vote` | 公开投票 `{ value, prevValue }`(用 prevValue 算 delta, 前端 localStorage 限制) |
 | GET | `/api/public/share/:token/reviews/:rid/voters` | 投票者名单(仅返回 name+role) |
-| POST | `/api/public/share/:token/presigned-url` | 给评价附件上传用(key 限定 `reviews/public/` 前缀) |
+| POST | `/api/public/share/:token/presigned-url` | 给评价附件上传用(key 限定 `reviews/public/` 前缀)。**ShareLink.showAttachments=false 时直接 403 `attachments_disabled`**(防绕过前端 UI) |
 | POST | `/api/public/share/:token/signed-get-url` | 下载附件(key 必须以 `reviews/` 开头) |
 
 错误码同 14.5。

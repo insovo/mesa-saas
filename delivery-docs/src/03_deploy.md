@@ -250,15 +250,18 @@ cd .worktrees/feature/upload
 # 3) 完事提交并推送 feature 分支
 git add <files>
 git commit -m "feat(upload): xxx"
-git push origin feature/upload
+git push -u origin feature/upload
 
-# 4) 合并到 main(任选其一):
-#    A. GitHub PR → squash/merge → main → 触发 deploy.yml 自动部署
-#    B. 在主 repo 直接 fast-forward(适合本地单人小改):
-#       cd /Users/mysaria/Project/mesa
-#       git checkout main
-#       git merge feature/upload --ff-only  # 失败说明 main 已前进,需先 rebase
-#       git push origin main                # 触发自动部署
+# 4) 合并到 main — **必须走 PR**(main 已加 branch protection: 3 status check 必过)
+#    A. 推荐: GitHub PR + admin merge
+gh pr create --base main --head feature/upload --title "..." --body "..."
+gh pr checks <num> --watch              # 等 CI 通过 (~30-90s)
+gh pr merge <num> --merge --admin       # admin 跳过 review 要求,适合单人项目
+#                                        # 自动触发 deploy.yml
+#
+# 直接 push origin main 会被拒:
+#   remote: error: GH013: Repository rule violations found for refs/heads/main
+#   remote: - 3 of 3 required status checks are expected
 
 # 5) 清理
 git worktree remove .worktrees/feature/upload
@@ -271,8 +274,14 @@ git branch -d feature/upload          # 已合并的用 -d,git 自带保护
 | 触发点 | 链路 |
 |---|---|
 | `git push origin feature/<x>` | 触发 **CI** (build + smoke),**不会** deploy |
-| `git push origin main`(merge 后) | 触发 **Deploy**(GHCR build/push + SSH 滚动部署),1-2 分钟生产生效 |
-| `gh workflow run deploy.yml --ref main` | 手动触发,无需 push |
+| `gh pr create` + `gh pr merge --admin` | 合到 main 后自动触发 **Deploy**(GHCR build/push + SSH 滚动部署),1-2 分钟生产生效 |
+| `gh workflow run deploy.yml --ref main` | 手动触发,无需 push(适合 deploy 失败 retry) |
+
+**已知 deploy 失败模式**:
+- VPS 到 docker.io 网络抖动 → `Image redis:7-alpine ... i/o timeout`。修复已在 deploy.yml:
+  `docker compose pull backend frontend || true` (只拉 GHCR 镜像不 abort) +
+  `docker compose up -d --pull missing` (本地缓存的基础镜像不重拉)。
+  本节遇过的根因 + 修复见 `CLAUDE.md §8 踩坑 #29 / #32`。
 
 ### 5.5.4 多 AI 协作约束
 

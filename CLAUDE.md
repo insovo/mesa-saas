@@ -20,13 +20,14 @@
 | 子系统 | 关键能力 |
 |--------|---------|
 | 招聘工作台 | 候选人 / 岗位 / 部门 / 员工 / 面试 / 概览统计 全套 CRUD |
-| 候选人详情页(V2)| 三列布局(profile sticky · 中间 · 评价+洞察 sticky)· 15+ 新组件:DocsModule / TagsModule / InlineSource / PeopleChips / JdSwitchConfirmModal / JdDescModal / FeedbackHistoryCard / OverviewTile 等 |
-| LLM 简历解析 | Kimi (Moonshot AI) · 一次 chat 输出 JSON(含 HR 友好简报 + 结构化字段)· admin 在 UI 编辑 API Key/模型/Prompt |
-| JD 匹配评估 | 二次 LLM 调用,基于候选人简报 + JD 描述输出 jdMatch + risks/highlights + V2 新字段(matchedFor / againstFor / aiSuggestedTags / insights[kind=up/down]) |
-| 候选人重新解析 | 「待解析」候选人(LLM 上传时降级)详情页 amber banner / 列表 hover icon 触发,**异步任务化**:POST 立即 202 + taskId,前端 2s 一次轮询 GET /parse-tasks/:taskId,绕 Cloudflare 100s 上限,Kimi 跑多久都行 |
+| 候选人详情页(V2)| 三列布局(profile sticky · 中间 · 评价+洞察 sticky)· 15+ 新组件:DocsModule / TagsModule / InlineSource / PeopleChips / JdSwitchConfirmModal / JdDescModal / FeedbackHistoryCard / OverviewTile / **ReparseConfirmModal** / **MarkdownBullets** / **NeedJobPlaceholder** 等。**阶段进度条**:7 tab 等宽两端对齐 + 填充对齐 active tab 中心。**附件区**勾选式列表 + 「下载选中(N)」+「下载全部」,LLM 解析的原始简历自动同步到「简历」分类 |
+| LLM 两阶段简历解析 | **阶段一 parseResume** (Kimi Moonshot):只产 summary 简报 + tags + 基础字段(name/phone/email/school/major/yearsExp/...)。**阶段二 matchAgainstJob**:基于 summary + JD 二次评估,产出 jdMatch + risks/highlights/insights + matchedFor/againstFor/aiSuggestedTags + skills/experience/educationHistory(后三者**markdown bullet 字符串**) |
+| JD 匹配评估 | 见上 — matchAgainstJob 是阶段二全部职责。简历未关联 JD 时核心技能/工作经历/教育背景显示「关联 JD 后自动生成」引导,点击触发 JD picker |
+| 候选人重新解析 | 详情页 amber banner / 列表 hover icon 触发 → 弹 **ReparseConfirmModal** 让用户先选/确认投递 JD → 确认后才发请求。**异步任务化**:POST 立即 202 + taskId,前端 2s 一次轮询 GET /parse-tasks/:taskId,绕 Cloudflare 100s 上限,Kimi 跑多久都行 |
 | LiquidLoader | 候选人匹配度全站液体进度球(替换原 MatchRing)· 三档调色板(red ≤60 / blue 60-80 / violet >80)· 数字白色描边 · 波浪 + 气泡 + 高光 · loading=true 外圈呼吸光晕 |
-| 分享给招聘官 | ShareLink 公开链接,可设有效期(60s-30d/无限期)+ 访问次数上限(10/50/100/自定义/无限) |
-| 评价对话系统 | 1 级嵌套回复 + 多选批量回复 + 赞同/否决投票 + 投票名单 popover + 可见范围(public/internal/admin) + soft-delete + admin 审核删除/隐藏 + 实时通知(Notification+音效) |
+| 分享给招聘官 | ShareLink 公开链接,可设有效期(60s-30d/无限期)+ 访问次数上限(10/50/100/自定义/无限) + **可见性 toggle**(showContact 默认开/showAttachments 默认关) |
+| 评价对话系统 | 1 级嵌套回复 + 多选批量回复 + 赞同/否决投票 + 投票名单 popover + 可见范围(public/internal/admin) + soft-delete + admin 审核删除/隐藏 + 实时通知(Notification+音效) + 公开访客上传附件受 ShareLink.showAttachments 控制 |
+| 安排面试 modal | 方式 select(线下/视频/电话) → 下方动态字段切换 label/placeholder/icon (面试地点 / 视频链接 / 联系电话,写入 `Interview.link`)。面试官输入下方「从评价人快选」chip,从 reviews 抽 unique authorName 自动追加 |
 
 ---
 
@@ -50,13 +51,13 @@
 mesa/
 ├── server/                    # Fastify + Prisma 后端
 │   ├── prisma/                # schema + migrations + seed
-│   │   └── migrations/        # 含 add_v2_fields(Candidate/Job/Interview 共 23 新字段)
+│   │   └── migrations/        # 含 add_v2_fields(23 新字段) / resume_fields_to_markdown(skills/experience/education 转 text) / share_link_visibility_toggles
 │   └── src/
 │       ├── plugins/           # prisma / jwt / cors / redis / r2
 │       ├── routes/            # candidates / jobs / departments / employees / interviews / dashboard / storage / resumes / system / share / reviews / auth
-│       └── lib/               # api / kimi(LLM + 4 层 JSON fallback + 429 retry)/ derived(profileCompletion)/ parseTaskStore(reparse 异步任务)/ idLookup / settings
+│       └── lib/               # api / kimi(两阶段:parseResume 简报 + matchAgainstJob JD 联评) / derived(profileCompletion) / parseTaskStore(reparse + parse-and-create 异步任务) / idLookup / settings
 ├── web/                       # Vite 生产前端
-│   ├── src/components/        # Primitives(LiquidLoader / MatchRing / Card / I / ToastHost 等)/ Sidebar / Topbar / Layout / AuthGuard
+│   ├── src/components/        # Primitives(LiquidLoader / Card / I / ToastHost 等) / Sidebar / Topbar / Layout / AuthGuard / ReparseConfirmModal(reparse 前 JD 确认) / MarkdownBullets(渲染 markdown bullet 字符串)
 │   ├── src/pages/             # 13 个业务页面(候选人详情 = V2 三列布局)
 │   ├── src/lib/               # api / auth / constants
 │   ├── nginx.conf             # 容器内 Nginx(80→443 / 主服务 / monitor / /api proxy_read_timeout 180s / index.html no-cache)
@@ -203,18 +204,28 @@ git branch -d       feature/upload
 - 不设这两个变量时,默认 `5173` 和 `3001`(等同改造前行为)
 - 主 repo 不需要 `web/.env`(走默认值即可)
 
-### 7.1 改完代码自动上线
+### 7.1 改完代码自动上线 — **必须走 PR 流程**(main 已加 branch protection)
 ```bash
-git add . && git commit -m "feat: xxx"
-git push origin main
+# 1) 在 feature/<task> worktree 内 commit + push 分支
+git add . && git commit -m "feat(scope): xxx"
+git push -u origin feature/<task>
+
+# 2) 创建 PR(CI 必须过 3 个 status check: server install / web build / docker smoke)
+gh pr create --base main --head feature/<task> --title "..." --body "..."
+gh pr checks <pr-num> --watch        # 等 CI 通过 (~30-90s)
+
+# 3) merge → 自动触发 deploy.yml
+gh pr merge <pr-num> --merge --admin  # admin 跳过 review 要求,适合单人项目
 # 1-2 分钟后访问 https://insovo.top 看效果
-gh run watch  # 想盯过程的话
+
+# 直接 push origin main 会被拒:
+#   remote: error: GH013: 3 of 3 required status checks are expected
 ```
 
 ### 7.2 CI/CD 流水线
-- `.github/workflows/ci.yml`:任意 push → install + prisma generate + web build + 镜像 smoke build
+- `.github/workflows/ci.yml`:任意 push / PR → install + prisma generate + web build + 镜像 smoke build(3 个 status check 即来自这里)
 - `.github/workflows/deploy.yml`:仅 main push 触发 → GHCR build/push → SSH 滚动部署
-- SSH 进 VPS 后会 `git reset --hard origin/main`(保留 untracked `.env` 与 `web/certs/`),`docker login ghcr.io`,`docker compose pull && up -d`,健康检查
+- SSH 进 VPS 后会 `git reset --hard origin/main`(保留 untracked `.env` 与 `web/certs/`),`docker login ghcr.io`,`docker compose pull backend frontend || true`(只拉 GHCR 镜像,docker.io 抖动不 abort),`docker compose up -d --remove-orphans --pull missing`(本地有缓存的 redis/postgres/uptime-kuma 不重拉),健康检查
 
 ### 7.3 关键密钥与开关
 | 类型 | 位置 | 值 |
@@ -259,7 +270,11 @@ gh run watch  # 想盯过程的话
 | 25 | CDN/浏览器缓存 `index.html` 导致用户长时间看旧 bundle | 部署完后前端仍引用过期 chunk hash | nginx `location = /index.html { Cache-Control: no-cache, no-store, must-revalidate }`;静态 chunk 因有 contenthash 仍可长缓存 |
 | 26 | error toast 3.5s 自动消失 | 用户来不及复制错误信息发开发 | error 类型不自动 dismiss + 加 ✕ 关闭按钮 + 完整 task.error 自动 `navigator.clipboard.writeText` + `console.error` 完整对象 |
 | 27 | nginx `proxy_read_timeout 60s` 短于后端长任务 | Kimi 慢请求被 nginx 先掐 502 | `/api/` location 改 `proxy_read_timeout 180s` + `proxy_send_timeout 180s`(给 backend `LONG_TIMEOUT=120s` 留缓冲) |
-| 18 | 浏览器 `Notification.requestPermission()` 必须用户交互后调 | 自动调被 silently 拒 | 在用户进入候选人详情后被动调用,初始 `Notification.permission === "default"` 时才 request |
+| 28 | schema 字段类型变更后 SharedCandidate 没同步兼容 | `c.skills.map is not a function` → 公开页**整页白屏** | 共享页面 + admin 页面同时改 + 抽公共渲染组件(MarkdownBullets);schema 改 array→text 时 e2e 必须覆盖两套渲染入口 |
+| 29 | VPS 到 docker.io 网络抖动 | `Image redis:7-alpine ... dial tcp 199.59.150.49:443: i/o timeout` 整个 deploy abort | deploy 脚本 `docker compose pull backend frontend \|\| true`(只拉 GHCR 镜像);`docker compose up -d --pull missing` 让 redis/pg/uptime-kuma 已缓存就不重拉 |
+| 30 | Prisma `ALTER COLUMN TYPE` 不能跨 jsonb/text[] → text 自动转 | `prisma migrate dev --create-only` 生成 ALTER 没 USING 子句直接跑会失败 | 手写 migration.sql:加临时列 + 用 `string_agg(jsonb_array_elements(...))` 转 markdown + DROP 老列 + RENAME 新列;放在 BEGIN/COMMIT 事务内可回滚 |
+| 31 | main 加了 branch protection (3 status check 必过) | `git push origin main` 直接被拒 GH013 | 必须走 `gh pr create` → CI pass → `gh pr merge --admin`。本地 main ahead origin 也 push 不动,先 push feature 分支再 PR |
+| 32 | docs.io 等基础镜像 tag 固定时无需重拉 | 之前 `docker compose pull` 把所有 service 镜像都拉一遍,放大网络抖动影响面 | compose 用 `image: postgres:16-alpine` 这种固定 minor 的不会变,只对 GHCR 项目镜像必须重拉。see #29 修复 |
 
 ---
 
@@ -291,15 +306,15 @@ SystemSetting  独立 KV (kimi.api_key / kimi.model / kimi.prompt 等)
 | 表 | 关键字段 | 备注 |
 |----|---------|------|
 | `User` | email/passwordHash/role/avatar/jobTitle | Role: ADMIN/RECRUITER/VIEWER |
-| `Candidate` | name/skills/tags/risks/highlights/aiSummary/jobId/jdMatch + **V2** documents/insights/aiSuggestedTags/matchedFor/againstFor/profileCompletion(derived)/languages | aiSummary = LLM 输出的 HR 简报纯文本;V2 字段由 `/api/resumes/match` 写入,profileCompletion 后端 read 时算(`lib/derived.js`)不存 DB |
+| `Candidate` | name/tags/risks/highlights/aiSummary/jobId/jdMatch + **V2** documents/insights/aiSuggestedTags/matchedFor/againstFor/profileCompletion(derived)/languages + **两阶段**字段 skills/experience/educationHistory (`String?` markdown bullet 字符串) | aiSummary = parseResume 阶段一输出的 HR 简报纯文本(模板化);skills/experience/educationHistory 由 matchAgainstJob 阶段二写入(无 JD 时这三字段为 null,UI 显示「关联 JD 后自动生成」引导);V2 字段由 `/api/resumes/match` 写入,profileCompletion 后端 read 时算(`lib/derived.js`)不存 DB |
 | `Job` | title/description/urgency/openings/_count + **V2** employment/salary/levelRange/yearsExpRange/educationRequirement/languageRequirement/publishedAt/deadline/responsibilities/requirements/nice/benefits | V2 字段供 JdDescModal + 岗位概览 OverviewTile 渲染;暂由 admin 手动填,无 LLM 产 |
 | `Department` | name/code/head/headcount/openHc/parentId | 自关联树 |
 | `Employee` | candidateId/jobId/stage/checklist json/probation json/events json/riskItems json | candidate → employee 转化 |
-| `Interview` | candidateId/jobId/round/mode/scheduledAt/status + **V2** category/link/managers(JSON)/interviewers(JSON) | managers/interviewers 是多人 JSON 数组,旧 interviewer single string 保留向后兼容 |
+| `Interview` | candidateId/jobId/round/mode/scheduledAt/status + **V2** category/link/managers(JSON)/interviewers(JSON) | managers/interviewers 是多人 JSON 数组,旧 interviewer single string 保留向后兼容;link 字段用作面试地点/视频链接/联系电话(由前端 mode 切换 placeholder) |
 | `CandidateNote` | candidateId/content/authorId/authorName | admin 内部备注 |
 | `Review` | candidateId/authorName/content/attachments json/parentId/referencedIds json/stance/upvotes/downvotes/visibility/hidden/deletedAt | 评价对话(详见 §12) |
 | `ReviewVote` | reviewId/userId/value(+1/-1) | unique(reviewId,userId) 登录用户去重 |
-| `ShareLink` | token/candidateId/expiresAt/maxViews/viewCount | 公开访问凭证(详见 §11) |
+| `ShareLink` | token/candidateId/expiresAt/maxViews/viewCount + **showContact(默认 true)** + **showAttachments(默认 false)** | 公开访问凭证 + 可见性 toggle(详见 §11) |
 | `SystemSetting` | key/value(AES-256-GCM)/encrypted/updatedBy | admin 系统配置(KIMI key/model/prompt) |
 
 ## 11. ShareLink 分享系统
@@ -314,6 +329,7 @@ SystemSetting  独立 KV (kimi.api_key / kimi.model / kimi.prompt 等)
 | 关系 | 1 个 candidate 同时只允许 1 个 active ShareLink(POST 会先删旧建新) |
 | 公开 API mask | `/api/public/share/:token` 返回的 phone/email 自动 mask(`138****5678` / `ab***@x.com`) |
 | 公开附件上传 | `/api/public/share/:token/presigned-url` 需 token 校验后才签发,key 限定 `reviews/public/` 前缀 |
+| **可见性 toggle** | **showContact** (默认 true): false 时 phone/email 完全不返回(连 mask 都不给,前端渲染「分享方已隐藏联系方式」)。**showAttachments** (默认 false): false 时公开评价表单不显示附件 input,**presigned-url 后端二道防线**也返回 403 `attachments_disabled` 防绕过前端 |
 
 ## 12. 评价对话系统
 
@@ -322,7 +338,7 @@ SystemSetting  独立 KV (kimi.api_key / kimi.model / kimi.prompt 等)
 | 能力 | 实现 |
 |------|------|
 | 提交评价 | 登录(auto authorName)+ 公开(必填 authorName) |
-| 附件 | image/file/link · 单条 ≤30MB(后端 422)· R2 直传(presigned) |
+| 附件 | image/file/link · 单条 ≤30MB(后端 422)· R2 直传(presigned)。**公开访客上传受 ShareLink.showAttachments 控制**(默认关) |
 | 回复 | 1 级嵌套(`parentId`),禁止 nested-of-nested |
 | 批量回复 | 多选 checkbox → 一条评价,`referencedIds[]` 记录所有被引用 |
 | 投票 | thumbs-up/down + count + 我的投票高亮 · 登录走 `ReviewVote unique(reviewId,userId)` · 公开走 localStorage + `prevValue` 算 delta |
