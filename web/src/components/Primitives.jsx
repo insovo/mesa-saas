@@ -2,6 +2,7 @@
 // 迁自 ui_kits/mesa-recruit/Primitives.jsx,改为 ESM 导出,图标用 lucide-react。
 
 import { useEffect, useState, useRef, forwardRef } from "react";
+import { createPortal } from "react-dom";
 import * as Lucide from "lucide-react";
 import { STATUS_TONE, HIRE_STAGE_TONE, TASK_STATUS_TONE, URGENCY_TONE } from "../lib/constants.js";
 
@@ -400,8 +401,9 @@ export function Modal({ open, onClose, children, maxWidth = "max-w-2xl" }) {
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
   if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+  // 用 Portal 渲染到 document.body — 避免被 aside 的 overflow-y-auto / sticky 裁剪
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-navy-900/30 backdrop-blur-sm" onClick={onClose}></div>
       {/* Modal 自身限高 + 内部滚动:
             - max-h-[85vh] Tailwind 是绝对 fallback,所有现代浏览器都支持 vh
@@ -417,7 +419,8 @@ export function Modal({ open, onClose, children, maxWidth = "max-w-2xl" }) {
       >
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

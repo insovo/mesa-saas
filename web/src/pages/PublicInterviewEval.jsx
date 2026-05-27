@@ -1,0 +1,622 @@
+// 公开面试评价页 — 通过 /interview-eval/:token 访问,无需登录
+//
+// 流程:
+//   GET /api/public/interview-eval/:token → 拉取表单数据(含 scoringRubric)
+//   PATCH /api/public/interview-eval/:token → 草稿合并保存(30s 自动)
+//   POST /api/public/interview-eval/:token/submit → 提交校验 + 算总分
+//   GET /api/public/interview-eval/:token/export.xlsx → 提交后下载
+//
+// 模板字段 / 评分维度 / 计算逻辑后端是唯一来源,前端只镜像 (lib/interviewEvalTemplate.js)
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useParams } from "react-router-dom";
+import { api } from "../lib/api.js";
+import { Card, Button, Input, I, toast, LoadingBlock, ToastHost, Modal, LiquidLoader } from "../components/Primitives.jsx";
+
+// 后端字段名 → label 对齐 (用于错误提示)
+const FIELD_LABELS = {
+  candidateName: "姓名", position: "应聘岗位", region: "属地国家/地区",
+  interviewDate: "面试日期", interviewer: "面试官", languageStrength: "语言/沟通优势",
+  currentCity: "当前城市", department: "应聘部门", timezoneCollaboration: "是否接受跨时区协作",
+  strengths: "优势亮点", risks: "主要风险",
+  followUpQuestions: "建议追问/复试方向", finalOpinion: "最终意见",
+};
+
+// 前端镜像后端计算 (与 server/src/lib/interviewEvalTemplate.js 对齐)
+function weighted(weight, score) {
+  if (score == null || score === "" || isNaN(score)) return null;
+  return Math.round((weight * Number(score) / 10) * 10) / 10;
+}
+function totalOf(scores) {
+  if (!Array.isArray(scores) || scores.length === 0) return null;
+  let sum = 0, any = false;
+  for (const s of scores) {
+    const w = weighted(s.weight, s.score);
+    if (w != null) { sum += w; any = true; }
+  }
+  return any ? Math.round(sum * 10) / 10 : null;
+}
+function recommendOf(total) {
+  if (total == null) return null;
+  if (total >= 85) return "建议录用";
+  if (total >= 75) return "建议复试";
+  if (total >= 60) return "谨慎考虑";
+  return "不建议录用";
+}
+
+// ─── 子组件 ─────────────────────────────────────────────────────
+
+function ErrorScreen({ icon, title, message, code }) {
+  return (
+    <div className="min-h-screen flex items-center justify-center px-5 py-10 bg-gradient-to-br from-lightPrimary via-white to-lightPrimary">
+      <Card className="p-10 max-w-md w-full text-center">
+        <div className="w-16 h-16 rounded-full bg-red-50 text-red-500 mx-auto flex items-center justify-center mb-5">
+          <I name={icon} size={28} />
+        </div>
+        <h2 className="text-xl font-bold text-navy-700 mb-2">{title}</h2>
+        <p className="text-sm text-gray-700">{message}</p>
+        {code && <p className="text-[11px] text-gray-400 mt-3 font-mono">code: {code}</p>}
+        <p className="text-xs text-gray-400 mt-6">请联系发送此链接的招聘官。</p>
+      </Card>
+    </div>
+  );
+}
+
+function RubricModal({ open, onClose, rubric }) {
+  return (
+    <Modal open={open} onClose={onClose} maxWidth="max-w-4xl">
+      <div className="p-7">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="text-lg font-bold text-navy-700 flex items-center gap-2">
+            <I name="book-open" size={18} className="text-brand" /> 评分标准说明
+          </h3>
+          <button onClick={onClose} className="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center">
+            <I name="x" size={16} />
+          </button>
+        </div>
+        <p className="text-xs text-gray-700 mb-4 bg-amber-50 border border-amber-200 p-3 rounded-xl">
+          先按事实记录，再按标准打分；同一岗位建议由至少 2 位面试官独立评分后再讨论结论。
+        </p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-[12px]">
+            <thead>
+              <tr className="text-left text-gray-700 border-b border-gray-200">
+                <th className="py-2 pr-2 font-bold">维度</th>
+                <th className="py-2 px-2 font-bold">核心定义</th>
+                <th className="py-2 px-2 font-bold text-green-700">9-10 分</th>
+                <th className="py-2 px-2 font-bold text-blue-700">7-8 分</th>
+                <th className="py-2 px-2 font-bold text-amber-700">5-6 分</th>
+                <th className="py-2 pl-2 font-bold text-red-700">1-4 分</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(rubric || []).map((row, i) => (
+                <tr key={i} className="border-b border-gray-100">
+                  <td className="py-3 pr-2 font-bold text-navy-700 align-top">{row.dimension}</td>
+                  <td className="py-3 px-2 text-gray-700 align-top">{row.definition}</td>
+                  {(row.levels || []).map((lvl, j) => (
+                    <td key={j} className="py-3 px-2 text-gray-700 align-top">{lvl.desc}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="text-[11px] text-gray-500 mt-5 italic">
+          建议不要把"学历、年龄、表达风格偏好"等与岗位无关或不应作为决定性因素的内容直接折算进分值。
+        </p>
+      </div>
+    </Modal>
+  );
+}
+
+// 1-10 评分控件 — 数字步进器 + 豆豆条 + 直接键盘输入
+function ScoreInput({ value, onChange, disabled }) {
+  const n = value == null ? null : Number(value);
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <input
+        type="number"
+        min={1}
+        max={10}
+        step={1}
+        value={n == null ? "" : n}
+        disabled={disabled}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (v === "") return onChange(null);
+          const x = parseInt(v, 10);
+          if (Number.isInteger(x) && x >= 1 && x <= 10) onChange(x);
+        }}
+        className="w-16 h-10 rounded-xl border border-gray-200 px-2 text-center text-sm font-bold text-navy-700 outline-none focus:border-brand disabled:bg-gray-100"
+        placeholder="-"
+      />
+      <div className="flex gap-1" role="radiogroup" aria-label="评分 1-10">
+        {Array.from({ length: 10 }, (_, i) => i + 1).map((d) => (
+          <button
+            key={d}
+            type="button"
+            role="radio"
+            aria-checked={n === d}
+            disabled={disabled}
+            onClick={() => onChange(d)}
+            className={`w-7 h-7 rounded-full text-[11px] font-bold transition ${
+              n === d
+                ? "bg-brand-gradient text-white shadow"
+                : "bg-gray-100 text-gray-700 hover:bg-lightPrimary"
+            } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
+          >
+            {d}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ScoreRow({ dim, item, onChange, readonly }) {
+  const w = weighted(dim.weight, item?.score);
+  return (
+    <div className="border-t border-gray-100 first:border-t-0 py-4">
+      <div className="flex flex-wrap items-start gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <p className="text-sm font-bold text-navy-700">{dim.name}</p>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-lightPrimary text-brand font-bold">权重 {dim.weight}%</span>
+          </div>
+          <p className="text-[12px] text-gray-700 leading-relaxed">{dim.observation}</p>
+        </div>
+        <div className="shrink-0 min-w-0">
+          <ScoreInput
+            value={item?.score ?? null}
+            disabled={readonly}
+            onChange={(v) => onChange({ key: dim.key, score: v, remark: item?.remark || "" })}
+          />
+          <p className="text-[11px] text-gray-500 mt-1 text-right">
+            {w == null ? <span className="text-gray-400">加权 -</span> : <>加权 <b className="text-brand">{w}</b></>}
+          </p>
+        </div>
+      </div>
+      <textarea
+        value={item?.remark || ""}
+        disabled={readonly}
+        onChange={(e) => onChange({ key: dim.key, score: item?.score ?? null, remark: e.target.value })}
+        placeholder={`备注 (可选, ≤ 200 字)${item?.score != null && item.score <= 6 ? " — 建议说明低分原因" : ""}`}
+        rows={2}
+        maxLength={200}
+        className={`w-full mt-3 rounded-xl border p-3 text-[13px] text-navy-700 outline-none focus:border-brand resize-y bg-white ${
+          item?.score != null && item.score <= 6 && !item?.remark ? "border-amber-300 bg-amber-50/30" : "border-gray-200"
+        } disabled:bg-gray-100`}
+      />
+    </div>
+  );
+}
+
+// 推荐结论的色彩 chip
+function RecommendChip({ recommendation }) {
+  if (!recommendation) return null;
+  const tone = recommendation === "建议录用" ? "bg-green-100 text-green-700"
+    : recommendation === "建议复试" ? "bg-brand-50 text-brand-700"
+    : recommendation === "谨慎考虑" ? "bg-amber-100 text-amber-700"
+    : "bg-red-100 text-red-700";
+  return <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${tone}`}>{recommendation}</span>;
+}
+
+// ─── 主页面 ─────────────────────────────────────────────────────
+
+const STATE_LOADING = "loading";
+const STATE_READY = "ready";
+const STATE_ERROR = "error";
+const STATE_SUBMITTING = "submitting";
+
+export default function PublicInterviewEval() {
+  const { token } = useParams();
+  const [state, setState] = useState(STATE_LOADING);
+  const [errorInfo, setErrorInfo] = useState({ icon: "alert-triangle", title: "", message: "", code: "" });
+
+  // 服务端拉到的 meta + rubric (不改)
+  const [meta, setMeta] = useState(null);
+  const [rubric, setRubric] = useState([]);
+  const [dimensions, setDimensions] = useState([]);  // 不变的 7 维度 (key/name/weight/observation)
+
+  // 可编辑字段
+  const [form, setForm] = useState(null);  // 候选人信息 + 纪要 + scores
+  const [rubricOpen, setRubricOpen] = useState(false);
+  const [confirmSubmit, setConfirmSubmit] = useState(false);
+  const [showSubmitted, setShowSubmitted] = useState(false);  // 提交成功后 banner
+
+  // 草稿合并保存防抖
+  const dirtyRef = useRef(false);
+  const savingRef = useRef(false);
+  const lastSavedAtRef = useRef(null);
+  const [savingLabel, setSavingLabel] = useState("");
+
+  // 初次加载
+  useEffect(() => {
+    if (!token) return;
+    api.get(`/public/interview-eval/${token}`)
+      .then((r) => {
+        const ev = r.data.evaluation;
+        setMeta(r.data.meta || {});
+        setRubric(r.data.scoringRubric || []);
+        setDimensions((ev.scores || []).map((s) => ({
+          key: s.key, name: s.name, weight: s.weight, observation: s.observation,
+        })));
+        setForm({
+          candidateName: ev.candidateName || "",
+          position: ev.position || "",
+          region: ev.region || "",
+          interviewDate: ev.interviewDate ? new Date(ev.interviewDate).toISOString().slice(0, 10) : "",
+          interviewer: ev.interviewer || "",
+          languageStrength: ev.languageStrength || "",
+          currentCity: ev.currentCity || "",
+          department: ev.department || "",
+          timezoneCollaboration: ev.timezoneCollaboration || "",
+          scores: (ev.scores || []).map((s) => ({ key: s.key, score: s.score, remark: s.remark || "" })),
+          strengths: ev.strengths || "",
+          risks: ev.risks || "",
+          followUpQuestions: ev.followUpQuestions || "",
+          finalOpinion: ev.finalOpinion || "",
+        });
+        if (ev.status === "submitted") setShowSubmitted(true);
+        setState(STATE_READY);
+      })
+      .catch((err) => {
+        const data = err.response?.data || {};
+        const status = err.response?.status;
+        const icon = status === 410 ? "clock" : status === 404 ? "link-2-off" : "alert-triangle";
+        const title = data.error === "eval_revoked" ? "链接已撤销"
+          : status === 410 ? "链接已失效"
+          : status === 404 ? "链接不存在" : "无法访问";
+        setErrorInfo({ icon, title, message: data.message || "请向发送链接的招聘官核实", code: data.error });
+        setState(STATE_ERROR);
+      });
+  }, [token]);
+
+  const readonly = meta?.readonly === true;
+
+  // 实时 total / recommendation
+  const scoresForCompute = useMemo(() => {
+    if (!form || !dimensions.length) return [];
+    const byKey = new Map(form.scores.map((s) => [s.key, s.score]));
+    return dimensions.map((d) => ({ ...d, score: byKey.get(d.key) ?? null }));
+  }, [form, dimensions]);
+  const liveTotal = useMemo(() => totalOf(scoresForCompute), [scoresForCompute]);
+  const liveRecommend = useMemo(() => recommendOf(liveTotal), [liveTotal]);
+
+  // 草稿自动保存
+  function markDirty() {
+    dirtyRef.current = true;
+  }
+  async function saveDraftNow() {
+    if (!form || !token || readonly || savingRef.current || !dirtyRef.current) return;
+    savingRef.current = true;
+    setSavingLabel("保存中…");
+    try {
+      const body = {
+        position: form.position || null,
+        region: form.region || null,
+        interviewDate: form.interviewDate ? new Date(form.interviewDate).toISOString() : null,
+        interviewer: form.interviewer || null,
+        languageStrength: form.languageStrength || null,
+        currentCity: form.currentCity || null,
+        department: form.department || null,
+        timezoneCollaboration: form.timezoneCollaboration || null,
+        scores: form.scores.map((s) => ({ key: s.key, score: s.score, remark: s.remark || "" })),
+        strengths: form.strengths || null,
+        risks: form.risks || null,
+        followUpQuestions: form.followUpQuestions || null,
+        finalOpinion: form.finalOpinion || null,
+      };
+      await api.patch(`/public/interview-eval/${token}`, body);
+      dirtyRef.current = false;
+      lastSavedAtRef.current = new Date();
+      setSavingLabel(`已保存 ${new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}`);
+    } catch (err) {
+      const data = err.response?.data || {};
+      setSavingLabel(`保存失败: ${data.message || err.message}`);
+    } finally {
+      savingRef.current = false;
+    }
+  }
+
+  // 30s 心跳自动保存
+  useEffect(() => {
+    if (state !== STATE_READY || readonly) return;
+    const id = setInterval(() => { saveDraftNow(); }, 30000);
+    // 页面切走时再保一次
+    const onBeforeUnload = () => { if (dirtyRef.current) saveDraftNow(); };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => { clearInterval(id); window.removeEventListener("beforeunload", onBeforeUnload); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, readonly]);
+
+  // 提交
+  async function doSubmit() {
+    // 提交前先把当前未保存草稿冲一次
+    await saveDraftNow();
+    setState(STATE_SUBMITTING);
+    try {
+      const { data } = await api.post(`/public/interview-eval/${token}/submit`, {});
+      // 提交成功 → 把后端最新数据回灌
+      const ev = data.evaluation;
+      setMeta(data.meta || {});
+      setForm((prev) => ({
+        ...prev,
+        scores: (ev.scores || []).map((s) => ({ key: s.key, score: s.score, remark: s.remark || "" })),
+        strengths: ev.strengths || "",
+        risks: ev.risks || "",
+        followUpQuestions: ev.followUpQuestions || "",
+        finalOpinion: ev.finalOpinion || "",
+      }));
+      setShowSubmitted(true);
+      setConfirmSubmit(false);
+      setState(STATE_READY);
+      toast("评价已提交,感谢您的反馈 ✓", "success");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (err) {
+      setState(STATE_READY);
+      const data = err.response?.data || {};
+      if (data.error === "eval_validation_failed" && Array.isArray(data.details)) {
+        const first = data.details[0];
+        const label = FIELD_LABELS[first.field] || first.field;
+        toast(`${label}: ${first.message}`, "error");
+      } else {
+        toast(data.message || "提交失败,请稍后再试", "error");
+      }
+    }
+  }
+
+  function downloadXlsx() {
+    // 直接打开下载 URL,浏览器走 Content-Disposition 触发保存
+    window.location.href = `/api/public/interview-eval/${token}/export.xlsx`;
+  }
+
+  // ─── 渲染 ─────────────────────────────────────────────────────
+
+  if (state === STATE_LOADING) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <LoadingBlock label="验证链接中..." height="h-16" />
+        <ToastHost />
+      </div>
+    );
+  }
+  if (state === STATE_ERROR) {
+    return <><ErrorScreen {...errorInfo} /><ToastHost /></>;
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-lightPrimary via-white to-lightPrimary px-4 sm:px-5 py-8">
+      <div className="max-w-4xl mx-auto space-y-5 pb-32">
+        {/* ── 顶部 ── */}
+        <Card className="p-6 relative overflow-hidden">
+          <div className="absolute -right-20 -top-20 w-64 h-64 rounded-full bg-brand-gradient opacity-10 blur-3xl pointer-events-none"></div>
+          <div className="relative flex items-start justify-between gap-3 flex-wrap">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-12 h-12 rounded-full bg-brand-gradient flex items-center justify-center text-white shrink-0">
+                  <I name="clipboard-check" size={22} />
+                </div>
+                <div className="min-w-0">
+                  <h2 className="text-xl font-bold text-navy-700">属地员工面试评价表</h2>
+                  <p className="text-xs text-gray-700">为「<b>{form?.candidateName}</b>{form?.position ? ` · ${form.position}` : ""}」打分</p>
+                </div>
+              </div>
+              <p className="text-xs text-gray-700">预计 8-12 分钟 · {meta?.expiresAt ? `链接 ${new Date(meta.expiresAt).toLocaleDateString("zh-CN")} 过期` : "链接长期有效"}</p>
+            </div>
+            <button
+              onClick={() => setRubricOpen(true)}
+              className="shrink-0 text-xs font-bold text-brand hover:underline flex items-center gap-1.5 bg-lightPrimary px-3 py-2 rounded-xl"
+            >
+              <I name="book-open" size={14} /> 评分标准
+            </button>
+          </div>
+        </Card>
+
+        {/* ── 已提交提示 banner ── */}
+        {showSubmitted && (
+          <Card className="p-5 bg-green-50 border-green-200">
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="w-10 h-10 rounded-full bg-green-100 text-green-700 flex items-center justify-center shrink-0">
+                <I name="check-circle" size={20} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-green-900">评价已提交</p>
+                <p className="text-xs text-green-800 mt-0.5">感谢您的反馈！如需修改请联系发送链接的招聘官退回编辑。</p>
+              </div>
+              {meta?.canExport && (
+                <Button onClick={downloadXlsx} icon={<I name="download" size={14} />} className="!bg-green-600 hover:!bg-green-700">
+                  下载本次评价 xlsx
+                </Button>
+              )}
+            </div>
+          </Card>
+        )}
+
+        {/* ── 一、候选人信息 ── */}
+        <Card className="p-7">
+          <h3 className="text-base font-bold text-navy-700 mb-5 flex items-center gap-2">
+            <span className="w-7 h-7 rounded-full bg-brand-gradient text-white inline-flex items-center justify-center text-xs">一</span>
+            候选人信息
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[
+              { key: "candidateName", label: "姓名", required: true },
+              { key: "position", label: "应聘岗位", required: true },
+              { key: "region", label: "属地国家/地区" },
+              { key: "interviewDate", label: "面试日期", type: "date", required: true },
+              { key: "interviewer", label: "面试官", required: true },
+              { key: "languageStrength", label: "语言/沟通优势" },
+              { key: "currentCity", label: "当前城市" },
+              { key: "department", label: "应聘部门" },
+              { key: "timezoneCollaboration", label: "跨时区协作" },
+            ].map((f) => (
+              <Input
+                key={f.key}
+                label={f.label + (f.required ? " *" : "")}
+                type={f.type || "text"}
+                value={form[f.key] || ""}
+                disabled={readonly}
+                maxLength={200}
+                onChange={(e) => {
+                  setForm((prev) => ({ ...prev, [f.key]: e.target.value }));
+                  markDirty();
+                }}
+              />
+            ))}
+          </div>
+        </Card>
+
+        {/* ── 二、核心评分项 ── */}
+        <Card className="p-7">
+          <div className="flex items-start justify-between gap-3 flex-wrap mb-5">
+            <h3 className="text-base font-bold text-navy-700 flex items-center gap-2">
+              <span className="w-7 h-7 rounded-full bg-brand-gradient text-white inline-flex items-center justify-center text-xs">二</span>
+              核心评分项
+              <span className="text-[11px] text-gray-700 font-normal">(每项 1-10 分，权重折算 100 分)</span>
+            </h3>
+            <button onClick={() => setRubricOpen(true)} className="text-[11px] text-brand hover:underline">不知道怎么评?查看评分标准 →</button>
+          </div>
+
+          <div className="bg-gray-50/50 rounded-2xl px-5 py-2">
+            {dimensions.map((dim) => {
+              const item = form.scores.find((s) => s.key === dim.key);
+              return (
+                <ScoreRow
+                  key={dim.key}
+                  dim={dim}
+                  item={item}
+                  readonly={readonly}
+                  onChange={(next) => {
+                    setForm((prev) => {
+                      const arr = prev.scores.filter((s) => s.key !== next.key);
+                      arr.push({ key: next.key, score: next.score, remark: next.remark });
+                      return { ...prev, scores: arr };
+                    });
+                    markDirty();
+                  }}
+                />
+              );
+            })}
+          </div>
+
+          {/* 总分气泡 */}
+          <div className="mt-6 pt-5 border-t-2 border-dashed border-gray-200 flex items-center justify-between gap-4 flex-wrap">
+            <p className="text-sm text-gray-700">总分 (满分 100)</p>
+            <div className="flex items-center gap-4">
+              <LiquidLoader size={64} level={liveTotal ?? 0} label={liveTotal ?? ""} loading={false} />
+              <div>
+                <p className="text-[11px] text-gray-700">推荐结论</p>
+                <div className="mt-1">{liveRecommend ? <RecommendChip recommendation={liveRecommend} /> : <span className="text-xs text-gray-400">填完 7 项评分后显示</span>}</div>
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        {/* ── 三、面试纪要 ── */}
+        <Card className="p-7">
+          <h3 className="text-base font-bold text-navy-700 mb-5 flex items-center gap-2">
+            <span className="w-7 h-7 rounded-full bg-brand-gradient text-white inline-flex items-center justify-center text-xs">三</span>
+            面试纪要
+          </h3>
+          <div className="space-y-4">
+            {[
+              { key: "strengths", label: "优势亮点", placeholder: "请记录候选人最突出的能力、案例或潜力" },
+              { key: "risks", label: "主要风险", placeholder: "请记录稳定性、能力短板、到岗风险或其他疑虑" },
+              { key: "followUpQuestions", label: "建议追问/复试方向", placeholder: "如需复试，建议重点验证的问题" },
+              { key: "finalOpinion", label: "最终意见 *", placeholder: "请结合评分与事实，写出简洁结论" },
+            ].map((f) => (
+              <div key={f.key}>
+                <label className="text-sm text-navy-700 font-bold ml-3 block mb-2">{f.label}</label>
+                <textarea
+                  value={form[f.key] || ""}
+                  disabled={readonly}
+                  onChange={(e) => {
+                    setForm((prev) => ({ ...prev, [f.key]: e.target.value }));
+                    markDirty();
+                  }}
+                  placeholder={f.placeholder}
+                  rows={3}
+                  maxLength={500}
+                  className="w-full rounded-xl border border-gray-200 p-3 text-sm text-navy-700 outline-none focus:border-brand bg-white resize-y disabled:bg-gray-100"
+                />
+                <p className="text-[11px] text-gray-500 mt-1 text-right">{(form[f.key] || "").length} / 500</p>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <p className="text-center text-[11px] text-gray-400">
+          由 MESA Recruit 提供 · 您的评价仅用于本次招聘
+        </p>
+      </div>
+
+      {/* ── 底部 sticky 操作栏 ── */}
+      <div className="fixed bottom-0 inset-x-0 bg-white border-t border-gray-200 px-4 sm:px-6 py-3 shadow-[0_-4px_20px_rgba(0,0,0,0.04)] z-30">
+        <div className="max-w-4xl mx-auto flex items-center justify-between gap-3 flex-wrap">
+          <div className="text-[11px] text-gray-500 flex items-center gap-2 min-w-0">
+            {!readonly && (
+              <>
+                <I name="cloud" size={12} className="text-brand shrink-0" />
+                <span className="truncate">{savingLabel || "草稿每 30 秒自动保存"}</span>
+              </>
+            )}
+            {readonly && <><I name="lock" size={12} /> <span>评价已锁定</span></>}
+          </div>
+          <div className="flex items-center gap-2">
+            {!readonly && (
+              <Button onClick={saveDraftNow} variant="ghost" icon={<I name="save" size={14} />} disabled={state === STATE_SUBMITTING}>
+                保存草稿
+              </Button>
+            )}
+            {!readonly && (
+              <Button
+                onClick={() => setConfirmSubmit(true)}
+                icon={<I name="send" size={14} />}
+                disabled={state === STATE_SUBMITTING}
+              >
+                提交评价
+              </Button>
+            )}
+            {readonly && meta?.canExport && (
+              <Button onClick={downloadXlsx} icon={<I name="download" size={14} />}>
+                下载 xlsx
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <RubricModal open={rubricOpen} onClose={() => setRubricOpen(false)} rubric={rubric} />
+
+      {/* 提交确认 Modal */}
+      <Modal open={confirmSubmit} onClose={() => setConfirmSubmit(false)} maxWidth="max-w-md">
+        <div className="p-7">
+          <h3 className="text-lg font-bold text-navy-700 mb-3 flex items-center gap-2">
+            <I name="alert-circle" size={20} className="text-amber-500" /> 确认提交评价
+          </h3>
+          <div className="bg-lightPrimary p-4 rounded-xl mb-5 space-y-2">
+            <p className="text-sm text-navy-700">
+              候选人:<b>{form?.candidateName}</b>
+            </p>
+            <div className="text-sm text-navy-700 flex items-center gap-2">
+              <span>总分:</span>
+              <LiquidLoader size={32} level={liveTotal ?? 0} label={liveTotal ?? ""} />
+              <RecommendChip recommendation={liveRecommend} />
+            </div>
+          </div>
+          <p className="text-xs text-gray-700 mb-5">提交后链接将进入只读状态。如需修改请联系招聘官退回编辑。</p>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setConfirmSubmit(false)} disabled={state === STATE_SUBMITTING}>取消</Button>
+            <Button onClick={doSubmit} disabled={state === STATE_SUBMITTING} icon={<I name={state === STATE_SUBMITTING ? "loader" : "send"} size={14} className={state === STATE_SUBMITTING ? "animate-spin" : ""} />}>
+              {state === STATE_SUBMITTING ? "提交中…" : "确认提交"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <ToastHost />
+    </div>
+  );
+}

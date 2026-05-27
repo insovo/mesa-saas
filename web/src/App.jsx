@@ -22,6 +22,7 @@ import PublicUpload from "./pages/PublicUpload.jsx";
 import Users from "./pages/Users.jsx";
 import AuditLog from "./pages/AuditLog.jsx";
 import Forbidden from "./pages/Forbidden.jsx";
+import PublicInterviewEval from "./pages/PublicInterviewEval.jsx";
 
 // 路由 → 所需 pageKey 映射
 const PAGE = {
@@ -57,6 +58,8 @@ export default function App() {
       {/* 公开页 — 不在 AuthGuard 内 */}
       <Route path="/share/:token" element={<SharedCandidate />} />
       <Route path="/upload/:token" element={<PublicUpload />} />
+      {/* 公开面试评价页 — 不在 AuthGuard 内,面试官通过 token 直接填写 */}
+      <Route path="/interview-eval/:token" element={<PublicInterviewEval />} />
       <Route
         element={
           <AuthGuard>
