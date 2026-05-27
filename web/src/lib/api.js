@@ -87,6 +87,10 @@ export const resources = {
     byJob: (params) => api.get("/reports/by-job", { params }).then((r) => r.data),
     byDepartment: (params) => api.get("/reports/by-department", { params }).then((r) => r.data),
     drilldown: (params) => api.get("/reports/drilldown", { params }).then((r) => r.data),
+    byChannel: (params) => api.get("/reports/by-channel", { params }).then((r) => r.data),
+    byHr: (params) => api.get("/reports/by-hr", { params }).then((r) => r.data),
+    offerCycle: (params) => api.get("/reports/offer-cycle", { params }).then((r) => r.data),
+    targets: (params) => api.get("/reports/targets", { params }).then((r) => r.data),
   },
   notes: {
     list: (candidateId) => api.get(`/candidates/${candidateId}/notes`).then((r) => r.data.notes),
