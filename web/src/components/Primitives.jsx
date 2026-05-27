@@ -398,16 +398,18 @@ export function Modal({ open, onClose, children, maxWidth = "max-w-2xl" }) {
   }, [open, onClose]);
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-navy-900/30 backdrop-blur-sm" onClick={onClose}></div>
-      {/* 外层容器自身滚动 — Modal 内容无论多高,容器内部滚条接管,顶部 header 永远可见。 */}
-      {/* 旧方案 max-h + items-center 在视窗矮 + modal 高时居中后顶部贴 viewport top,被书签栏/扩展栏挡。 */}
-      <div className="relative h-full overflow-y-auto">
-        <div className="min-h-full flex items-center justify-center p-4">
-          <div className={`relative w-full ${maxWidth} bg-white rounded-card shadow-card my-auto`}>
-            {children}
-          </div>
-        </div>
+      {/* Modal 自身限高 + 内部滚动:
+            - calc(100dvh - 4rem) 给上下各留 2rem padding,modal 绝不会贴视窗边
+            - dvh 响应浏览器 chrome 实际占用空间(地址栏 + 书签栏 + 扩展条扣除后的可见高度)
+            - overflow-y-auto 让 modal 内部独立滚动,scrollbar 出现在 modal 内右侧而非视窗外侧,
+              用户能立刻看到"内容可滚"的视觉提示 */}
+      <div
+        className={`relative w-full ${maxWidth} bg-white rounded-card shadow-card overflow-y-auto`}
+        style={{ maxHeight: "calc(100dvh - 4rem)" }}
+      >
+        {children}
       </div>
     </div>
   );
