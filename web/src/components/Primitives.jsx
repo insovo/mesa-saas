@@ -1,7 +1,7 @@
 // MESA Recruit · 共享原子组件
 // 迁自 ui_kits/mesa-recruit/Primitives.jsx,改为 ESM 导出,图标用 lucide-react。
 
-import { useEffect, useState, forwardRef } from "react";
+import { useEffect, useState, useRef, forwardRef } from "react";
 import * as Lucide from "lucide-react";
 import { STATUS_TONE, HIRE_STAGE_TONE, TASK_STATUS_TONE, URGENCY_TONE } from "../lib/constants.js";
 
@@ -390,8 +390,11 @@ export function Widget({ icon, label, value, accent = "#422AFB", subtitle }) {
 
 // === Modal ==========================================================
 export function Modal({ open, onClose, children, maxWidth = "max-w-2xl" }) {
+  const scrollRef = useRef(null);
   useEffect(() => {
     if (!open) return;
+    // 重置 scroll 到顶部 — 避免某些情况下 focus 把 modal 内部 scroll 推到中间
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
     const onKey = (e) => e.key === "Escape" && onClose();
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -401,13 +404,16 @@ export function Modal({ open, onClose, children, maxWidth = "max-w-2xl" }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-navy-900/30 backdrop-blur-sm" onClick={onClose}></div>
       {/* Modal 自身限高 + 内部滚动:
-            - calc(100dvh - 4rem) 给上下各留 2rem padding,modal 绝不会贴视窗边
-            - dvh 响应浏览器 chrome 实际占用空间(地址栏 + 书签栏 + 扩展条扣除后的可见高度)
-            - overflow-y-auto 让 modal 内部独立滚动,scrollbar 出现在 modal 内右侧而非视窗外侧,
+            - max-h-[85vh] Tailwind 是绝对 fallback,所有现代浏览器都支持 vh
+            - inline style 用 min(85vh, calc(100dvh - 4rem)),在支持 dvh 的浏览器进一步收紧
+              并响应浏览器 chrome 实际占用空间(地址栏 + 书签栏 + 扩展栏扣除后的可见高度)
+            - Safari 16.4- 不支持 dvh 时整个 min() 失效,自动回落到 max-h-[85vh] class
+            - overflow-y-auto 让 modal 内部滚动,scrollbar 出现在 modal 内右侧(不是视窗外),
               用户能立刻看到"内容可滚"的视觉提示 */}
       <div
-        className={`relative w-full ${maxWidth} bg-white rounded-card shadow-card overflow-y-auto`}
-        style={{ maxHeight: "calc(100dvh - 4rem)" }}
+        ref={scrollRef}
+        className={`relative w-full ${maxWidth} bg-white rounded-card shadow-card overflow-y-auto max-h-[85vh]`}
+        style={{ maxHeight: "min(85vh, calc(100dvh - 4rem))" }}
       >
         {children}
       </div>
