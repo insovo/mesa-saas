@@ -1,6 +1,6 @@
 ---
-title: "MESA Recruit · 后端标准 API 接口参考手册"
-author: "MESA Recruit 交付组"
+title: "Overseas R&D · 后端标准 API 接口参考手册"
+author: "Overseas R&D 交付组"
 date: "2026-05-22"
 ---
 
@@ -803,6 +803,170 @@ ShareLink (§14) 是「候选人简报对外」,UploadShareLink 是镜像反向 
 
 ---
 
+# 17. InterviewEvaluation · 面试评价(V1, 2026-05-27)
+
+> 招聘官生成公开 token,面试官无登录扫码填表;提交后可导出与原 Excel 模板版式完全一致的 .xlsx。
+> 详见 [dev-plans/面试评价模块设计规划.md](./dev-plans/面试评价模块设计规划.md)。
+
+模板锁定:`server/assets/templates/interview-evaluation-v1.xlsx` (SHA-256 `02bf31db8256…e645c534`),启动时校验,不一致即 boot fatal。
+
+## 17.1 GET /api/candidates/:id/interview-evals  (admin)
+
+列出某候选人的所有评价邀请,按 createdAt desc。
+
+请求示例:
+```http
+GET /api/candidates/:id/interview-evals
+Authorization: Bearer <token>
+```
+
+响应 `200`:
+```json
+{
+  "items": [
+    {
+      "id": "...",
+      "token": "JpZszqKan…",
+      "status": "submitted",
+      "expiresAt": "2026-06-03T15:51:18Z",
+      "interviewer": "王浩",
+      "totalScore": 81.5,
+      "recommendation": "建议复试",
+      "submittedAt": "2026-05-27T15:51:34Z",
+      "viewCount": 3,
+      "createdAt": "..."
+    }
+  ]
+}
+```
+
+## 17.2 POST /api/candidates/:id/interview-evals  (admin)
+
+新建评价邀请,自动从 candidate 预填 9 字段(姓名/岗位/部门/城市等)。
+
+入参:
+```json
+{
+  "interviewer": "王浩",
+  "interviewId": "uuid-or-null",
+  "duration": "7d",
+  "prefill": true
+}
+```
+
+`interviewer` 必填,长度 1-100。`duration` 默认 "7d" (3d / 7d / 30d / forever / 自定义 60s-30d)。
+
+响应 `201`: `{ item: <eval-record> }`,token 字段即公开访问凭证。
+
+## 17.3 GET /api/interview-evals/:id  (admin)
+
+单条详情。ADMIN 全可看;RECRUITER 只能看自己创建的。
+
+## 17.4 PATCH /api/interview-evals/:id  (admin)
+
+改有效期 / 撤销 / admin 退回编辑(`status=draft`)。
+
+```json
+{ "duration": "30d" }
+// 或
+{ "status": "revoked" }
+// 或 (仅 ADMIN)
+{ "status": "draft" }   // 退回让面试官继续编辑
+```
+
+## 17.5 DELETE /api/interview-evals/:id  (admin only)
+
+软删除,不物理删除(`deletedAt` 标记)。仅 ADMIN。
+
+## 17.6 GET /api/interview-evals/:id/export.xlsx  (admin)
+
+导出与原模板版式 100% 一致的 .xlsx(13 处合并 / 9 个公式 / 数据校验 / 列宽行高 / freeze pane 全保留)。流式响应,文件名 RFC 5987 中文编码。
+
+响应头:
+```
+Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+Content-Disposition: attachment; filename="..."; filename*=UTF-8''属地员工面试评价表_姓名_岗位_yyyy-MM-dd.xlsx
+```
+
+## 17.7 GET /api/public/interview-eval/:token  (公开,无鉴权)
+
+面试官打开链接拉表单数据 + 评分标准。响应 `200`:
+
+```json
+{
+  "evaluation": {
+    "candidateName": "刘晓萌",
+    "position": "高级前端开发",
+    "interviewer": "王浩",
+    "interviewDate": null,
+    "scores": [
+      { "key": "communication", "name": "沟通表达", "weight": 15, "score": null, "remark": "" }
+      // …7 维度
+    ],
+    "strengths": null, "risks": null, "followUpQuestions": null, "finalOpinion": null,
+    "totalScore": null, "recommendation": null,
+    "status": "link_sent"
+  },
+  "meta": {
+    "expiresAt": "…",
+    "submittedAt": null,
+    "templateVersion": "v1",
+    "readonly": false,
+    "canExport": false
+  },
+  "scoringRubric": [
+    { "dimension": "沟通表达", "definition": "…", "levels": [{"range":"9-10","desc":"…"}, …] }
+    // …7 维度
+  ]
+}
+```
+
+错误:`404 eval_not_found` / `410 eval_expired` / `410 eval_revoked`。
+
+## 17.8 PATCH /api/public/interview-eval/:token  (公开)
+
+保存草稿,deep-merge,仅更新传入字段。`status="link_sent"` 首次 PATCH 自动升 `draft`。`status="submitted"` 时返回 `409 eval_already_submitted`。
+
+可接受字段:`position` / `region` / `interviewDate` / `interviewer` / `languageStrength` / `currentCity` / `department` / `timezoneCollaboration` / `scores[]` / `strengths` / `risks` / `followUpQuestions` / `finalOpinion`。
+
+## 17.9 POST /api/public/interview-eval/:token/submit  (公开)
+
+提交评价。后端校验必填(7 项评分必须为 1-10 整数 + 最终意见非空 + candidateName/position/interviewDate/interviewer 非空)。
+
+校验失败 `422 eval_validation_failed`:
+```json
+{ "error": "eval_validation_failed", "details": [{ "field": "...", "message": "..." }] }
+```
+
+成功:状态 → `submitted`,计算并存 `totalScore` + `recommendation`。**幂等**:已提交再次提交不报错,返回当前数据。
+
+## 17.10 GET /api/public/interview-eval/:token/export.xlsx  (公开)
+
+提交后下载本次评价 xlsx(决策 4:面试官可自留底)。未提交时返回 `403 eval_export_disabled`。
+
+## 17.11 候选人状态联动规则(2026-05-27)
+
+两条业务规则,自动同步 candidate.status 与入职管理:
+
+### 规则 1:切换关联 JD → status 重置 + Employee 清理
+
+任意路径切 jobId(`POST /api/resumes/match` 切 JD,或 `PATCH /api/candidates/:id` 直接改 jobId)触发:
+
+- `candidate.status` 自动回 `待筛选`(若调用方未显式设 status)
+- 对应 Employee 记录 `stage=待入职`(HR 未推进)→ 删
+- `stage` ∈ {`入职准备` / `入职当天` / `试用期` / `已转正` / `延期试用`} → **保留**,不破坏 HR 数据
+
+### 规则 2:安排面试 → status 自动推进「面试中」
+
+`POST /api/interviews` 创建成功后:
+
+- 若 `candidate.status` ∈ {`null` / `待筛选` / `已沟通`} → 升到 `面试中`
+- 若已经在 `面试中` / `待定中` / `待入职` / `已入职` / `已淘汰` → **不动**(幂等保护,不倒退)
+
+实现见 `server/src/lib/candidateToEmployee.js` 的 `cleanupEmployeeOnJobChange` + `shouldAutoAdvanceToInterviewing`。
+
+---
+
 # 附录 A · 状态字段约定
 
 | 字段 | 值 | 用途 |
@@ -814,6 +978,8 @@ ShareLink (§14) 是「候选人简报对外」,UploadShareLink 是镜像反向 
 | `Review.visibility` | `public` `internal` `admin` | 评价可见范围 |
 | `Review.stance` | `approve` `reject` `null` | 回复表态 |
 | `User.role` | `ADMIN` `RECRUITER` `VIEWER` | 系统角色 |
+| `InterviewEvaluation.status` | `link_sent` `draft` `submitted` `revoked` | 评价状态机(详见 §17) |
+| `InterviewEvaluation.recommendation` | `建议录用` `建议复试` `谨慎考虑` `不建议录用` | 提交时按 totalScore 自动推断 |
 
 # 附录 B · 错误码总览
 
@@ -831,5 +997,9 @@ ShareLink (§14) 是「候选人简报对外」,UploadShareLink 是镜像反向 
 | 403 | `forbidden` / `admin_only` / `name_mismatch` | 越权 |
 | 404 | `not_found` / `share_not_found` / `candidate_not_found` | 资源不存在 |
 | 410 | `share_expired` / `share_quota_exceeded` | ShareLink 过期或耗尽 |
+| 409 | `eval_already_submitted` | 已提交的面试评价不允许再 PATCH 草稿(§17.8) |
+| 410 | `eval_expired` / `eval_revoked` / `eval_not_found` | 面试评价 token 失效(§17.7) |
 | 422 | `kimi_error` | Kimi 上游返回错误 |
+| 422 | `eval_validation_failed` | 面试评价提交时必填字段缺失或评分不合法(§17.9) |
+| 403 | `eval_export_disabled` | 公开端口尝试导出未提交的评价(§17.10) |
 | 503 | `kimi_not_configured` / `r2_not_configured` | 后端依赖未配置 |

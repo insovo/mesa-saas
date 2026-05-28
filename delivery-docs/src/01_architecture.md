@@ -1,6 +1,6 @@
 ---
-title: "MESA Recruit · 系统架构与网络拓扑设计说明书"
-author: "MESA Recruit 交付组"
+title: "Overseas R&D · 系统架构与网络拓扑设计说明书"
+author: "Overseas R&D 交付组"
 date: "2026-05-22"
 ---
 
@@ -10,13 +10,13 @@ date: "2026-05-22"
 |------|------|
 | 文档名称 | 系统架构与网络拓扑设计说明书 |
 | 版本 | v1.0 |
-| 适用范围 | MESA Recruit 全栈 SaaS 应用 |
+| 适用范围 | Overseas R&D 全栈 SaaS 应用 |
 | 部署形态 | 香港 D 型 VPS (4 核 8G,免备案) + Cloudflare 边缘网络 |
 | 配套文档 | 02 API 手册 · 03 部署手册 · 04 运维灾备手册 |
 
 # 2. 项目概述
 
-MESA Recruit 是面向 AI 原生招聘场景的 SaaS 产品,核心能力包括:
+Overseas R&D 是面向 AI 原生招聘场景的 SaaS 产品,核心能力包括:
 
 - **简历自动解析**:接入 Kimi / DeepSeek 等大模型,从 PDF / DOCX 中抽取结构化字段
 - **候选人全生命周期管理**:从简历收件箱 → 沟通 → 面试 → Offer → 入职 → 转正

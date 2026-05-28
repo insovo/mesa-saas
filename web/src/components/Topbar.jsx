@@ -168,7 +168,7 @@ export default function Topbar() {
                   <div className="flex items-center gap-3">
                     <Avatar name={user?.name || user?.email || "U"} src={user?.avatar} size={40} />
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-bold text-navy-700 truncate">{user?.name || "MESA 用户"}</p>
+                      <p className="text-sm font-bold text-navy-700 truncate">{user?.name || "Overseas R&D 用户"}</p>
                       <p className="text-xs text-gray-700 truncate mt-0.5">{user?.email}</p>
                     </div>
                   </div>
