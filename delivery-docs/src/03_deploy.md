@@ -1,6 +1,6 @@
 ---
-title: "MESA Recruit · 生产环境云端部署与 CI-CD 配置手册"
-author: "MESA Recruit 交付组"
+title: "Overseas R&D · 生产环境云端部署与 CI-CD 配置手册"
+author: "Overseas R&D 交付组"
 date: "2026-05-22"
 ---
 
@@ -164,6 +164,29 @@ docker exec mesa-server node prisma/seed.js   # 初始化默认管理员账号
 curl -fsSL https://recruit.your-domain.com/api/health
 # 应返回 {"status":"ok","service":"mesa-server",...}
 ```
+
+## 4.4 新增非 `src/` 静态资源目录的硬约定
+
+> 踩坑 #38(2026-05-27 PR #33 部署事故)
+
+server 端若新增 `src/` 之外的、**运行时**会读的目录(如模板文件、字典、内置资源等),**必须**在 `server/Dockerfile` 多阶段 runtime stage 同步 `COPY <dir> ./<dir>`,否则:
+
+- 本地 `npm run dev` 直接读源码 → 跑通 ✓
+- 容器 build 后 `/app/` 内**没有该目录** → backend boot fatal,整个 stack 起不来
+
+例 1(已实施 — 面试评价 xlsx 模板):
+```dockerfile
+# server/Dockerfile · runtime stage
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/prisma ./prisma
+COPY package*.json ./
+COPY src ./src
+COPY assets ./assets         # ← 必须;否则启动校验 /app/assets/templates/*.xlsx 缺失会 boot fatal
+```
+
+例 2(防御性建议):未来再加新目录(如 `server/templates/` / `server/data/` / `server/locales/`)→ 同步加 `COPY <dir> ./<dir>`。
+
+**CI 增强建议**(未来):在 `.github/workflows/ci.yml` 的 `docker · multi-stage smoke build` step 之后加一步 `docker run --rm <image> node -e "require('fs').accessSync('/app/assets/templates/interview-evaluation-v1.xlsx')"`,把"启动期依赖的静态资源"前移到 CI 检验,而不是部署后才炸。
 
 # 5. CI/CD 配置
 
