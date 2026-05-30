@@ -132,35 +132,21 @@ body {
   --brand-rot: 0deg;
   --brand-scale: 1;
   transform-origin: center;
-  animation: brand-char-cycle 8s ease-in-out infinite;
+  /* 入场一次后常驻显示(both:动画前停在 0% 透明、结束停在 100% 可见,配合 inline
+     的 40ms stagger delay 形成错落进入)。原 brand-char-cycle 会循环「飞出 → opacity:0
+     隐藏 ~2s」,导致 logo 每 8s 周期性消失 — 改为只入场不再循环。流光仍由 .brand-logo 提供 */
+  animation: brand-char-in 0.7s ease-out both;
   will-change: transform, opacity;
 }
 
-@keyframes brand-char-cycle {
-  /* 0%-2%: 起点(各字符自己的初始 transform) */
+@keyframes brand-char-in {
   0% {
     transform: translate(var(--brand-x), var(--brand-y)) rotate(var(--brand-rot)) scale(var(--brand-scale));
     opacity: 0;
   }
-  /* 2%-10%: 飞入到 (0,0,1,0) — 8% 时间完成进场,弹性收住 */
-  10% {
-    transform: translate(0, 0) rotate(0deg) scale(1);
-    opacity: 1;
-  }
-  /* 10%-82%: 静止展示 ≈ 5.76s */
-  82% {
-    transform: translate(0, 0) rotate(0deg) scale(1);
-    opacity: 1;
-  }
-  /* 82%-95%: 飞出 — 按各字符同款 transform 回到起点位置 */
-  95% {
-    transform: translate(var(--brand-x), var(--brand-y)) rotate(var(--brand-rot)) scale(var(--brand-scale));
-    opacity: 0;
-  }
-  /* 95%-100%: 静止保持隐藏,等待下一轮入场 */
   100% {
-    transform: translate(var(--brand-x), var(--brand-y)) rotate(var(--brand-rot)) scale(var(--brand-scale));
-    opacity: 0;
+    transform: translate(0, 0) rotate(0deg) scale(1);
+    opacity: 1;
   }
 }
 
