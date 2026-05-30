@@ -242,11 +242,10 @@ export default async function uploadLinksRoutes(app) {
           attachment: req.body.key,
           phone: req.body?.contact?.trim()?.slice(0, 200) || null,
           tags: ["待解析", "公开上传"],
-          skills: [],
+          // skills/experience/educationHistory 迁移后为 String?(markdown),留空走默认 null;
+          // risks/highlights 仍是 String[],保持空数组
           risks: [],
           highlights: [],
-          experience: [],
-          educationHistory: [],
           jobId: link.defaultJobId || null,
           appliedFor: link.defaultJob?.title || null,
           ownerId: link.createdBy || null,
