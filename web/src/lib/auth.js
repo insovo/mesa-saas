@@ -34,6 +34,11 @@ export function isAuthenticated() {
 
 // === Saved accounts =================================================
 
+// email 归一化:trim + lowercase,防后端不同接口大小写不一致导致 dedup 失败
+export function normEmail(email) {
+  return typeof email === "string" ? email.trim().toLowerCase() : "";
+}
+
 export function getSavedAccounts() {
   const raw = localStorage.getItem(SAVED_KEY);
   if (!raw) return [];
@@ -49,29 +54,32 @@ function writeSaved(list) {
   localStorage.setItem(SAVED_KEY, JSON.stringify(list));
 }
 
-// 把当前 token + user 存为「记住的账号」(按 email 去重,新数据覆盖)
+// 把当前 token + user 存为「记住的账号」(按 email 归一化后去重,新数据覆盖)
 export function addSavedAccount(token, user) {
-  if (!token || !user?.email) return;
+  const email = normEmail(user?.email);
+  if (!token || !email) return;
   const slim = {
     id: user.id,
-    email: user.email,
+    email,
     name: user.name || null,
     role: user.role || null,
     avatar: user.avatar || null,
   };
-  const list = getSavedAccounts().filter((a) => a.email !== user.email);
+  const list = getSavedAccounts().filter((a) => normEmail(a.email) !== email);
   list.unshift({ token, user: slim, savedAt: Date.now() });
   writeSaved(list.slice(0, 8)); // 最多保留 8 个
 }
 
 export function removeSavedAccount(email) {
-  writeSaved(getSavedAccounts().filter((a) => a.email !== email));
+  const norm = normEmail(email);
+  writeSaved(getSavedAccounts().filter((a) => normEmail(a.email) !== norm));
 }
 
 // 切到已保存的账号:把对应 token+user 写到当前位
 // 失败 (没找到) 返回 false,调用方应跳 Login
 export function switchToSavedAccount(email) {
-  const entry = getSavedAccounts().find((a) => a.email === email);
+  const norm = normEmail(email);
+  const entry = getSavedAccounts().find((a) => normEmail(a.email) === norm);
   if (!entry) return false;
   setAuth(entry.token, entry.user);
   return true;

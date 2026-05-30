@@ -15,6 +15,7 @@ import {
   switchToSavedAccount,
   removeSavedAccount,
   addSavedAccount,
+  normEmail,
 } from "../lib/auth.js";
 import { useAuth } from "../lib/authContext.jsx";
 import PasswordStrengthMeter from "./PasswordStrengthMeter.jsx";
@@ -92,14 +93,19 @@ export default function Topbar() {
   const [switchOpen, setSwitchOpen] = useState(false);
 
   function onPickSaved(email) {
-    if (email === me?.email) {
+    if (normEmail(email) === normEmail(me?.email)) {
       setMenuOpen(false);
       setSwitchOpen(false);
       return;
     }
     if (switchToSavedAccount(email)) {
-      // 直接 reload 让所有 hook 用新 token 重新拉数据,最稳
-      window.location.assign("/dashboard");
+      // 整页 reload — 让 AuthProvider 用新 token 重拉 /auth/me 拿权限
+      // 若当前已在 /dashboard,assign 同 URL 不会触发 reload,必须显式 reload()
+      if (window.location.pathname === "/dashboard") {
+        window.location.reload();
+      } else {
+        window.location.assign("/dashboard");
+      }
     } else {
       toast("该账号已失效,请重新登录", "error");
       logout();
@@ -237,7 +243,8 @@ export default function Topbar() {
                 {switchOpen && (
                   <div className="bg-lightPrimary/60 border-y border-gray-100 max-h-[260px] overflow-y-auto">
                     {(() => {
-                      const accounts = getSavedAccounts().filter((a) => a.email !== me?.email);
+                      const meEmail = normEmail(me?.email);
+                      const accounts = getSavedAccounts().filter((a) => normEmail(a.email) !== meEmail);
                       if (accounts.length === 0) {
                         return (
                           <p className="px-4 py-3 text-[11px] text-gray-700">
@@ -253,8 +260,10 @@ export default function Topbar() {
                         >
                           <Avatar name={a.user?.name || a.email} src={a.user?.avatar} size={28} />
                           <span className="flex-1 min-w-0">
-                            <span className="block text-sm text-navy-700 truncate">{a.user?.name || a.email}</span>
-                            <span className="block text-[11px] text-gray-700 truncate">{a.email}</span>
+                            <span className="block text-sm text-navy-700 truncate">{a.email}</span>
+                            {a.user?.name && (
+                              <span className="block text-[11px] text-gray-700 truncate">{a.user.name}</span>
+                            )}
                           </span>
                           <button
                             type="button"
