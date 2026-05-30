@@ -114,7 +114,8 @@ body {
   background-clip: text;
   -webkit-text-fill-color: transparent;
   color: transparent;
-  animation: brand-shine 6s linear infinite;
+  /* 渐变流光常驻 + 整段一次性淡入(both:结束停在 opacity:1) */
+  animation: brand-shine 6s linear infinite, brand-logo-in 0.6s ease-out both;
   will-change: background-position;
 }
 
@@ -123,41 +124,23 @@ body {
   100% { background-position: -100% 0; }
 }
 
-/* 字符 span — 公式化 keyframes,通过 CSS Variable 接收每个字符独立的入场参数 */
+@keyframes brand-logo-in {
+  0%   { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+/* 字符 span — 仅作分字容器,保持纯 inline-block。
+   关键:绝不能给 .brand-char 加 transform / will-change / opacity 动画 —— 那会把每个
+   字符提升成独立合成层,使父级 .brand-logo 的 background-clip:text 渐变填充无法画进
+   子层字形 → 整段文字透明不可见(踩坑:这正是 logo 一直不显示的根因)。
+   入场动画 / 流光统一放在父级 .brand-logo 上(单层,裁字正常)。 */
 .brand-char {
   display: inline-block;
-  /* 默认值:无 transform,纯淡入 */
-  --brand-x: 0px;
-  --brand-y: 0px;
-  --brand-rot: 0deg;
-  --brand-scale: 1;
-  transform-origin: center;
-  /* 入场一次后常驻显示(both:动画前停在 0% 透明、结束停在 100% 可见,配合 inline
-     的 40ms stagger delay 形成错落进入)。原 brand-char-cycle 会循环「飞出 → opacity:0
-     隐藏 ~2s」,导致 logo 每 8s 周期性消失 — 改为只入场不再循环。流光仍由 .brand-logo 提供 */
-  animation: brand-char-in 0.7s ease-out both;
-  will-change: transform, opacity;
 }
 
-@keyframes brand-char-in {
-  0% {
-    transform: translate(var(--brand-x), var(--brand-y)) rotate(var(--brand-rot)) scale(var(--brand-scale));
-    opacity: 0;
-  }
-  100% {
-    transform: translate(0, 0) rotate(0deg) scale(1);
-    opacity: 1;
-  }
-}
-
-/* 用户偏好减少动画时:只保留渐变流光,字符常驻不动 */
+/* 用户偏好减少动画时:去掉淡入,只保留渐变流光常驻 */
 @media (prefers-reduced-motion: reduce) {
   .brand-logo {
     animation: brand-shine 6s linear infinite;
-  }
-  .brand-char {
-    animation: none;
-    transform: none;
-    opacity: 1;
   }
 }
