@@ -321,6 +321,23 @@ export default function Topbar() {
   );
 }
 
+// modal 内联反馈 banner — 操作后 modal 还开着时(发验证码 / 校验失败 / 请求出错 / 复制成功),
+// 提示就显示在用户视线内,不甩到右下角 toast(modal 居中时角落 toast 看不到,error toast 还会堆叠)
+function ModalNotice({ notice }) {
+  if (!notice?.msg) return null;
+  const ok = notice.type === "success";
+  return (
+    <div
+      className={`flex items-start gap-2 text-sm rounded-xl px-3 py-2 border ${
+        ok ? "text-emerald-700 bg-emerald-50 border-emerald-200" : "text-red-600 bg-red-50 border-red-200"
+      }`}
+    >
+      <I name={ok ? "check-circle" : "alert-circle"} size={16} className="shrink-0 mt-0.5" />
+      <span className="flex-1 break-words whitespace-pre-wrap">{notice.msg}</span>
+    </div>
+  );
+}
+
 function ProfileEditModal({ me, onClose, onSaved }) {
   const [form, setForm] = useState({
     name: me?.name || "",
@@ -328,9 +345,11 @@ function ProfileEditModal({ me, onClose, onSaved }) {
     jobTitle: me?.jobTitle || "",
   });
   const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState(null);
 
   async function submit() {
     setSaving(true);
+    setNotice(null);
     try {
       const { data } = await api.patch("/auth/me", {
         name: form.name || undefined,
@@ -341,7 +360,7 @@ function ProfileEditModal({ me, onClose, onSaved }) {
       toast("已更新", "success");
       onClose();
     } catch (e) {
-      toast(e.response?.data?.message || "保存失败", "error");
+      setNotice({ type: "error", msg: e.response?.data?.message || "保存失败,请重试" });
     } finally {
       setSaving(false);
     }
@@ -371,6 +390,7 @@ function ProfileEditModal({ me, onClose, onSaved }) {
         <div className="text-xs text-gray-600 bg-amber-50 px-3 py-2 rounded-lg">
           修改邮箱需邮箱验证码,该功能将在下一阶段上线。
         </div>
+        <ModalNotice notice={notice} />
         <div className="flex justify-end gap-2 pt-2 border-t border-gray-200">
           <Button variant="ghost" onClick={onClose} disabled={saving}>取消</Button>
           <Button onClick={submit} disabled={saving} icon={<I name={saving ? "loader" : "check"} size={12} className={saving ? "animate-spin" : ""} />}>
@@ -393,8 +413,8 @@ function PasswordChangeModal({ me, onClose }) {
   const [saving, setSaving] = useState(false);
   const [devCode, setDevCode] = useState(null);
   const [cooldown, setCooldown] = useState(0);
-  // 报错内联显示在 modal 内,而不是甩到右下角 toast(modal 居中时角落 toast 看不到 / 多条堆叠)
-  const [error, setError] = useState("");
+  // 反馈内联显示在 modal 内,而不是甩到右下角 toast(modal 居中时角落 toast 看不到 / error toast 堆叠)
+  const [notice, setNotice] = useState(null);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -404,24 +424,24 @@ function PasswordChangeModal({ me, onClose }) {
 
   async function sendCode() {
     setSending(true);
-    setError("");
+    setNotice(null);
     try {
       const { data } = await api.post("/auth/me/request-password-code", {});
       if (data.devCode) setDevCode(data.devCode);
       setCooldown(60);
-      toast(data.devCode ? "开发模式:验证码见提示" : "验证码已发到邮箱", "success");
+      setNotice({ type: "success", msg: data.devCode ? "开发模式:验证码见上方提示" : "验证码已发到邮箱,请查收" });
     } catch (e) {
       if (e.response?.data?.error === "resend_too_soon") setCooldown(e.response.data.retryAfter || 60);
-      setError(e.response?.data?.message || "验证码发送失败,请稍后重试");
+      setNotice({ type: "error", msg: e.response?.data?.message || "验证码发送失败,请稍后重试" });
     } finally {
       setSending(false);
     }
   }
 
   async function submit() {
-    setError("");
-    if (newPassword.length < 8) return setError("新密码至少 8 位");
-    if (newPassword !== confirm) return setError("两次输入的新密码不一致");
+    setNotice(null);
+    if (newPassword.length < 8) return setNotice({ type: "error", msg: "新密码至少 8 位" });
+    if (newPassword !== confirm) return setNotice({ type: "error", msg: "两次输入的新密码不一致" });
     setSaving(true);
     try {
       if (mode === "current") {
@@ -432,7 +452,7 @@ function PasswordChangeModal({ me, onClose }) {
       toast("密码已修改", "success");
       onClose();
     } catch (e) {
-      setError(e.response?.data?.message || "修改失败,请检查输入后重试");
+      setNotice({ type: "error", msg: e.response?.data?.message || "修改失败,请检查输入后重试" });
     } finally {
       setSaving(false);
     }
@@ -500,12 +520,7 @@ function PasswordChangeModal({ me, onClose }) {
           <p className="text-[11px] text-gray-600 mb-1">确认新密码</p>
           <Input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
         </label>
-        {error && (
-          <div className="flex items-start gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
-            <I name="alert-circle" size={16} className="shrink-0 mt-0.5" />
-            <span className="flex-1 break-words">{error}</span>
-          </div>
-        )}
+        <ModalNotice notice={notice} />
         <div className="flex justify-end gap-2 pt-2 border-t border-gray-200">
           <Button variant="ghost" onClick={onClose} disabled={saving}>取消</Button>
           <Button onClick={submit} disabled={saving} icon={<I name={saving ? "loader" : "check"} size={12} className={saving ? "animate-spin" : ""} />}>
@@ -527,6 +542,7 @@ function EmailChangeModal({ me, onClose, onChanged }) {
   const [saving, setSaving] = useState(false);
   const [devCodes, setDevCodes] = useState(null);
   const [cooldown, setCooldown] = useState(0);
+  const [notice, setNotice] = useState(null);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -535,24 +551,26 @@ function EmailChangeModal({ me, onClose, onChanged }) {
   }, [cooldown]);
 
   async function sendCodes() {
-    if (!newEmail.includes("@")) return toast("请输入合法新邮箱", "error");
+    setNotice(null);
+    if (!newEmail.includes("@")) return setNotice({ type: "error", msg: "请输入合法新邮箱" });
     setSending(true);
     try {
       const { data } = await api.post("/auth/me/request-email-change-code", { newEmail });
       if (data.devCodes) setDevCodes(data.devCodes);
       setCooldown(60);
       setStep(2);
-      toast("已分别向当前邮箱和新邮箱发送验证码", "success");
+      setNotice({ type: "success", msg: "已分别向当前邮箱和新邮箱发送验证码,请查收" });
     } catch (e) {
-      if (e.response?.data?.error === "email_taken") return toast("该新邮箱已被其它账号注册", "error");
-      toast(e.response?.data?.message || "发送失败", "error");
+      if (e.response?.data?.error === "email_taken") return setNotice({ type: "error", msg: "该新邮箱已被其它账号注册" });
+      setNotice({ type: "error", msg: e.response?.data?.message || "验证码发送失败,请稍后重试" });
     } finally {
       setSending(false);
     }
   }
 
   async function submit() {
-    if (!currentCode || !newCode) return toast("两个验证码都要填", "error");
+    setNotice(null);
+    if (!currentCode || !newCode) return setNotice({ type: "error", msg: "两个验证码都要填" });
     setSaving(true);
     try {
       const { data } = await api.post("/auth/me/change-email-verify", { newEmail, currentCode, newCode });
@@ -560,7 +578,7 @@ function EmailChangeModal({ me, onClose, onChanged }) {
       toast("邮箱已更新", "success");
       onClose();
     } catch (e) {
-      toast(e.response?.data?.message || "更新失败", "error");
+      setNotice({ type: "error", msg: e.response?.data?.message || "更新失败,请检查验证码后重试" });
     } finally {
       setSaving(false);
     }
@@ -581,6 +599,7 @@ function EmailChangeModal({ me, onClose, onChanged }) {
               <p className="text-[11px] text-gray-600 mb-1">新邮箱</p>
               <Input value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="new@example.com" type="email" />
             </label>
+            <ModalNotice notice={notice} />
             <div className="flex justify-end gap-2 pt-2 border-t border-gray-200">
               <Button variant="ghost" onClick={onClose} disabled={sending}>取消</Button>
               <Button onClick={sendCodes} disabled={sending} icon={<I name={sending ? "loader" : "send"} size={12} className={sending ? "animate-spin" : ""} />}>
@@ -615,6 +634,7 @@ function EmailChangeModal({ me, onClose, onChanged }) {
               </button>
               <button onClick={() => setStep(1)} className="text-gray-600 hover:text-brand">改新邮箱</button>
             </div>
+            <ModalNotice notice={notice} />
             <div className="flex justify-end gap-2 pt-2 border-t border-gray-200">
               <Button variant="ghost" onClick={onClose} disabled={saving}>取消</Button>
               <Button onClick={submit} disabled={saving} icon={<I name={saving ? "loader" : "check"} size={12} className={saving ? "animate-spin" : ""} />}>
@@ -645,6 +665,7 @@ function TotpSetupModal({ me, onClose, onChanged }) {
   const [recoveryCodes, setRecoveryCodes] = useState(null);
   const [loading, setLoading] = useState(false);
   const [verifying, setVerifying] = useState(false);
+  const [notice, setNotice] = useState(null);
 
   useEffect(() => {
     if (step !== 1) return;
@@ -662,16 +683,17 @@ function TotpSetupModal({ me, onClose, onChanged }) {
   }, [step, onClose]);
 
   async function verify() {
-    if (!/^\d{6}$/.test(code)) return toast("请输入 6 位数字", "error");
+    setNotice(null);
+    if (!/^\d{6}$/.test(code)) return setNotice({ type: "error", msg: "请输入 6 位数字" });
     setVerifying(true);
     try {
       const { data } = await api.post("/auth/me/totp-verify-setup", { secret, code });
       setRecoveryCodes(data.recoveryCodes || []);
       setStep(3);
       onChanged?.({ totpEnabled: true });
-      toast("两步验证已启用", "success");
+      setNotice({ type: "success", msg: "两步验证已启用,请保存下方备份码" });
     } catch (e) {
-      toast(e.response?.data?.message || "验证码不正确", "error");
+      setNotice({ type: "error", msg: e.response?.data?.message || "验证码不正确,请重试" });
     } finally {
       setVerifying(false);
     }
@@ -679,7 +701,7 @@ function TotpSetupModal({ me, onClose, onChanged }) {
 
   function copyRecovery() {
     navigator.clipboard.writeText(recoveryCodes.join("\n"));
-    toast("已复制全部备份码", "success");
+    setNotice({ type: "success", msg: "已复制全部备份码到剪贴板" });
   }
 
   return (
@@ -726,6 +748,7 @@ function TotpSetupModal({ me, onClose, onChanged }) {
               autoFocus
               className="text-center text-lg tracking-[0.4em] font-mono"
             />
+            <ModalNotice notice={notice} />
             <div className="flex justify-between pt-2 border-t border-gray-200">
               <Button variant="ghost" onClick={() => setStep(1)}>返回</Button>
               <Button onClick={verify} disabled={verifying} icon={<I name={verifying ? "loader" : "check"} size={12} className={verifying ? "animate-spin" : ""} />}>
@@ -745,6 +768,7 @@ function TotpSetupModal({ me, onClose, onChanged }) {
                 ))}
               </div>
             </div>
+            <ModalNotice notice={notice} />
             <div className="flex justify-end gap-2 pt-2 border-t border-gray-200">
               <Button variant="ghost" onClick={copyRecovery} icon={<I name="copy" size={12} />}>复制全部</Button>
               <Button onClick={onClose}>我已保存,完成</Button>
@@ -762,9 +786,11 @@ function TotpDisableModal({ me, onClose, onChanged }) {
   const [recoveryCode, setRecoveryCode] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState(null);
 
   async function disable() {
     setSaving(true);
+    setNotice(null);
     try {
       const body = mode === "code" ? { code } : mode === "recovery" ? { recoveryCode } : { currentPassword };
       await api.post("/auth/me/totp-disable", body);
@@ -772,7 +798,7 @@ function TotpDisableModal({ me, onClose, onChanged }) {
       toast("已关闭两步验证", "success");
       onClose();
     } catch (e) {
-      toast(e.response?.data?.message || "关闭失败", "error");
+      setNotice({ type: "error", msg: e.response?.data?.message || "关闭失败,请检查凭证后重试" });
     } finally {
       setSaving(false);
     }
@@ -816,6 +842,7 @@ function TotpDisableModal({ me, onClose, onChanged }) {
         {mode === "password" && (
           <Input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="当前登录密码" />
         )}
+        <ModalNotice notice={notice} />
         <div className="flex justify-end gap-2 pt-2 border-t border-gray-200">
           <Button variant="ghost" onClick={onClose} disabled={saving}>取消</Button>
           <Button variant="danger" onClick={disable} disabled={saving} icon={<I name={saving ? "loader" : "shield-off"} size={12} className={saving ? "animate-spin" : ""} />}>
