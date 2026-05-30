@@ -393,6 +393,8 @@ function PasswordChangeModal({ me, onClose }) {
   const [saving, setSaving] = useState(false);
   const [devCode, setDevCode] = useState(null);
   const [cooldown, setCooldown] = useState(0);
+  // 报错内联显示在 modal 内,而不是甩到右下角 toast(modal 居中时角落 toast 看不到 / 多条堆叠)
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -402,6 +404,7 @@ function PasswordChangeModal({ me, onClose }) {
 
   async function sendCode() {
     setSending(true);
+    setError("");
     try {
       const { data } = await api.post("/auth/me/request-password-code", {});
       if (data.devCode) setDevCode(data.devCode);
@@ -409,15 +412,16 @@ function PasswordChangeModal({ me, onClose }) {
       toast(data.devCode ? "开发模式:验证码见提示" : "验证码已发到邮箱", "success");
     } catch (e) {
       if (e.response?.data?.error === "resend_too_soon") setCooldown(e.response.data.retryAfter || 60);
-      toast(e.response?.data?.message || "发送失败", "error");
+      setError(e.response?.data?.message || "验证码发送失败,请稍后重试");
     } finally {
       setSending(false);
     }
   }
 
   async function submit() {
-    if (newPassword.length < 8) return toast("新密码至少 8 位", "error");
-    if (newPassword !== confirm) return toast("两次输入的新密码不一致", "error");
+    setError("");
+    if (newPassword.length < 8) return setError("新密码至少 8 位");
+    if (newPassword !== confirm) return setError("两次输入的新密码不一致");
     setSaving(true);
     try {
       if (mode === "current") {
@@ -428,7 +432,7 @@ function PasswordChangeModal({ me, onClose }) {
       toast("密码已修改", "success");
       onClose();
     } catch (e) {
-      toast(e.response?.data?.message || "修改失败", "error");
+      setError(e.response?.data?.message || "修改失败,请检查输入后重试");
     } finally {
       setSaving(false);
     }
@@ -496,6 +500,12 @@ function PasswordChangeModal({ me, onClose }) {
           <p className="text-[11px] text-gray-600 mb-1">确认新密码</p>
           <Input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
         </label>
+        {error && (
+          <div className="flex items-start gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+            <I name="alert-circle" size={16} className="shrink-0 mt-0.5" />
+            <span className="flex-1 break-words">{error}</span>
+          </div>
+        )}
         <div className="flex justify-end gap-2 pt-2 border-t border-gray-200">
           <Button variant="ghost" onClick={onClose} disabled={saving}>取消</Button>
           <Button onClick={submit} disabled={saving} icon={<I name={saving ? "loader" : "check"} size={12} className={saving ? "animate-spin" : ""} />}>
