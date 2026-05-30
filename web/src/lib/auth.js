@@ -44,7 +44,13 @@ export function getSavedAccounts() {
   if (!raw) return [];
   try {
     const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr : [];
+    if (!Array.isArray(arr)) return [];
+    // 顶层回填 email:早期写入的 entry 只把 email 放在 user.email,顶层无 email。
+    // 而去重 / 删除 / 切换 / 渲染过滤 全部读 a.email(顶层)→ 恒 undefined →
+    // 去重失效(重复添加)、删除误删全部、切换永远命中第一条。统一归一化后顶层补齐。
+    return arr
+      .map((a) => ({ ...a, email: normEmail(a.email || a.user?.email) }))
+      .filter((a) => a.email && a.token);
   } catch {
     return [];
   }
@@ -66,7 +72,8 @@ export function addSavedAccount(token, user) {
     avatar: user.avatar || null,
   };
   const list = getSavedAccounts().filter((a) => normEmail(a.email) !== email);
-  list.unshift({ token, user: slim, savedAt: Date.now() });
+  // email 同时存顶层(供去重/删除/切换读取)与 user 内(供 UI 渲染)
+  list.unshift({ email, token, user: slim, savedAt: Date.now() });
   writeSaved(list.slice(0, 8)); // 最多保留 8 个
 }
 
