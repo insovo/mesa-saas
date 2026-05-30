@@ -91,6 +91,8 @@ export default function Topbar() {
 
   // 「切换账号」展开子菜单(在主菜单内 inline 显示)
   const [switchOpen, setSwitchOpen] = useState(false);
+  // saved 账号读自 localStorage 不是 state,删除后用 bump 触发 re-render
+  const [savedTick, setSavedTick] = useState(0);
 
   function onPickSaved(email) {
     if (normEmail(email) === normEmail(me?.email)) {
@@ -124,9 +126,9 @@ export default function Topbar() {
   function onRemoveSaved(email, ev) {
     ev.stopPropagation();
     removeSavedAccount(email);
-    // 强制刷新当前下拉
-    setSwitchOpen((v) => v);
-    setSwitchOpen(true);
+    // bump 计数器触发 re-render 让 dropdown 重新读 getSavedAccounts()
+    // (原写法 setSwitchOpen 设同值会被 React Object.is bail out 不 re-render)
+    setSavedTick((v) => v + 1);
   }
 
   const title = pageTitleFor(location.pathname);
@@ -253,10 +255,15 @@ export default function Topbar() {
                         );
                       }
                       return accounts.map((a) => (
-                        <button
+                        // 外层用 div 而非 button — HTML 禁止 button 嵌套 button,
+                        // 否则浏览器自动重塑 DOM,内层 X 的 onClick 被 onPickSaved 截胡
+                        <div
                           key={a.email}
+                          role="button"
+                          tabIndex={0}
                           onClick={() => onPickSaved(a.email)}
-                          className="w-full text-left px-4 py-2.5 text-sm hover:bg-white flex items-center gap-2 group"
+                          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onPickSaved(a.email); } }}
+                          className="w-full text-left px-4 py-2.5 text-sm hover:bg-white flex items-center gap-2 group cursor-pointer focus:outline-none focus:bg-white"
                         >
                           <Avatar name={a.user?.name || a.email} src={a.user?.avatar} size={28} />
                           <span className="flex-1 min-w-0">
@@ -273,7 +280,7 @@ export default function Topbar() {
                           >
                             <I name="x" size={12} />
                           </button>
-                        </button>
+                        </div>
                       ));
                     })()}
                     <button
