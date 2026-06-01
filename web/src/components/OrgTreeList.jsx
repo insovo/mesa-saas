@@ -261,11 +261,16 @@ export default function OrgTreeList({ items, onReorder, onEdit, onDelete, onAddC
     { scope: containerRef, dependencies: [rows.length > 0] }
   );
 
-  function expandAll() {
-    setExpanded(new Set(items.map((d) => d.id)));
-  }
-  function collapseAll() {
-    setExpanded(new Set());
+  // 有子部门的节点(只有它们能展开/折叠)
+  const expandableIds = useMemo(
+    () => new Set(items.filter((d) => d.parentId).map((d) => d.parentId)),
+    [items]
+  );
+  const allExpanded =
+    expandableIds.size > 0 && [...expandableIds].every((id) => expanded.has(id));
+
+  function toggleAll() {
+    setExpanded(allExpanded ? new Set() : new Set(expandableIds));
   }
   function toggle(id) {
     setExpanded((prev) => {
@@ -311,16 +316,11 @@ export default function OrgTreeList({ items, onReorder, onEdit, onDelete, onAddC
           />
         </div>
         <button
-          onClick={expandAll}
-          className="inline-flex items-center gap-1.5 h-10 px-3 rounded-xl border border-gray-200 text-xs font-bold text-navy-700 hover:bg-lightPrimary transition-colors"
+          onClick={toggleAll}
+          className="inline-flex items-center gap-1.5 h-10 px-3 rounded-xl border border-gray-200 text-xs font-bold text-navy-700 hover:bg-lightPrimary transition-colors shrink-0"
         >
-          <I name="chevrons-up-down" size={14} /> 展开全部
-        </button>
-        <button
-          onClick={collapseAll}
-          className="inline-flex items-center gap-1.5 h-10 px-3 rounded-xl border border-gray-200 text-xs font-bold text-navy-700 hover:bg-lightPrimary transition-colors"
-        >
-          <I name="chevrons-down-up" size={14} /> 折叠全部
+          <I name={allExpanded ? "chevrons-down-up" : "chevrons-up-down"} size={14} />
+          {allExpanded ? "折叠全部" : "展开全部"}
         </button>
       </div>
 
