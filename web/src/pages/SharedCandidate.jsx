@@ -43,16 +43,6 @@ export default function SharedCandidate() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [evalStarting, setEvalStarting] = useState(false);
 
-  async function viewResume() {
-    try {
-      const r = await axios.get(`/api/public/share/${token}/resume`);
-      if (r.data?.url) window.open(r.data.url, "_blank", "noopener");
-      else toast("暂无原始简历", "error");
-    } catch (e) {
-      toast(e.response?.data?.message || "无法打开原始简历", "error");
-    }
-  }
-
   async function startInterviewEval() {
     setEvalStarting(true);
     // 沿用访客在「添加评论」时填过的姓名(存本浏览器 localStorage)→ 预填面试官姓名(填写页可改)
@@ -168,12 +158,14 @@ export default function SharedCandidate() {
                 </div>
               )}
               {share?.showResume && (
-                <button
-                  onClick={viewResume}
+                <a
+                  href={`/api/public/share/${token}/resume/view`}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-brand/30 text-brand text-xs font-bold hover:bg-brand/5 transition"
                 >
                   <I name="file-text" size={13} /> 查看原始简历
-                </button>
+                </a>
               )}
             </div>
             {c.jdMatch != null && (

@@ -452,25 +452,40 @@ export default async function shareRoutes(app) {
 
   // ─── 公开端:查看原始简历文件 ───────────────────────────
   // showResume 开 + 候选人有 attachment 时,签发短时效 R2 GET URL(不暴露 R2 凭证)。
-  app.get("/public/share/:token/resume", async (req, reply) => {
+  // 校验通过返回 { url },否则 { status, error, message }。
+  async function resolveResumeUrl(token) {
     const link = await app.prisma.shareLink.findUnique({
-      where: { token: req.params.token },
+      where: { token },
       include: { candidate: { select: { attachment: true } } },
     });
-    if (!link) return reply.code(404).send({ error: "share_not_found", message: "链接无效" });
+    if (!link) return { status: 404, error: "share_not_found", message: "链接无效" };
     if (link.expiresAt && link.expiresAt < new Date()) {
-      return reply.code(410).send({ error: "share_expired", message: "此分享链接已过期" });
+      return { status: 410, error: "share_expired", message: "此分享链接已过期" };
     }
     if (link.maxViews != null && link.viewCount >= link.maxViews) {
-      return reply.code(410).send({ error: "share_quota_exceeded", message: "此链接访问次数已达上限" });
+      return { status: 410, error: "share_quota_exceeded", message: "此链接访问次数已达上限" };
     }
     if (link.showResume === false) {
-      return reply.code(403).send({ error: "resume_disabled", message: "分享方未开放原始简历" });
+      return { status: 403, error: "resume_disabled", message: "分享方未开放原始简历" };
     }
     const key = link.candidate?.attachment;
-    if (!key) return reply.code(404).send({ error: "no_resume", message: "该候选人无原始简历文件" });
-    if (!app.r2) return reply.code(503).send({ error: "r2_not_configured", message: "存储未配置" });
+    if (!key) return { status: 404, error: "no_resume", message: "该候选人无原始简历文件" };
+    if (!app.r2) return { status: 503, error: "r2_not_configured", message: "存储未配置" };
     const url = await app.r2.presignGet({ key, expiresIn: 600 });
-    return { url, expiresIn: 600 };
+    return { url };
+  }
+
+  // JSON 形式(桌面端 fetch 后 window.open 用)
+  app.get("/public/share/:token/resume", async (req, reply) => {
+    const r = await resolveResumeUrl(req.params.token);
+    if (r.error) return reply.code(r.status).send({ error: r.error, message: r.message });
+    return { url: r.url, expiresIn: 600 };
+  });
+
+  // 302 直跳(微信内置浏览器拦截「异步回调里的 window.open」,公开页改用真实 <a> 导航打这个端点)
+  app.get("/public/share/:token/resume/view", async (req, reply) => {
+    const r = await resolveResumeUrl(req.params.token);
+    if (r.error) return reply.code(r.status).send({ error: r.error, message: r.message });
+    return reply.redirect(r.url);
   });
 }
