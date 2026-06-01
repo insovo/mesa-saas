@@ -1126,7 +1126,7 @@ function InterviewModal({ open, onClose, candidate, jobs, reviews, onCreated }) 
 
 
 // 公开页可见性 toggle 子组件 — ShareModal「已有 link」和「无 link」两个分支共用
-function ShareVisibilityToggles({ showContact, setShowContact, showAttachments, setShowAttachments, showInterviewEval, setShowInterviewEval }) {
+function ShareVisibilityToggles({ showContact, setShowContact, showAttachments, setShowAttachments, showInterviewEval, setShowInterviewEval, showInterviewEvalList, setShowInterviewEvalList }) {
   return (
     <div>
       <p className="text-xs font-bold text-[#707EAE] uppercase mb-2">公开页可见性</p>
@@ -1163,8 +1163,20 @@ function ShareVisibilityToggles({ showContact, setShowContact, showAttachments, 
             className="mt-0.5 w-4 h-4 rounded border-[#A3AED0] text-[#422AFB] focus:ring-[#422AFB]"
           />
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-bold text-[#1B254B]">支持添加面试评价</p>
+            <p className="text-xs font-bold text-[#1B254B]">支持填写面试评价</p>
             <p className="text-[10px] text-[#A3AED0] mt-0.5">开启后分享页显示「填写面试评价」按钮,访客提交后自动归档到该候选人的面试评价模块</p>
+          </div>
+        </label>
+        <label className="flex items-start gap-2.5 p-2.5 rounded-lg border border-[#E9ECEF] hover:border-[#422AFB]/40 cursor-pointer transition">
+          <input
+            type="checkbox"
+            checked={!!showInterviewEvalList}
+            onChange={(e) => setShowInterviewEvalList(e.target.checked)}
+            className="mt-0.5 w-4 h-4 rounded border-[#A3AED0] text-[#422AFB] focus:ring-[#422AFB]"
+          />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-bold text-[#1B254B]">展示已有面试评价</p>
+            <p className="text-[10px] text-[#A3AED0] mt-0.5">默认关闭。开启后分享页列出该候选人已提交的面试评价,访客可点开查看详情</p>
           </div>
         </label>
       </div>
@@ -1185,6 +1197,7 @@ function ShareModal({ open, onClose, candidate }) {
   const [showContact, setShowContact] = useState(true);
   const [showAttachments, setShowAttachments] = useState(false);
   const [showInterviewEval, setShowInterviewEval] = useState(true);
+  const [showInterviewEvalList, setShowInterviewEvalList] = useState(false);
   const [tab, setTab] = useState("share"); // "share" 本次分享 | "bot" 飞书 bot 自动分享设置
 
   useEffect(() => {
@@ -1200,11 +1213,13 @@ function ShareModal({ open, onClose, candidate }) {
         setShowContact(l.showContact !== false);
         setShowAttachments(l.showAttachments === true);
         setShowInterviewEval(l.showInterviewEval !== false);
+        setShowInterviewEvalList(l.showInterviewEvalList === true);
       } else {
         // 重置回默认值
         setShowContact(true);
         setShowAttachments(false);
         setShowInterviewEval(true);
+        setShowInterviewEvalList(false);
       }
     }).catch(() => setLink(null)).finally(() => setLoading(false));
   }, [open, candidate?.id]);
@@ -1239,6 +1254,7 @@ function ShareModal({ open, onClose, candidate }) {
         showContact,
         showAttachments,
         showInterviewEval,
+        showInterviewEvalList,
       });
       setLink(l);
       toast(link ? "已重新生成链接" : "已生成分享链接", "success");
@@ -1256,6 +1272,7 @@ function ShareModal({ open, onClose, candidate }) {
         showContact,
         showAttachments,
         showInterviewEval,
+        showInterviewEvalList,
       });
       setLink(l);
       toast("已修改配置", "success");
@@ -1397,7 +1414,7 @@ function ShareModal({ open, onClose, candidate }) {
                   <p className="text-xs font-bold text-[#707EAE] uppercase mb-2">访问次数限制</p>
                   <MaxViewsPicker {...{ maxViewsPreset, setMaxViewsPreset, customMaxViews, setCustomMaxViews }} />
                 </div>
-                <ShareVisibilityToggles {...{ showContact, setShowContact, showAttachments, setShowAttachments, showInterviewEval, setShowInterviewEval }} />
+                <ShareVisibilityToggles {...{ showContact, setShowContact, showAttachments, setShowAttachments, showInterviewEval, setShowInterviewEval, showInterviewEvalList, setShowInterviewEvalList }} />
                 <div className="flex gap-2 pt-2">
                   <Button variant="ghost" onClick={destroy} disabled={loading} icon={<I name="trash-2" size={12} />}>删除链接</Button>
                   <div className="flex-1" />
@@ -1424,7 +1441,7 @@ function ShareModal({ open, onClose, candidate }) {
               <p className="text-xs font-bold text-[#707EAE] uppercase mb-2">访问次数限制</p>
               <MaxViewsPicker {...{ maxViewsPreset, setMaxViewsPreset, customMaxViews, setCustomMaxViews }} />
             </div>
-            <ShareVisibilityToggles {...{ showContact, setShowContact, showAttachments, setShowAttachments, showInterviewEval, setShowInterviewEval }} />
+            <ShareVisibilityToggles {...{ showContact, setShowContact, showAttachments, setShowAttachments, showInterviewEval, setShowInterviewEval, showInterviewEvalList, setShowInterviewEvalList }} />
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={onClose}>取消</Button>
               <Button onClick={generate} disabled={loading} icon={<I name={loading ? "loader" : "share-2"} size={12} className={loading ? "animate-spin" : ""} />}>
