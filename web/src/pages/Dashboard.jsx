@@ -98,10 +98,10 @@ export default function Dashboard() {
     <div className="space-y-6">
       {/* === KPI 卡片 === */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
-        <Widget icon="users" label="候选人总数" value={data.counts.candidates} accent={tilePalette[0]} subtitle="覆盖全岗位" />
-        <Widget icon="briefcase" label="在招岗位" value={data.counts.jobs} accent={tilePalette[1]} subtitle="持续招聘中" />
-        <Widget icon="user-plus" label="入职员工" value={data.counts.employees} accent={tilePalette[2]} subtitle="试用 / 已转正" />
-        <Widget icon="calendar-check" label="已排面试" value={data.counts.interviewsScheduled} accent={tilePalette[3]} subtitle="本周/近期" />
+        <Widget icon="users" label="候选人总数" value={data.counts.candidates} accent={tilePalette[0]} subtitle="覆盖全岗位" to="/candidates" />
+        <Widget icon="briefcase" label="在招岗位" value={data.counts.jobs} accent={tilePalette[1]} subtitle="持续招聘中" to="/jobs" />
+        <Widget icon="user-plus" label="入职员工" value={data.counts.employees} accent={tilePalette[2]} subtitle="试用 / 已转正" to="/newhire" />
+        <Widget icon="calendar-check" label="已排面试" value={data.counts.interviewsScheduled} accent={tilePalette[3]} subtitle="本周/近期" to="/interviews" />
       </div>
 
       {/* === 两列布局 === */}
