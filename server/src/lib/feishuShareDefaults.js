@@ -16,11 +16,12 @@ export const BUILTIN_SHARE_DEFAULTS = {
   duration: "30d",          // 60s-30d / forever
   maxViews: null,           // null=不限
   showContact: true,
-  showAttachments: false,
-  showInterviewEval: true,
   showReviews: true,        // 公开页「评价/评论」模块(candidate.reviews)
+  showAttachments: false,
+  showInterviewEval: true,  // 支持填写面试评价
+  showInterviewEvalList: false, // 展示已有面试评价(默认关)
 };
-const TOGGLES = ["showContact", "showAttachments", "showInterviewEval", "showReviews"];
+const TOGGLES = ["showContact", "showReviews", "showAttachments", "showInterviewEval", "showInterviewEvalList"];
 
 function parse(v) { try { return v ? JSON.parse(v) : null; } catch { return null; } }
 
@@ -74,9 +75,10 @@ export async function getEffectiveShareDefaults(userId) {
     duration,
     maxViews,
     showContact: tog("showContact"),
+    showReviews: tog("showReviews"),
     showAttachments: tog("showAttachments"),
     showInterviewEval: tog("showInterviewEval"),
-    showReviews: tog("showReviews"),
+    showInterviewEvalList: tog("showInterviewEvalList"),
   };
 }
 
@@ -104,6 +106,7 @@ export function shareLinkParamsFromDefaults(eff) {
     showContact: eff.showContact,
     showAttachments: eff.showAttachments,
     showInterviewEval: eff.showInterviewEval,
+    showInterviewEvalList: eff.showInterviewEvalList,
     allowedModules,
   };
 }

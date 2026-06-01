@@ -83,6 +83,7 @@ export default async function shareRoutes(app) {
             duration: { type: "string", maxLength: 20 },
             maxViews: { type: ["integer", "null"], minimum: 1, maximum: 9999 },
             showContact:     { type: "boolean" },
+            showReviews:      { type: "boolean" },
             showAttachments: { type: "boolean" },
             showInterviewEval: { type: "boolean" },
             showInterviewEvalList: { type: "boolean" },
@@ -124,7 +125,12 @@ export default async function shareRoutes(app) {
       const showContact = askShowContact && canShowContact;
 
       // 计算 allowedModules 快照
-      const requestedModules = sanitizeAllowedModules(req.body);
+      // showReviews=false → 在请求模块里排除 candidate.reviews(关停评论);未传/ true 维持原行为
+      let requestedModules = sanitizeAllowedModules(req.body);
+      if (req.body?.showReviews === false) {
+        const base = requestedModules || Array.from(ALL_MODULE_KEYS_SET);
+        requestedModules = base.filter((k) => k !== "candidate.reviews");
+      }
       const allowedModules = computeAllowedModules(access, requestedModules);
 
       // 先删旧 link (1 candidate : 1 active link)
@@ -155,6 +161,7 @@ export default async function shareRoutes(app) {
             duration: { type: "string", maxLength: 20 },
             maxViews: { type: ["integer", "null"], minimum: 1, maximum: 9999 },
             showContact:     { type: "boolean" },
+            showReviews:      { type: "boolean" },
             showAttachments: { type: "boolean" },
             showInterviewEval: { type: "boolean" },
             showInterviewEvalList: { type: "boolean" },
@@ -199,8 +206,15 @@ export default async function shareRoutes(app) {
       if (typeof req.body?.showInterviewEvalList === "boolean") {
         data.showInterviewEvalList = req.body.showInterviewEvalList;
       }
-      if (req.body?.allowedModules) {
-        const requested = sanitizeAllowedModules(req.body);
+      if (req.body?.allowedModules || typeof req.body?.showReviews === "boolean") {
+        let requested = sanitizeAllowedModules(req.body);
+        if (req.body?.showReviews === false) {
+          const base = requested || Array.from(ALL_MODULE_KEYS_SET);
+          requested = base.filter((k) => k !== "candidate.reviews");
+        } else if (req.body?.showReviews === true && !requested) {
+          // 显式开评论且未指定模块 → 全开(清空快照,回到默认)
+          requested = null;
+        }
         data.allowedModules = computeAllowedModules(access, requested);
       }
       if (Object.keys(data).length === 0) {

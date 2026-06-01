@@ -18,6 +18,7 @@ const PUT_BODY = {
     showContact: { type: "boolean" },
     showAttachments: { type: "boolean" },
     showInterviewEval: { type: "boolean" },
+    showInterviewEvalList: { type: "boolean" },
     showReviews: { type: "boolean" },
   },
   additionalProperties: false,
