@@ -7,6 +7,7 @@
 // 全部 fail-soft:任一步失败只记日志,绝不影响解析主流程。
 
 import { randomBytes } from "node:crypto";
+import { getEffectiveShareDefaults, shareLinkParamsFromDefaults } from "./feishuShareDefaults.js";
 
 const APP_ID = process.env.LARK_APP_ID || "";
 const APP_SECRET = process.env.LARK_APP_SECRET || "";
@@ -48,20 +49,23 @@ async function sendCardToChat(chatId, card) {
   return json;
 }
 
-// 为候选人建/换一个公开 ShareLink(同候选人只留一个 active),返回完整公开 URL
+// 为候选人建/换一个公开 ShareLink(同候选人只留一个 active),返回完整公开 URL。
+// 设置来自「飞书 bot 分享」生效配置(admin 全局策略 clamp 单人偏好,按候选人 ownerId 解析)。
 async function createShareLink(app, candidate) {
   await app.prisma.shareLink.deleteMany({ where: { candidateId: candidate.id } });
+  const eff = await getEffectiveShareDefaults(candidate.ownerId);
+  const p = shareLinkParamsFromDefaults(eff);
   const token = randomBytes(24).toString("base64url");
   await app.prisma.shareLink.create({
     data: {
       token,
       candidateId: candidate.id,
-      expiresAt: new Date(Date.now() + 30 * 86400 * 1000), // 30 天
-      maxViews: null,
-      showContact: true,
-      showAttachments: false,
-      showInterviewEval: false,
-      allowedModules: [],
+      expiresAt: p.expiresAt,
+      maxViews: p.maxViews,
+      showContact: p.showContact,
+      showAttachments: p.showAttachments,
+      showInterviewEval: p.showInterviewEval,
+      allowedModules: p.allowedModules,
       createdBy: candidate.ownerId || null,
     },
   });
