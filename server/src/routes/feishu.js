@@ -152,7 +152,9 @@ export default async function feishuRoutes(app) {
         if (!candidate.attachment) return reply.send({ toast: toast("error", "该候选人无简历附件,无法解析") });
         const task = await createTask(app, candidate.id, "reparse");
         // fire-and-forget;jobIdOverride=undefined 沿用候选人当前 jobId(Phase 2 已设)
-        setImmediate(() => runReparse(app, task.id, candidate.id, undefined, undefined));
+        // 透传原群 chat_id:解析完成后把候选人详情卡片发回该群(Phase 4)
+        const chatId = body?.event?.context?.open_chat_id;
+        setImmediate(() => runReparse(app, task.id, candidate.id, undefined, undefined, chatId));
         return reply.send({ toast: toast("info", "已开始解析"), card: cardParsing() });
       }
 
