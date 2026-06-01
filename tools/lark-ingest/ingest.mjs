@@ -43,6 +43,8 @@ const ALLOWED_EXT = new Set(
   (process.env.ALLOWED_EXT || "pdf,doc,docx").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)
 );
 const MAX_SIZE = Number(process.env.MAX_SIZE || 20 * 1024 * 1024);
+// 回执开关:机器人在群里回复上传结果。需飞书应用已开「发送消息」权限;未开时设 false 不影响入库。
+const REPLY_ENABLED = (process.env.REPLY_ENABLED ?? "true") !== "false";
 const EVENT_KEY = "im.message.receive_v1";
 // DATA_DIR:去重状态目录(容器内挂卷持久化以扛重启);下载是临时文件,用完即删
 const DATA_DIR = process.env.DATA_DIR || HERE;
@@ -113,6 +115,16 @@ async function fetchFileResource(messageId) {
   return { fileKey: body.file_key, fileName: body.file_name || "resume" };
 }
 
+// 回执:在群/私聊里回复到那条简历消息下面(markdown)。失败只记日志,绝不影响入库。
+async function replyToMessage(messageId, markdown) {
+  if (!REPLY_ENABLED || !messageId) return;
+  try {
+    await runCli(["im", "+messages-reply", "--message-id", messageId, "--markdown", markdown, "--as", "bot"]);
+  } catch (e) {
+    console.error(`[warn] 回执失败(检查机器人发送消息权限 im:message): ${e.message}`);
+  }
+}
+
 async function downloadFile(messageId, fileKey, ext) {
   await mkdir(DOWNLOAD_DIR, { recursive: true });
   // --output 仅允许相对路径(lark-cli 拒绝 .. 穿越),相对脚本所在目录给 downloads/
@@ -172,18 +184,29 @@ async function handleEvent(obj) {
   }
 
   let localPath = null;
+  let validResume = null; // 一旦确认是要入库的简历文件就记下文件名,失败时用于回执
   try {
     const { fileKey, fileName } = await fetchFileResource(messageId);
     const ext = (fileName.match(/\.([a-zA-Z0-9]{1,8})$/)?.[1] || "").toLowerCase();
+    // 非简历(后缀不符)静默跳过,不回执避免群里刷屏
     if (!ALLOWED_EXT.has(ext)) { console.log(`[skip] 后缀 .${ext} 不在白名单 file=${fileName}`); markSeen(eventId); return; }
+    validResume = fileName;
 
     localPath = await downloadFile(messageId, fileKey, ext);
     const buffer = await readFile(localPath);
     if (buffer.length === 0) { console.log(`[skip] 空文件 file=${fileName}`); markSeen(eventId); return; }
-    if (buffer.length > MAX_SIZE) { console.log(`[skip] 超过 ${MAX_SIZE} 字节 file=${fileName}`); markSeen(eventId); return; }
+    if (buffer.length > MAX_SIZE) {
+      console.log(`[skip] 超过 ${MAX_SIZE} 字节 file=${fileName}`);
+      await replyToMessage(messageId, `⚠️ 简历 **${fileName}** 超过大小上限,未入库`);
+      markSeen(eventId); return;
+    }
 
     const hash = createHash("sha256").update(buffer).digest("hex");
-    if (seen.hashes.has(hash)) { console.log(`[dedup] 同文件已入库过 file=${fileName}`); markSeen(eventId); return; }
+    if (seen.hashes.has(hash)) {
+      console.log(`[dedup] 同文件已入库过 file=${fileName}`);
+      await replyToMessage(messageId, `ℹ️ 简历 **${fileName}** 之前已入库,本次跳过`);
+      markSeen(eventId); return;
+    }
 
     const source = `飞书${chatType === "p2p" ? "私聊" : "群"}自动入库`;
     const ack = await uploadToMesa({ buffer, filename: fileName, contentType: MIME[ext], source });
@@ -191,9 +214,11 @@ async function handleEvent(obj) {
     seen.hashes.add(hash);
     markSeen(eventId);
     console.log(`[ok] 入库成功 file=${fileName} chat=${chatType} uploadCount=${ack.uploadCount ?? "?"}`);
+    await replyToMessage(messageId, `✅ 已收到简历 **${fileName}**,入库成功(状态:待解析)~`);
   } catch (e) {
     console.error(`[err] 处理失败 message_id=${messageId}: ${e.message}`);
     // 不 markSeen → 下次重投有机会重试
+    if (validResume) await replyToMessage(messageId, `❌ 简历 **${validResume}** 入库失败,请稍后重试或联系管理员`);
   } finally {
     if (localPath) await rm(localPath, { force: true }).catch(() => {}); // 临时文件用完即删
   }

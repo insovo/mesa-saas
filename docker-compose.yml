@@ -163,6 +163,8 @@ services:
       MESA_BASE_URL: ${LARK_MESA_BASE_URL:-http://backend:3001}
       # MESA 长期公开上传链接 token(决定入库候选人归属人 ownerId)
       UPLOAD_TOKEN: ${LARK_UPLOAD_TOKEN:-}
+      # 群内回执开关(机器人回复上传结果);需飞书应用已开发送消息权限,未开可设 false
+      REPLY_ENABLED: ${LARK_REPLY_ENABLED:-true}
     volumes:
       - mesa_lark_ingest_data:/app/data   # 去重状态持久化,扛重启
     networks:
