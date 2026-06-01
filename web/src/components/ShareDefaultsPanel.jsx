@@ -152,7 +152,7 @@ export function BotShareSettings({ open }) {
   const isAdmin = data.isAdmin;
   const capCfg = data.global || data.builtin; // 非 admin 的关停来源
   const TOGGLE_META = [
-    { k: "showContact", t: "展示联系方式", d: "公开页是否露出 phone / email(mask)" },
+    { k: "showContact", t: "展示联系方式", d: "公开页是否完整展示 phone / email" },
     { k: "showReviews", t: "显示评论/评价", d: "公开页评价对话模块" },
     { k: "showAttachments", t: "允许上传评论附件", d: "评论表单的附件输入" },
     { k: "showInterviewEval", t: "支持填写面试评价", d: "公开页「填写面试评价」入口" },

@@ -17,23 +17,24 @@ function tokenGen() {
 }
 
 // 简报(aiSummary)里常含完整电话/邮箱,公开页须与结构化字段同等门控:
-//   showContact=true → 打码,false → 抹去(防泄露)。
-// 候选人可能是任何国家的人 → 不绑定中国手机号格式:只在带「电话/phone/tel」标签的行里
-// 处理号码(兼容各国格式 +/空格/横杠),避免误伤年份/编号等其它数字;邮箱靠 @ 通用匹配。
+//   showContact=true → 完整展示(招聘官需要真号码联系候选人);false → 抹去防泄露。
+// 隐藏时:候选人可能是任何国家的人,不绑定中国号码格式 —— 只在带「电话/phone/tel」标签的行
+// 抹号码(兼容各国格式 +/空格/横杠,校验 6-15 位避免误伤年份/编号);邮箱靠 @ 通用匹配。
 const CONTACT_LABEL_RE = /(联系电话|电话|手机号?|电话号码|tel\.?|phone|mobile|cell)/i;
 const PHONE_TOKEN_RE = /([+(]?\d[\d\s\-()]{5,}\d)/;
-const SUMMARY_EMAIL_RE = /([A-Za-z0-9._%+-]{1,2})[A-Za-z0-9._%+-]*(@[A-Za-z0-9.-]+)/g;
+const SUMMARY_EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 function sanitizeSummaryContact(summary, showContact) {
   if (typeof summary !== "string" || !summary) return summary;
-  let out = summary.split("\n").map((line) => {
+  if (showContact) return summary; // 展示联系方式时,简报里的电话/邮箱完整保留
+  const out = summary.split("\n").map((line) => {
     if (!CONTACT_LABEL_RE.test(line)) return line;
     return line.replace(PHONE_TOKEN_RE, (tok) => {
       const d = tok.replace(/\D/g, "");
       if (d.length < 6 || d.length > 15) return tok; // 不像电话(年份/短编号),放过
-      return showContact ? `${d.slice(0, 3)}****${d.slice(-2)}` : "[已隐藏]";
+      return "[已隐藏]";
     });
   }).join("\n");
-  return showContact ? out.replace(SUMMARY_EMAIL_RE, "$1***$2") : out.replace(SUMMARY_EMAIL_RE, "[已隐藏]");
+  return out.replace(SUMMARY_EMAIL_RE, "[已隐藏]");
 }
 
 function computeExpiresAt(duration) {
@@ -379,8 +380,8 @@ export default async function shareRoutes(app) {
         age: c.age,
         location: c.location,
         yearsExp: c.yearsExp,
-        phone: showContact && c.phone ? c.phone.replace(/(\d{3})\d{4}(\d{4})/, "$1****$2") : null,
-        email: showContact && c.email ? c.email.replace(/(.{2}).+(@.+)/, "$1***$2") : null,
+        phone: showContact && c.phone ? c.phone : null,
+        email: showContact && c.email ? c.email : null,
         appliedFor: c.appliedFor,
         jdMatch: showJdMatch ? c.jdMatch : null,
         status: c.status,

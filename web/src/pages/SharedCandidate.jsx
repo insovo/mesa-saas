@@ -20,6 +20,7 @@ import {
   toast,
 } from "../components/Primitives.jsx";
 import MarkdownBullets from "../components/MarkdownBullets.jsx";
+import BrandLogo from "../components/BrandLogo.jsx";
 
 function fmtExpiresHint(iso) {
   if (!iso) return "永久有效";
@@ -112,9 +113,7 @@ export default function SharedCandidate() {
       {/* 顶部 banner */}
       <header className="bg-white border-b border-gray-200 py-4 px-4 md:px-8">
         <div className="max-w-5xl mx-auto flex items-center justify-between gap-4 flex-wrap">
-          <span className="text-[20px] uppercase text-navy-700" style={{ fontFamily: "Poppins, sans-serif", fontWeight: 700 }}>
-            MESA <span style={{ fontWeight: 500 }}>RECRUIT</span>
-          </span>
+          <BrandLogo size="text-[20px] md:text-[22px]" className="font-semibold tracking-tight" style={{ fontFamily: "Poppins, sans-serif" }} />
           <div className="flex items-center gap-3 text-xs text-gray-600">
             <span className="flex items-center gap-1"><I name="share-2" size={12} /> 招聘官只读视图</span>
             <span className="flex items-center gap-1"><I name="clock" size={12} /> {fmtExpiresHint(share?.expiresAt)}</span>
@@ -139,7 +138,7 @@ export default function SharedCandidate() {
               <div className="flex flex-wrap gap-1.5 mt-3">
                 {(c.tags || []).map((t) => <Tag key={t}>{t}</Tag>)}
               </div>
-              {/* 联系方式:share.showContact=true 时显示(已 mask),false 时整段隐藏 */}
+              {/* 联系方式:share.showContact=true 时完整显示,false 时整段隐藏 */}
               {data?.share?.showContact !== false ? (
                 <>
                   <div className="flex flex-wrap gap-x-4 md:gap-x-6 gap-y-2 mt-4 text-[11px] md:text-xs text-gray-700">
@@ -147,8 +146,8 @@ export default function SharedCandidate() {
                     <span className="flex items-center gap-1"><I name="mail" size={12} /> {c.email || "—"}</span>
                     <span className="flex items-center gap-1"><I name="briefcase" size={12} /> {c.appliedFor || "—"}</span>
                   </div>
-                  <p className="text-[11px] text-amber-700 mt-2">
-                    ⓘ 联系方式已自动打码,如需联系候选人请联系分享方
+                  <p className="text-[11px] text-gray-500 mt-2">
+                    ⓘ 分享方已开放联系方式,请妥善保管、勿外传
                   </p>
                 </>
               ) : (

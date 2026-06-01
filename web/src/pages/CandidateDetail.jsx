@@ -1140,7 +1140,7 @@ function ShareVisibilityToggles({ showContact, setShowContact, showReviews, setS
           />
           <div className="flex-1 min-w-0">
             <p className="text-xs font-bold text-[#1B254B]">展示联系方式</p>
-            <p className="text-[10px] text-[#A3AED0] mt-0.5">关闭后访客看不到 phone / email,即便已 mask</p>
+            <p className="text-[10px] text-[#A3AED0] mt-0.5">关闭后访客看不到 phone / email;开启则完整展示</p>
           </div>
         </label>
         <label className="flex items-start gap-2.5 p-2.5 rounded-lg border border-[#E9ECEF] hover:border-[#422AFB]/40 cursor-pointer transition">
