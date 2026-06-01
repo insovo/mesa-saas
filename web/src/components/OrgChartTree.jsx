@@ -31,7 +31,7 @@ const V_GAP = 72;
 const EDGE_H = 14; // 上/下边缘 dropzone 高度
 
 // ===== 工具:树形布局 =====
-function buildTree(items) {
+export function buildTree(items) {
   const byParent = new Map();
   for (const it of items) {
     const k = it.parentId || "_root";
@@ -116,7 +116,7 @@ function computeDescendantCounts(items) {
   return out;
 }
 
-function getDescendantSet(items, rootId) {
+export function getDescendantSet(items, rootId) {
   const out = new Set();
   const stack = [rootId];
   while (stack.length) {
@@ -131,7 +131,7 @@ function getDescendantSet(items, rootId) {
   return out;
 }
 
-function computeMoves(items, active, overZoneId) {
+export function computeMoves(items, active, overZoneId) {
   if (!overZoneId) return [];
   let newParentId = null;
   let mode = null; // "before" | "after" | "child" | "root"

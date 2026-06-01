@@ -11,8 +11,9 @@ import {
   toast,
 } from "../components/Primitives.jsx";
 import OrgChartTree from "../components/OrgChartTree.jsx";
+import OrgTreeList from "../components/OrgTreeList.jsx";
 
-const EMPTY_FORM = { name: "", code: "", head: "", headcount: 0, openHc: 0 };
+const EMPTY_FORM = { name: "", code: "", head: "", headcount: 0, openHc: 0, parentId: null };
 
 function ExportMenu({ rootCandidates, onExport }) {
   const [open, setOpen] = useState(false);
@@ -65,6 +66,8 @@ export default function Departments() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [view, setView] = useState("tree"); // tree | chart
+  const [parentName, setParentName] = useState("");
 
   async function load() {
     setLoading(true);
@@ -84,13 +87,22 @@ export default function Departments() {
 
   function openCreate() {
     setEditing(null);
+    setParentName("");
     setForm(EMPTY_FORM);
+    setCreateOpen(true);
+  }
+
+  function openCreateChild(parent) {
+    setEditing(null);
+    setParentName(parent.name);
+    setForm({ ...EMPTY_FORM, parentId: parent.id });
     setCreateOpen(true);
   }
 
   function openEdit(d) {
     setEditing(d);
-    setForm({ name: d.name, code: d.code || "", head: d.head || "", headcount: d.headcount || 0, openHc: d.openHc || 0 });
+    setParentName("");
+    setForm({ name: d.name, code: d.code || "", head: d.head || "", headcount: d.headcount || 0, openHc: d.openHc || 0, parentId: d.parentId ?? null });
     setCreateOpen(true);
   }
 
@@ -170,11 +182,34 @@ export default function Departments() {
           <div>
             <h2 className="title-card flex items-center gap-2">
               <I name="network" size={18} className="text-brand" />
-              组织架构图
+              组织架构
             </h2>
-            <p className="text-xs text-gray-700 mt-1">拖动节点调整父子关系 · 顶部根区可拖出顶级部门</p>
+            <p className="text-xs text-gray-700 mt-1">
+              {view === "tree"
+                ? "缩进折叠树 · 拖动手柄调整层级 · 顶部根区可拖出顶级部门"
+                : "横向架构图 · 拖动节点调整父子关系 · 顶部根区可拖出顶级部门"}
+            </p>
           </div>
           <div className="flex items-center gap-2">
+            {/* 视图切换 */}
+            <div className="inline-flex items-center rounded-xl border border-gray-200 p-0.5 bg-white">
+              <button
+                onClick={() => setView("tree")}
+                className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-bold transition-colors ${
+                  view === "tree" ? "bg-brand text-white" : "text-gray-700 hover:bg-lightPrimary"
+                }`}
+              >
+                <I name="list-tree" size={14} /> 树视图
+              </button>
+              <button
+                onClick={() => setView("chart")}
+                className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-bold transition-colors ${
+                  view === "chart" ? "bg-brand text-white" : "text-gray-700 hover:bg-lightPrimary"
+                }`}
+              >
+                <I name="network" size={14} /> 架构图
+              </button>
+            </div>
             <ExportMenu
               rootCandidates={items.filter((d) => !d.parentId)}
               onExport={onExport}
@@ -186,6 +221,14 @@ export default function Departments() {
           <LoadingBlock height="h-40" />
         ) : items.length === 0 ? (
           <Empty icon="network" title="还没有部门,先新建一个" />
+        ) : view === "tree" ? (
+          <OrgTreeList
+            items={items}
+            onReorder={onReorder}
+            onEdit={openEdit}
+            onDelete={onDelete}
+            onAddChild={openCreateChild}
+          />
         ) : (
           <OrgChartTree items={items} onReorder={onReorder} />
         )}
@@ -254,11 +297,17 @@ export default function Departments() {
       <Modal open={createOpen} onClose={() => setCreateOpen(false)}>
         <form onSubmit={onSubmit} className="p-8">
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-xl font-bold text-navy-700">{editing ? "编辑部门" : "新建部门"}</h3>
+            <h3 className="text-xl font-bold text-navy-700">{editing ? "编辑部门" : parentName ? "新建子部门" : "新建部门"}</h3>
             <button type="button" onClick={() => setCreateOpen(false)} className="text-gray-400 hover:text-navy-700">
               <I name="x" size={20} />
             </button>
           </div>
+          {!editing && parentName && (
+            <div className="mb-4 flex items-center gap-2 text-xs text-brand bg-brand-50 rounded-xl px-3 py-2">
+              <I name="corner-down-right" size={14} />
+              将作为「{parentName}」的子部门创建
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-4">
             <Input containerClassName="col-span-2" label="部门名" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
               <Input label="部门代码" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} />
