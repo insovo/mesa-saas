@@ -21,6 +21,7 @@ const PUT_BODY = {
     showInterviewEvalList: { type: "boolean" },
     showReviews: { type: "boolean" },
     showResume: { type: "boolean" },
+    showNotes: { type: "boolean" },
   },
   additionalProperties: false,
 };

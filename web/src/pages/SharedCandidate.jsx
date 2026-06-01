@@ -298,6 +298,61 @@ export default function SharedCandidate() {
           </Card>
         </div>
 
+        {/* === 洞察(始终展示,有数据才出现)=== */}
+        {Array.isArray(c.insights) && c.insights.length > 0 && (
+          <Card className="p-5 md:p-6">
+            <h3 className="title-card flex items-center gap-2">
+              <I name="sparkles" size={18} className="text-brand" />
+              洞察
+            </h3>
+            <ul className="mt-4 space-y-2.5 text-xs md:text-sm text-gray-700">
+              {c.insights.map((it, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <I
+                    name={it.kind === "down" ? "trending-down" : "trending-up"}
+                    size={15}
+                    className={`mt-0.5 shrink-0 ${it.kind === "down" ? "text-amber-500" : "text-green-500"}`}
+                  />
+                  <span className="leading-relaxed">{it.text}</span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
+
+        {/* === 备注(受 share.showNotes 控制,默认关)=== */}
+        {share?.showNotes && Array.isArray(c.notes) && c.notes.length > 0 && (
+          <Card className="p-5 md:p-6">
+            <h3 className="title-card flex items-center gap-2">
+              <I name="sticky-note" size={18} className="text-brand" />
+              备注
+            </h3>
+            <ul className="mt-4 space-y-3">
+              {c.notes.map((n) => (
+                <li key={n.id} className="flex gap-3 p-3 rounded-xl bg-lightPrimary">
+                  <div
+                    className="w-8 h-8 rounded-full text-white flex items-center justify-center shrink-0 text-xs font-bold"
+                    style={{ background: "linear-gradient(135deg, #868CFF 0%, #432CF3 50%, #422AFB 100%)" }}
+                  >
+                    {(n.authorName || "?").slice(0, 1).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-gray-500">
+                      <span className="font-bold text-navy-700">{n.authorName || "匿名"}</span>
+                      {n.createdAt && (
+                        <span className="ml-1">· {new Date(n.createdAt).toLocaleString("zh-CN")}</span>
+                      )}
+                    </p>
+                    <p className="text-sm text-navy-700 mt-1 whitespace-pre-wrap leading-relaxed break-words">
+                      {n.content}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
+
         {/* === 面试评价(支持填写 / 展示已有,两个独立开关任一开即显示)=== */}
         {(share?.showInterviewEval || share?.showInterviewEvalList) && (() => {
           const canFill = share?.showInterviewEval;

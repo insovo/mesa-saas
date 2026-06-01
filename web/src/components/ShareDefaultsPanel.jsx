@@ -99,7 +99,7 @@ export function BotShareSettings({ open }) {
   const [showCustom, setShowCustom] = useState(false);
   const [maxViewsPreset, setMaxViewsPreset] = useState("unlimited");
   const [customMaxViews, setCustomMaxViews] = useState(100);
-  const [tg, setTg] = useState({ showContact: true, showReviews: true, showResume: true, showAttachments: false, showInterviewEval: true, showInterviewEvalList: false });
+  const [tg, setTg] = useState({ showContact: true, showReviews: true, showResume: true, showNotes: false, showAttachments: false, showInterviewEval: true, showInterviewEvalList: false });
 
   const PRESETS = [
     { v: "1d", l: "1 天" }, { v: "3d", l: "3 天" }, { v: "7d", l: "1 周" },
@@ -118,6 +118,7 @@ export function BotShareSettings({ open }) {
       showContact: cfg.showContact !== false,
       showReviews: cfg.showReviews !== false,
       showResume: cfg.showResume !== false,
+      showNotes: cfg.showNotes === true,
       showAttachments: cfg.showAttachments === true,
       showInterviewEval: cfg.showInterviewEval !== false,
       showInterviewEvalList: cfg.showInterviewEvalList === true,
@@ -155,6 +156,7 @@ export function BotShareSettings({ open }) {
   const TOGGLE_META = [
     { k: "showContact", t: "展示联系方式", d: "公开页是否完整展示 phone / email" },
     { k: "showResume", t: "查看原始简历", d: "公开页可下载/查看候选人原始简历文件" },
+    { k: "showNotes", t: "允许查看备注", d: "公开页展示内部备注模块(默认关;洞察不受此控,始终展示)" },
     { k: "showReviews", t: "显示评论/评价", d: "公开页评价对话模块" },
     { k: "showAttachments", t: "允许上传评论附件", d: "评论表单的附件输入" },
     { k: "showInterviewEval", t: "支持填写面试评价", d: "公开页「填写面试评价」入口" },
