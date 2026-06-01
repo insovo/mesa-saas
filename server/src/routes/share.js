@@ -65,6 +65,7 @@ export default async function shareRoutes(app) {
             showContact:     { type: "boolean" },
             showAttachments: { type: "boolean" },
             showInterviewEval: { type: "boolean" },
+            showInterviewEvalList: { type: "boolean" },
             // 创建者最多能允许的模块,会和创建者自身的模块权限取交集
             allowedModules: { type: "array", items: { type: "string", maxLength: 64 } },
           },
@@ -94,6 +95,8 @@ export default async function shareRoutes(app) {
 
       // showInterviewEval 默认开,创建者只要能分享即可开放(无额外模块门)
       const showInterviewEval = req.body?.showInterviewEval !== false;
+      // showInterviewEvalList(展示已有评价)默认关,独立于「支持填写」
+      const showInterviewEvalList = req.body?.showInterviewEvalList === true;
 
       // showContact 必须创建者拥有 candidate.contact 才允许
       const askShowContact = req.body?.showContact !== false; // default true
@@ -116,6 +119,7 @@ export default async function shareRoutes(app) {
           showContact,
           showAttachments,
           showInterviewEval,
+          showInterviewEvalList,
           allowedModules,
           createdBy: req.user.sub,
         },
@@ -133,6 +137,7 @@ export default async function shareRoutes(app) {
             showContact:     { type: "boolean" },
             showAttachments: { type: "boolean" },
             showInterviewEval: { type: "boolean" },
+            showInterviewEvalList: { type: "boolean" },
             allowedModules: { type: "array", items: { type: "string", maxLength: 64 } },
           },
           additionalProperties: false,
@@ -170,6 +175,9 @@ export default async function shareRoutes(app) {
       }
       if (typeof req.body?.showInterviewEval === "boolean") {
         data.showInterviewEval = req.body.showInterviewEval;
+      }
+      if (typeof req.body?.showInterviewEvalList === "boolean") {
+        data.showInterviewEvalList = req.body.showInterviewEvalList;
       }
       if (req.body?.allowedModules) {
         const requested = sanitizeAllowedModules(req.body);
@@ -300,8 +308,30 @@ export default async function shareRoutes(app) {
     const showAttachments = link.showAttachments === true && effective.has("candidate.attachments");
     const showAiInsights = effective.has("candidate.aiInsights");
     const showJdMatch = effective.has("candidate.jdMatch");
+    const showInterviewEval = link.showInterviewEval !== false;
+    const showInterviewEvalList = link.showInterviewEvalList === true;
+
+    // 「展示已有面试评价」开启时,带出该候选人已提交的评价记录(只读可看,含 token 查看详情);
+    // 草稿/未提交不暴露 token,防被随意编辑。独立于「支持填写」开关。
+    let interviewEvals = [];
+    if (showInterviewEvalList) {
+      const evs = await app.prisma.interviewEvaluation.findMany({
+        where: { candidateId: c.id, status: "submitted", deletedAt: null },
+        orderBy: { submittedAt: "desc" },
+        select: { token: true, interviewer: true, position: true, totalScore: true, recommendation: true, submittedAt: true },
+      });
+      interviewEvals = evs.map((e) => ({
+        token: e.token,
+        interviewer: e.interviewer || null,
+        position: e.position || null,
+        totalScore: e.totalScore,
+        recommendation: e.recommendation || null,
+        submittedAt: e.submittedAt,
+      }));
+    }
 
     return {
+      interviewEvals,
       candidate: {
         id: c.id,
         externalId: c.externalId,
@@ -336,7 +366,8 @@ export default async function shareRoutes(app) {
         createdAt: link.createdAt,
         showContact,
         showAttachments,
-        showInterviewEval: link.showInterviewEval !== false,
+        showInterviewEval,
+        showInterviewEvalList,
         allowedModules: Array.from(effective),
       },
     };

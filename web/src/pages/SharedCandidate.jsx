@@ -281,25 +281,67 @@ export default function SharedCandidate() {
           </Card>
         </div>
 
-        {/* === 面试评价入口(分享设置开启时显示)=== */}
-        {share?.showInterviewEval && (
-          <Card className="p-5 md:p-6 flex items-center justify-between gap-3 flex-wrap">
-            <div className="min-w-0">
+        {/* === 面试评价(支持填写 / 展示已有,两个独立开关任一开即显示)=== */}
+        {(share?.showInterviewEval || share?.showInterviewEvalList) && (() => {
+          const canFill = share?.showInterviewEval;
+          const evals = share?.showInterviewEvalList ? (data?.interviewEvals || []) : [];
+          return (
+          <Card className="p-5 md:p-6">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
               <h3 className="title-card flex items-center gap-2">
                 <I name="clipboard-check" size={18} className="text-brand" />
                 面试评价
+                {evals.length > 0 && (
+                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-brand text-white font-bold">{evals.length}</span>
+                )}
               </h3>
-              <p className="text-xs text-gray-600 mt-1">面试官可在线填写本候选人的面试评价表,提交后自动归档到招聘系统。</p>
+              {canFill && (
+                <Button
+                  onClick={startInterviewEval}
+                  disabled={evalStarting}
+                  icon={<I name={evalStarting ? "loader" : "pen-line"} size={14} className={evalStarting ? "animate-spin" : ""} />}
+                >
+                  {evalStarting ? "生成中…" : "填写面试评价"}
+                </Button>
+              )}
             </div>
-            <Button
-              onClick={startInterviewEval}
-              disabled={evalStarting}
-              icon={<I name={evalStarting ? "loader" : "pen-line"} size={14} className={evalStarting ? "animate-spin" : ""} />}
-            >
-              {evalStarting ? "生成中…" : "填写面试评价"}
-            </Button>
+            {evals.length > 0 ? (
+              <ul className="mt-4 space-y-2">
+                {evals.map((ev) => (
+                  <li key={ev.token}>
+                    <a
+                      href={`/interview-eval/${ev.token}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-3 p-3 rounded-xl bg-lightPrimary hover:bg-white border border-transparent hover:border-brand/30 hover:shadow-card transition"
+                    >
+                      {ev.totalScore != null ? (
+                        <LiquidLoader size={40} level={ev.totalScore} label={Math.round(ev.totalScore)} />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-gray-400 shrink-0"><I name="file-text" size={16} /></div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-bold text-navy-700 truncate">{ev.interviewer || "面试官"}</span>
+                          {ev.recommendation && (
+                            <span className="text-[11px] px-2 py-0.5 rounded-full bg-brand-50 text-brand font-bold">{ev.recommendation}</span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-gray-500 mt-0.5 truncate">
+                          {[ev.position, ev.submittedAt ? fmtTime(ev.submittedAt) : null].filter(Boolean).join(" · ") || "已提交"}
+                        </p>
+                      </div>
+                      <I name="chevron-right" size={16} className="text-gray-400 shrink-0" />
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              canFill && <p className="text-xs text-gray-600 mt-2">面试官可在线填写本候选人的面试评价表,提交后自动归档到招聘系统。</p>
+            )}
           </Card>
-        )}
+          );
+        })()}
 
         {/* === 评论 === */}
         <Card className="p-5 md:p-6">
