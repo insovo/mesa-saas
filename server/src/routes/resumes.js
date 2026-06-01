@@ -11,6 +11,7 @@ import { Readable } from "node:stream";
 import { parseResume, parseJobDescription, matchAgainstJob, isKimiConfigured, listModels } from "../lib/kimi.js";
 import { withDerivedCandidate } from "../lib/derived.js";
 import { createTask, getTask, markRunning, markDone, markFailed } from "../lib/parseTaskStore.js";
+import { notifyCandidateReady } from "../lib/feishuNotify.js";
 import { cleanupEmployeeOnJobChange } from "../lib/candidateToEmployee.js";
 
 const PARSE_BODY = {
@@ -93,7 +94,9 @@ async function streamToBuffer(stream) {
 //   undefined → 沿用候选人当前 jobId(不改 DB)
 //   null      → 取消 JD 关联(清空 candidate.jobId,跳过 match)
 //   uuid 串   → 切到这个 JD,跑 match,并把 candidate.jobId 也同步更新
-export async function runReparse(app, taskId, candidateId, model, jobIdOverride) {
+// notifyChatId:仅飞书卡片「解析」触发时传入,完成后把候选人详情卡片发回该群;
+// web 端 reparse 不传 → undefined → 不通知(向后兼容)
+export async function runReparse(app, taskId, candidateId, model, jobIdOverride, notifyChatId) {
   try {
     await markRunning(app, taskId);
 
@@ -237,6 +240,8 @@ export async function runReparse(app, taskId, candidateId, model, jobIdOverride)
 
     await markDone(app, taskId, { candidate: withDerivedCandidate(updated), match, reparsed: true });
     app.log.info({ taskId, candidateId, jdMatch: updated.jdMatch }, "reparse task done");
+    // Phase 4:飞书卡片触发的解析,完成后把候选人详情(ShareLink)发回原群
+    if (notifyChatId) await notifyCandidateReady(app, updated, notifyChatId);
   } catch (err) {
     app.log.error({ err, taskId, candidateId }, "reparse task failed");
     await markFailed(app, taskId, err);

@@ -70,6 +70,10 @@ services:
       # 飞书卡片回调(card.action.trigger)校验:Verification Token 必填,Encrypt Key 可选(配了才解密)
       FEISHU_VERIFICATION_TOKEN: ${FEISHU_VERIFICATION_TOKEN:-}
       FEISHU_ENCRYPT_KEY: ${FEISHU_ENCRYPT_KEY:-}
+      # 解析完成后由 backend 以 bot 身份发候选人详情卡片回群(Phase 4),复用 lark-ingest 同一应用凭证
+      LARK_APP_ID: ${LARK_APP_ID:-}
+      LARK_APP_SECRET: ${LARK_APP_SECRET:-}
+      LARK_BRAND: ${LARK_BRAND:-feishu}
     # 故意不映射端口 — 仅在 bridge 网络内通过服务名 backend:3001 访问
     expose:
       - "3001"
