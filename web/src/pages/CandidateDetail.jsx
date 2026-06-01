@@ -2997,6 +2997,19 @@ function CandidateDetail() {
     } catch (e) { toast(e.message || "更新失败", "error"); }
   }
 
+  // 标签增删改 — 乐观更新本地 + 持久化到后端(只动 tags,失败回滚),切页/刷新不丢
+  async function changeTags(next) {
+    if (!c) return;
+    const prevTags = c.tags || [];
+    setC((cur) => (cur ? { ...cur, tags: next } : cur));
+    try {
+      await resources.candidates.update(c.id, { tags: next });
+    } catch (e) {
+      setC((cur) => (cur ? { ...cur, tags: prevTags } : cur));
+      toast(e.response?.data?.message || e.message || "标签保存失败", "error");
+    }
+  }
+
   async function runJdMatch() {
     if (!matchingJobId || !c?.id) return toast("请选 JD", "error");
     setMatching(true);
@@ -3112,7 +3125,7 @@ function CandidateDetail() {
           <TagsModule
             tags={c.tags || []}
             suggestions={c.aiSuggestedTags || []}
-            onChange={(next) => setC(prev => prev ? { ...prev, tags: next } : prev)}
+            onChange={changeTags}
           />
 
           {/* What matched / What against + Score ring */}
