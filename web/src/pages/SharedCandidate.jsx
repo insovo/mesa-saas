@@ -39,6 +39,25 @@ export default function SharedCandidate() {
   const [reviewOpen, setReviewOpen] = useState(false);
   const [replyTo, setReplyTo] = useState(null);
   const [selectedIds, setSelectedIds] = useState([]);
+  const [evalStarting, setEvalStarting] = useState(false);
+
+  async function startInterviewEval() {
+    setEvalStarting(true);
+    try {
+      const r = await axios.post(`/api/public/share/${token}/interview-eval`);
+      // 跳转到现有公开填写页(复用 /interview-eval/:token)
+      window.location.assign(`/interview-eval/${r.data.token}`);
+    } catch (e) {
+      const code = e.response?.data?.error;
+      toast(
+        code === "interview_eval_quota" ? "面试评价待填数量已达上限,请联系招聘官"
+          : code === "interview_eval_disabled" ? "此分享未开放面试评价"
+          : (e.response?.data?.message || "无法创建面试评价,请稍后再试"),
+        "error",
+      );
+      setEvalStarting(false);
+    }
+  }
 
   useEffect(() => {
     axios.get(`/api/public/share/${token}`)
@@ -255,6 +274,26 @@ export default function SharedCandidate() {
             )}
           </Card>
         </div>
+
+        {/* === 面试评价入口(分享设置开启时显示)=== */}
+        {share?.showInterviewEval && (
+          <Card className="p-5 md:p-6 flex items-center justify-between gap-3 flex-wrap">
+            <div className="min-w-0">
+              <h3 className="title-card flex items-center gap-2">
+                <I name="clipboard-check" size={18} className="text-brand" />
+                面试评价
+              </h3>
+              <p className="text-xs text-gray-600 mt-1">面试官可在线填写本候选人的面试评价表,提交后自动归档到招聘系统。</p>
+            </div>
+            <Button
+              onClick={startInterviewEval}
+              disabled={evalStarting}
+              icon={<I name={evalStarting ? "loader" : "pen-line"} size={14} className={evalStarting ? "animate-spin" : ""} />}
+            >
+              {evalStarting ? "生成中…" : "填写面试评价"}
+            </Button>
+          </Card>
+        )}
 
         {/* === 评价 === */}
         <Card className="p-5 md:p-6">
