@@ -402,6 +402,20 @@ export default async function interviewEvalRoutes(app) {
     if (link.showInterviewEval === false) {
       return reply.code(403).send({ error: "interview_eval_disabled", message: "此分享未开放面试评价" });
     }
+    // 去重/幂等:该候选人已有「进行中」(未提交 / 未撤销 / 未过期)的面试评价 → 复用最早一条,
+    // 避免分享页重复点击产生多条记录(仅保留第一条)
+    const reusable = await app.prisma.interviewEvaluation.findFirst({
+      where: {
+        candidateId: link.candidateId,
+        status: { in: ["link_sent", "draft"] },
+        submittedAt: null,
+        revokedAt: null,
+        deletedAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+      },
+      orderBy: { createdAt: "asc" },
+    });
+    if (reusable) return reply.code(200).send({ token: reusable.token, reused: true });
     // 防刷:该候选人「未提交」的面试评价草稿数上限
     const PENDING_CAP = 30;
     const pending = await app.prisma.interviewEvaluation.count({
