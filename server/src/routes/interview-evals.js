@@ -494,12 +494,18 @@ export default async function interviewEvalRoutes(app) {
 
     const patch = {};
     const stringFields = [
-      "position", "region", "interviewer",
+      "position", "region",
       "languageStrength", "currentCity", "department", "timezoneCollaboration",
       "strengths", "risks", "followUpQuestions", "finalOpinion",
     ];
     for (const f of stringFields) {
       if (f in req.body) patch[f] = req.body[f] == null ? null : String(req.body[f]);
+    }
+    // interviewer 是非空列(schema: String);草稿阶段允许为空,落库为 "" 而非 null,
+    // 否则分享页创建的初始空 interviewer 在草稿保存时会触发 Prisma null 约束错误。
+    // 最终非空由 /submit 校验保证。
+    if ("interviewer" in req.body) {
+      patch.interviewer = req.body.interviewer == null ? "" : String(req.body.interviewer);
     }
     if ("interviewDate" in req.body) {
       patch.interviewDate = req.body.interviewDate ? new Date(req.body.interviewDate) : null;
