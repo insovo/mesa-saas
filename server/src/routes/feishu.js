@@ -79,9 +79,10 @@ function cardNewJd(cid) {
       },
       {
         tag: "button",
-        text: { tag: "plain_text", content: "✅ 创建岗位" },
+        name: "submit_jd",
+        form_action_type: "submit", // schema 2.0:内嵌表单的提交按钮用 form_action_type,不是 action_type
         type: "primary",
-        action_type: "form_submit",
+        text: { tag: "plain_text", content: "✅ 创建岗位" },
         behaviors: [{ type: "callback", value: { a: "create_jd", cid } }],
       },
     ],
