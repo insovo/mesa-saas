@@ -405,8 +405,34 @@ export default async function shareRoutes(app) {
       notes = resolved.map(({ authorId, ...rest }) => rest);
     }
 
+    // 关联 JD 详情(只读;供公开页「JD 描述」按钮查看,不支持切换)
+    let job = null;
+    if (c.jobId) {
+      const j = await app.prisma.job.findUnique({ where: { id: c.jobId } });
+      if (j) {
+        const fmtDate = (d) => (d ? new Date(d).toISOString().slice(0, 10) : null);
+        job = {
+          title: j.title,
+          dept: j.dept,
+          description: j.description,
+          location: j.location,
+          salary: j.salary,
+          yearsExp: j.yearsExpRange,
+          education: j.educationRequirement,
+          responsibilities: j.responsibilities,
+          requirements: j.requirements,
+          nice: j.nice,
+          benefits: j.benefits,
+          publishedAt: fmtDate(j.publishedAt),
+          deadline: fmtDate(j.deadline),
+          owner: j.owner,
+        };
+      }
+    }
+
     return {
       interviewEvals,
+      job,
       candidate: {
         id: c.id,
         externalId: c.externalId,

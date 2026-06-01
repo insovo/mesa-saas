@@ -21,6 +21,7 @@ import {
 } from "../components/Primitives.jsx";
 import MarkdownBullets from "../components/MarkdownBullets.jsx";
 import BrandLogo from "../components/BrandLogo.jsx";
+import JdDescModal from "../components/JdDescModal.jsx";
 import { candidateExpText, hasWorkExperience } from "../lib/constants.js";
 
 function fmtExpiresHint(iso) {
@@ -42,6 +43,7 @@ export default function SharedCandidate() {
   const [replyTo, setReplyTo] = useState(null);
   const [selectedIds, setSelectedIds] = useState([]);
   const [evalStarting, setEvalStarting] = useState(false);
+  const [jdOpen, setJdOpen] = useState(false);
 
   async function startInterviewEval() {
     setEvalStarting(true);
@@ -166,6 +168,14 @@ export default function SharedCandidate() {
                 >
                   <I name="file-text" size={13} /> 查看原始简历
                 </a>
+              )}
+              {data?.job && (
+                <button
+                  onClick={() => setJdOpen(true)}
+                  className="mt-3 ml-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-brand/30 text-brand text-xs font-bold hover:bg-brand/5 transition"
+                >
+                  <I name="briefcase" size={13} /> JD 描述
+                </button>
               )}
             </div>
             {c.jdMatch != null && (
@@ -474,6 +484,8 @@ export default function SharedCandidate() {
           allowAttachments={data?.share?.showAttachments === true}
           onCreated={(r) => { setReviews((p) => [...p, r]); setReviewOpen(false); setReplyTo(null); }}
         />
+        {/* JD 详情(只读,不传 onSwitch 即不显示切换 JD)*/}
+        <JdDescModal open={jdOpen} onClose={() => setJdOpen(false)} job={data?.job} />
       </main>
     </div>
   );
