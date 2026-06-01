@@ -2,8 +2,8 @@
 // 桌面: Sidebar (可收起) + Topbar + 内容
 // 移动: 汉堡按钮 + 抽屉 Sidebar
 
-import { useEffect, useState } from "react";
-import { Outlet } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Outlet, useLocation } from "react-router-dom";
 import Sidebar, { COLLAPSED_KEY } from "./Sidebar.jsx";
 import Topbar from "./Topbar.jsx";
 import { I, ToastHost } from "./Primitives.jsx";
@@ -11,6 +11,7 @@ import { getUser } from "../lib/auth.js";
 
 export default function Layout() {
   const user = getUser();
+  const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === "1");
 
@@ -23,7 +24,30 @@ export default function Layout() {
   // 路由切换时关闭移动抽屉
   useEffect(() => {
     setMobileOpen(false);
-  }, [/* TODO: location pathname 触发,react-router 内部处理 */]);
+  }, [location.pathname]);
+
+  // 候选人详情页 /candidates/<id>(列表页 /candidates 不算)
+  const isCandidateDetail = /^\/candidates\/[^/]+/.test(location.pathname);
+  // collapsed 的实时镜像 — 让自动收起 effect 只依赖路由、不因 collapsed 变化重跑(否则在详情页手动展开会被立刻又收起)
+  const collapsedRef = useRef(collapsed);
+  collapsedRef.current = collapsed;
+  // 标记「这次收起是自动触发的」,离开详情页时才据此恢复
+  const autoCollapsedRef = useRef(false);
+
+  // 桌面端进候选人详情自动收起左侧导航(给三列详情腾空间),离开时恢复;
+  // 用 setCollapsed(不走 toggleCollapsed)→ 不写 localStorage、不污染用户持久化偏好。
+  // 移动端侧栏是抽屉(collapsed 不影响),此逻辑只在桌面产生视觉效果。
+  useEffect(() => {
+    if (isCandidateDetail) {
+      if (!collapsedRef.current) {
+        autoCollapsedRef.current = true;
+        setCollapsed(true);
+      }
+    } else if (autoCollapsedRef.current) {
+      autoCollapsedRef.current = false;
+      setCollapsed(false);
+    }
+  }, [isCandidateDetail]);
 
   return (
     <div className="flex min-h-screen bg-lightPrimary">
