@@ -13,6 +13,15 @@ import { useParams } from "react-router-dom";
 import { api } from "../lib/api.js";
 import { Card, Button, Input, I, toast, LoadingBlock, ToastHost, Modal, LiquidLoader, RequiredMark } from "../components/Primitives.jsx";
 
+// 访客在公开分享页「添加评论」时填过的姓名(本浏览器 localStorage)— key 与 SharedCandidate 一致,
+// 用于面试评价页面试官姓名为空时自动预填(可改)。
+function readVisitorName() {
+  try {
+    const arr = JSON.parse(localStorage.getItem("mesa.public.review.names") || "[]");
+    return Array.isArray(arr) && arr[0] ? String(arr[0]).slice(0, 100) : "";
+  } catch { return ""; }
+}
+
 // 海外研究院地区分组 — 来源:海外研究院人员统计.xlsx
 const REGION_GROUPS = [
   { group: "欧洲研发中心", items: ["德国", "西班牙", "法国", "波兰", "意大利"] },
@@ -438,7 +447,8 @@ export default function PublicInterviewEval() {
           position: ev.position || "",
           region: ev.region || "",
           interviewDate: ev.interviewDate ? new Date(ev.interviewDate).toISOString().slice(0, 10) : "",
-          interviewer: ev.interviewer || "",
+          // 面试官姓名为空时,沿用访客在本浏览器「添加评论」时填过的姓名(可改)
+          interviewer: ev.interviewer || readVisitorName(),
           languageStrength: ev.languageStrength || "",
           currentCity: ev.currentCity || "",
           department: ev.department || "",

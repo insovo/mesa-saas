@@ -43,8 +43,14 @@ export default function SharedCandidate() {
 
   async function startInterviewEval() {
     setEvalStarting(true);
+    // 沿用访客在「添加评论」时填过的姓名(存本浏览器 localStorage)→ 预填面试官姓名(填写页可改)
+    let savedName = "";
     try {
-      const r = await axios.post(`/api/public/share/${token}/interview-eval`);
+      const arr = JSON.parse(localStorage.getItem(SAVED_NAMES_KEY) || "[]");
+      if (Array.isArray(arr) && arr[0]) savedName = String(arr[0]).slice(0, 100);
+    } catch { /* ignore */ }
+    try {
+      const r = await axios.post(`/api/public/share/${token}/interview-eval`, savedName ? { interviewer: savedName } : {});
       // 跳转到现有公开填写页(复用 /interview-eval/:token)
       window.location.assign(`/interview-eval/${r.data.token}`);
     } catch (e) {

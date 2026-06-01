@@ -390,7 +390,15 @@ export default async function interviewEvalRoutes(app) {
   // 公开:从分享链接(/share/:token)的「填写面试评价」按钮创建一条面试评价邀请。
   // 用 share token 校验 → 用 link.candidateId 预填创建 InterviewEvaluation(createdBy 继承链接创建者)→ 返回 eval token,
   // 前端跳 /interview-eval/:token 复用现有公开填写页。面试官姓名留空,在填写页里自填。
-  app.post("/public/share/:token/interview-eval", async (req, reply) => {
+  app.post("/public/share/:token/interview-eval", {
+    schema: {
+      body: {
+        type: "object",
+        properties: { interviewer: { type: ["string", "null"], maxLength: 100 } },
+        additionalProperties: false,
+      },
+    },
+  }, async (req, reply) => {
     const link = await app.prisma.shareLink.findUnique({
       where: { token: req.params.token },
       include: { candidate: { include: { job: { select: { title: true, dept: true } } } } },
@@ -440,7 +448,8 @@ export default async function interviewEvalRoutes(app) {
         languageStrength: null,
         timezoneCollaboration: null,
         interviewDate: null,
-        interviewer: "",
+        // 访客在评论里填过的姓名带过来预填面试官(可在填写页修改);未带则留空
+        interviewer: (req.body?.interviewer || "").trim().slice(0, 100),
         scores: [],
         templateVersion: TEMPLATE_VERSION,
         templateFileHash: getTemplateHash(),
