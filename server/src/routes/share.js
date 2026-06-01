@@ -300,8 +300,29 @@ export default async function shareRoutes(app) {
     const showAttachments = link.showAttachments === true && effective.has("candidate.attachments");
     const showAiInsights = effective.has("candidate.aiInsights");
     const showJdMatch = effective.has("candidate.jdMatch");
+    const showInterviewEval = link.showInterviewEval !== false;
+
+    // 开放面试评价时,带出该候选人「已提交」的面试评价记录(只读可看,含 token 用于查看详情);
+    // 草稿/未提交不暴露 token,防被随意编辑
+    let interviewEvals = [];
+    if (showInterviewEval) {
+      const evs = await app.prisma.interviewEvaluation.findMany({
+        where: { candidateId: c.id, status: "submitted", deletedAt: null },
+        orderBy: { submittedAt: "desc" },
+        select: { token: true, interviewer: true, position: true, totalScore: true, recommendation: true, submittedAt: true },
+      });
+      interviewEvals = evs.map((e) => ({
+        token: e.token,
+        interviewer: e.interviewer || null,
+        position: e.position || null,
+        totalScore: e.totalScore,
+        recommendation: e.recommendation || null,
+        submittedAt: e.submittedAt,
+      }));
+    }
 
     return {
+      interviewEvals,
       candidate: {
         id: c.id,
         externalId: c.externalId,
@@ -336,7 +357,7 @@ export default async function shareRoutes(app) {
         createdAt: link.createdAt,
         showContact,
         showAttachments,
-        showInterviewEval: link.showInterviewEval !== false,
+        showInterviewEval,
         allowedModules: Array.from(effective),
       },
     };
