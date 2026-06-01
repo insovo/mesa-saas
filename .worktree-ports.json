@@ -15,24 +15,6 @@
       "backend": 3001,
       "frontend": 5173,
       "since": "2026-05-25"
-    },
-    {
-      "slot": 1,
-      "name": "feature/upload",
-      "path": ".worktrees/feature/upload",
-      "branch": "feature/upload",
-      "backend": 3011,
-      "frontend": 5183,
-      "since": "2026-05-25"
-    },
-    {
-      "slot": 2,
-      "name": "feature/candidates",
-      "path": ".worktrees/feature/candidates",
-      "branch": "feature/candidates",
-      "backend": 3021,
-      "frontend": 5193,
-      "since": "2026-05-25"
     }
   ]
 }
