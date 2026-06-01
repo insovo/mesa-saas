@@ -69,6 +69,17 @@ jobs:
           cache-from: type=gha,scope=web
           cache-to: type=gha,scope=web,mode=max
 
+      - name: Build & push lark-ingest
+        uses: docker/build-push-action@v6
+        with:
+          context: ./tools/lark-ingest
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/mesa-lark-ingest:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/mesa-lark-ingest:${{ steps.meta.outputs.tag }}
+          cache-from: type=gha,scope=lark-ingest
+          cache-to: type=gha,scope=lark-ingest,mode=max
+
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
@@ -111,7 +122,7 @@ jobs:
             # 新策略:逐个 service pull,任何一个失败就 fallback 到 `docker compose build` 本地构建。
             # 慢一些(2-3min)但绝不会"看似部署成功实则用旧 image"。
             need_build=0
-            for svc in backend frontend; do
+            for svc in backend frontend lark-ingest; do
               if ! docker compose pull "$svc"; then
                 echo "[deploy] pull $svc failed → 将本地 build 兜底"
                 need_build=1
@@ -119,7 +130,7 @@ jobs:
             done
             if [ "$need_build" = "1" ]; then
               echo "[deploy] rebuilding image(s) locally from /opt/mesa source..."
-              docker compose build backend frontend
+              docker compose build backend frontend lark-ingest
             fi
 
             echo "[deploy] applying compose (--pull missing 保留 postgres/redis 现有镜像不重拉)..."

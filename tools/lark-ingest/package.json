@@ -1,0 +1,10 @@
+{
+  "name": "lark-ingest",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "飞书群/私聊简历自动入库 MESA 的本地最小原型(监听 → 下载 → 公开上传通道)",
+  "scripts": {
+    "start": "node ingest.mjs"
+  }
+}
