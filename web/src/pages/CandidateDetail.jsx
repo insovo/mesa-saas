@@ -3288,11 +3288,11 @@ function CandidateDetail() {
 
         {/* === Top control row: stage + view CTC + job === */}
         <Card className="px-4 md:px-5 py-3">
-          <div className="flex flex-wrap items-center gap-3 md:gap-5">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 md:gap-5">
+            <div className="flex items-center gap-2 w-full md:w-auto">
               <span className="text-xs text-[#707EAE] font-medium whitespace-nowrap">当前阶段</span>
-              <div className="relative">
-                <button onClick={() => setStatusOpen(v => !v)} className="inline-flex items-center gap-2 px-3 h-9 rounded-xl bg-white border border-[#E9ECEF] text-sm text-[#1B254B] font-bold hover:border-[#422AFB] transition">
+              <div className="relative flex-1 md:flex-none">
+                <button onClick={() => setStatusOpen(v => !v)} className="w-full md:w-auto inline-flex items-center justify-between md:justify-start gap-2 px-3 h-9 rounded-xl bg-white border border-[#E9ECEF] text-sm text-[#1B254B] font-bold hover:border-[#422AFB] transition">
                   <span className="w-1.5 h-1.5 rounded-full" style={{ background: STATUS_TONE[c.status]?.dot }} />
                   {c.status}
                   <I name="chevron-down" size={12} />
@@ -3317,14 +3317,14 @@ function CandidateDetail() {
                 )}
               </div>
             </div>
-            <div className="flex-1" />
-            <div className="flex items-center gap-2">
+            <div className="hidden md:block md:flex-1" />
+            <div className="flex items-center gap-2 w-full md:w-auto">
               <span className="text-xs text-[#707EAE] font-medium whitespace-nowrap">岗位</span>
               <select
                 value={c.jobId || ""}
                 disabled={matching}
                 onChange={(e) => switchJob(e.target.value)}
-                className="h-9 px-3 pr-7 rounded-xl bg-white border border-[#E9ECEF] text-sm text-[#1B254B] font-bold hover:border-[#422AFB] outline-none cursor-pointer"
+                className="flex-1 md:flex-none w-full md:w-auto h-9 px-3 pr-7 rounded-xl bg-white border border-[#E9ECEF] text-sm text-[#1B254B] font-bold hover:border-[#422AFB] outline-none cursor-pointer"
               >
                 {jobs.map(j => <option key={j.id} value={j.id}>{j.title}</option>)}
               </select>
@@ -3385,15 +3385,16 @@ function CandidateDetail() {
         </Card>
 
         {/* === Action buttons === */}
-        <div className="flex flex-wrap gap-2">
-          {canEdit && <Button onClick={pushNextStatus} icon={<I name="zap" size={14} />}>推进到下一阶段</Button>}
+        {/* 手机:2 列网格(主操作 + 删除各占整行,无右侧空隙);桌面:flex 一行 + 右推删除 */}
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
+          {canEdit && <Button className="col-span-2 sm:col-auto" onClick={pushNextStatus} icon={<I name="zap" size={14} />}>推进到下一阶段</Button>}
           <Button variant="ghost" onClick={() => setJdDescOpen(true)} icon={<I name="file-text" size={14} />}>JD 描述</Button>
           {canShare && (
             <Button variant="ghost" onClick={() => setShareOpen(true)} icon={<I name="share-2" size={14} />}>分享</Button>
           )}
-          <div className="flex-1" />
+          <div className="hidden sm:block sm:flex-1" />
           {canDelete && (
-            <Button variant="danger" onClick={onDelete} icon={<I name="trash-2" size={14} />}>删除候选人</Button>
+            <Button variant="danger" className="col-span-2 sm:col-auto" onClick={onDelete} icon={<I name="trash-2" size={14} />}>删除候选人</Button>
           )}
         </div>
 
