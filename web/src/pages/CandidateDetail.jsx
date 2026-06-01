@@ -3040,10 +3040,12 @@ function CandidateDetail() {
     <div className="flex flex-col xl:flex-row gap-4 xl:gap-5 items-start">
 
       {/* ╔═══ LEFT COLUMN: Profile · Details · Documents ═══╗ */}
-      <aside className="w-full xl:w-[360px] 2xl:w-[380px] shrink-0 space-y-4 xl:sticky xl:top-4 xl:self-start xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto xl:pr-1 xl:-mr-1">
+      {/* 手机端用 display:contents 把本列「拍平」成父 flex 的直接子项,使「面试/评价/附件」块
+          能用 order-last 排到全页最底;桌面 xl:block 还原为原来的左侧 sticky 列 */}
+      <aside className="contents xl:block w-full xl:w-[360px] 2xl:w-[380px] xl:shrink-0 xl:space-y-4 xl:sticky xl:top-4 xl:self-start xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto xl:pr-1 xl:-mr-1">
 
         {/* === Profile Card === */}
-        <Card className="p-4 md:p-5">
+        <Card className="w-full xl:w-auto p-4 md:p-5">
           {/* 重新解析 banner — 仅在 parser 为空(LLM 上传时降级入库)且有附件时显示 */}
           {!c.parser && c.attachment && (
             <div className="mb-3 -mt-1 rounded-xl bg-amber-50 border border-amber-200 p-2.5 flex items-start gap-2">
@@ -3176,6 +3178,9 @@ function CandidateDetail() {
           </div>
         </Card>
 
+        {/* 手机端这组(面试安排 / 面试评价 / 附件)用 order-last 排到全页最底;桌面 xl:order-none 还原 */}
+        <div className="w-full xl:w-auto space-y-4 order-last xl:order-none">
+
         {/* === Interviews (moved from middle column · 迭代 12) === */}
         <Card className="p-5">
           <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
@@ -3281,6 +3286,7 @@ function CandidateDetail() {
             />
           );
         })()}
+        </div>
       </aside>
 
       {/* ╔═══ MIDDLE COLUMN: Stage controls + AI + Interview + Job overview + 经历 / 项目 / 教育 / 备注 ═══╗ */}
