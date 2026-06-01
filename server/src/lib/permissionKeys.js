@@ -15,6 +15,7 @@ export const PAGE_KEYS = Object.freeze([
   "reports",
   "users",
   "system.llm",
+  "share.settings",
   "audit",
 ]);
 
