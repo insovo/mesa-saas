@@ -435,6 +435,7 @@ model ShareLink {
   showAttachments Boolean   @default(false) @map("show_attachments") // 评价表单的「附件上传」input 是否开放
   showInterviewEval Boolean @default(true) @map("show_interview_eval") // 公开页是否显示「填写面试评价」入口(默认开)
   showInterviewEvalList Boolean @default(false) @map("show_interview_eval_list") // 公开页是否展示已有(已提交)面试评价记录(默认关)
+  showResume      Boolean   @default(true) @map("show_resume") // 公开页是否允许查看原始简历文件(默认开)
   // 创建时快照:允许公开展示的 module key 数组 ["candidate.contact","candidate.reviews",...]
   // 公开访问最终模块 = allowedModules ∩ 创建者当前权限,创建者被停用则整链接 410
   allowedModules  String[]  @default([]) @map("allowed_modules")

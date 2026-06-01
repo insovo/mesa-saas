@@ -88,6 +88,7 @@ export default async function shareRoutes(app) {
             showAttachments: { type: "boolean" },
             showInterviewEval: { type: "boolean" },
             showInterviewEvalList: { type: "boolean" },
+            showResume:        { type: "boolean" },
             // 创建者最多能允许的模块,会和创建者自身的模块权限取交集
             allowedModules: { type: "array", items: { type: "string", maxLength: 64 } },
           },
@@ -125,6 +126,9 @@ export default async function shareRoutes(app) {
       const canShowContact = hasModule(access, "candidate.contact");
       const showContact = askShowContact && canShowContact;
 
+      // showResume 默认开:公开页可查看原始简历文件
+      const showResume = req.body?.showResume !== false;
+
       // 计算 allowedModules 快照
       // showReviews=false → 在请求模块里排除 candidate.reviews(关停评论);未传/ true 维持原行为
       let requestedModules = sanitizeAllowedModules(req.body);
@@ -147,6 +151,7 @@ export default async function shareRoutes(app) {
           showAttachments,
           showInterviewEval,
           showInterviewEvalList,
+          showResume,
           allowedModules,
           createdBy: req.user.sub,
         },
@@ -166,6 +171,7 @@ export default async function shareRoutes(app) {
             showAttachments: { type: "boolean" },
             showInterviewEval: { type: "boolean" },
             showInterviewEvalList: { type: "boolean" },
+            showResume:        { type: "boolean" },
             allowedModules: { type: "array", items: { type: "string", maxLength: 64 } },
           },
           additionalProperties: false,
@@ -206,6 +212,9 @@ export default async function shareRoutes(app) {
       }
       if (typeof req.body?.showInterviewEvalList === "boolean") {
         data.showInterviewEvalList = req.body.showInterviewEvalList;
+      }
+      if (typeof req.body?.showResume === "boolean") {
+        data.showResume = req.body.showResume;
       }
       if (req.body?.allowedModules || typeof req.body?.showReviews === "boolean") {
         let requested = sanitizeAllowedModules(req.body);
@@ -345,6 +354,7 @@ export default async function shareRoutes(app) {
     const showJdMatch = effective.has("candidate.jdMatch");
     const showInterviewEval = link.showInterviewEval !== false;
     const showInterviewEvalList = link.showInterviewEvalList === true;
+    const showResume = link.showResume !== false && !!c.attachment; // 有原始简历文件且开关开
 
     // 「展示已有面试评价」开启时,带出该候选人已提交的评价记录(只读可看,含 token 查看详情);
     // 草稿/未提交不暴露 token,防被随意编辑。独立于「支持填写」开关。
@@ -403,8 +413,33 @@ export default async function shareRoutes(app) {
         showAttachments,
         showInterviewEval,
         showInterviewEvalList,
+        showResume,
         allowedModules: Array.from(effective),
       },
     };
+  });
+
+  // ─── 公开端:查看原始简历文件 ───────────────────────────
+  // showResume 开 + 候选人有 attachment 时,签发短时效 R2 GET URL(不暴露 R2 凭证)。
+  app.get("/public/share/:token/resume", async (req, reply) => {
+    const link = await app.prisma.shareLink.findUnique({
+      where: { token: req.params.token },
+      include: { candidate: { select: { attachment: true } } },
+    });
+    if (!link) return reply.code(404).send({ error: "share_not_found", message: "链接无效" });
+    if (link.expiresAt && link.expiresAt < new Date()) {
+      return reply.code(410).send({ error: "share_expired", message: "此分享链接已过期" });
+    }
+    if (link.maxViews != null && link.viewCount >= link.maxViews) {
+      return reply.code(410).send({ error: "share_quota_exceeded", message: "此链接访问次数已达上限" });
+    }
+    if (link.showResume === false) {
+      return reply.code(403).send({ error: "resume_disabled", message: "分享方未开放原始简历" });
+    }
+    const key = link.candidate?.attachment;
+    if (!key) return reply.code(404).send({ error: "no_resume", message: "该候选人无原始简历文件" });
+    if (!app.r2) return reply.code(503).send({ error: "r2_not_configured", message: "存储未配置" });
+    const url = await app.r2.presignGet({ key, expiresIn: 600 });
+    return { url, expiresIn: 600 };
   });
 }
