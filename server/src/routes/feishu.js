@@ -46,13 +46,47 @@ function toast(type, content) {
   return { type, content, i18n: { zh_cn: content } };
 }
 
-// pick_jd:列出 JD,点击查看详情(详情卡内可直接投递)
+// pick_jd:列出 JD,点击查看详情(详情卡内可直接投递)+ 新建 JD 入口
 function cardPickJd(cid, jobs) {
+  const newBtn = cbButton("➕ 新建 JD", { a: "new_jd", cid }, "primary");
   if (!jobs.length) {
-    return rawCard([md("⚠️ 暂无可选 JD,请先在 MESA 创建岗位")]);
+    return rawCard([md("⚠️ 暂无可选 JD,可直接新建:"), newBtn]);
   }
   const buttons = jobs.map((j) => cbButton(`👁 ${j.title.slice(0, 38)}`, { a: "view_jd", cid, jid: j.id }));
-  return rawCard([md("📋 **点选 JD 查看详情**(详情页可直接投递):"), ...buttons]);
+  return rawCard([md("📋 **点选 JD 查看详情**(详情页可直接投递):"), ...buttons, newBtn]);
+}
+
+// new_jd:岗位名称 + 详细描述输入表单(schema 2.0 form;提交走 create_jd 回调)
+function cardNewJd(cid) {
+  const form = {
+    tag: "form",
+    name: "jd_form",
+    elements: [
+      {
+        tag: "input",
+        name: "title",
+        required: true,
+        label: { tag: "plain_text", content: "岗位名称" },
+        placeholder: { tag: "plain_text", content: "如:高级前端工程师" },
+      },
+      {
+        tag: "input",
+        name: "desc",
+        input_type: "multiline_text",
+        rows: 4,
+        label: { tag: "plain_text", content: "岗位详细描述" },
+        placeholder: { tag: "plain_text", content: "职责 / 任职要求 / 薪资 / 福利等(可选)" },
+      },
+      {
+        tag: "button",
+        text: { tag: "plain_text", content: "✅ 创建岗位" },
+        type: "primary",
+        action_type: "form_submit",
+        behaviors: [{ type: "callback", value: { a: "create_jd", cid } }],
+      },
+    ],
+  };
+  return rawCard([md("➕ **新建 JD**(填写后点「创建岗位」):"), form, cbButton("↩ 返回 JD 列表", { a: "pick_jd", cid })]);
 }
 
 // view_jd:岗位名称 + 详情(薪资/职级/经验/学历/职责/要求/加分项/福利),带投递 + 返回
@@ -171,6 +205,46 @@ export default async function feishuRoutes(app) {
         const job = await app.prisma.job.findUnique({ where: { id: value.jid } });
         if (!job) return reply.send({ toast: toast("error", "该岗位不存在或已删除") });
         return reply.send({ card: cardViewJd(job, value.cid) });
+      }
+
+      // ── new_jd:弹出新建 JD 输入表单 ──
+      if (value.a === "new_jd") {
+        return reply.send({ card: cardNewJd(value.cid) });
+      }
+
+      // ── create_jd:表单提交 → 创建 Job(+ 有 cid 则自动关联当前候选人)──
+      if (value.a === "create_jd") {
+        const form = body?.event?.action?.form_value || {};
+        const title = (form.title || "").trim();
+        const description = (form.desc || "").trim() || null;
+        if (!title) {
+          return reply.send({ toast: toast("error", "请填写岗位名称") });
+        }
+        const job = await app.prisma.job.create({ data: { title, description } });
+        let associated = false;
+        if (value.cid) {
+          const candidate = await app.prisma.candidate.findUnique({
+            where: { id: value.cid },
+            select: { id: true },
+          });
+          if (candidate) {
+            await app.prisma.candidate.update({
+              where: { id: candidate.id },
+              data: { jobId: job.id, appliedFor: job.title },
+            });
+            associated = true;
+          }
+        }
+        const card = associated
+          ? cardJdDone(value.cid, job)
+          : rawCard([
+              md(`✅ 已新建 JD:**${job.title}**`),
+              cbButton("👁 查看 JD 详情", { a: "view_jd", cid: value.cid, jid: job.id }),
+            ]);
+        return reply.send({
+          toast: toast("success", `已新建「${job.title}」${associated ? ",并关联当前候选人" : ""}`),
+          card,
+        });
       }
 
       // ── set_jd:关联候选人到 JD ──
