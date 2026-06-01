@@ -60,6 +60,20 @@ function safeMd(s) {
   return typeof s === "string" ? s.trim().slice(0, 5000) : "";
 }
 
+// 解析后回写候选人姓名:Kimi 偶发漏填结构化 name(但简报模板首行恒为姓名)。
+// 优先 parsed.name → 退而取简报首行(短、无冒号才认作姓名)→ 再退回 fallback(通常是文件名)。
+// 修复:飞书/公开上传的候选人初始 name=文件名,解析后应更新为真实姓名,别留文件名。
+function deriveName(parsedName, summary, fallback) {
+  const clean = (s) => (typeof s === "string" ? s.trim() : "");
+  const pn = clean(parsedName);
+  if (pn) return pn;
+  const firstLine = clean((summary || "").split("\n")[0]);
+  if (firstLine && firstLine.length <= 20 && !firstLine.includes(":") && !firstLine.includes("：")) {
+    return firstLine;
+  }
+  return fallback;
+}
+
 async function streamToBuffer(stream) {
   if (Buffer.isBuffer(stream)) return stream;
   if (stream && typeof stream.transformToByteArray === "function") {
@@ -162,7 +176,7 @@ export async function runReparse(app, taskId, candidateId, model, jobIdOverride)
     // 阶段一只写基础字段 + summary + tags + languages,
     // skills/experience/educationHistory 由阶段二(match)产出,这里不动。
     const updateData = {
-      name: parsed.name || existingCandidate.name,
+      name: deriveName(parsed.name, result.summary, existingCandidate.name),
       gender: parsed.gender ?? existingCandidate.gender,
       animal: parsed.animal ?? existingCandidate.animal,
       education: parsed.education ?? existingCandidate.education,
@@ -310,8 +324,10 @@ async function runParseAndCreate(app, taskId, payload) {
     }
 
     // 5) Prisma CREATE candidate(归并所有字段)
+    const fallbackName = payload.filename?.replace(/\.[^/.]+$/, "")?.slice(0, 100) || "待解析简历";
     const candidateData = {
       ...parsed,
+      name: deriveName(parsed.name, result.summary, fallbackName),
       aiSummary: result.summary,
       attachment: payload.key,
       parser: "Kimi",
