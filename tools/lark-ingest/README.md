@@ -1,9 +1,10 @@
-# lark-ingest(本地最小原型)
+# lark-ingest(飞书简历自动入库 · 已上线)
 
-飞书群 / 私聊里发来的简历文件(pdf/doc/docx)→ 自动进 MESA「待解析」候选人池。
+飞书群 / 私聊里发来的简历文件(pdf/doc/docx)→ 自动进 MESA「待解析」候选人池,并发交互卡片(关联 JD / 解析 / 解析完自动分享详情)。
 
-> 本目录是**本地验证用原型**,跑通后再演进成 VPS 常驻容器(见 `delivery-docs/src/05_feishu_resume_ingest.md`)。
-> 零运行时依赖(Node 20 内置 fetch/child_process 即可),无需 `npm install`。
+> **已生产化**:docker-compose 第 6 容器(`mesa-lark-ingest`),VPS 常驻。本 README 下方"前置准备/运行"为本地调试用法;生产凭证在 VPS `.env`,部署随主流水线。方案见 `delivery-docs/src/05_feishu_resume_ingest.md`。
+> 容器只负责①入库②发卡片;卡片按钮交互(②关联JD ③解析 ④分享)的回调逻辑在 **backend `/api/feishu/card-callback`**。
+> 脚本本体零运行时依赖(Node 20 内置 fetch/child_process)。
 
 ## 链路
 
@@ -70,13 +71,14 @@ admin 在列表点「解析」即触发 LLM 联评。
 - App Secret 仅经 `lark-cli config`(stdin)落到 lark-cli 本地配置,不进本仓库。
 - `UPLOAD_TOKEN` 是公开上传凭证,泄露 = 任意人可灌库,勿外发。
 
-## 交互助手路线图
+## 交互助手(已全部上线)
 
-- [x] **Phase 1 · 上传回执**:机器人回复成功/失败(本次)
-- [ ] **Phase 2 · 关联 JD**:回执卡片加按钮,群里点选给该候选人关联 JD(扩展上传 token 端点)
-- [ ] **Phase 3 · 解析指令**:卡片按钮触发 reparse,机器人轮询任务状态
-- [ ] **Phase 4 · 分享详情**:解析完自动生成 ShareLink(`/share/:token`)发回群里
-- 依赖:候选人 ↔ 飞书消息映射(Phase 2 起);飞书应用「发送消息」权限
+- [x] **Phase 1 · 上传回执**:机器人发交互卡片(成功/已入库/超大/失败)
+- [x] **Phase 2 · 关联 JD**:卡片「关联 JD」按钮 → 飞书 `card.action.trigger` 回调 **backend `/api/feishu/card-callback`**(`server/src/routes/feishu.js`)→ 列 JD → 关联,卡片原地刷新
+- [x] **Phase 3 · 解析**:「🤖 解析」按钮 → 回调起异步 `runReparse` → 卡片「解析中」
+- [x] **Phase 4 · 分享详情**:解析完成 → backend(`lib/feishuNotify.js`)以 bot 身份建 ShareLink + 把候选人详情卡片发回原群
+
+> 注:卡片按钮回调走 **backend 公开端点**(lark-cli 长连接不支持 `card.action.trigger`),需飞书后台「回调配置」指向 `/api/feishu/card-callback` + 配 `FEISHU_VERIFICATION_TOKEN`。本容器只负责①入库②发卡片;②~④的交互逻辑在 backend。卡片须 schema 2.0(按钮直接作 element)。
 
 ## 其它待办
 
