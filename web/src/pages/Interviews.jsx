@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { resources } from "../lib/api.js";
+import { useHasModule } from "../lib/authContext.jsx";
 import {
   Card,
   I,
@@ -31,6 +32,19 @@ export default function Interviews() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("");
+  const canDelete = useHasModule("interview.delete");
+
+  async function onDelete(iv) {
+    const who = iv.candidate?.name || iv.candidateName || "该候选人";
+    if (!confirm(`确定删除「${who}」的这场面试安排吗?此操作不可恢复。`)) return;
+    try {
+      await resources.interviews.remove(iv.id);
+      toast("已删除", "success");
+      setItems((prev) => prev.filter((x) => x.id !== iv.id));
+    } catch (e) {
+      toast(e.response?.data?.message || e.message || "删除失败", "error");
+    }
+  }
 
   async function load() {
     setLoading(true);
@@ -128,6 +142,15 @@ export default function Interviews() {
                       <span className="text-[11px] font-bold text-brand px-2 py-0.5 rounded-full bg-brand-50">
                         {iv.recommendation}
                       </span>
+                    )}
+                    {canDelete && (
+                      <button
+                        onClick={() => onDelete(iv)}
+                        className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors shrink-0"
+                        title="删除面试安排"
+                      >
+                        <I name="trash-2" size={14} />
+                      </button>
                     )}
                   </li>
                 );

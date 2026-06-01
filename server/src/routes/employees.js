@@ -1,7 +1,7 @@
 // /api/employees — CRUD + 阶段过滤
 
 import { whereByIdOrExternal } from "../lib/idLookup.js";
-import { buildEmployeeScopeWhere } from "../lib/permissions.js";
+import { buildEmployeeScopeWhere, loadUserAccess, hasModule } from "../lib/permissions.js";
 
 const EMPLOYEE_BODY = {
   type: "object",
@@ -121,6 +121,10 @@ export default async function employeesRoutes(app) {
   });
 
   app.delete("/:id", async (req, reply) => {
+    const access = await loadUserAccess(req);
+    if (!hasModule(access, "employee.delete")) {
+      return reply.code(403).send({ error: "forbidden", message: "无删除入职员工权限" });
+    }
     const { id } = req.params;
     try {
       await app.prisma.employee.delete({ where: { id } });

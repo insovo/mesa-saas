@@ -36,6 +36,8 @@ export const MODULE_KEYS = Object.freeze([
   "department.create",
   "department.edit",
   "department.delete",
+  "employee.delete",
+  "interview.delete",
   "user.manage",
   "system.llm.manage",
 ]);

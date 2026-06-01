@@ -4,6 +4,7 @@ import {
   buildCandidateScopeWhere,
   buildJobScopeWhere,
   loadUserAccess,
+  hasModule,
 } from "../lib/permissions.js";
 import { shouldAutoAdvanceToInterviewing } from "../lib/candidateToEmployee.js";
 
@@ -155,6 +156,10 @@ export default async function interviewsRoutes(app) {
   });
 
   app.delete("/:id", async (req, reply) => {
+    const access = await loadUserAccess(req);
+    if (!hasModule(access, "interview.delete")) {
+      return reply.code(403).send({ error: "forbidden", message: "无删除面试安排权限" });
+    }
     const { id } = req.params;
     try {
       await app.prisma.interview.delete({ where: { id } });
