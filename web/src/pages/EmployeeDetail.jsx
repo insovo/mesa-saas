@@ -16,7 +16,7 @@ import {
   LiquidLoader,
   toast,
 } from "../components/Primitives.jsx";
-import { HIRE_CHECKLIST_KEYS } from "../lib/constants.js";
+import { HIRE_CHECKLIST_KEYS, candidateExpText } from "../lib/constants.js";
 
 const STAGE_STEPS = ["待入职", "入职准备", "入职当天", "试用期", "已转正"];
 
@@ -354,7 +354,7 @@ export default function EmployeeDetail() {
               {[
                 { label: "学历", val: emp.education ? `${emp.education}·${emp.school || ""}` : null },
                 { label: "专业", val: emp.major },
-                { label: "工作年限", val: emp.yearsExp != null ? `${emp.yearsExp} 年` : null },
+                { label: "工作年限", val: candidateExpText(emp.yearsExp, emp.yearsExp != null, { full: false }) },
                 { label: "所在地", val: emp.location },
               ].map((r) => (
                 <div key={r.label} className="flex items-start gap-3">

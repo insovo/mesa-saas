@@ -39,6 +39,7 @@ import { LiquidLoader } from "../components/Primitives.jsx";
 import ReparseConfirmModal from "../components/ReparseConfirmModal.jsx";
 import MarkdownBullets from "../components/MarkdownBullets.jsx";
 import InterviewEvalCard from "../components/InterviewEvalCard.jsx";
+import { candidateExpText, hasWorkExperience } from "../lib/constants.js";
 import { DurationPicker, MaxViewsPicker, BotShareSettings } from "../components/ShareDefaultsPanel.jsx";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3464,7 +3465,7 @@ function CandidateDetail() {
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <OverviewTile icon="briefcase" label="经验" value={`${c.yearsExp || "—"} 年`} sub="JD 要求 5-7 年" />
+                <OverviewTile icon="briefcase" label="经验" value={candidateExpText(c.yearsExp, hasWorkExperience(c.experience), { full: false }) || "—"} sub="JD 要求 5-7 年" />
                 <OverviewTile icon="graduation-cap" label="学历" value={c.education || "—"} sub="JD 要求 本科+" />
                 <OverviewTile
                   icon="languages"

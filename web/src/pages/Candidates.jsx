@@ -16,7 +16,7 @@ import {
   Modal,
   toast,
 } from "../components/Primitives.jsx";
-import { STATUS_ORDER } from "../lib/constants.js";
+import { STATUS_ORDER, candidateExpText, hasWorkExperience } from "../lib/constants.js";
 import ReparseConfirmModal from "../components/ReparseConfirmModal.jsx";
 
 // Helpers — Upload.jsx 已经有相同函数,后续可抽 lib/format.js 复用
@@ -409,7 +409,7 @@ export default function Candidates() {
                       {c.parser && <AiBadge parser={c.parser} confidence={c.parserConfidence} />}
                     </div>
                     <p className="text-[11px] text-gray-700 mt-0.5 truncate">
-                      {[c.education, c.school, c.major, c.location, c.yearsExp != null ? `${c.yearsExp} 年经验` : null].filter(Boolean).join(" · ")}
+                      {[c.education, c.school, c.major, c.location, candidateExpText(c.yearsExp, hasWorkExperience(c.experience))].filter(Boolean).join(" · ")}
                     </p>
                     <div className="flex items-center gap-2 mt-1 text-[10px] text-gray-500 flex-wrap">
                       <span><span className="text-gray-400">来源:</span> {fmtSource(c.source)}</span>
@@ -484,7 +484,7 @@ export default function Candidates() {
                         {[c.education, c.school, c.major].filter(Boolean).join(" · ")}
                       </p>
                       <p className="text-[11px] text-gray-700 mt-0.5">
-                        {[c.location, c.yearsExp != null ? `${c.yearsExp} 年经验` : null, c.source].filter(Boolean).join(" · ") || "—"}
+                        {[c.location, candidateExpText(c.yearsExp, hasWorkExperience(c.experience)), c.source].filter(Boolean).join(" · ") || "—"}
                       </p>
                     </div>
                     {c.jdMatch != null ? (
