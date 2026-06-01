@@ -16,6 +16,17 @@ function tokenGen() {
   return randomBytes(24).toString("base64url");
 }
 
+// 简报(aiSummary)里常含完整电话/邮箱,公开页须与结构化字段同等门控:
+//   showContact=true → 打码(与 mask 一致),false → 抹去(防泄露)
+function sanitizeSummaryContact(summary, showContact) {
+  if (typeof summary !== "string" || !summary) return summary;
+  const phoneRe = /(\d{3})\d{4}(\d{4})/g;                                  // 11 位手机
+  const emailRe = /([A-Za-z0-9._%+-]{1,2})[A-Za-z0-9._%+-]*(@[A-Za-z0-9.-]+)/g;
+  return showContact
+    ? summary.replace(phoneRe, "$1****$2").replace(emailRe, "$1***$2")
+    : summary.replace(phoneRe, "[已隐藏]").replace(emailRe, "[已隐藏]");
+}
+
 function computeExpiresAt(duration) {
   if (!duration || duration === "forever") return null;
   const match = duration.match(/^(\d+)\s*(s|m|h|d)$/i);
@@ -358,7 +369,7 @@ export default async function shareRoutes(app) {
         highlights: showAiInsights ? c.highlights : [],
         experience: c.experience,
         educationHistory: c.educationHistory,
-        aiSummary: showAiInsights ? c.aiSummary : null,
+        aiSummary: showAiInsights ? sanitizeSummaryContact(c.aiSummary, showContact) : null,
       },
       share: {
         expiresAt: link.expiresAt,
