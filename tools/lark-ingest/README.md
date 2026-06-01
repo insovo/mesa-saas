@@ -50,6 +50,7 @@ admin 在列表点「解析」即触发 LLM 联评。
 
 ## 行为说明
 
+- **群内回执(Phase 1)**:入库后机器人回复到那条简历消息下面 —— ✅ 成功 / ℹ️ 已入库过 / ⚠️ 超大 / ❌ 失败。非简历(后缀不符)静默跳过不刷屏。**需飞书应用已开「发送消息」权限**(`im:message` / 发送 as bot),否则回执发不出(仅日志告警 `[warn] 回执失败`,不影响入库);也可设 `REPLY_ENABLED=false` 关掉。
 - **覆盖来源**:内部群 / 外部群 / 私聊转发(`chat_type` p2p 与 group 都收)。
 - **只收文件**:`message_type=file` 且后缀 ∈ {pdf,doc,docx};文本/图片/表情忽略;`merge_forward`(合并转发)暂不拆解(日志提示)。
 - **去重**:`event_id` 幂等 + 文件 sha256 去重(持久化到 `state.json`,扛重启)。
@@ -69,9 +70,15 @@ admin 在列表点「解析」即触发 LLM 联评。
 - App Secret 仅经 `lark-cli config`(stdin)落到 lark-cli 本地配置,不进本仓库。
 - `UPLOAD_TOKEN` 是公开上传凭证,泄露 = 任意人可灌库,勿外发。
 
-## 已知待办(原型 → 生产)
+## 交互助手路线图
 
-- 容器化(Dockerfile + compose 第 6 服务,`restart: unless-stopped`)
+- [x] **Phase 1 · 上传回执**:机器人回复成功/失败(本次)
+- [ ] **Phase 2 · 关联 JD**:回执卡片加按钮,群里点选给该候选人关联 JD(扩展上传 token 端点)
+- [ ] **Phase 3 · 解析指令**:卡片按钮触发 reparse,机器人轮询任务状态
+- [ ] **Phase 4 · 分享详情**:解析完自动生成 ShareLink(`/share/:token`)发回群里
+- 依赖:候选人 ↔ 飞书消息映射(Phase 2 起);飞书应用「发送消息」权限
+
+## 其它待办
+
 - `merge_forward` 合并转发拆解
-- 失败告警(推回飞书群一条卡片 / 接 Uptime Kuma)
 - 按发送人 open_id 映射不同招聘官(当前统一归 token 创建者)
