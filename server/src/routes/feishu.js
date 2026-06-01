@@ -10,6 +10,8 @@
 //   3. 不依赖 JWT;candidateId 由我们自己发出的卡片 value 携带,飞书原样回传
 
 import crypto from "node:crypto";
+import { createTask } from "../lib/parseTaskStore.js";
+import { runReparse } from "./resumes.js";
 
 const VERIFICATION_TOKEN = process.env.FEISHU_VERIFICATION_TOKEN || "";
 const ENCRYPT_KEY = process.env.FEISHU_ENCRYPT_KEY || "";
@@ -52,8 +54,14 @@ function cardPickJd(cid, jobs) {
   const buttons = jobs.map((j) => cbButton(j.title.slice(0, 40), { a: "set_jd", cid, jid: j.id }));
   return rawCard([md("📋 **选择要投递的 JD**:"), ...buttons]);
 }
-function cardJdDone(title) {
-  return rawCard([md(`✅ 已关联 JD:**${title}**\n\n_下一步:解析指令即将支持(Phase 3)_`)]);
+function cardJdDone(cid, title) {
+  return rawCard([
+    md(`✅ 已关联 JD:**${title}**`),
+    cbButton("🤖 解析简历", { a: "parse", cid }, "primary"),
+  ]);
+}
+function cardParsing() {
+  return rawCard([md("⏳ **解析中…** AI 正在评估简历与 JD,稍后可在 MESA 候选人详情查看~")]);
 }
 
 export default async function feishuRoutes(app) {
@@ -131,7 +139,21 @@ export default async function feishuRoutes(app) {
           where: { id: candidate.id },
           data: { jobId: job.id, appliedFor: job.title },
         });
-        return reply.send({ toast: toast("success", `已关联 ${job.title}`), card: cardJdDone(job.title) });
+        return reply.send({ toast: toast("success", `已关联 ${job.title}`), card: cardJdDone(candidate.id, job.title) });
+      }
+
+      // ── parse:触发异步 LLM 解析 + JD 联评(复用 runReparse)──
+      if (value.a === "parse") {
+        const candidate = await app.prisma.candidate.findUnique({
+          where: { id: value.cid },
+          select: { id: true, attachment: true },
+        });
+        if (!candidate) return reply.send({ toast: toast("error", "候选人不存在或已删除") });
+        if (!candidate.attachment) return reply.send({ toast: toast("error", "该候选人无简历附件,无法解析") });
+        const task = await createTask(app, candidate.id, "reparse");
+        // fire-and-forget;jobIdOverride=undefined 沿用候选人当前 jobId(Phase 2 已设)
+        setImmediate(() => runReparse(app, task.id, candidate.id, undefined, undefined));
+        return reply.send({ toast: toast("info", "已开始解析"), card: cardParsing() });
       }
 
       return reply.send({ toast: toast("info", "未知操作") });

@@ -79,7 +79,7 @@ async function streamToBuffer(stream) {
 //   undefined → 沿用候选人当前 jobId(不改 DB)
 //   null      → 取消 JD 关联(清空 candidate.jobId,跳过 match)
 //   uuid 串   → 切到这个 JD,跑 match,并把 candidate.jobId 也同步更新
-async function runReparse(app, taskId, candidateId, model, jobIdOverride) {
+export async function runReparse(app, taskId, candidateId, model, jobIdOverride) {
   try {
     await markRunning(app, taskId);
 
