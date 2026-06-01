@@ -21,8 +21,9 @@ export const BUILTIN_SHARE_DEFAULTS = {
   showInterviewEval: true,  // 支持填写面试评价
   showInterviewEvalList: false, // 展示已有面试评价(默认关)
   showResume: true,         // 查看原始简历文件(默认开)
+  showNotes: false,         // 展示内部备注(默认关)
 };
-const TOGGLES = ["showContact", "showReviews", "showAttachments", "showInterviewEval", "showInterviewEvalList", "showResume"];
+const TOGGLES = ["showContact", "showReviews", "showAttachments", "showInterviewEval", "showInterviewEvalList", "showResume", "showNotes"];
 
 function parse(v) { try { return v ? JSON.parse(v) : null; } catch { return null; } }
 
@@ -81,6 +82,7 @@ export async function getEffectiveShareDefaults(userId) {
     showInterviewEval: tog("showInterviewEval"),
     showInterviewEvalList: tog("showInterviewEvalList"),
     showResume: tog("showResume"),
+    showNotes: tog("showNotes"),
   };
 }
 
@@ -110,6 +112,7 @@ export function shareLinkParamsFromDefaults(eff) {
     showInterviewEval: eff.showInterviewEval,
     showInterviewEvalList: eff.showInterviewEvalList,
     showResume: eff.showResume,
+    showNotes: eff.showNotes,
     allowedModules,
   };
 }

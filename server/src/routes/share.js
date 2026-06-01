@@ -89,6 +89,7 @@ export default async function shareRoutes(app) {
             showInterviewEval: { type: "boolean" },
             showInterviewEvalList: { type: "boolean" },
             showResume:        { type: "boolean" },
+            showNotes:         { type: "boolean" },
             // 创建者最多能允许的模块,会和创建者自身的模块权限取交集
             allowedModules: { type: "array", items: { type: "string", maxLength: 64 } },
           },
@@ -129,6 +130,9 @@ export default async function shareRoutes(app) {
       // showResume 默认开:公开页可查看原始简历文件
       const showResume = req.body?.showResume !== false;
 
+      // showNotes 默认关:开启需创建者拥有 candidate.notes 模块(没权限看的备注不能对外开放)
+      const showNotes = req.body?.showNotes === true && hasModule(access, "candidate.notes");
+
       // 计算 allowedModules 快照
       // showReviews=false → 在请求模块里排除 candidate.reviews(关停评论);未传/ true 维持原行为
       let requestedModules = sanitizeAllowedModules(req.body);
@@ -152,6 +156,7 @@ export default async function shareRoutes(app) {
           showInterviewEval,
           showInterviewEvalList,
           showResume,
+          showNotes,
           allowedModules,
           createdBy: req.user.sub,
         },
@@ -172,6 +177,7 @@ export default async function shareRoutes(app) {
             showInterviewEval: { type: "boolean" },
             showInterviewEvalList: { type: "boolean" },
             showResume:        { type: "boolean" },
+            showNotes:         { type: "boolean" },
             allowedModules: { type: "array", items: { type: "string", maxLength: 64 } },
           },
           additionalProperties: false,
@@ -215,6 +221,13 @@ export default async function shareRoutes(app) {
       }
       if (typeof req.body?.showResume === "boolean") {
         data.showResume = req.body.showResume;
+      }
+      if (typeof req.body?.showNotes === "boolean") {
+        const want = req.body.showNotes;
+        if (want && !hasModule(access, "candidate.notes")) {
+          return reply.code(403).send({ error: "forbidden", message: "您没有备注模块权限,无法对外开放" });
+        }
+        data.showNotes = want;
       }
       if (req.body?.allowedModules || typeof req.body?.showReviews === "boolean") {
         let requested = sanitizeAllowedModules(req.body);
@@ -355,6 +368,8 @@ export default async function shareRoutes(app) {
     const showInterviewEval = link.showInterviewEval !== false;
     const showInterviewEvalList = link.showInterviewEvalList === true;
     const showResume = link.showResume !== false && !!c.attachment; // 有原始简历文件且开关开
+    // 备注:双闸(本链接开关 + 创建者拥有 candidate.notes 模块);默认关。洞察不受控,始终展示。
+    const showNotes = link.showNotes === true && effective.has("candidate.notes");
 
     // 「展示已有面试评价」开启时,带出该候选人已提交的评价记录(只读可看,含 token 查看详情);
     // 草稿/未提交不暴露 token,防被随意编辑。独立于「支持填写」开关。
@@ -373,6 +388,17 @@ export default async function shareRoutes(app) {
         recommendation: e.recommendation || null,
         submittedAt: e.submittedAt,
       }));
+    }
+
+    // 备注列表(受 showNotes 控制)
+    let notes = [];
+    if (showNotes) {
+      const rows = await app.prisma.candidateNote.findMany({
+        where: { candidateId: c.id },
+        orderBy: { createdAt: "desc" },
+        select: { id: true, content: true, authorName: true, createdAt: true },
+      });
+      notes = rows;
     }
 
     return {
@@ -404,6 +430,8 @@ export default async function shareRoutes(app) {
         experience: c.experience,
         educationHistory: c.educationHistory,
         aiSummary: showAiInsights ? sanitizeSummaryContact(c.aiSummary, showContact) : null,
+        insights: Array.isArray(c.insights) ? c.insights : [], // 洞察始终展示,不受开关控制
+        notes, // 受 showNotes 控制,关闭时为空数组
       },
       share: {
         expiresAt: link.expiresAt,
@@ -414,6 +442,7 @@ export default async function shareRoutes(app) {
         showInterviewEval,
         showInterviewEvalList,
         showResume,
+        showNotes,
         allowedModules: Array.from(effective),
       },
     };
