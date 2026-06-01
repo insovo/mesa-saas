@@ -11,6 +11,7 @@ import {
   isAdmin,
 } from "../lib/permissions.js";
 import { ALL_MODULE_KEYS_SET } from "../lib/permissionKeys.js";
+import { resolveNoteAuthorNames } from "../lib/displayName.js";
 
 function tokenGen() {
   return randomBytes(24).toString("base64url");
@@ -392,15 +393,16 @@ export default async function shareRoutes(app) {
       }));
     }
 
-    // 备注列表(受 showNotes 控制)
+    // 备注列表(受 showNotes 控制)。authorName 用 authorId 回溯真实姓名(不暴露邮箱/内部 id)
     let notes = [];
     if (showNotes) {
       const rows = await app.prisma.candidateNote.findMany({
         where: { candidateId: c.id },
         orderBy: { createdAt: "desc" },
-        select: { id: true, content: true, authorName: true, createdAt: true },
+        select: { id: true, content: true, authorId: true, authorName: true, createdAt: true },
       });
-      notes = rows;
+      const resolved = await resolveNoteAuthorNames(app.prisma, rows);
+      notes = resolved.map(({ authorId, ...rest }) => rest);
     }
 
     return {
