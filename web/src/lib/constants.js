@@ -75,3 +75,18 @@ export const SOURCE_TONE = {
   "BOSS 直聘": { bg: "#FFEDD5", fg: "#9A3412" },
   手动录入: { bg: "#F4F7FE", fg: "#707EAE" },
 };
+
+// experience 可能是 markdown bullet 字符串或数组(两阶段解析)
+export function hasWorkExperience(experience) {
+  if (typeof experience === "string") return experience.trim().length > 0;
+  return Array.isArray(experience) && experience.length > 0;
+}
+
+// 候选人经验年限文案。yearsExp 为 0/缺失但有工作经历 → 「< 1 年」,避免「0 年」误导(see 刘颢)。
+//   full=true  → "X 年经验" / "经验 < 1 年" / null   (头部/列表行)
+//   full=false → "X 年"     / "< 1 年"     / null    (OverviewTile 等已有「经验」标签场景)
+export function candidateExpText(yearsExp, hasExp, { full = true } = {}) {
+  if (typeof yearsExp === "number" && yearsExp > 0) return full ? `${yearsExp} 年经验` : `${yearsExp} 年`;
+  if (hasExp) return full ? "经验 < 1 年" : "< 1 年";
+  return null;
+}

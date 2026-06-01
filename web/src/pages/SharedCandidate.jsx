@@ -21,6 +21,7 @@ import {
 } from "../components/Primitives.jsx";
 import MarkdownBullets from "../components/MarkdownBullets.jsx";
 import BrandLogo from "../components/BrandLogo.jsx";
+import { candidateExpText, hasWorkExperience } from "../lib/constants.js";
 
 function fmtExpiresHint(iso) {
   if (!iso) return "永久有效";
@@ -143,7 +144,7 @@ export default function SharedCandidate() {
                 <StatusPill status={c.status} size="md" />
               </div>
               <p className="text-xs md:text-sm text-gray-700 mt-2">
-                {[c.education, c.school, c.major, `${c.yearsExp || 0} 年经验`, c.location].filter(Boolean).join(" · ")}
+                {[c.education, c.school, c.major, candidateExpText(c.yearsExp, hasWorkExperience(c.experience)), c.location].filter(Boolean).join(" · ")}
               </p>
               <div className="flex flex-wrap gap-1.5 mt-3">
                 {(c.tags || []).map((t) => <Tag key={t}>{t}</Tag>)}
