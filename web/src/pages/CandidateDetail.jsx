@@ -11,7 +11,7 @@
 //   ✓ 内联设计令牌 (品牌色用 arbitrary value 写, 不依赖 tailwind.config)
 //   ✓ 删除 react-router (useParams/useNavigate/Link → noop)
 //   ✓ 删除 axios + resources.* + api.* → 全部走 mock async functions
-//   ✓ Mock 候选人 / JD 列表 / 评价 / 笔记 / 当前用户 (全部脱敏)
+//   ✓ Mock 候选人 / JD 列表 / 评论 / 笔记 / 当前用户 (全部脱敏)
 //   ✓ 删除 SystemSetting / Notification.requestPermission 真实调用 (保留 UI)
 //   ✓ Notification + Web Audio API 真实可触发 (但默认不轮询, 避免干扰设计)
 //
@@ -436,8 +436,8 @@ function notifyNewReviews(candidateName, newOnes) {
       const first = newOnes[0];
       const body = newOnes.length === 1
         ? `${first.authorName}: ${(first.content || "").slice(0, 80)}`
-        : `${newOnes.length} 条新评价`;
-      const n = new Notification(`${candidateName} 有新评价`, { body, icon: "/favicon.ico", tag: `candidate-${first.candidateId}`, renotify: true });
+        : `${newOnes.length} 条新评论`;
+      const n = new Notification(`${candidateName} 有新评论`, { body, icon: "/favicon.ico", tag: `candidate-${first.candidateId}`, renotify: true });
       n.onclick = () => { window.focus(); n.close(); };
     }
   } catch { /* ignore */ }
@@ -1086,7 +1086,7 @@ function InterviewModal({ open, onClose, candidate, jobs, reviews, onCreated }) 
             {/* 快捷选评论作者 */}
             {reviewAuthors.length > 0 && (
               <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                <span className="text-[10px] text-[#A3AED0]">从评价人快选:</span>
+                <span className="text-[10px] text-[#A3AED0]">从评论人快选:</span>
                 {reviewAuthors.map((n) => {
                   const already = interviewer.split(/[,，]/).map((s) => s.trim()).includes(n);
                   return (
@@ -1233,8 +1233,8 @@ function ShareVisibilityToggles({ showContact, setShowContact, showAttachments, 
             className="mt-0.5 w-4 h-4 rounded border-[#A3AED0] text-[#422AFB] focus:ring-[#422AFB]"
           />
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-bold text-[#1B254B]">允许访客上传评价附件</p>
-            <p className="text-[10px] text-[#A3AED0] mt-0.5">关闭后评价表单不显示「附件」输入,后端二道防线也拒</p>
+            <p className="text-xs font-bold text-[#1B254B]">允许访客上传评论附件</p>
+            <p className="text-[10px] text-[#A3AED0] mt-0.5">关闭后评论表单不显示「附件」输入,后端二道防线也拒</p>
           </div>
         </label>
       </div>
@@ -1251,7 +1251,7 @@ function ShareModal({ open, onClose, candidate }) {
   const [maxViewsPreset, setMaxViewsPreset] = useState("unlimited");
   const [customMaxViews, setCustomMaxViews] = useState(100);
   const [nowTick, setNowTick] = useState(Date.now());
-  // 公开页可见性开关 — 默认: 联系方式露(mask), 评价附件关闭
+  // 公开页可见性开关 — 默认: 联系方式露(mask), 评论附件关闭
   const [showContact, setShowContact] = useState(true);
   const [showAttachments, setShowAttachments] = useState(false);
 
@@ -1494,7 +1494,7 @@ function ShareModal({ open, onClose, candidate }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 8) 评价组件
+// 8) 评论组件
 // ─────────────────────────────────────────────────────────────────────────────
 
 function VisibilityChip({ visibility }) {
@@ -1617,7 +1617,7 @@ function ReviewItem({ review, replies = [], candidate, me, isAdmin, myVotes = {}
   const pendingDelete = !!review.deleteRequested && !review.deletedAt;
 
   async function requestDelete() {
-    if (!confirm("请求删除这条评价?(删除需要管理员同意)")) return;
+    if (!confirm("请求删除这条评论?(删除需要管理员同意)")) return;
     try { const r = await resources.reviews.requestDelete(candidate.id, review.id); updateReview(r); toast("已请求,等管理员审核", "info"); }
     catch (e) { toast(e.message || "操作失败", "error"); }
   }
@@ -1630,7 +1630,7 @@ function ReviewItem({ review, replies = [], candidate, me, isAdmin, myVotes = {}
     catch (e) { toast(e.message || "操作失败", "error"); }
   }
   async function adminDelete() {
-    if (!confirm("直接删除这条评价?")) return;
+    if (!confirm("直接删除这条评论?")) return;
     try { const r = await resources.reviews.adminDelete(candidate.id, review.id); updateReview(r); toast("已删除", "success"); }
     catch (e) { toast(e.message || "操作失败", "error"); }
   }
@@ -1689,7 +1689,7 @@ function ReviewItem({ review, replies = [], candidate, me, isAdmin, myVotes = {}
           </div>
           {!review.deletedAt && (review.referencedIds || []).length > 1 && (
             <p className="text-[10px] text-[#A3AED0] mt-0.5 flex items-center gap-1">
-              <I name="quote" size={10} /> 引用 {review.referencedIds.length} 条评价
+              <I name="quote" size={10} /> 引用 {review.referencedIds.length} 条评论
             </p>
           )}
           {review.deletedAt ? (
@@ -1789,7 +1789,7 @@ function ReviewsCard({ reviews, candidate, me, isAdmin, myVotes, onVote, onAdd, 
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-xl font-bold text-[#1B254B] flex items-center gap-2">
           <I name="message-circle" size={18} className="text-[#422AFB]" />
-          评价
+          评论
           <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#422AFB] text-white font-bold">{visibleCount}</span>
         </h3>
         <select
@@ -1802,7 +1802,7 @@ function ReviewsCard({ reviews, candidate, me, isAdmin, myVotes, onVote, onAdd, 
       </div>
 
       {tree.length === 0 ? (
-        <p className="text-xs text-[#707EAE] py-2">还没有评价 · 点下方按钮添加第一条</p>
+        <p className="text-xs text-[#707EAE] py-2">还没有评论 · 点下方按钮添加第一条</p>
       ) : (
         <ul className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
           {tree.map((r) => (
@@ -1830,7 +1830,7 @@ function ReviewsCard({ reviews, candidate, me, isAdmin, myVotes, onVote, onAdd, 
         className="mt-4 w-full p-3 rounded-xl bg-[#F4F7FE] hover:bg-[#E9E3FF] text-[#422AFB] font-bold text-sm flex items-center justify-center gap-2 transition border-2 border-dashed border-transparent hover:border-[#422AFB]/30"
       >
         <I name="message-square-plus" size={16} />
-        添加评价
+        添加评论
       </button>
     </Card>
   );
@@ -1901,7 +1901,7 @@ function ReviewModal({ open, onClose, candidate, replyTo, onCreated }) {
   const isBulkReply = Array.isArray(bulk) && bulk.length > 1;
 
   async function submit() {
-    if (!content.trim()) return toast("请输入评价内容", "error");
+    if (!content.trim()) return toast("请输入评论内容", "error");
     setSaving(true);
     try {
       const body = { content: content.trim(), attachments, visibility };
@@ -1914,7 +1914,7 @@ function ReviewModal({ open, onClose, candidate, replyTo, onCreated }) {
       if (replyTo && stance) body.stance = stance;
       const r = await resources.reviews.create(candidate.id, body);
       onCreated(r);
-      toast(replyTo ? "已回复" : "评价已添加", "success");
+      toast(replyTo ? "已回复" : "评论已添加", "success");
     } catch (e) { toast(e.message || "添加失败", "error"); }
     finally { setSaving(false); }
   }
@@ -1931,20 +1931,20 @@ function ReviewModal({ open, onClose, candidate, replyTo, onCreated }) {
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-bold text-[#1B254B] flex items-center gap-2">
             <I name={replyTo ? "reply" : "message-circle"} size={18} className="text-[#422AFB]" />
-            {isBulkReply ? `批量回复 ${bulk.length} 条` : replyTo ? `回复 ${replyTo.authorName}` : `添加评价 — ${candidate?.name}`}
+            {isBulkReply ? `批量回复 ${bulk.length} 条` : replyTo ? `回复 ${replyTo.authorName}` : `添加评论 — ${candidate?.name}`}
           </h3>
           <button onClick={onClose} className="text-gray-400 hover:text-[#1B254B]"><I name="x" size={20} /></button>
         </div>
 
         {replyTo && !isBulkReply && (
           <div className="p-3 rounded-xl bg-[#F4F7FE] border-l-4 border-[#422AFB]">
-            <p className="text-[11px] font-bold text-[#707EAE]">引用 {replyTo.authorName} 的评价:</p>
+            <p className="text-[11px] font-bold text-[#707EAE]">引用 {replyTo.authorName} 的评论:</p>
             <p className="text-xs text-[#707EAE] mt-1 line-clamp-2">{replyTo.content}</p>
           </div>
         )}
         {isBulkReply && (
           <div className="p-3 rounded-xl bg-[#E9E3FF] border-l-4 border-[#422AFB] max-h-[180px] overflow-y-auto">
-            <p className="text-[11px] font-bold text-[#707EAE] mb-2">批量引用 {bulk.length} 条评价:</p>
+            <p className="text-[11px] font-bold text-[#707EAE] mb-2">批量引用 {bulk.length} 条评论:</p>
             <ul className="space-y-1.5">
               {bulk.map((r) => (
                 <li key={r.id} className="text-xs">
@@ -1961,7 +1961,7 @@ function ReviewModal({ open, onClose, candidate, replyTo, onCreated }) {
             value={content}
             onChange={(e) => setContent(e.target.value.slice(0, 500))}
             rows={5}
-            placeholder="请输入对此候选人的评价,如表现、推荐理由、建议等..."
+            placeholder="请输入对此候选人的评论,如表现、推荐理由、建议等..."
             className="w-full p-3 rounded-xl border border-[#E9ECEF] text-sm text-[#1B254B] outline-none focus:border-[#422AFB] resize-none"
             disabled={saving}
           />
@@ -1973,7 +1973,7 @@ function ReviewModal({ open, onClose, candidate, replyTo, onCreated }) {
         {replyTo && (
           <div>
             <p className="text-xs font-bold text-[#707EAE] uppercase mb-2 flex items-center gap-1.5">
-              <I name="vote" size={12} /> 对原评价的态度 (可选)
+              <I name="vote" size={12} /> 对原评论的态度 (可选)
             </p>
             <div className="grid grid-cols-3 gap-2">
               <button
@@ -2080,7 +2080,7 @@ function ReviewModal({ open, onClose, candidate, replyTo, onCreated }) {
         <div className="flex justify-end gap-2 pt-2 border-t border-[#E9ECEF]">
           <Button variant="ghost" onClick={onClose} disabled={saving}>取消</Button>
           <Button onClick={submit} disabled={saving || !content.trim()} icon={<I name={saving ? "loader" : "check"} size={12} className={saving ? "animate-spin" : ""} />}>
-            {saving ? "保存中" : "发布评价"}
+            {saving ? "保存中" : "发布评论"}
           </Button>
         </div>
       </div>
