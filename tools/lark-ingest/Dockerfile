@@ -3,7 +3,11 @@
 FROM node:20-slim
 
 # 官方 Lark/Feishu CLI(Go 二进制,经 npm 分发)。固定主版本,避免 CLI 行为漂移。
-RUN npm install -g @larksuite/cli@1 \
+# 其 postinstall 脚本用 curl 下载二进制,而 node:*-slim 不含 curl/证书,需先装。
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && npm install -g @larksuite/cli@1 \
     && lark-cli --version
 
 WORKDIR /app
