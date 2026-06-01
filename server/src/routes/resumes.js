@@ -79,8 +79,17 @@ function deriveName(parsedName, summary, fallback) {
 function pickPhone(parsedPhone, summary) {
   const p = typeof parsedPhone === "string" ? parsedPhone.trim() : "";
   if (p) return p;
-  const m = (summary || "").match(/(?<!\d)\d{11}(?!\d)/);
-  return m ? m[0] : null;
+  // 候选人可能是任何国家的人 → 不绑定中国号码格式:从带「电话/phone/tel」标签的行取号码,
+  // 兼容 +/空格/横杠;校验有效位数 6-15,避免误把年份/编号当电话。
+  for (const line of (summary || "").split("\n")) {
+    if (!/(联系电话|电话|手机号?|电话号码|tel\.?|phone|mobile|cell)/i.test(line)) continue;
+    const m = line.match(/([+(]?\d[\d\s\-()]{5,}\d)/);
+    if (m) {
+      const d = m[1].replace(/\D/g, "");
+      if (d.length >= 6 && d.length <= 15) return m[1].trim();
+    }
+  }
+  return null;
 }
 function pickEmail(parsedEmail, summary) {
   const e = typeof parsedEmail === "string" ? parsedEmail.trim() : "";

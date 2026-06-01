@@ -17,14 +17,23 @@ function tokenGen() {
 }
 
 // 简报(aiSummary)里常含完整电话/邮箱,公开页须与结构化字段同等门控:
-//   showContact=true → 打码(与 mask 一致),false → 抹去(防泄露)
+//   showContact=true → 打码,false → 抹去(防泄露)。
+// 候选人可能是任何国家的人 → 不绑定中国手机号格式:只在带「电话/phone/tel」标签的行里
+// 处理号码(兼容各国格式 +/空格/横杠),避免误伤年份/编号等其它数字;邮箱靠 @ 通用匹配。
+const CONTACT_LABEL_RE = /(联系电话|电话|手机号?|电话号码|tel\.?|phone|mobile|cell)/i;
+const PHONE_TOKEN_RE = /([+(]?\d[\d\s\-()]{5,}\d)/;
+const SUMMARY_EMAIL_RE = /([A-Za-z0-9._%+-]{1,2})[A-Za-z0-9._%+-]*(@[A-Za-z0-9.-]+)/g;
 function sanitizeSummaryContact(summary, showContact) {
   if (typeof summary !== "string" || !summary) return summary;
-  const phoneRe = /(\d{3})\d{4}(\d{4})/g;                                  // 11 位手机
-  const emailRe = /([A-Za-z0-9._%+-]{1,2})[A-Za-z0-9._%+-]*(@[A-Za-z0-9.-]+)/g;
-  return showContact
-    ? summary.replace(phoneRe, "$1****$2").replace(emailRe, "$1***$2")
-    : summary.replace(phoneRe, "[已隐藏]").replace(emailRe, "[已隐藏]");
+  let out = summary.split("\n").map((line) => {
+    if (!CONTACT_LABEL_RE.test(line)) return line;
+    return line.replace(PHONE_TOKEN_RE, (tok) => {
+      const d = tok.replace(/\D/g, "");
+      if (d.length < 6 || d.length > 15) return tok; // 不像电话(年份/短编号),放过
+      return showContact ? `${d.slice(0, 3)}****${d.slice(-2)}` : "[已隐藏]";
+    });
+  }).join("\n");
+  return showContact ? out.replace(SUMMARY_EMAIL_RE, "$1***$2") : out.replace(SUMMARY_EMAIL_RE, "[已隐藏]");
 }
 
 function computeExpiresAt(duration) {
