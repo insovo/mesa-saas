@@ -75,6 +75,20 @@ function deriveName(parsedName, summary, fallback) {
   return fallback;
 }
 
+// 同 deriveName:Kimi 偶发没把电话/邮箱填进结构化字段(只在简报里),从简报兜底提取。
+function pickPhone(parsedPhone, summary) {
+  const p = typeof parsedPhone === "string" ? parsedPhone.trim() : "";
+  if (p) return p;
+  const m = (summary || "").match(/(?<!\d)\d{11}(?!\d)/);
+  return m ? m[0] : null;
+}
+function pickEmail(parsedEmail, summary) {
+  const e = typeof parsedEmail === "string" ? parsedEmail.trim() : "";
+  if (e) return e;
+  const m = (summary || "").match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/);
+  return m ? m[0] : null;
+}
+
 async function streamToBuffer(stream) {
   if (Buffer.isBuffer(stream)) return stream;
   if (stream && typeof stream.transformToByteArray === "function") {
@@ -188,8 +202,8 @@ export async function runReparse(app, taskId, candidateId, model, jobIdOverride,
       age: parsed.age ?? existingCandidate.age,
       location: parsed.location ?? existingCandidate.location,
       yearsExp: parsed.yearsExp ?? existingCandidate.yearsExp,
-      phone: parsed.phone ?? existingCandidate.phone,
-      email: parsed.email ?? existingCandidate.email,
+      phone: pickPhone(parsed.phone, result.summary) ?? existingCandidate.phone,
+      email: pickEmail(parsed.email, result.summary) ?? existingCandidate.email,
       tags: (Array.isArray(parsed.tags) && parsed.tags.length > 0) ? parsed.tags : existingCandidate.tags,
       languages: (Array.isArray(parsed.languages) && parsed.languages.length > 0) ? parsed.languages : existingCandidate.languages,
       aiSummary: result.summary,
@@ -333,6 +347,8 @@ async function runParseAndCreate(app, taskId, payload) {
     const candidateData = {
       ...parsed,
       name: deriveName(parsed.name, result.summary, fallbackName),
+      phone: pickPhone(parsed.phone, result.summary),
+      email: pickEmail(parsed.email, result.summary),
       aiSummary: result.summary,
       attachment: payload.key,
       parser: "Kimi",
