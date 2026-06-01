@@ -368,8 +368,10 @@ export default async function shareRoutes(app) {
     const showInterviewEval = link.showInterviewEval !== false;
     const showInterviewEvalList = link.showInterviewEvalList === true;
     const showResume = link.showResume !== false && !!c.attachment; // 有原始简历文件且开关开
-    // 备注:双闸(本链接开关 + 创建者拥有 candidate.notes 模块);默认关。洞察不受控,始终展示。
-    const showNotes = link.showNotes === true && effective.has("candidate.notes");
+    // 备注:双闸(本链接开关 + 创建者当前持有 candidate.notes 模块);默认关。洞察不受控,始终展示。
+    // 注:candidate.notes 不在 allowedModules 快照里(computeAllowedModules 不含它),故直接查 creatorModules,
+    // 既保留动态防撤权,又让已存量链接即时生效(无需重新保存)。
+    const showNotes = link.showNotes === true && creatorModules.includes("candidate.notes");
 
     // 「展示已有面试评价」开启时,带出该候选人已提交的评价记录(只读可看,含 token 查看详情);
     // 草稿/未提交不暴露 token,防被随意编辑。独立于「支持填写」开关。
