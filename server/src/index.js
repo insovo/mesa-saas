@@ -23,6 +23,7 @@ import usersRoutes from "./routes/users.js";
 import auditRoutes from "./routes/audit.js";
 import interviewEvalsRoutes from "./routes/interview-evals.js";
 import feishuRoutes from "./routes/feishu.js";
+import feishuConfigRoutes from "./routes/feishu-config.js";
 import { verifyTemplateOnBoot } from "./lib/interviewEvalTemplate.js";
 
 const requiredEnv = ["DATABASE_URL", "JWT_SECRET", "WEB_ORIGIN"];
@@ -77,6 +78,8 @@ await app.register(auditRoutes, { prefix: "/api/audit-logs" });
 await app.register(interviewEvalsRoutes, { prefix: "/api" });
 // feishu: 卡片回调(card.action.trigger),公开端点(AuthGuard 外),靠 Verification Token 校验
 await app.register(feishuRoutes, { prefix: "/api/feishu" });
+// feishu-config: bot 自动分享设置(登录态,全局仅 admin)
+await app.register(feishuConfigRoutes, { prefix: "/api/feishu-config" });
 
 // 启动时校验面试评价模板 hash — 不一致就抛错(模板被改过 / 版本不对)
 try {
