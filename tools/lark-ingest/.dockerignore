@@ -1,0 +1,6 @@
+.env
+downloads/
+data/
+state.json
+node_modules/
+README.md

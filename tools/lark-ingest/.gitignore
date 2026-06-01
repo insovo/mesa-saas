@@ -1,0 +1,4 @@
+.env
+downloads/
+state.json
+node_modules/

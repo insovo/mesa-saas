@@ -84,3 +84,11 @@ jobs:
           tags: mesa-web:ci
           cache-from: type=gha,scope=web
           cache-to: type=gha,scope=web,mode=max
+      - name: Build lark-ingest image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./tools/lark-ingest
+          push: false
+          tags: mesa-lark-ingest:ci
+          cache-from: type=gha,scope=lark-ingest
+          cache-to: type=gha,scope=lark-ingest,mode=max

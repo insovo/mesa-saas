@@ -139,6 +139,35 @@ services:
       retries: 3
       start_period: 60s
 
+  # === 飞书简历自动入库 · lark-ingest ===
+  # 长连接监听飞书群/私聊的简历文件 → 下载 → 喂进 backend 公开上传通道(/api/public/upload)。
+  # 纯出站连接,不暴露任何端口;凭证经 .env 注入,绝不入镜像。
+  lark-ingest:
+    image: ${LARK_INGEST_IMAGE:-ghcr.io/insovo/mesa-lark-ingest:latest}
+    build:
+      context: ./tools/lark-ingest
+      dockerfile: Dockerfile
+    container_name: mesa-lark-ingest
+    restart: unless-stopped
+    init: true   # 复用 tini 回收 lark-cli event bus daemon 的子进程,避免僵尸进程
+    depends_on:
+      - backend
+    environment:
+      # 飞书自建应用凭证(entrypoint 用 stdin 配 lark-cli)。
+      # 用 :- 默认空 而非 :? 必填 —— 缺凭证只让本容器重启,不拖垮整个 deploy 的 compose up。
+      # entrypoint.sh 会校验缺失并明确退出(容器进入重启循环,日志可见)。
+      LARK_APP_ID: ${LARK_APP_ID:-}
+      LARK_APP_SECRET: ${LARK_APP_SECRET:-}
+      LARK_BRAND: ${LARK_BRAND:-feishu}
+      # 入库走 backend 内网直连(免走 Cloudflare,规避 100s 上限)
+      MESA_BASE_URL: ${LARK_MESA_BASE_URL:-http://backend:3001}
+      # MESA 长期公开上传链接 token(决定入库候选人归属人 ownerId)
+      UPLOAD_TOKEN: ${LARK_UPLOAD_TOKEN:-}
+    volumes:
+      - mesa_lark_ingest_data:/app/data   # 去重状态持久化,扛重启
+    networks:
+      - mesa-net
+
 networks:
   mesa-net:
     driver: bridge
@@ -147,3 +176,4 @@ volumes:
   mesa_pg_prod_data:
   mesa_redis_prod_data:
   mesa_uptime_data:
+  mesa_lark_ingest_data:
