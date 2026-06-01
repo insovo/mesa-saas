@@ -295,16 +295,16 @@ export default function SharedCandidate() {
           </Card>
         )}
 
-        {/* === 评价 === */}
+        {/* === 评论 === */}
         <Card className="p-5 md:p-6">
           <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
             <h3 className="title-card flex items-center gap-2">
               <I name="message-circle" size={18} className="text-brand" />
-              评价
+              评论
               <span className="text-[11px] px-2 py-0.5 rounded-full bg-brand text-white font-bold">{reviews.length}</span>
             </h3>
             <Button size="sm" onClick={() => setReviewOpen(true)} icon={<I name="message-square-plus" size={12} />}>
-              添加评价
+              添加评论
             </Button>
           </div>
           {(() => {
@@ -313,7 +313,7 @@ export default function SharedCandidate() {
             reviews.filter((r) => r.parentId).forEach((r) => {
               (repliesByParent[r.parentId] = repliesByParent[r.parentId] || []).push(r);
             });
-            if (tree.length === 0) return <Empty icon="message-circle" title="还没有评价" desc="点击「添加评价」给候选人留下你的反馈" />;
+            if (tree.length === 0) return <Empty icon="message-circle" title="还没有评论" desc="点击「添加评论」给候选人留下你的反馈" />;
             return (
               <>
                 <ul className="space-y-4">
@@ -432,7 +432,7 @@ function PublicReviewItem({ review, replies = [], token, onReply, updateReview, 
           </div>
           {(review.referencedIds || []).length > 1 && (
             <p className="text-[10px] text-gray-600 mt-0.5 flex items-center gap-1">
-              <I name="quote" size={10} /> 引用 {review.referencedIds.length} 条评价
+              <I name="quote" size={10} /> 引用 {review.referencedIds.length} 条评论
             </p>
           )}
           {review.deletedAt ? (
@@ -711,7 +711,7 @@ function PublicReviewModal({ open, onClose, candidate, token, replyTo, onCreated
 
   async function submit() {
     if (!authorName.trim()) return toast("请输入您的姓名", "error");
-    if (!content.trim()) return toast("请输入评价内容", "error");
+    if (!content.trim()) return toast("请输入评论内容", "error");
     setSaving(true);
     try {
       const body = { authorName: authorName.trim(), content: content.trim(), attachments };
@@ -725,7 +725,7 @@ function PublicReviewModal({ open, onClose, candidate, token, replyTo, onCreated
       const { data } = await axios.post(`/api/public/share/${token}/reviews`, body);
       rememberName(authorName.trim());
       onCreated(data.review);
-      toast(replyTo ? "已回复" : "评价已发布", "success");
+      toast(replyTo ? "已回复" : "评论已发布", "success");
     } catch (e) { toast(e.response?.data?.message || "发布失败", "error"); }
     finally { setSaving(false); }
   }
@@ -736,14 +736,14 @@ function PublicReviewModal({ open, onClose, candidate, token, replyTo, onCreated
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-bold text-navy-700 flex items-center gap-2">
             <I name={replyTo ? "reply" : "message-circle"} size={18} className="text-brand" />
-            {replyTo ? `回复 ${replyTo.authorName}` : `添加评价 — ${candidate?.name}`}
+            {replyTo ? `回复 ${replyTo.authorName}` : `添加评论 — ${candidate?.name}`}
           </h3>
           <button onClick={onClose} className="text-gray-400 hover:text-navy-700"><I name="x" size={20} /></button>
         </div>
 
         {replyTo && (
           <div className="p-3 rounded-xl bg-lightPrimary border-l-4 border-brand">
-            <p className="text-[11px] font-bold text-gray-700">引用 {replyTo.authorName} 的评价:</p>
+            <p className="text-[11px] font-bold text-gray-700">引用 {replyTo.authorName} 的评论:</p>
             <p className="text-xs text-gray-700 mt-1 line-clamp-2">{replyTo.content}</p>
           </div>
         )}
@@ -753,7 +753,7 @@ function PublicReviewModal({ open, onClose, candidate, token, replyTo, onCreated
           <input
             value={authorName}
             onChange={(e) => setAuthorName(e.target.value.slice(0, 100))}
-            placeholder="必填,显示在评价头部"
+            placeholder="必填,显示在评论头部"
             className="w-full h-11 px-3 rounded-xl border border-gray-200 text-sm text-navy-700 outline-none focus:border-brand"
             disabled={saving}
           />
@@ -778,7 +778,7 @@ function PublicReviewModal({ open, onClose, candidate, token, replyTo, onCreated
         {replyTo && (
           <div>
             <p className="text-xs font-bold text-gray-700 uppercase mb-2 flex items-center gap-1.5">
-              <I name="vote" size={12} /> 对原评价的态度 (可选)
+              <I name="vote" size={12} /> 对原评论的态度 (可选)
             </p>
             <div className="grid grid-cols-3 gap-2">
               <button
@@ -813,12 +813,12 @@ function PublicReviewModal({ open, onClose, candidate, token, replyTo, onCreated
         )}
 
         <div>
-          <label className="text-sm text-navy-700 font-bold ml-3 block mb-2">评价内容 *</label>
+          <label className="text-sm text-navy-700 font-bold ml-3 block mb-2">评论内容 *</label>
           <textarea
             value={content}
             onChange={(e) => setContent(e.target.value.slice(0, 500))}
             rows={5}
-            placeholder="请输入您对此候选人的评价..."
+            placeholder="请输入您对此候选人的评论..."
             className="w-full p-3 rounded-xl border border-gray-200 text-sm text-navy-700 outline-none focus:border-brand resize-none"
             disabled={saving}
           />
@@ -879,7 +879,7 @@ function PublicReviewModal({ open, onClose, candidate, token, replyTo, onCreated
         <div className="flex justify-end gap-2 pt-2 border-t border-gray-200">
           <Button variant="ghost" onClick={onClose} disabled={saving}>取消</Button>
           <Button onClick={submit} disabled={saving || !authorName.trim() || !content.trim()} icon={<I name={saving ? "loader" : "check"} size={12} className={saving ? "animate-spin" : ""} />}>
-            {saving ? "保存中" : "发布评价"}
+            {saving ? "保存中" : "发布评论"}
           </Button>
         </div>
       </div>
