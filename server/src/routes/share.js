@@ -64,6 +64,7 @@ export default async function shareRoutes(app) {
             maxViews: { type: ["integer", "null"], minimum: 1, maximum: 9999 },
             showContact:     { type: "boolean" },
             showAttachments: { type: "boolean" },
+            showInterviewEval: { type: "boolean" },
             // 创建者最多能允许的模块,会和创建者自身的模块权限取交集
             allowedModules: { type: "array", items: { type: "string", maxLength: 64 } },
           },
@@ -91,6 +92,9 @@ export default async function shareRoutes(app) {
       const canShowAttachments = hasModule(access, "candidate.attachments");
       const showAttachments = askShowAttachments && canShowAttachments;
 
+      // showInterviewEval 默认开,创建者只要能分享即可开放(无额外模块门)
+      const showInterviewEval = req.body?.showInterviewEval !== false;
+
       // showContact 必须创建者拥有 candidate.contact 才允许
       const askShowContact = req.body?.showContact !== false; // default true
       const canShowContact = hasModule(access, "candidate.contact");
@@ -111,6 +115,7 @@ export default async function shareRoutes(app) {
           maxViews: req.body?.maxViews ?? null,
           showContact,
           showAttachments,
+          showInterviewEval,
           allowedModules,
           createdBy: req.user.sub,
         },
@@ -127,6 +132,7 @@ export default async function shareRoutes(app) {
             maxViews: { type: ["integer", "null"], minimum: 1, maximum: 9999 },
             showContact:     { type: "boolean" },
             showAttachments: { type: "boolean" },
+            showInterviewEval: { type: "boolean" },
             allowedModules: { type: "array", items: { type: "string", maxLength: 64 } },
           },
           additionalProperties: false,
@@ -161,6 +167,9 @@ export default async function shareRoutes(app) {
           return reply.code(403).send({ error: "forbidden", message: "您没有附件模块权限,无法对外开放" });
         }
         data.showAttachments = want;
+      }
+      if (typeof req.body?.showInterviewEval === "boolean") {
+        data.showInterviewEval = req.body.showInterviewEval;
       }
       if (req.body?.allowedModules) {
         const requested = sanitizeAllowedModules(req.body);
@@ -327,6 +336,7 @@ export default async function shareRoutes(app) {
         createdAt: link.createdAt,
         showContact,
         showAttachments,
+        showInterviewEval: link.showInterviewEval !== false,
         allowedModules: Array.from(effective),
       },
     };

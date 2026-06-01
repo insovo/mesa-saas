@@ -387,6 +387,55 @@ export default async function interviewEvalRoutes(app) {
     return ev;
   }
 
+  // 公开:从分享链接(/share/:token)的「填写面试评价」按钮创建一条面试评价邀请。
+  // 用 share token 校验 → 用 link.candidateId 预填创建 InterviewEvaluation(createdBy 继承链接创建者)→ 返回 eval token,
+  // 前端跳 /interview-eval/:token 复用现有公开填写页。面试官姓名留空,在填写页里自填。
+  app.post("/public/share/:token/interview-eval", async (req, reply) => {
+    const link = await app.prisma.shareLink.findUnique({
+      where: { token: req.params.token },
+      include: { candidate: { include: { job: { select: { title: true, dept: true } } } } },
+    });
+    if (!link) return reply.code(404).send({ error: "share_not_found", message: "链接无效" });
+    if (link.expiresAt && link.expiresAt < new Date()) {
+      return reply.code(410).send({ error: "share_expired", message: "此分享链接已过期" });
+    }
+    if (link.showInterviewEval === false) {
+      return reply.code(403).send({ error: "interview_eval_disabled", message: "此分享未开放面试评价" });
+    }
+    // 防刷:该候选人「未提交」的面试评价草稿数上限
+    const PENDING_CAP = 30;
+    const pending = await app.prisma.interviewEvaluation.count({
+      where: { candidateId: link.candidateId, status: "link_sent", submittedAt: null, deletedAt: null },
+    });
+    if (pending >= PENDING_CAP) {
+      return reply.code(429).send({ error: "interview_eval_quota", message: "面试评价待填数量已达上限,请联系招聘官" });
+    }
+    const candidate = link.candidate;
+    const created = await app.prisma.interviewEvaluation.create({
+      data: {
+        token: tokenGen(),
+        candidateId: candidate.id,
+        jobId: candidate.jobId || null,
+        status: "link_sent",
+        expiresAt: computeExpiresAt("7d"),
+        candidateName: candidate.name,
+        position: candidate.appliedFor || candidate.job?.title || null,
+        department: candidate.job?.dept || null,
+        region: null,
+        currentCity: candidate.location || null,
+        languageStrength: null,
+        timezoneCollaboration: null,
+        interviewDate: null,
+        interviewer: "",
+        scores: [],
+        templateVersion: TEMPLATE_VERSION,
+        templateFileHash: getTemplateHash(),
+        createdBy: link.createdBy || null,
+      },
+    });
+    return reply.code(201).send({ token: created.token });
+  });
+
   // GET 表单数据 — 记录一次访问
   app.get("/public/interview-eval/:token", async (req, reply) => {
     const ev = await loadValid(req.params.token, reply);

@@ -433,6 +433,7 @@ model ShareLink {
   // 公开端可见性开关 — 不修改候选人本身,只控制本 ShareLink 的展示策略
   showContact     Boolean   @default(true) @map("show_contact") // 联系方式(phone/email)是否露出(mask)
   showAttachments Boolean   @default(false) @map("show_attachments") // 评价表单的「附件上传」input 是否开放
+  showInterviewEval Boolean @default(true) @map("show_interview_eval") // 公开页是否显示「填写面试评价」入口(默认开)
   // 创建时快照:允许公开展示的 module key 数组 ["candidate.contact","candidate.reviews",...]
   // 公开访问最终模块 = allowedModules ∩ 创建者当前权限,创建者被停用则整链接 410
   allowedModules  String[]  @default([]) @map("allowed_modules")
