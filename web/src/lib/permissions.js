@@ -13,6 +13,7 @@ export const PAGE_KEYS = Object.freeze([
   "reports",
   "users",
   "system.llm",
+  "share.settings",
   "audit",
 ]);
 
@@ -50,6 +51,7 @@ export const PAGE_LABELS = Object.freeze({
   "reports": "数据报表",
   "users": "用户管理",
   "system.llm": "LLM 系统配置",
+  "share.settings": "飞书 Bot 分享设置",
   "audit": "审计日志",
 });
 

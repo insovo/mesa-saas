@@ -23,6 +23,7 @@ import Users from "./pages/Users.jsx";
 import AuditLog from "./pages/AuditLog.jsx";
 import Forbidden from "./pages/Forbidden.jsx";
 import PublicInterviewEval from "./pages/PublicInterviewEval.jsx";
+import ShareSettings from "./pages/ShareSettings.jsx";
 
 // 路由 → 所需 pageKey 映射
 const PAGE = {
@@ -37,6 +38,7 @@ const PAGE = {
   interviews: "interviews",
   reports: "reports",
   users: "users",
+  shareSettings: "share.settings",
 };
 
 function Page({ pageKey, element }) {
@@ -79,6 +81,7 @@ export default function App() {
         <Route path="/departments" element={<Page pageKey={PAGE.departments} element={<Departments />} />} />
         <Route path="/interviews" element={<Page pageKey={PAGE.interviews} element={<Interviews />} />} />
         <Route path="/reports" element={<Page pageKey={PAGE.reports} element={<Reports />} />} />
+        <Route path="/share-settings" element={<Page pageKey={PAGE.shareSettings} element={<ShareSettings />} />} />
         <Route path="/users" element={<RequirePermission pageKey={PAGE.users} adminOnly><Users /></RequirePermission>} />
         <Route path="/audit" element={<RequirePermission adminOnly><AuditLog /></RequirePermission>} />
         <Route path="/forbidden" element={<Forbidden />} />
