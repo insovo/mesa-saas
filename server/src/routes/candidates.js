@@ -3,6 +3,7 @@
 
 import { whereByIdOrExternal } from "../lib/idLookup.js";
 import { withDerivedCandidate as withDerived } from "../lib/derived.js";
+import { toDisplayName, resolveNoteAuthorNames } from "../lib/displayName.js";
 import {
   loadUserAccess,
   buildCandidateScopeWhere,
@@ -255,7 +256,7 @@ export default async function candidatesRoutes(app) {
       where: { candidateId: req.params.id },
       orderBy: { createdAt: "desc" },
     });
-    return { notes };
+    return { notes: await resolveNoteAuthorNames(app.prisma, notes) };
   });
 
   app.post("/:id/notes", {
@@ -273,12 +274,16 @@ export default async function candidatesRoutes(app) {
     }
     const ok = await assertCandidateAccess(req, reply, req.params.id);
     if (!ok) return;
+    const author = await app.prisma.user.findUnique({
+      where: { id: req.user.sub },
+      select: { name: true, email: true },
+    });
     const note = await app.prisma.candidateNote.create({
       data: {
         candidateId: req.params.id,
         content: req.body.content,
         authorId: req.user.sub,
-        authorName: req.user.email,
+        authorName: toDisplayName(author?.name, author?.email || req.user.email),
       },
     });
     return reply.code(201).send({ note });
