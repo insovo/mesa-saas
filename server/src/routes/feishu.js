@@ -29,8 +29,9 @@ function decryptBody(encrypt) {
 }
 
 // ── schema 2.0 卡片构建 ──────────────────────────────────
+// 注意:2.0 不再支持 {tag:"action"} 容器,按钮直接作为 body.elements 元素(纵向排列)
 function rawCard(elements) {
-  return { type: "raw", data: { schema: "2.0", config: { wide_screen_mode: true }, body: { elements } } };
+  return { type: "raw", data: { schema: "2.0", body: { elements } } };
 }
 function md(content) {
   return { tag: "markdown", content };
@@ -38,9 +39,6 @@ function md(content) {
 function cbButton(content, value, type = "default") {
   // 回调按钮:点击后 value 原样出现在 event.action.value
   return { tag: "button", text: { tag: "plain_text", content }, type, behaviors: [{ type: "callback", value }] };
-}
-function actionRow(buttons) {
-  return { tag: "action", actions: buttons };
 }
 function toast(type, content) {
   return { type, content, i18n: { zh_cn: content } };
@@ -51,12 +49,8 @@ function cardPickJd(cid, jobs) {
   if (!jobs.length) {
     return rawCard([md("⚠️ 暂无可选 JD,请先在 MESA 创建岗位")]);
   }
-  // 每行最多 3 个按钮,避免过宽
-  const rows = [];
-  for (let i = 0; i < jobs.length; i += 3) {
-    rows.push(actionRow(jobs.slice(i, i + 3).map((j) => cbButton(j.title.slice(0, 30), { a: "set_jd", cid, jid: j.id }))));
-  }
-  return rawCard([md("📋 **选择要投递的 JD**:"), ...rows]);
+  const buttons = jobs.map((j) => cbButton(j.title.slice(0, 40), { a: "set_jd", cid, jid: j.id }));
+  return rawCard([md("📋 **选择要投递的 JD**:"), ...buttons]);
 }
 function cardJdDone(title) {
   return rawCard([md(`✅ 已关联 JD:**${title}**\n\n_下一步:解析指令即将支持(Phase 3)_`)]);

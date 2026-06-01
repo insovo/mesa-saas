@@ -136,17 +136,15 @@ async function replyCard(messageId, card) {
 }
 
 // schema 2.0 成功卡片:文案 + 「关联 JD」回调按钮(value 携带 candidateId,飞书原样回传)
+// 注意 2.0 不再支持 {tag:"action"} 容器,按钮直接作为 body.elements 元素
 function buildSuccessCard(fileName, candidateId) {
   return {
     schema: "2.0",
-    config: { wide_screen_mode: true },
     body: {
       elements: [
         { tag: "markdown", content: `✅ 已收到简历 **${fileName}**,入库成功(状态:待解析)~` },
-        { tag: "action", actions: [
-          { tag: "button", text: { tag: "plain_text", content: "关联 JD" }, type: "primary",
-            behaviors: [{ type: "callback", value: { a: "pick_jd", cid: candidateId } }] },
-        ] },
+        { tag: "button", text: { tag: "plain_text", content: "关联 JD" }, type: "primary",
+          behaviors: [{ type: "callback", value: { a: "pick_jd", cid: candidateId } }] },
       ],
     },
   };
