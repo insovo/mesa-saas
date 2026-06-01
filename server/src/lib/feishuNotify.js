@@ -66,6 +66,7 @@ async function createShareLink(app, candidate) {
       showAttachments: p.showAttachments,
       showInterviewEval: p.showInterviewEval,
       showInterviewEvalList: p.showInterviewEvalList,
+      showResume: p.showResume,
       allowedModules: p.allowedModules,
       createdBy: candidate.ownerId || null,
     },
