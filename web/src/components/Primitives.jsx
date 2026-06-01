@@ -3,6 +3,7 @@
 
 import { useEffect, useState, useRef, forwardRef } from "react";
 import { createPortal } from "react-dom";
+import { Link } from "react-router-dom";
 import * as Lucide from "lucide-react";
 import { STATUS_TONE, HIRE_STAGE_TONE, TASK_STATUS_TONE, URGENCY_TONE } from "../lib/constants.js";
 
@@ -379,9 +380,16 @@ export function Tag({ children, tone = "default" }) {
 }
 
 // === Widget (stat tile) =============================================
-export function Widget({ icon, label, value, accent = "#422AFB", subtitle }) {
-  return (
-    <Card className="p-5 flex items-center gap-4">
+export function Widget({ icon, label, value, accent = "#422AFB", subtitle, to }) {
+  const interactive = !!to;
+  const inner = (
+    <Card
+      className={`relative p-5 flex items-center gap-4${
+        interactive
+          ? " transition-all duration-200 group-hover:-translate-y-0.5 group-hover:shadow-lg group-focus-visible:-translate-y-0.5 group-focus-visible:shadow-lg"
+          : ""
+      }`}
+    >
       <div
         className="flex items-center justify-center rounded-full shrink-0"
         style={{ width: 56, height: 56, background: `${accent}15`, color: accent }}
@@ -393,7 +401,20 @@ export function Widget({ icon, label, value, accent = "#422AFB", subtitle }) {
         <p className="text-2xl font-bold text-navy-700 leading-tight mt-0.5">{value}</p>
         {subtitle && <p className="text-xs text-gray-600 mt-0.5 truncate">{subtitle}</p>}
       </div>
+      {interactive && (
+        <I
+          name="arrow-right"
+          size={16}
+          className="absolute top-4 right-4 text-gray-300 transition-all duration-200 group-hover:text-brand group-hover:translate-x-0.5"
+        />
+      )}
     </Card>
+  );
+  if (!interactive) return inner;
+  return (
+    <Link to={to} className="group block rounded-card outline-none focus-visible:ring-2 focus-visible:ring-brand">
+      {inner}
+    </Link>
   );
 }
 
