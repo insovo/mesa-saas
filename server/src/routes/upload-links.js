@@ -271,11 +271,13 @@ export default async function uploadLinksRoutes(app) {
       return { candidate, link: updated };
     });
 
-    // 仅返回 ack, 不返回 candidate 详细信息给陌生上传者
+    // 仅返回 ack + 候选人 id(给持 token 的可信调用方,如 lark-ingest 发交互卡片用);
+    // 不返回候选人其它详细信息给陌生上传者
     return reply.code(201).send({
       ok: true,
       uploadCount: result.link.uploadCount,
       maxUploads: result.link.maxUploads,
+      candidateId: result.candidate.id,
     });
   });
 }
