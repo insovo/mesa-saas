@@ -1254,6 +1254,126 @@ function ShareVisibilityToggles({ showContact, setShowContact, showAttachments, 
   );
 }
 
+// 飞书 bot 自动分享设置:admin 编「全局策略」(默认+上限/锁),招聘官编「我的偏好」(被全局 clamp,只能更严)
+function BotShareSettings({ open }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [duration, setDuration] = useState("30d");
+  const [custom, setCustom] = useState({ n: 7, unit: "d" });
+  const [showCustom, setShowCustom] = useState(false);
+  const [maxViewsPreset, setMaxViewsPreset] = useState("unlimited");
+  const [customMaxViews, setCustomMaxViews] = useState(100);
+  const [tg, setTg] = useState({ showContact: true, showAttachments: false, showInterviewEval: true, showReviews: true });
+
+  const PRESETS = [
+    { v: "1d", l: "1 天" }, { v: "3d", l: "3 天" }, { v: "7d", l: "1 周" },
+    { v: "30d", l: "1 个月" }, { v: "forever", l: "无限期" },
+  ];
+
+  function applyConfig(cfg) {
+    if (!cfg) return;
+    const known = ["1d", "3d", "7d", "30d", "forever"];
+    if (cfg.duration && known.includes(cfg.duration)) { setDuration(cfg.duration); setShowCustom(false); }
+    else if (cfg.duration) { const m = String(cfg.duration).match(/^(\d+)([smhd])$/); if (m) { setCustom({ n: +m[1], unit: m[2] }); setShowCustom(true); } }
+    if (cfg.maxViews == null) setMaxViewsPreset("unlimited");
+    else if ([10, 50, 100].includes(cfg.maxViews)) setMaxViewsPreset(String(cfg.maxViews));
+    else { setMaxViewsPreset("custom"); setCustomMaxViews(cfg.maxViews); }
+    setTg({
+      showContact: cfg.showContact !== false,
+      showAttachments: cfg.showAttachments === true,
+      showInterviewEval: cfg.showInterviewEval !== false,
+      showReviews: cfg.showReviews !== false,
+    });
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    setLoading(true);
+    resources.feishuConfig.getShareDefaults()
+      .then((d) => { setData(d); applyConfig(d.isAdmin ? (d.global || d.builtin) : (d.mine || d.effective)); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [open]);
+
+  const effDuration = () => (showCustom ? `${custom.n}${custom.unit}` : duration);
+  const effMaxViews = () => (maxViewsPreset === "unlimited" ? null : maxViewsPreset === "custom" ? Math.max(1, Math.min(9999, customMaxViews | 0)) : parseInt(maxViewsPreset, 10));
+
+  async function save() {
+    if (!data) return;
+    setSaving(true);
+    try {
+      const scope = data.isAdmin ? "global" : "mine";
+      const res = await resources.feishuConfig.saveShareDefaults({ scope, duration: effDuration(), maxViews: effMaxViews(), ...tg });
+      setData((d) => ({ ...d, [scope]: res.saved, effective: res.effective }));
+      toast("已保存", "success");
+    } catch (e) { toast(e?.response?.data?.message || e.message || "保存失败", "error"); }
+    finally { setSaving(false); }
+  }
+
+  if (loading || !data) return <div className="py-10 text-center text-sm text-[#A3AED0]"><I name="loader" size={16} className="animate-spin inline mr-2" />加载中…</div>;
+
+  const isAdmin = data.isAdmin;
+  const capCfg = data.global || data.builtin; // 非 admin 的关停来源
+  const TOGGLE_META = [
+    { k: "showContact", t: "展示联系方式", d: "公开页是否露出 phone / email(mask)" },
+    { k: "showReviews", t: "显示评论/评价", d: "公开页评价对话模块" },
+    { k: "showInterviewEval", t: "支持面试评价", d: "公开页「填写面试评价」入口" },
+    { k: "showAttachments", t: "允许上传评论附件", d: "评论表单的附件输入" },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="p-3 rounded-xl bg-[#E9E3FF]/50 border border-[#422AFB]/15 text-xs text-[#422AFB] leading-relaxed">
+        {isAdmin
+          ? "🛡️ 全局策略(对所有人生效):有效期 / 次数为上限,关停的模块任何招聘官都无法开启;招聘官未单独设置时用此处作默认。"
+          : "👤 我的偏好:仅作用于机器人分享「我名下」候选人,受管理员全局上限 / 关停约束,只能更严不能突破。"}
+      </div>
+
+      <div>
+        <p className="text-xs font-bold text-[#707EAE] uppercase mb-2">有效期{isAdmin ? "(上限)" : ""}</p>
+        <DurationPicker {...{ duration, setDuration, custom, setCustom, showCustom, setShowCustom, PRESETS }} />
+      </div>
+      <div>
+        <p className="text-xs font-bold text-[#707EAE] uppercase mb-2">访问次数{isAdmin ? "(上限)" : ""}</p>
+        <MaxViewsPicker {...{ maxViewsPreset, setMaxViewsPreset, customMaxViews, setCustomMaxViews }} />
+      </div>
+
+      <div>
+        <p className="text-xs font-bold text-[#707EAE] uppercase mb-2">模块{isAdmin ? "(关停后全员不可开)" : ""}</p>
+        <div className="space-y-2">
+          {TOGGLE_META.map(({ k, t, d }) => {
+            const lockedOff = !isAdmin && capCfg[k] === false;
+            const checked = lockedOff ? false : !!tg[k];
+            return (
+              <label key={k} className={`flex items-start gap-2.5 p-2.5 rounded-lg border transition ${lockedOff ? "border-[#E9ECEF] bg-gray-50 opacity-60 cursor-not-allowed" : "border-[#E9ECEF] hover:border-[#422AFB]/40 cursor-pointer"}`}>
+                <input type="checkbox" disabled={lockedOff} checked={checked}
+                  onChange={(e) => setTg((s) => ({ ...s, [k]: e.target.checked }))}
+                  className="mt-0.5 w-4 h-4 rounded border-[#A3AED0] text-[#422AFB] focus:ring-[#422AFB]" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-[#1B254B]">{t}{lockedOff && <span className="ml-1 text-[10px] text-red-500 font-normal">· 管理员已关停</span>}</p>
+                  <p className="text-[10px] text-[#A3AED0] mt-0.5">{d}</p>
+                </div>
+              </label>
+            );
+          })}
+        </div>
+      </div>
+
+      {!isAdmin && data.effective && (
+        <div className="p-2.5 rounded-lg bg-gray-50 border border-[#E9ECEF] text-[10px] text-[#707EAE] leading-relaxed">
+          实际生效(受管理员约束后):有效期 <b>{data.effective.duration}</b> · 次数 <b>{data.effective.maxViews == null ? "不限" : data.effective.maxViews}</b> · 联系方式 {data.effective.showContact ? "开" : "关"} · 评论 {data.effective.showReviews ? "开" : "关"} · 面试评价 {data.effective.showInterviewEval ? "开" : "关"}
+        </div>
+      )}
+
+      <button onClick={save} disabled={saving}
+        className="w-full py-2.5 rounded-xl bg-[#422AFB] hover:bg-[#3311DB] text-white text-sm font-bold disabled:opacity-60 transition">
+        {saving ? "保存中…" : `保存${isAdmin ? "全局策略" : "我的偏好"}`}
+      </button>
+    </div>
+  );
+}
+
 function ShareModal({ open, onClose, candidate }) {
   const [link, setLink] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -1267,6 +1387,7 @@ function ShareModal({ open, onClose, candidate }) {
   const [showContact, setShowContact] = useState(true);
   const [showAttachments, setShowAttachments] = useState(false);
   const [showInterviewEval, setShowInterviewEval] = useState(true);
+  const [tab, setTab] = useState("share"); // "share" 本次分享 | "bot" 飞书 bot 自动分享设置
 
   useEffect(() => {
     if (!open || !candidate?.id) return;
@@ -1403,7 +1524,16 @@ function ShareModal({ open, onClose, candidate }) {
           <button onClick={onClose} className="text-gray-400 hover:text-[#1B254B]"><I name="x" size={20} /></button>
         </div>
 
-        {link ? (() => {
+        <div className="flex gap-2 mb-4 border-b border-[#E9ECEF]">
+          {[["share", "本次分享"], ["bot", "飞书 Bot 自动分享"]].map(([v, l]) => (
+            <button key={v} onClick={() => setTab(v)}
+              className={`px-3 py-2 text-sm font-bold border-b-2 -mb-px transition ${tab === v ? "border-[#422AFB] text-[#422AFB]" : "border-transparent text-[#A3AED0] hover:text-[#707EAE]"}`}>{l}</button>
+          ))}
+        </div>
+
+        {tab === "bot" && <BotShareSettings open={open && tab === "bot"} />}
+
+        {tab === "share" && (link ? (() => {
           const exp = fmtExpires(); const quota = fmtQuota();
           const worst = (a, b) => (a === "red" || b === "red") ? "red" : (a === "amber" || b === "amber") ? "amber" : "green";
           const tone = worst(exp.tone, quota.tone);
@@ -1504,7 +1634,7 @@ function ShareModal({ open, onClose, candidate }) {
               </Button>
             </div>
           </div>
-        )}
+        ))}
       </div>
     </Modal>
   );
