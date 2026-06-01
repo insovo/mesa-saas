@@ -46,18 +46,59 @@ function toast(type, content) {
   return { type, content, i18n: { zh_cn: content } };
 }
 
-// pick_jd:展示可选 JD 按钮(每个按钮带 set_jd + cid + jid)
+// pick_jd:列出 JD,点击查看详情(详情卡内可直接投递)
 function cardPickJd(cid, jobs) {
   if (!jobs.length) {
     return rawCard([md("⚠️ 暂无可选 JD,请先在 MESA 创建岗位")]);
   }
-  const buttons = jobs.map((j) => cbButton(j.title.slice(0, 40), { a: "set_jd", cid, jid: j.id }));
-  return rawCard([md("📋 **选择要投递的 JD**:"), ...buttons]);
+  const buttons = jobs.map((j) => cbButton(`👁 ${j.title.slice(0, 38)}`, { a: "view_jd", cid, jid: j.id }));
+  return rawCard([md("📋 **点选 JD 查看详情**(详情页可直接投递):"), ...buttons]);
 }
-function cardJdDone(cid, title) {
+
+// view_jd:岗位名称 + 详情(薪资/职级/经验/学历/职责/要求/加分项/福利),带投递 + 返回
+function cardViewJd(job, cid) {
+  const elements = [md(`📌 **${job.title}**`)];
+  const meta = [];
+  if (job.salary) meta.push(`💰 ${job.salary}`);
+  if (job.employment) meta.push(job.employment);
+  if (job.dept) meta.push(`🏢 ${job.dept}`);
+  if (job.location) meta.push(`📍 ${job.location}`);
+  if (job.levelRange || job.level) meta.push(`📊 ${job.levelRange || job.level}`);
+  if (job.yearsExpRange) meta.push(`📅 ${job.yearsExpRange}`);
+  if (job.educationRequirement) meta.push(`🎓 ${job.educationRequirement}`);
+  if (job.languageRequirement) meta.push(`🌍 ${job.languageRequirement}`);
+  if (meta.length) elements.push(md(meta.join(" · ")));
+
+  const section = (label, arr) => {
+    if (Array.isArray(arr) && arr.length) {
+      elements.push(md(`**${label}**\n${arr.map((x) => `• ${String(x).slice(0, 200)}`).join("\n")}`));
+    }
+  };
+  section("核心职责", job.responsibilities);
+  section("任职要求", job.requirements);
+  section("加分项", job.nice);
+  section("福利待遇", job.benefits);
+
+  const hasStructured =
+    job.responsibilities?.length || job.requirements?.length || job.nice?.length || job.benefits?.length;
+  if (!hasStructured && job.description) {
+    elements.push(md(job.description.slice(0, 1500)));
+  } else if (!hasStructured && !meta.length) {
+    elements.push(md("_该岗位暂无详情,可在 MESA 补充_"));
+  }
+
+  if (cid) {
+    elements.push(cbButton("✅ 投递此岗位", { a: "set_jd", cid, jid: job.id }, "primary"));
+    elements.push(cbButton("↩ 返回 JD 列表", { a: "pick_jd", cid }));
+  }
+  return rawCard(elements);
+}
+
+function cardJdDone(cid, job) {
   return rawCard([
-    md(`✅ 已关联 JD:**${title}**`),
+    md(`✅ 已关联 JD:**${job.title}**`),
     cbButton("🤖 解析简历", { a: "parse", cid }, "primary"),
+    cbButton("👁 查看 JD 详情", { a: "view_jd", cid, jid: job.id }),
   ]);
 }
 function cardParsing() {
@@ -125,6 +166,13 @@ export default async function feishuRoutes(app) {
         return reply.send({ card: cardPickJd(value.cid, jobs) });
       }
 
+      // ── view_jd:查看某 JD 的岗位名称 + 详情 ──
+      if (value.a === "view_jd") {
+        const job = await app.prisma.job.findUnique({ where: { id: value.jid } });
+        if (!job) return reply.send({ toast: toast("error", "该岗位不存在或已删除") });
+        return reply.send({ card: cardViewJd(job, value.cid) });
+      }
+
       // ── set_jd:关联候选人到 JD ──
       if (value.a === "set_jd") {
         const candidate = await app.prisma.candidate.findUnique({ where: { id: value.cid } });
@@ -139,7 +187,7 @@ export default async function feishuRoutes(app) {
           where: { id: candidate.id },
           data: { jobId: job.id, appliedFor: job.title },
         });
-        return reply.send({ toast: toast("success", `已关联 ${job.title}`), card: cardJdDone(candidate.id, job.title) });
+        return reply.send({ toast: toast("success", `已关联 ${job.title}`), card: cardJdDone(candidate.id, job) });
       }
 
       // ── parse:触发异步 LLM 解析 + JD 联评(复用 runReparse)──
