@@ -64,7 +64,7 @@ export const DEFAULT_PROMPT = `# Role: 简历信息提取专家
 \`\`\`
 {
   "summary": "<HR 友好的纯文本简报, 按下面 §四 模板>",
-  "name": "候选人姓名(必填)",
+  "name": "候选人真实姓名;读不到真实姓名时填 null,严禁编造或使用 张三/李四 等占位名",
   "gender": "male | female | unknown",
   "age": 整数 0-120 或 null,
   "education": "博士|硕士|本科|大专|高中|其他",
