@@ -33,6 +33,8 @@ export const MODULE_KEYS = Object.freeze([
   "department.create",
   "department.edit",
   "department.delete",
+  "employee.delete",
+  "interview.delete",
   "user.manage",
   "system.llm.manage",
 ]);
@@ -71,6 +73,8 @@ export const MODULE_LABELS = Object.freeze({
   "department.create": "新建部门",
   "department.edit": "编辑部门",
   "department.delete": "删除部门",
+  "employee.delete": "删除入职员工",
+  "interview.delete": "删除面试安排",
   "user.manage": "用户管理(辅助)",
   "system.llm.manage": "LLM 配置变更",
 });
@@ -100,6 +104,10 @@ export const MODULE_GROUPS = Object.freeze([
   {
     label: "部门操作",
     keys: ["department.create", "department.edit", "department.delete"],
+  },
+  {
+    label: "入职 / 面试操作",
+    keys: ["employee.delete", "interview.delete"],
   },
   {
     label: "高级 / 系统",

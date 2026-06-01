@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { gsap } from "gsap";
 import { useGSAP } from "@gsap/react";
 import { resources } from "../lib/api.js";
+import { useHasModule } from "../lib/authContext.jsx";
 import {
   Card,
   Avatar,
@@ -204,6 +205,18 @@ export default function NewHire() {
   const [filterStage, setFilterStage] = useState("");
   const [filterDept, setFilterDept] = useState("");
   const rowsRef = useRef(null);
+  const canDelete = useHasModule("employee.delete");
+
+  async function onDelete(e) {
+    if (!confirm(`确定删除入职员工「${e.name}」的记录吗?此操作不可恢复(候选人信息保留)。`)) return;
+    try {
+      await resources.employees.remove(e.id);
+      toast("已删除", "success");
+      setItems((prev) => prev.filter((x) => x.id !== e.id));
+    } catch (err) {
+      toast(err.response?.data?.message || "删除失败", "error");
+    }
+  }
 
   useEffect(() => {
     setLoading(true);
@@ -406,12 +419,24 @@ export default function NewHire() {
                       <RiskCell riskItems={e.riskItems} />
                     </td>
                     <td className="px-5 py-3 text-right">
-                      <Link
-                        to={`/staff/${e.externalId || e.id}`}
-                        className="text-xs font-bold text-brand hover:underline"
-                      >
-                        查看
-                      </Link>
+                      <div className="inline-flex items-center gap-3">
+                        <Link
+                          to={`/staff/${e.externalId || e.id}`}
+                          className="text-xs font-bold text-brand hover:underline"
+                        >
+                          查看
+                        </Link>
+                        {canDelete && (
+                          <button
+                            onClick={() => onDelete(e)}
+                            className="inline-flex items-center gap-1 text-xs font-bold text-red-500 hover:text-red-600 hover:underline"
+                            title="删除入职员工记录"
+                          >
+                            <I name="trash-2" size={12} />
+                            删除
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

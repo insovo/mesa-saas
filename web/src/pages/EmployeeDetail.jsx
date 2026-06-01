@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useNavigate } from "react-router-dom";
 import { resources } from "../lib/api.js";
+import { useHasModule } from "../lib/authContext.jsx";
 import {
   Card,
   Avatar,
@@ -146,6 +147,8 @@ function TimelineRow({ ev }) {
 
 export default function EmployeeDetail() {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const canDelete = useHasModule("employee.delete");
   const [emp, setEmp] = useState(null);
   const [err, setErr] = useState("");
   const [tab, setTab] = useState("timeline"); // timeline | risk
@@ -228,16 +231,38 @@ export default function EmployeeDetail() {
       toast(e.response?.data?.message || e.message || "操作失败", "error");
     }
   }
+  async function onDelete() {
+    if (!confirm(`确定删除入职员工「${emp.name}」的记录吗?此操作不可恢复(候选人信息保留)。`)) return;
+    try {
+      await resources.employees.remove(emp.id);
+      toast("已删除", "success");
+      navigate("/newhire");
+    } catch (e) {
+      toast(e.response?.data?.message || e.message || "删除失败", "error");
+    }
+  }
 
   return (
     <div className="space-y-4">
-      <Link
-        to="/newhire"
-        className="text-sm text-brand hover:underline inline-flex items-center gap-1"
-      >
-        <I name="arrow-left" size={14} />
-        返回员工列表
-      </Link>
+      <div className="flex items-center justify-between gap-3">
+        <Link
+          to="/newhire"
+          className="text-sm text-brand hover:underline inline-flex items-center gap-1"
+        >
+          <I name="arrow-left" size={14} />
+          返回员工列表
+        </Link>
+        {canDelete && (
+          <button
+            onClick={onDelete}
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-xl border border-red-200 text-red-500 text-xs font-bold hover:bg-red-50 hover:border-red-300 transition-colors"
+            title="删除入职员工记录"
+          >
+            <I name="trash-2" size={13} />
+            删除员工
+          </button>
+        )}
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)_360px] gap-5 items-start">
         {/* ===== 左列 ===== */}
