@@ -67,6 +67,9 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM: ${RESEND_FROM:-MESA Recruit <onboarding@resend.dev>}
       APP_BASE_URL: ${APP_BASE_URL:-https://insovo.top}
+      # 飞书卡片回调(card.action.trigger)校验:Verification Token 必填,Encrypt Key 可选(配了才解密)
+      FEISHU_VERIFICATION_TOKEN: ${FEISHU_VERIFICATION_TOKEN:-}
+      FEISHU_ENCRYPT_KEY: ${FEISHU_ENCRYPT_KEY:-}
     # 故意不映射端口 — 仅在 bridge 网络内通过服务名 backend:3001 访问
     expose:
       - "3001"

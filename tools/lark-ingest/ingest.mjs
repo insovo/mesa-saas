@@ -125,6 +125,33 @@ async function replyToMessage(messageId, markdown) {
   }
 }
 
+// 交互卡片回执:成功入库后发带「关联 JD」按钮的卡片。按钮点击 → 飞书回调 MESA /api/feishu/card-callback。
+async function replyCard(messageId, card) {
+  if (!REPLY_ENABLED || !messageId) return;
+  try {
+    await runCli(["im", "+messages-reply", "--message-id", messageId, "--msg-type", "interactive", "--content", JSON.stringify(card), "--as", "bot"]);
+  } catch (e) {
+    console.error(`[warn] 卡片回执失败(检查发送/卡片权限): ${e.message}`);
+  }
+}
+
+// schema 2.0 成功卡片:文案 + 「关联 JD」回调按钮(value 携带 candidateId,飞书原样回传)
+function buildSuccessCard(fileName, candidateId) {
+  return {
+    schema: "2.0",
+    config: { wide_screen_mode: true },
+    body: {
+      elements: [
+        { tag: "markdown", content: `✅ 已收到简历 **${fileName}**,入库成功(状态:待解析)~` },
+        { tag: "action", actions: [
+          { tag: "button", text: { tag: "plain_text", content: "关联 JD" }, type: "primary",
+            behaviors: [{ type: "callback", value: { a: "pick_jd", cid: candidateId } }] },
+        ] },
+      ],
+    },
+  };
+}
+
 async function downloadFile(messageId, fileKey, ext) {
   await mkdir(DOWNLOAD_DIR, { recursive: true });
   // --output 仅允许相对路径(lark-cli 拒绝 .. 穿越),相对脚本所在目录给 downloads/
@@ -213,8 +240,10 @@ async function handleEvent(obj) {
 
     seen.hashes.add(hash);
     markSeen(eventId);
-    console.log(`[ok] 入库成功 file=${fileName} chat=${chatType} uploadCount=${ack.uploadCount ?? "?"}`);
-    await replyToMessage(messageId, `✅ 已收到简历 **${fileName}**,入库成功(状态:待解析)~`);
+    console.log(`[ok] 入库成功 file=${fileName} chat=${chatType} cid=${ack.candidateId ?? "?"} uploadCount=${ack.uploadCount ?? "?"}`);
+    // 有 candidateId 就发带「关联 JD」按钮的交互卡片;否则降级纯文本(兼容旧后端)
+    if (ack.candidateId) await replyCard(messageId, buildSuccessCard(fileName, ack.candidateId));
+    else await replyToMessage(messageId, `✅ 已收到简历 **${fileName}**,入库成功(状态:待解析)~`);
   } catch (e) {
     console.error(`[err] 处理失败 message_id=${messageId}: ${e.message}`);
     // 不 markSeen → 下次重投有机会重试
