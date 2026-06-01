@@ -138,4 +138,9 @@ export const resources = {
     // 触发浏览器下载,后端响应带 Content-Disposition
     exportUrl: (id) => `/api/interview-evals/${id}/export.xlsx`,
   },
+  // 飞书 bot 自动分享设置(全局策略 + 单人偏好)
+  feishuConfig: {
+    getShareDefaults: () => api.get("/feishu-config/share-defaults").then((r) => r.data),
+    saveShareDefaults: (body) => api.put("/feishu-config/share-defaults", body).then((r) => r.data),
+  },
 };
