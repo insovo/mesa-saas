@@ -392,85 +392,89 @@ export default function Candidates() {
               const isReparsing = reparsingIds.has(c.id) || reparsingId === c.id || c.parsing;
               return (
               <li key={c.id} className={`py-4 group ${isSelected ? "bg-brand/5 -mx-2 px-2 rounded-lg" : ""}`}>
-                {/* === 桌面端: 两行卡片(上=身份+匹配球锚点+hover操作,下=控件) === */}
-                <div className="hidden md:flex items-start gap-3">
+                {/* === 桌面端: 单行列式(头像 / 身份 / 岗位列 / 来源列 / 右操作区+匹配球+hover) === */}
+                <div className="hidden md:flex items-center gap-3 md:gap-4">
                   <input
                     type="checkbox"
                     checked={isSelected}
                     onChange={() => toggleSelect(c.id)}
-                    className="w-4 h-4 accent-brand cursor-pointer shrink-0 mt-1"
+                    className="w-4 h-4 accent-brand cursor-pointer shrink-0"
                   />
-                  <Avatar name={c.name} animal={c.animal} size={44} className="shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    {/* 上行:身份信息(左,可压缩)+ 匹配球锚点 + hover 操作 */}
-                    <div className="flex items-start gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <Link to={`/candidates/${c.externalId || c.id}`} className="text-sm font-bold text-navy-700 hover:text-brand">
-                            {c.name}
-                          </Link>
-                          {c.parser && <AiBadge parser={c.parser} confidence={c.parserConfidence} />}
-                        </div>
-                        <p className="text-[11px] text-gray-700 mt-0.5 truncate">
-                          {[c.education, c.school, c.major, c.location, candidateExpText(c.yearsExp, hasWorkExperience(c.experience))].filter(Boolean).join(" · ")}
-                        </p>
-                        <div className="flex items-center gap-2 mt-1 text-[10px] text-gray-500 flex-wrap">
-                          <span><span className="text-gray-400">来源:</span> {fmtSource(c.source)}</span>
-                          <span className="text-gray-300">·</span>
-                          <span className="font-mono whitespace-nowrap">{fmtDateTime(c.createdAt)}</span>
-                        </div>
-                      </div>
-                      {c.jdMatch != null ? (
-                        <div className="shrink-0 pr-0.5">
-                          <LiquidLoader size={40} level={c.jdMatch} label={c.jdMatch} />
-                        </div>
-                      ) : (
-                        <div className="w-10 text-[9px] text-gray-400 text-center shrink-0 pt-1">
-                          <I name="link-2-off" size={12} />
-                        </div>
-                      )}
-                      <div className="opacity-0 group-hover:opacity-100 transition flex flex-col gap-1 shrink-0">
-                        <button onClick={() => navigate(`/candidates/${c.externalId || c.id}`)} className="w-7 h-7 rounded-full bg-lightPrimary text-gray-700 hover:text-brand flex items-center justify-center" title="查看详情">
-                          <I name="arrow-right" size={12} />
-                        </button>
-                        <button onClick={() => onDelete(c.id, c.name)} className="w-7 h-7 rounded-full bg-red-50 text-red-500 hover:bg-red-100 flex items-center justify-center" title="删除">
-                          <I name="trash-2" size={12} />
-                        </button>
-                      </div>
-                    </div>
-                    {/* 下行:控件一字排开,不再与匹配球抢位 */}
-                    <div className="flex items-center gap-1.5 flex-wrap mt-2">
-                      <select
-                        value={c.jobId || ""}
-                        onChange={(e) => onSingleAssign(c.id, { jobId: e.target.value || null })}
-                        className="h-7 rounded-lg border border-gray-200 px-2 text-[11px] text-navy-700 outline-none focus:border-brand bg-white max-w-[130px] shrink-0"
-                        title={c.job?.title ? `关联 JD: ${c.job.title}` : "点击关联 JD"}
-                      >
-                        <option value="">— 未关联 JD —</option>
-                        {jobs.map((j) => (<option key={j.id} value={j.id}>{j.title}</option>))}
-                      </select>
-                      <select
-                        value={c.departmentId || ""}
-                        onChange={(e) => onSingleAssign(c.id, { departmentId: e.target.value || null })}
-                        className="h-7 rounded-lg border border-gray-200 px-2 text-[11px] text-navy-700 outline-none focus:border-brand bg-white max-w-[110px] shrink-0"
-                        title={c.department?.name ? `关联部门: ${c.department.name}` : "点击关联部门"}
-                      >
-                        <option value="">— 未关联部门 —</option>
-                        {departments.map((d) => (<option key={d.id} value={d.id}>{d.name}</option>))}
-                      </select>
-                      {/* 解析按钮 — LLM 已配且有附件时始终显示;已解析显示"重新解析" */}
-                      {llmStatus?.configured && c.attachment && (
-                        <button
-                          onClick={() => openReparse(c)}
-                          disabled={isReparsing}
-                          className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg bg-brand text-white text-[11px] font-bold hover:bg-brand-hover disabled:opacity-60 shrink-0"
-                          title={c.parser ? "用 Kimi 重新解析" : "用 Kimi 解析这份简历"}
-                        >
-                          <I name={isReparsing ? "loader" : (c.parser ? "refresh-cw" : "sparkles")} size={10} className={isReparsing ? "animate-spin" : ""} />
-                          {isReparsing ? "解析中" : (c.parser ? "重新解析" : "解析")}
-                        </button>
-                      )}
+                  <Avatar name={c.name} animal={c.animal} size={48} className="shrink-0" />
+                  {/* 身份区 */}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Link to={`/candidates/${c.externalId || c.id}`} className="text-sm font-bold text-navy-700 hover:text-brand truncate">
+                        {c.name}
+                      </Link>
                       <StatusPill status={c.status || "待筛选"} />
+                    </div>
+                    <p className="text-[11px] text-gray-600 mt-0.5 truncate">
+                      {[c.education, c.school, c.major, c.location, candidateExpText(c.yearsExp, hasWorkExperience(c.experience))].filter(Boolean).join(" · ")}
+                    </p>
+                  </div>
+                  {/* 岗位列 */}
+                  <div className="hidden xl:block w-[140px] shrink-0">
+                    <p className="text-[10px] text-gray-400 mb-1">岗位</p>
+                    <select
+                      value={c.jobId || ""}
+                      onChange={(e) => onSingleAssign(c.id, { jobId: e.target.value || null })}
+                      className="h-7 w-full rounded-lg border border-gray-200 px-2 text-[11px] text-navy-700 outline-none focus:border-brand bg-white"
+                      title={c.job?.title ? `关联 JD: ${c.job.title}` : "点击关联 JD"}
+                    >
+                      <option value="">— 未关联 JD —</option>
+                      {jobs.map((j) => (<option key={j.id} value={j.id}>{j.title}</option>))}
+                    </select>
+                  </div>
+                  {/* 来源列 */}
+                  <div className="hidden xl:block w-[150px] shrink-0">
+                    <p className="text-[10px] text-gray-400 mb-1">来源</p>
+                    <p className="text-[11px] text-gray-700 truncate">
+                      {fmtSource(c.source)}
+                      <span className="text-gray-300 mx-1">·</span>
+                      <span className="font-mono text-gray-500">{fmtDateTime(c.createdAt)}</span>
+                    </p>
+                  </div>
+                  {/* 右操作区 */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <select
+                      value={c.departmentId || ""}
+                      onChange={(e) => onSingleAssign(c.id, { departmentId: e.target.value || null })}
+                      className="hidden lg:block h-7 rounded-lg border border-gray-200 px-2 text-[11px] text-navy-700 outline-none focus:border-brand bg-white max-w-[110px]"
+                      title={c.department?.name ? `关联部门: ${c.department.name}` : "点击关联部门"}
+                    >
+                      <option value="">— 未关联部门 —</option>
+                      {departments.map((d) => (<option key={d.id} value={d.id}>{d.name}</option>))}
+                    </select>
+                    {c.parser && <AiBadge parser={c.parser} confidence={c.parserConfidence} />}
+                    {/* 解析按钮 — LLM 已配且有附件时始终显示;已解析显示"重新解析" */}
+                    {llmStatus?.configured && c.attachment && (
+                      <button
+                        onClick={() => openReparse(c)}
+                        disabled={isReparsing}
+                        className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg bg-brand text-white text-[11px] font-bold hover:bg-brand-hover disabled:opacity-60 shrink-0"
+                        title={c.parser ? "用 Kimi 重新解析" : "用 Kimi 解析这份简历"}
+                      >
+                        <I name={isReparsing ? "loader" : (c.parser ? "refresh-cw" : "sparkles")} size={10} className={isReparsing ? "animate-spin" : ""} />
+                        {isReparsing ? "解析中" : (c.parser ? "重新解析" : "解析")}
+                      </button>
+                    )}
+                    {c.jdMatch != null ? (
+                      <div className="shrink-0 pr-0.5">
+                        <LiquidLoader size={40} level={c.jdMatch} label={c.jdMatch} />
+                      </div>
+                    ) : (
+                      <div className="w-9 text-[9px] text-gray-400 text-center shrink-0">
+                        <I name="link-2-off" size={12} />
+                      </div>
+                    )}
+                    <div className="opacity-0 group-hover:opacity-100 transition flex flex-col gap-1 shrink-0">
+                      <button onClick={() => navigate(`/candidates/${c.externalId || c.id}`)} className="w-7 h-7 rounded-full bg-lightPrimary text-gray-700 hover:text-brand flex items-center justify-center" title="查看详情">
+                        <I name="arrow-right" size={12} />
+                      </button>
+                      <button onClick={() => onDelete(c.id, c.name)} className="w-7 h-7 rounded-full bg-red-50 text-red-500 hover:bg-red-100 flex items-center justify-center" title="删除">
+                        <I name="trash-2" size={12} />
+                      </button>
                     </div>
                   </div>
                 </div>
