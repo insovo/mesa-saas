@@ -392,29 +392,31 @@ export default function Candidates() {
               const isReparsing = reparsingIds.has(c.id) || reparsingId === c.id || c.parsing;
               return (
               <li key={c.id} className={`py-4 group ${isSelected ? "bg-brand/5 -mx-2 px-2 rounded-lg" : ""}`}>
-                {/* === 桌面端: 单行列式(头像 / 身份 / 岗位列 / 来源列 / 右操作区+匹配球+hover) === */}
-                <div className="hidden md:flex items-center gap-3 md:gap-4">
-                  <input
-                    type="checkbox"
-                    checked={isSelected}
-                    onChange={() => toggleSelect(c.id)}
-                    className="w-4 h-4 accent-brand cursor-pointer shrink-0"
-                  />
-                  <Avatar name={c.name} animal={c.animal} size={48} className="shrink-0" />
-                  {/* 身份区 */}
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Link to={`/candidates/${c.externalId || c.id}`} className="text-sm font-bold text-navy-700 hover:text-brand truncate">
-                        {c.name}
-                      </Link>
-                      <StatusPill status={c.status || "待筛选"} />
+                {/* === 桌面端: 响应式单行列式(宽屏一行,中小屏 flex-wrap 自动换行) === */}
+                <div className="hidden md:flex md:flex-wrap items-center gap-x-3 gap-y-2.5 md:gap-x-4">
+                  {/* 身份组:checkbox + 头像 + 姓名块,flex-1 + min-width 防压成 0 */}
+                  <div className="flex items-center gap-3 flex-1 min-w-[200px]">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleSelect(c.id)}
+                      className="w-4 h-4 accent-brand cursor-pointer shrink-0"
+                    />
+                    <Avatar name={c.name} animal={c.animal} size={48} className="shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Link to={`/candidates/${c.externalId || c.id}`} className="text-sm font-bold text-navy-700 hover:text-brand truncate">
+                          {c.name}
+                        </Link>
+                        <StatusPill status={c.status || "待筛选"} />
+                      </div>
+                      <p className="text-[11px] text-gray-600 mt-0.5 truncate">
+                        {[c.education, c.school, c.major, c.location, candidateExpText(c.yearsExp, hasWorkExperience(c.experience))].filter(Boolean).join(" · ")}
+                      </p>
                     </div>
-                    <p className="text-[11px] text-gray-600 mt-0.5 truncate">
-                      {[c.education, c.school, c.major, c.location, candidateExpText(c.yearsExp, hasWorkExperience(c.experience))].filter(Boolean).join(" · ")}
-                    </p>
                   </div>
                   {/* 岗位列 */}
-                  <div className="hidden xl:block w-[140px] shrink-0">
+                  <div className="w-[140px] shrink-0">
                     <p className="text-[10px] text-gray-400 mb-1">岗位</p>
                     <select
                       value={c.jobId || ""}
@@ -426,8 +428,8 @@ export default function Candidates() {
                       {jobs.map((j) => (<option key={j.id} value={j.id}>{j.title}</option>))}
                     </select>
                   </div>
-                  {/* 来源列 */}
-                  <div className="hidden xl:block w-[150px] shrink-0">
+                  {/* 来源列 — 中小屏隐藏 */}
+                  <div className="hidden lg:block w-[150px] shrink-0">
                     <p className="text-[10px] text-gray-400 mb-1">来源</p>
                     <p className="text-[11px] text-gray-700 truncate">
                       {fmtSource(c.source)}
@@ -435,8 +437,8 @@ export default function Candidates() {
                       <span className="font-mono text-gray-500">{fmtDateTime(c.createdAt)}</span>
                     </p>
                   </div>
-                  {/* 右操作区 */}
-                  <div className="flex items-center gap-2 shrink-0">
+                  {/* 右操作区:ml-auto 推到行尾 */}
+                  <div className="flex items-center gap-2 shrink-0 ml-auto">
                     <select
                       value={c.departmentId || ""}
                       onChange={(e) => onSingleAssign(c.id, { departmentId: e.target.value || null })}

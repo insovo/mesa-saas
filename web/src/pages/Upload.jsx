@@ -749,31 +749,33 @@ export default function Upload() {
               const isReparsing = reparsingIds.has(c.id) || c.parsing;
               return (
               <li key={c.id} className={`py-3 ${isSelected ? "bg-brand/5 -mx-2 px-2 rounded-lg" : ""}`}>
-                {/* 单行列式:checkbox / 头像 / 身份 / 岗位列 / 来源列 / 右操作区(部门·徽章/状态·解析·匹配球) */}
-                <div className="flex items-center gap-3 md:gap-4">
-                  <input
-                    type="checkbox"
-                    checked={isSelected}
-                    onChange={() => toggleSelect(c.id)}
-                    className="w-4 h-4 accent-brand cursor-pointer shrink-0"
-                  />
-                  <div className="w-11 h-11 rounded-full bg-brand-gradient text-white flex items-center justify-center font-bold shrink-0">
-                    {(c.name || "?").slice(0, 1)}
-                  </div>
-                  {/* 身份区 */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Link to={`/candidates/${c.externalId || c.id}`} className="text-sm font-bold text-navy-700 hover:text-brand truncate">
-                        {c.name || "—"}
-                      </Link>
-                      <StatusPill status={c.status || "待筛选"} />
+                {/* 响应式单行列式:宽屏一行,窄屏与手机 flex-wrap 自动换行堆叠 */}
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2.5 md:gap-x-4">
+                  {/* 身份组:checkbox + 头像 + 姓名块,flex-1 + min-width 防压成 0 */}
+                  <div className="flex items-center gap-3 flex-1 min-w-[180px]">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleSelect(c.id)}
+                      className="w-4 h-4 accent-brand cursor-pointer shrink-0"
+                    />
+                    <div className="w-11 h-11 rounded-full bg-brand-gradient text-white flex items-center justify-center font-bold shrink-0">
+                      {(c.name || "?").slice(0, 1)}
                     </div>
-                    <p className="text-[11px] text-gray-600 truncate mt-0.5">
-                      {[c.education, c.school, c.major].filter(Boolean).join(" · ") || c.attachment}
-                    </p>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Link to={`/candidates/${c.externalId || c.id}`} className="text-sm font-bold text-navy-700 hover:text-brand truncate">
+                          {c.name || "—"}
+                        </Link>
+                        <StatusPill status={c.status || "待筛选"} />
+                      </div>
+                      <p className="text-[11px] text-gray-600 truncate mt-0.5">
+                        {[c.education, c.school, c.major].filter(Boolean).join(" · ") || c.attachment}
+                      </p>
+                    </div>
                   </div>
                   {/* 岗位列 */}
-                  <div className="hidden xl:block w-[150px] shrink-0">
+                  <div className="w-[140px] shrink-0">
                     <p className="text-[10px] text-gray-400 mb-1">岗位</p>
                     <select
                       value={c.jobId || ""}
@@ -785,8 +787,8 @@ export default function Upload() {
                       {jobs.map((j) => (<option key={j.id} value={j.id}>{j.title}</option>))}
                     </select>
                   </div>
-                  {/* 来源列 */}
-                  <div className="hidden xl:block w-[150px] shrink-0">
+                  {/* 来源列 — 手机隐藏 */}
+                  <div className="hidden md:block w-[140px] shrink-0">
                     <p className="text-[10px] text-gray-400 mb-1">来源</p>
                     <p className="text-[11px] text-gray-700 truncate">
                       {fmtSource(c.source)}
@@ -794,8 +796,8 @@ export default function Upload() {
                       <span className="font-mono text-gray-500">{fmtDateTime(c.createdAt)}</span>
                     </p>
                   </div>
-                  {/* 右操作区 */}
-                  <div className="flex items-center gap-2 shrink-0">
+                  {/* 操作区:ml-auto 推到行尾;窄屏换行后整组靠右 */}
+                  <div className="flex items-center gap-2 shrink-0 ml-auto">
                     <select
                       value={c.departmentId || ""}
                       onChange={(e) => onSingleAssign(c.id, { departmentId: e.target.value || null })}
@@ -818,7 +820,7 @@ export default function Upload() {
                       </button>
                     )}
                     {c.jdMatch != null && (
-                      <div className="shrink-0 pr-0.5">
+                      <div className="shrink-0">
                         <LiquidLoader size={40} level={c.jdMatch} label={c.jdMatch} />
                       </div>
                     )}
