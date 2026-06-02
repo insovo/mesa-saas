@@ -129,6 +129,10 @@ export async function runReparse(app, taskId, candidateId, model, jobIdOverride,
     if (!existingCandidate) throw Object.assign(new Error("候选人不存在"), { statusCode: 404, code: "candidate_not_found" });
     if (!existingCandidate.attachment) throw Object.assign(new Error("候选人无简历附件"), { statusCode: 400, code: "no_attachment" });
 
+    // 打上「解析中」标记 — 所有读 candidate 的页面据此统一显示解析中(派生 c.parsing,见 lib/derived.js)。
+    // 成功在最终 updateData 里清空,失败在 catch 清空,backend 重启残留由 PARSING_TTL_MS 兜底过期。
+    await app.prisma.candidate.update({ where: { id: candidateId }, data: { parsingStartedAt: new Date() } });
+
     const key = existingCandidate.attachment;
     const jobIdChanged = jobIdOverride !== undefined && jobIdOverride !== existingCandidate.jobId;
     const jobId = jobIdOverride === undefined ? existingCandidate.jobId : jobIdOverride;
@@ -218,6 +222,7 @@ export async function runReparse(app, taskId, candidateId, model, jobIdOverride,
       aiSummary: result.summary,
       parser: "Kimi",
       parserConfidence: 92,
+      parsingStartedAt: null, // 解析完成,清「解析中」标记
     };
     // jobId 切换:用户在 reparse 前 modal 改了投递岗位 → 同步写 DB
     // 同时把候选人 status 退回「待筛选」(换 JD = 重新评估), 让入职管理那边的 employee 也跟着清理
@@ -267,6 +272,10 @@ export async function runReparse(app, taskId, candidateId, model, jobIdOverride,
     if (notifyChatId) await notifyCandidateReady(app, updated, notifyChatId);
   } catch (err) {
     app.log.error({ err, taskId, candidateId }, "reparse task failed");
+    // 清「解析中」标记(updateMany:候选人可能不存在时不报错)
+    if (candidateId) {
+      await app.prisma.candidate.updateMany({ where: { id: candidateId }, data: { parsingStartedAt: null } }).catch(() => {});
+    }
     await markFailed(app, taskId, err);
   }
 }

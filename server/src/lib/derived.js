@@ -22,7 +22,23 @@ export function computeProfileCompletion(c) {
   return Math.min(100, Math.round(s));
 }
 
+// 「正在解析」超时阈值:parsingStartedAt 距今超过这个时长就不再算解析中。
+// 兜底防卡死 — 若 backend 在解析途中重启,DB 里残留的 parsingStartedAt 不会让候选人永久显示解析中。
+export const PARSING_TTL_MS = 10 * 60 * 1000;
+
+// 候选人是否正在解析:parsingStartedAt 非空且距今未超时。Date 字段可能是 Date 实例或 ISO 字符串。
+export function isParsing(parsingStartedAt) {
+  if (!parsingStartedAt) return false;
+  const t = parsingStartedAt instanceof Date ? parsingStartedAt.getTime() : new Date(parsingStartedAt).getTime();
+  if (Number.isNaN(t)) return false;
+  return Date.now() - t < PARSING_TTL_MS;
+}
+
 export function withDerivedCandidate(c) {
   if (!c) return c;
-  return { ...c, profileCompletion: computeProfileCompletion(c) };
+  return {
+    ...c,
+    profileCompletion: computeProfileCompletion(c),
+    parsing: isParsing(c.parsingStartedAt),
+  };
 }

@@ -746,7 +746,7 @@ export default function Upload() {
           <ul className="divide-y divide-gray-200">
             {parsed.map((c) => {
               const isSelected = selectedIds.has(c.id);
-              const isReparsing = reparsingIds.has(c.id);
+              const isReparsing = reparsingIds.has(c.id) || c.parsing;
               return (
               <li key={c.id} className={`py-3 flex flex-col 2xl:flex-row 2xl:items-center gap-x-3 gap-y-2 ${isSelected ? "bg-brand/5 -mx-2 px-2 rounded-lg" : ""}`}>
                 {/* 身份组:默认独占一行,保证姓名/学校不被控件挤没;超宽屏 2xl 才并回一行 */}
@@ -804,7 +804,6 @@ export default function Upload() {
                       {isReparsing ? "解析中" : (c.parser ? "重新解析" : "解析")}
                     </button>
                   )}
-                  {c.jdMatch != null && <LiquidLoader size={32} level={c.jdMatch} label={c.jdMatch} />}
                   {c.parser ? (
                     <AiBadge parser={c.parser} confidence={c.parserConfidence} />
                   ) : (
@@ -813,6 +812,12 @@ export default function Upload() {
                   <span className="text-[10px] text-gray-500 font-mono whitespace-nowrap shrink-0" title="上传时间">
                     {fmtDateTime(c.createdAt)}
                   </span>
+                  {/* 匹配度球移到行尾、独立留白,不再夹在解析按钮与徽章之间(光晕溢出致拥挤) */}
+                  {c.jdMatch != null && (
+                    <div className="shrink-0 ml-1">
+                      <LiquidLoader size={32} level={c.jdMatch} label={c.jdMatch} />
+                    </div>
+                  )}
                 </div>
               </li>
             );})}

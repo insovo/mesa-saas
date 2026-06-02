@@ -122,7 +122,7 @@ export default function Dashboard() {
           ) : (
             <ul className="divide-y divide-gray-200">
               {data.recentCandidates.map((c) => {
-                const isReparsing = reparsingIds.has(c.id);
+                const isReparsing = reparsingIds.has(c.id) || c.parsing;
                 return (
                 <li key={c.id} className="py-3 flex flex-col 2xl:flex-row 2xl:items-center gap-x-2.5 gap-y-2">
                   {/* 身份组:默认独占一行(控件换到下方),保证姓名/学校不被挤没;超宽屏 2xl 才并回一行 */}

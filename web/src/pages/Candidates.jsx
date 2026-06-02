@@ -389,7 +389,7 @@ export default function Candidates() {
           <ul className="divide-y divide-gray-200">
             {items.map((c) => {
               const isSelected = selectedIds.has(c.id);
-              const isReparsing = reparsingIds.has(c.id) || reparsingId === c.id;
+              const isReparsing = reparsingIds.has(c.id) || reparsingId === c.id || c.parsing;
               return (
               <li key={c.id} className={`py-4 group ${isSelected ? "bg-brand/5 -mx-2 px-2 rounded-lg" : ""}`}>
                 {/* === 桌面端: 单行 horizontal === */}

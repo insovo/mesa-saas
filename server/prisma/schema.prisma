@@ -148,6 +148,10 @@ model Candidate {
   parser           String?
   parserConfidence Int?    @map("parser_confidence")
 
+  // 非空且距今 <10min 即视为「正在解析」— withDerivedCandidate 据此派生 parsing 布尔,
+  // 让所有读 candidate 的页面(列表/详情/概览)统一显示「解析中」。解析完成/失败置 null。
+  parsingStartedAt DateTime? @map("parsing_started_at")
+
   tags             String[] @default([])
   // 两阶段:skills / experience / educationHistory 由 matchAgainstJob (阶段二) 产出 markdown bullet 字符串,
   // 详见 server/src/lib/kimi.js + routes/resumes.js 写入逻辑。
