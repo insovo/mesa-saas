@@ -94,6 +94,7 @@ export default function Upload() {
   const [uploadLinks, setUploadLinks] = useState([]);
   const [linksLoading, setLinksLoading] = useState(true);
   const [creatingLink, setCreatingLink] = useState(false);
+  const [creatingFeishuLink, setCreatingFeishuLink] = useState(false); // 飞书 Bot 永久链接创建中
   const qrRef = useRef(null);  // 用于保存二维码图片
 
   // 列表批量操作 — 候选人多选 + 关联 JD / 部门 / 解析
@@ -429,6 +430,33 @@ export default function Upload() {
     } finally {
       setCreatingLink(false);
     }
+  }
+
+  // ─── 飞书 Bot 永久上传链接 ───────────────────────────────────
+  // 飞书自动入库 bot 是长期运行的服务,需要永不过期 + 无上限的固定 token。
+  // 生成后把 token 填到 VPS .env 的 LARK_UPLOAD_TOKEN 并重启 lark-ingest 容器。
+  async function onCreateFeishuLink() {
+    setCreatingFeishuLink(true);
+    try {
+      const { data } = await api.post("/upload-links", {
+        duration: "forever",   // 永不过期
+        maxUploads: null,      // 无上限
+        defaultSource: "飞书自动入库",
+      });
+      setUploadLinks((prev) => [data.link, ...prev]);
+      toast("已创建飞书 Bot 永久链接,请复制 token 填到 .env", "success");
+    } catch (e) {
+      toast(e.response?.data?.message || "创建失败", "error");
+    } finally {
+      setCreatingFeishuLink(false);
+    }
+  }
+
+  function onCopyToken(token) {
+    navigator.clipboard.writeText(token).then(
+      () => toast("Token 已复制", "success"),
+      () => toast("复制失败,请手动选中复制", "error"),
+    );
   }
 
   async function onDeleteUploadLink(id) {
@@ -852,10 +880,16 @@ export default function Upload() {
           <p className="text-[11px] text-gray-500 text-right">向候选人本人或同事分享,可远程上传简历</p>
         </div>
 
+        {(() => {
+        // 永久且无上限的链接视为「飞书 Bot 专用」,与给候选人的临时链接(30天/200份)区分展示
+        const feishuLink = uploadLinks.find((l) => !l.expiresAt && l.maxUploads == null);
+        const shareLink = uploadLinks.find((l) => l !== feishuLink);
+        return (
+        <>
         {linksLoading ? (
           <LoadingBlock label="加载链接..." height="h-20" />
-        ) : uploadLinks.length === 0 ? (
-          /* 还没生成链接 */
+        ) : !shareLink ? (
+          /* 还没生成候选人临时链接 */
           <div className="text-center py-10 px-5 rounded-xl border-2 border-dashed border-gray-200">
             <div className="w-14 h-14 rounded-full bg-lightPrimary text-brand mx-auto flex items-center justify-center">
               <I name="qr-code" size={24} />
@@ -881,7 +915,7 @@ export default function Upload() {
         ) : (
           /* 显示最新的一个 link */
           (() => {
-            const link = uploadLinks[0];
+            const link = shareLink;
             const url = `${window.location.origin}/upload/${link.token}`;
             return (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -985,6 +1019,48 @@ export default function Upload() {
             );
           })()
         )}
+
+        {/* === 飞书 Bot 永久上传链接 ============================ */}
+        <div className="mt-5 pt-5 border-t border-gray-100">
+          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+            <I name="send" size={14} className="text-brand" />
+            <p className="text-sm font-bold text-navy-700">飞书 Bot 永久链接</p>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-brand-50 text-brand font-bold">永不过期 · 无上限</span>
+          </div>
+          <p className="text-[11px] text-gray-700 mb-3 leading-relaxed">
+            供飞书自动入库 Bot 使用的固定 token。复制后填入 VPS <code className="px-1 rounded bg-gray-100 font-mono text-[10px]">.env</code> 的 <code className="px-1 rounded bg-gray-100 font-mono text-[10px]">LARK_UPLOAD_TOKEN</code>,并重启 lark-ingest 容器生效。
+          </p>
+          {feishuLink ? (
+            <>
+              <div className="flex gap-2 items-stretch flex-wrap">
+                <input
+                  readOnly
+                  value={feishuLink.token}
+                  onFocus={(e) => e.target.select()}
+                  className="flex-1 min-w-[200px] h-10 rounded-xl border border-gray-200 px-3 text-sm text-navy-700 outline-none focus:border-brand bg-gray-50 font-mono"
+                />
+                <Button onClick={() => onCopyToken(feishuLink.token)} icon={<I name="copy" size={12} />}>复制 Token</Button>
+                <Button variant="outline" onClick={() => onDeleteUploadLink(feishuLink.id)} icon={<I name="trash-2" size={12} />}>删除</Button>
+              </div>
+              <p className="text-[11px] text-gray-500 mt-2 flex items-center gap-3 flex-wrap">
+                <span className="inline-flex items-center gap-1"><I name="inbox" size={11} /> 已收 {feishuLink.uploadCount} 份</span>
+                <span className="text-gray-300">·</span>
+                <span className="inline-flex items-center gap-1 min-w-0"><I name="link-2" size={11} /> <span className="font-mono truncate">{window.location.origin}/upload/{feishuLink.token}</span></span>
+              </p>
+            </>
+          ) : (
+            <Button
+              onClick={onCreateFeishuLink}
+              disabled={creatingFeishuLink}
+              icon={<I name={creatingFeishuLink ? "loader" : "send"} size={14} className={creatingFeishuLink ? "animate-spin" : ""} />}
+            >
+              {creatingFeishuLink ? "创建中..." : "创建永久链接"}
+            </Button>
+          )}
+        </div>
+        </>
+        );
+        })()}
       </Card>
 
       {/* === 新建 JD 弹窗 ============================================ */}
