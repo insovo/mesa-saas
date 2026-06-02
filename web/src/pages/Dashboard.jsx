@@ -104,10 +104,8 @@ export default function Dashboard() {
         <Widget icon="calendar-check" label="已排面试" value={data.counts.interviewsScheduled} accent={tilePalette[3]} subtitle="本周/近期" to="/interviews" />
       </div>
 
-      {/* === 两列布局 === */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-        {/* 最近候选人 */}
-        <Card className="p-6 xl:col-span-2">
+      {/* === 最新候选人(全宽,容纳单行列式)=== */}
+      <Card className="p-6">
           <div className="flex items-center justify-between mb-5">
             <div>
               <h2 className="title-card">最新候选人</h2>
@@ -125,26 +123,28 @@ export default function Dashboard() {
                 const isReparsing = reparsingIds.has(c.id) || c.parsing;
                 return (
                 <li key={c.id} className="py-3">
-                  {/* 单行列式:头像 / 身份(姓名+状态·副信息) / 岗位列 / 来源列 / 右操作区(部门·徽章·解析·匹配球) */}
-                  <div className="flex items-center gap-3 md:gap-4">
-                    <Avatar name={c.name} size={48} className="shrink-0" />
-                    {/* 身份区 */}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Link
-                          to={`/candidates/${c.externalId || c.id}`}
-                          className="text-sm font-bold text-navy-700 hover:text-brand truncate"
-                        >
-                          {c.name}
-                        </Link>
-                        <StatusPill status={c.status} />
+                  {/* 响应式单行列式:宽屏一行(身份/岗位/来源/操作区),窄屏与手机 flex-wrap 自动换行堆叠 */}
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-2.5 md:gap-x-4">
+                    {/* 身份组:flex-1 + min-width 防压成 0;窄屏占满后其余列换行 */}
+                    <div className="flex items-center gap-3 flex-1 min-w-[180px]">
+                      <Avatar name={c.name} size={44} className="shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Link
+                            to={`/candidates/${c.externalId || c.id}`}
+                            className="text-sm font-bold text-navy-700 hover:text-brand truncate"
+                          >
+                            {c.name}
+                          </Link>
+                          <StatusPill status={c.status} />
+                        </div>
+                        <p className="text-[11px] text-gray-600 truncate mt-0.5">
+                          {[c.school, ...((c.tags || []).slice(0, 2))].filter(Boolean).join(" · ") || "—"}
+                        </p>
                       </div>
-                      <p className="text-[11px] text-gray-600 truncate mt-0.5">
-                        {[c.school, ...((c.tags || []).slice(0, 2))].filter(Boolean).join(" · ") || "—"}
-                      </p>
                     </div>
                     {/* 岗位列 */}
-                    <div className="hidden xl:block w-[140px] shrink-0">
+                    <div className="w-[130px] shrink-0">
                       <p className="text-[10px] text-gray-400 mb-1">岗位</p>
                       <select
                         value={c.jobId || ""}
@@ -156,8 +156,8 @@ export default function Dashboard() {
                         {jobs.map((j) => (<option key={j.id} value={j.id}>{j.title}</option>))}
                       </select>
                     </div>
-                    {/* 来源列 */}
-                    <div className="hidden xl:block w-[150px] shrink-0">
+                    {/* 来源列 — 手机隐藏 */}
+                    <div className="hidden md:block w-[140px] shrink-0">
                       <p className="text-[10px] text-gray-400 mb-1">来源</p>
                       <p className="text-[11px] text-gray-700 truncate">
                         {fmtSource(c.source)}
@@ -165,8 +165,8 @@ export default function Dashboard() {
                         <span className="font-mono text-gray-500">{fmtFullDateTime(c.createdAt)}</span>
                       </p>
                     </div>
-                    {/* 右操作区 */}
-                    <div className="flex items-center gap-2 shrink-0">
+                    {/* 操作区:ml-auto 推到行尾;窄屏换行后整组靠右 */}
+                    <div className="flex items-center gap-2 shrink-0 ml-auto">
                       <select
                         value={c.departmentId || ""}
                         onChange={(e) => onAssign(c.id, { departmentId: e.target.value || null })}
@@ -188,7 +188,7 @@ export default function Dashboard() {
                         </button>
                       )}
                       {c.jdMatch != null && (
-                        <div className="shrink-0 pr-0.5">
+                        <div className="shrink-0">
                           <LiquidLoader size={40} level={c.jdMatch} label={c.jdMatch} />
                         </div>
                       )}
@@ -198,8 +198,10 @@ export default function Dashboard() {
               );})}
             </ul>
           )}
-        </Card>
+      </Card>
 
+      {/* === 面试 + 分布统计(4 列)=== */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
         {/* 即将到来的面试 */}
         <Card className="p-6">
           <div className="flex items-center justify-between mb-5">
@@ -234,10 +236,8 @@ export default function Dashboard() {
             </ul>
           )}
         </Card>
-      </div>
 
-      {/* === 分布统计 === */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+        {/* === 分布统计(并入上面 4 列网格)=== */}
         <Card className="p-6">
           <h2 className="title-card">候选人状态分布</h2>
           <ul className="mt-4 space-y-2">
