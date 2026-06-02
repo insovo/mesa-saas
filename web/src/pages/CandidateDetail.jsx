@@ -2964,8 +2964,15 @@ function CandidateDetail() {
 
         {/* === Profile Card === */}
         <Card className="w-full xl:w-auto p-4 md:p-5">
-          {/* 重新解析 banner — 仅在 parser 为空(LLM 上传时降级入库)且有附件时显示 */}
-          {!c.parser && c.attachment && (
+          {/* 解析中提示 — 任意页面/设备触发的解析,详情页据权威字段 c.parsing 统一显示「解析中」 */}
+          {c.parsing && (
+            <div className="mb-3 -mt-1 rounded-xl bg-brand/5 border border-brand/20 p-2.5 flex items-center gap-2">
+              <I name="loader" size={13} className="text-brand animate-spin shrink-0" />
+              <p className="text-[11px] font-bold text-brand">AI 正在解析这份简历…完成后自动更新</p>
+            </div>
+          )}
+          {/* 重新解析 banner — 仅在 parser 为空(LLM 上传时降级入库)且有附件、且非解析中时显示 */}
+          {!c.parser && !c.parsing && c.attachment && (
             <div className="mb-3 -mt-1 rounded-xl bg-amber-50 border border-amber-200 p-2.5 flex items-start gap-2">
               <I name="alert-triangle" size={13} className="text-amber-600 mt-0.5 shrink-0" />
               <div className="flex-1 min-w-0">

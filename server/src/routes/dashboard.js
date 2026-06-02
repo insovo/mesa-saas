@@ -7,6 +7,7 @@ import {
   loadUserAccess,
   filterCandidateByModules,
 } from "../lib/permissions.js";
+import { isParsing } from "../lib/derived.js";
 
 export default async function dashboardRoutes(app) {
   app.addHook("preHandler", app.authenticate);
@@ -69,6 +70,7 @@ export default async function dashboardRoutes(app) {
           attachment: true, source: true, createdAt: true,
           jobId: true, departmentId: true,
           phone: true, email: true,
+          parsingStartedAt: true,
           job: { select: { id: true, title: true, dept: true } },
           department: { select: { id: true, name: true, code: true } },
         },
@@ -92,7 +94,7 @@ export default async function dashboardRoutes(app) {
       candidatesByStatus: candidatesByStatus.map((r) => ({ status: r.status, count: r._count.status })),
       jobsByUrgency: jobsByUrgency.map((r) => ({ urgency: r.urgency, count: r._count.urgency })),
       employeesByStage: employeesByStage.map((r) => ({ stage: r.stage, count: r._count.stage })),
-      recentCandidates: recentCandidates.map((c) => filterCandidateByModules(c, access)),
+      recentCandidates: recentCandidates.map((c) => filterCandidateByModules({ ...c, parsing: isParsing(c.parsingStartedAt) }, access)),
       upcomingInterviews,
     };
   });
