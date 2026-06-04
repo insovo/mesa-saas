@@ -10,7 +10,7 @@
 //   docker exec mesa-server node prisma/backfill-yearsexp.js --apply
 
 import { PrismaClient } from "@prisma/client";
-import { yearsFromPeriods, periodsFromSummary } from "../src/lib/kimi.js";
+import { yearsFromPeriods, periodsFromSummary, deriveEducationFields } from "../src/lib/kimi.js";
 
 const prisma = new PrismaClient();
 const APPLY = process.argv.includes("--apply");
@@ -19,13 +19,14 @@ async function main() {
   console.log(`[backfill-yearsexp] mode = ${APPLY ? "APPLY (写库)" : "DRY-RUN (只打印)"}`);
   const cands = await prisma.candidate.findMany({
     where: { aiSummary: { not: null } }, // aiSummary 非空 = 真被 Kimi 解析过(降级入库不写 aiSummary)
-    select: { id: true, name: true, yearsExp: true, aiSummary: true, tags: true },
+    select: { id: true, name: true, yearsExp: true, aiSummary: true, tags: true, education: true, school: true, major: true },
     orderBy: { updatedAt: "desc" },
   });
   console.log(`[backfill-yearsexp] scanning ${cands.length} candidate(s) with aiSummary...`);
 
   let yearsFixed = 0;
   let tagsFixed = 0;
+  let eduFixed = 0;
   let untouched = 0;
 
   for (const c of cands) {
@@ -36,17 +37,25 @@ async function main() {
     // ② 剔除残留「待解析」
     const cleanedTags = Array.isArray(c.tags) ? c.tags.filter((t) => t !== "待解析") : c.tags;
     if (Array.isArray(c.tags) && cleanedTags.length !== c.tags.length) data.tags = cleanedTags;
+    // ③ 顶层 education/school/major 空时从 summary 教育段确定性派生(languages 需原文, backfill 跳过)
+    if (!c.education || !c.school || !c.major) {
+      const edu = deriveEducationFields(c.aiSummary);
+      if (!c.education && edu.education) data.education = edu.education;
+      if (!c.school && edu.school) data.school = edu.school;
+      if (!c.major && edu.major) data.major = edu.major;
+    }
 
     if (Object.keys(data).length === 0) { untouched++; continue; }
     const parts = [];
     if ("yearsExp" in data) { parts.push(`yearsExp ${c.yearsExp ?? "null"}→${data.yearsExp}`); yearsFixed++; }
     if ("tags" in data) { parts.push(`去「待解析」`); tagsFixed++; }
+    if ("education" in data || "school" in data || "major" in data) { parts.push(`补学历[${data.education ?? c.education ?? "—"}]`); eduFixed++; }
     console.log(`  ${c.name} (${c.id}): ${parts.join(" · ")}`);
     if (APPLY) await prisma.candidate.update({ where: { id: c.id }, data });
   }
 
-  console.log("\n[backfill-yearsexp] done:", { yearsFixed, tagsFixed, untouched, total: cands.length });
-  if (!APPLY && (yearsFixed || tagsFixed)) console.log("→ 确认无误后加 --apply 真正写库");
+  console.log("\n[backfill-yearsexp] done:", { yearsFixed, tagsFixed, eduFixed, untouched, total: cands.length });
+  if (!APPLY && (yearsFixed || tagsFixed || eduFixed)) console.log("→ 确认无误后加 --apply 真正写库");
 }
 
 main()
