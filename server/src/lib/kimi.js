@@ -418,6 +418,53 @@ export function computeYearsExp(experience, summary) {
   return years; // null 表示算不出 → 调用方 fallback 到 LLM 原值
 }
 
+// ─── 确定性派生顶层扁平字段 ───────────────────────────────────
+// Kimi 常把教育/语言写进 summary 详细模板, 却漏填顶层 education/school/major/languages,
+// 导致岗位概览「学历/语言」显示「—」。这里从已规整的 summary 教育段 + 原文确定性派生兜底。
+const DEGREE_RANK = { 博士: 4, 硕士: 3, 本科: 2, 学士: 2, 大专: 1, 专科: 1, 高中: 0, 中专: 0 };
+function degreeRank(d) {
+  if (DEGREE_RANK[d] != null) return DEGREE_RANK[d];
+  if (/博士|phd|doctor/i.test(d)) return 4;
+  if (/硕士|master|msc|m\.s/i.test(d)) return 3;
+  if (/本科|学士|bachelor|b\.s|bsc/i.test(d)) return 2;
+  if (/大专|专科|college/i.test(d)) return 1;
+  return -1;
+}
+// 从 summary「教育背景」段取最高学历那一条的 学校/学历/专业
+export function deriveEducationFields(summary) {
+  if (typeof summary !== "string") return {};
+  const m = /教育背景([\s\S]*?)(?:\n\s*(?:工作经历|项目经历|核心能力|技能|证书|综合评估)|$)/.exec(summary);
+  if (!m) return {};
+  const re = /学校[:：]\s*(.+?)\s*\n\s*学历[:：]\s*(.+?)\s*\n\s*专业[:：]\s*(.+)/g;
+  let best = null, bestRank = -1, mm;
+  while ((mm = re.exec(m[1]))) {
+    const school = mm[1].trim(), degree = mm[2].trim(), major = mm[3].trim();
+    const rank = degreeRank(degree);
+    if (rank > bestRank && degree && degree !== "未提供") { bestRank = rank; best = { school, education: degree, major }; }
+  }
+  return best || {};
+}
+// 从原文「语言/Languages」段确定性识别语言(只在语言段内匹配, 避免误抓职责描述里的 English)
+const LANG_DICT = [
+  ["中文", /chinese|mandarin|汉语|普通话|cantonese|粤语|中文/i],
+  ["英语", /english|英语|英文/i],
+  ["法语", /french|fran[çc]ais|法语/i],
+  ["日语", /japanese|日语|日本语/i],
+  ["德语", /german|deutsch|德语/i],
+  ["西班牙语", /spanish|espa[ñn]ol|西班牙语/i],
+  ["韩语", /korean|韩语/i],
+  ["俄语", /russian|俄语/i],
+];
+export function deriveLanguages(text) {
+  if (typeof text !== "string") return [];
+  const seg = /(?:语言能力|外语能力|语言|languages?)\s*[:：\n]([\s\S]{0,200})/i.exec(text);
+  if (!seg) return []; // 没找到语言段 → 不派生(保持 Kimi 原值), 避免全文误匹配
+  const scope = seg[1];
+  const found = [];
+  for (const [name, re] of LANG_DICT) if (re.test(scope)) found.push({ name, level: "" });
+  return found;
+}
+
 // ─── 反幻觉: 原文日期存在性校验 ───────────────────────────────
 // LLM 可能输出原文不存在的日期(尤其给只有单边时间的经历补全另一端)。收集简历原文出现过的
 // 年份/年月, 对文本里查无依据的日期 token 打回「未提供」。保守(误删风险低): 原文该年完全没
@@ -507,6 +554,19 @@ export async function parseResume({ buffer, filename, contentType, model }) {
   // yearsExp 不信任 LLM 心算: 用(已校验的)工作经历 period 确定性重算, 算得出就覆盖
   const computedYears = computeYearsExp(parsed.experience, summary);
   if (computedYears != null) parsed.yearsExp = computedYears;
+
+  // 顶层 education/school/major Kimi 常漏填(信息只进了 summary)→ 从 summary 教育段确定性派生兜底
+  if (!parsed.education || !parsed.school || !parsed.major) {
+    const edu = deriveEducationFields(summary);
+    if (!parsed.education && edu.education) parsed.education = edu.education;
+    if (!parsed.school && edu.school) parsed.school = edu.school;
+    if (!parsed.major && edu.major) parsed.major = edu.major;
+  }
+  // languages Kimi 常输出空 → 从原文语言段确定性派生兜底
+  if (!Array.isArray(parsed.languages) || parsed.languages.length === 0) {
+    const langs = deriveLanguages(extractedText);
+    if (langs.length) parsed.languages = langs;
+  }
 
   // 注意: 两阶段解析 — parseResume 只负责 summary + 基础信息 + tags,
   // experience/educationHistory/skills 不再在这里产出 (即便 LLM 输出了也由调用方丢弃),
