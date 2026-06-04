@@ -16,6 +16,9 @@ import { promisify } from "node:util";
 const KIMI_BASE_URL = process.env.KIMI_BASE_URL || "https://api.moonshot.cn/v1";
 const execFileAsync = promisify(execFile);
 
+// 简报中字段缺失/未解析到时的统一占位文案(方案 B 后端拼装简报用)
+const NA = "未提供或未解析到";
+
 async function effectiveApiKey() {
   return (await getEffective(SETTING_KEYS.KIMI_API_KEY)) || "";
 }
@@ -24,11 +27,11 @@ async function effectiveModel() {
 }
 
 // ─── 默认 PROMPT (admin 可在 UI 改) ─────────────────────────────
-// 基于用户提供的「简历信息提取专家」规则,改为单次 JSON 输出。
-// 在 summary 字段内仍严格遵循用户的纯文本模板要求。
+// 方案 B: LLM 只输出结构化 JSON(简历事实抽取),HR 简报 txt 由后端 assembleSummary
+// 确定性拼装 → 格式 100% 稳定、结构字段与简报永远一致,根治 LLM 简报格式漂移。
 export const DEFAULT_PROMPT = `# Role: 简历信息提取专家
 
-你是一个专业的简历解析器。先对简历内容进行噪声清洗,再从清洗后的正文中提取信息,**用 JSON 输出**(便于系统存储和检索)。
+你是一个专业的简历解析器。先对简历内容进行噪声清洗,再从清洗后的正文中提取信息,**只输出一个 JSON 对象**。系统会用这个 JSON 确定性地拼装 HR 简报,所以你**绝对不要**输出任何简报纯文本、引导语或解释。
 
 ## 一、噪声清洗
 
@@ -48,142 +51,76 @@ export const DEFAULT_PROMPT = `# Role: 简历信息提取专家
 
 ## 二、提取规则
 
-1. 只忠于简历原文,不推测、不编造。**任何字段(姓名/公司/学校/证书/职位/专业/成果/技能)在原文找不到就填 null 或"未提供",严禁编造、脑补、凑数**。公司名、学校名、证书名等**专有名词必须照抄原文**(英文简历保持英文原名,不要自行翻译或改写,以便核对);专业、职责可适度归纳但必须忠于原文,不得添加原文没有的内容。
-2. 时间统一 YYYY.MM,"至今"保留。**只输出简历明确写出的时间**:简历只给一个日期(如教育的毕业/完成时间、只有入职没有离职)时,**只填这一个日期, 严禁补全或推算另一端**(尤其严禁给教育编造"入学时间"凑成区间);缺失的一端写"未提供"。每条记录的 学校/学历/专业 或 公司/职位/时间 必须取自原文**同一条**记录,严禁把不同记录的日期、学历、专业交叉拼接或错配。
+1. 只忠于简历原文,不推测、不编造。**任何字段(姓名/公司/学校/证书/职位/专业/成果/技能)在原文找不到就填 null(数组就填 []),严禁编造、脑补、凑数**。公司名、学校名、证书名等**专有名词必须照抄原文**(英文简历保持英文原名,不要自行翻译或改写,以便核对);专业、职责可适度归纳但必须忠于原文,不得添加原文没有的内容。
+2. 时间统一 YYYY.MM,"至今"保留。**只输出简历明确写出的时间**:简历只给一个日期(如教育的毕业/完成时间、只有入职没有离职)时,**只填这一个日期, 严禁补全或推算另一端**(尤其严禁给教育编造"入学时间"凑成区间);缺失的一端不写。每条记录的 学校/学历/专业 或 公司/职位/时间 必须取自原文**同一条**记录,严禁把不同记录的日期、学历、专业交叉拼接或错配。
 3. PDF / 表格 / 多栏简历的正文可能有抽取顺序噪音。遇到 Work History / Education / Languages 这类表格时,必须按表头与视觉行关系重建记录:同一行的日期、公司、职位、国家、专业才可以组合;不要把相邻行、页眉页脚、栏目标题或下一页内容错配进同一条经历/教育。
-4. 工作经历、项目经历按时间倒序(最近的在前)
-5. 工作年限按工作经历自动计算,重叠时间不重复
-6. 985 / 211 / 双一流根据学校名称自动判断;无法判断则如实标注
-7. 从工作和项目经历中提炼隐含技能
-8. 相同技能、证书去重
-9. 联系方式若平台打码(如 138****1234),保留打码格式,不猜测补全
-10. 量化成果必须用【】标注
-11. 简历未提供时,字段值为 null(JSON 字段)或在 summary 文本里写"未提供"
+4. 工作经历、项目经验按时间倒序(最近的在前)
+5. 相同技能、证书、奖项去重
+6. 从工作和项目经历中提炼隐含技能放进 skills
+7. 联系电话、邮箱**可以有多个**,分别放进 phones / emails 数组;平台打码(如 138****1234)保留打码格式,不猜测补全
+8. 学历(degree)只能取这几个值之一: 函授 / 专科 / 大专 / 本科 / 硕士 / 博士 / 博士后 / 教授 / Other;读不准就用 Other
+9. 工作经历每段拆成 核心职责(duties[]) 与 关键成果(achievements[]),忠于原文,无则空数组;下属人数(reports)读不到填 null
+10. 姓名读不到填 null,**严禁**用 张三/李四 等占位名
 
-## 三、输出格式 — 一份 JSON 对象
+## 三、输出格式 — 一个 JSON 对象
 
 **严格要求**:
 - 不要 Markdown 代码块包裹
-- 不要在 JSON 前后加任何文字、引导语、说明
+- 不要在 JSON 前后加任何文字、引导语、说明、简报正文
 - 顶层是对象,不是数组
-- 字段缺失用 null / "" / [] 而非省略 key
+- 字段缺失用 null / [] 而非省略 key
+- 所有 JSON 结构标点必须 ASCII 半角(英文 , : " 等),不能用中文全角
 
 \`\`\`
 {
-  "summary": "<HR 友好的纯文本简报, 按下面 §四 模板>",
-  "name": "候选人真实姓名;读不到真实姓名时填 null,严禁编造或使用 张三/李四 等占位名",
+  "name": "候选人真实姓名; 读不到填 null, 严禁编造或占位",
+  "currentTitle": "当前职位 或 null",
+  "location": "所在地区/现居城市 或 null",
   "gender": "male | female | unknown",
   "age": 整数 0-120 或 null,
-  "education": "博士|硕士|本科|大专|高中|其他",
-  "school": "最高学历对应院校",
-  "major": "专业",
-  "location": "现居城市(如 上海·浦东)",
-  "yearsExp": 整数 或 null (= 各段工作经历时长之和、重叠不重复; 简历没写"工作年限:X年"时也要按 experience 各段 period 推算, 不要因为没汇总句就填 0/null),
-  "phone": "保留原打码格式",
-  "email": "邮箱",
-  "appliedFor": "应聘岗位(没明确写就空字符串)",
-  "jdMatch": 0-100 整数(无 JD 时按综合能力评分),
-  "tags": ["3-6 个亮点关键词"],
-  "skills": ["核心技能短句, 已去重"],
-  "risks": ["风险点(跳槽频繁/空档期/行业不匹配),无则空数组"],
-  "highlights": ["亮点: 头部公司/稀缺经验/专利/论文"],
-  "experience": [
-    { "period": "2023.01 – 至今", "company": "公司全称", "title": "职位", "summary": "1-2 句要点" }
-  ],
-  "educationHistory": [
-    { "period": "只填简历明确写的时间; 很多简历教育只有毕业/完成时间, 就只填那一个(如 \"2022.06\"), 严禁编造入学时间凑成区间; 完全没有写 \"未提供\"", "school": "...", "major": "...", "degree": "本科/硕士/博士" }
-  ],
+  "phones": ["可多个, 保留原打码格式"],
+  "emails": ["可多个"],
   "languages": [
     { "name": "中文", "level": "母语" },
-    { "name": "英语", "level": "CEFR C1 / TOEFL 105 / 流利,如简历未写具体级别用 一般|流利|精通" }
+    { "name": "英语", "level": "CEFR C1 / TOEFL 105 / 流利, 简历未写具体级别用 一般|流利|精通" }
+  ],
+  "skills": ["关键技能短句, 已去重"],
+  "awards": ["奖项 / 证书, 已去重, 照抄原文名称"],
+  "appliedFor": "应聘岗位(没明确写就空字符串)",
+  "tags": ["3-6 个亮点关键词"],
+  "yearsExp": 整数 或 null (= 各段工作经历时长之和、重叠不重复; 没汇总句也要按 experience 各段 period 推算),
+  "educationHistory": [
+    {
+      "school": "学校名称(照抄原文)",
+      "degree": "函授|专科|大专|本科|硕士|博士|博士后|教授|Other",
+      "major": "专业",
+      "period": "只填简历明确写的时间; 教育常只有毕业/完成时间, 就只填那一个(如 \"2022.06\"); 严禁编造入学时间凑区间; 完全没有就填 null"
+    }
+  ],
+  "experience": [
+    {
+      "company": "公司全称",
+      "title": "职位",
+      "period": "2023.01 – 至今 (照抄原文; 只有单边时间就只填那一端)",
+      "location": "工作地点 或 null",
+      "reports": "下属人数 或 null",
+      "duties": ["核心职责, 忠于原文"],
+      "achievements": ["关键成果, 量化优先"]
+    }
+  ],
+  "projects": [
+    { "responsibility": "负责内容", "output": "关键产出" }
   ]
 }
 \`\`\`
 
-## 四、summary 字段的纯文本模板(严格)
+## 四、最终自检
 
-summary 内容必须是**纯文本**(无 Markdown / 无分隔线 / 无引导语),从候选人姓名开始(第一行只是姓名本身,不带"姓名:"标签),到"国际经验:..."结束。模板:
-
-\`\`\`
-{姓名}
-当前职位:{当前职位}
-所在地区:{所在地区}
-联系电话:{联系电话}
-邮箱:{邮箱}
-
-教育背景
-1.
-  学校:{学校名称}
-  学历:{学历}
-  专业:{专业}
-  时间:{照抄简历; 只有毕业/完成时间就只写它(如 "2003.07"), 缺失写"未提供"; 严禁编造入学时间凑区间}
-  学校标签:{985/211/双一流/其他/未提供}
-
-工作经历
-1.
-  公司:{公司名称}
-  职位:{职位}
-  时间:{开始时间 至 结束时间}
-  地点:{地点}
-  下属人数:{下属人数}
-  核心职责:
-  - {职责1}
-  - {职责2}
-  关键成果:
-  - {成果1}
-  - {成果2}
-
-项目经历
-1.
-  项目名称:{项目名称}
-  角色:{角色}
-  时间:{开始时间 至 结束时间}
-  项目说明:{项目说明}
-  职责:
-  - {职责1}
-  - {职责2}
-  项目成果:
-  - {成果1}
-  - {成果2}
-
-核心能力
-- {能力1}
-- {能力2}
-
-技能
-- {技能1}
-- {技能2}
-
-证书
-- {证书1}
-- {证书2}
-
-语言
-- {语言1, 含熟练度, 统一用中文语言名 + 括号熟练度, 如 中文(母语) / 英语(流利) / 法语(CEFR B2); 简历未写语言就整段写 "- 未提供"}
-- {语言2}
-
-综合评估
-工作年限:{工作年限}
-行业领域:{行业领域}
-核心专长:
-- {专长1}
-- {专长2}
-管理幅度:{管理幅度}
-国际经验:{国际经验}
-\`\`\`
-
-## 五、空值处理
-
-- 模块完全无内容时,在 summary 中保留模块名后写"未提供"
-- 二级列表无内容时,写"  - 未提供"
-- 多段时按同一格式继续编号
-
-## 六、最终自检
-
-- summary 第一行是否只有姓名(不带"姓名:")
-- summary 最后一行是否是"国际经验:..."
-- summary 内是否出现了"===" "---" "简历信息提取结果" "已清洗内容"等禁止内容(应删除)
-- JSON 是否合法,所有字段都存在`;
+- 输出是否为**合法 JSON 对象**、所有 key 都在(缺失用 null/[])
+- 是否**误输出了简报纯文本 / 解释 / markdown**(都不应有,只要 JSON)
+- 日期是否只来自原文、未补全单边时间、未给教育编造入学时间
+- 姓名/公司/学校/证书等专有名词是否照抄原文未翻译改写
+- 学历是否落在允许枚举内`;
 
 async function effectivePrompt() {
   return (await getEffective(SETTING_KEYS.KIMI_PROMPT)) || DEFAULT_PROMPT;
@@ -514,7 +451,7 @@ export function yearsFromPeriods(periods, now = new Date()) {
 // experience 数组缺失时, 从最终简报(aiSummary 一定有)的「工作经历」段抓 period 兜底。
 export function periodsFromSummary(summary) {
   if (typeof summary !== "string") return [];
-  const m = /工作经历([\s\S]*?)(?:\n\s*(?:项目经历|核心能力|技能|证书|综合评估)|$)/.exec(summary);
+  const m = /工作经历([\s\S]*?)(?:\n\s*(?:项目经验|项目经历|核心能力|技能|证书|综合评估)|$)/.exec(summary);
   const block = m ? m[1] : "";
   return [...block.matchAll(/时间[:：]\s*(.+)/g)].map((x) => x[1].trim()).filter(Boolean);
 }
@@ -532,14 +469,50 @@ export function computeYearsExp(experience, summary) {
 // ─── 确定性派生顶层扁平字段 ───────────────────────────────────
 // Kimi 常把教育/语言写进 summary 详细模板, 却漏填顶层 education/school/major/languages,
 // 导致岗位概览「学历/语言」显示「—」。这里从已规整的 summary 教育段 + 原文确定性派生兜底。
-const DEGREE_RANK = { 博士: 4, 硕士: 3, 本科: 2, 学士: 2, 大专: 1, 专科: 1, 高中: 0, 中专: 0 };
+const DEGREE_RANK = { 教授: 6, 博士后: 5, 博士: 4, 硕士: 3, 本科: 2, 学士: 2, 大专: 1, 专科: 1, 函授: 1, 高中: 0, 中专: 0 };
 function degreeRank(d) {
   if (DEGREE_RANK[d] != null) return DEGREE_RANK[d];
+  if (/教授|professor/i.test(d)) return 6;
+  if (/博士后|postdoc|post-doc/i.test(d)) return 5;
   if (/博士|phd|doctor/i.test(d)) return 4;
   if (/硕士|master|msc|m\.s/i.test(d)) return 3;
   if (/本科|学士|bachelor|b\.s|bsc/i.test(d)) return 2;
-  if (/大专|专科|college/i.test(d)) return 1;
+  if (/大专|专科|函授|college/i.test(d)) return 1;
   return -1;
+}
+// 把任意语言/写法的学历字符串确定性归一到用户规定的枚举:
+// 函授/专科/大专/本科/硕士/博士/博士后/教授/Other(枚举外、高中及以下、证书类 → Other)。
+// LLM 对中文学位较稳, 对英/法文学位(MASTER OF SCIENCE / BAC / Bachelor 等)常照抄原文不归类, 故加此闸门。
+const DEGREE_ENUM = new Set(["函授", "专科", "大专", "本科", "硕士", "博士", "博士后", "教授", "Other"]);
+export function normalizeDegree(raw) {
+  const d = String(raw ?? "").trim();
+  if (!d || d === NA || d === "未提供") return "";
+  if (DEGREE_ENUM.has(d)) return d;
+  if (/教授|professor/i.test(d)) return "教授";
+  if (/博士后|postdoc|post-doc/i.test(d)) return "博士后";
+  if (/博士|ph\.?\s?d|doctor|doctorate|doctoral/i.test(d)) return "博士";
+  if (/硕士|master|m\.?sc|mba|m\.?eng|mphil|magist[èe]r/i.test(d)) return "硕士";
+  if (/本科|学士|bachelor|licence|undergrad|b\.?sc|b\.?eng|b\.?a\b|b\.?s\b/i.test(d)) return "本科";
+  if (/大专|专科|associate|hnd|\bdiploma\b|\bcollege\b/i.test(d)) return "大专";
+  if (/函授/i.test(d)) return "函授";
+  return "Other"; // 高中/A-Level/GCSE/BAC/证书 等不在枚举内 → Other
+}
+
+// 方案 B 主路径: 直接从 educationHistory 数组取最高学历那条的 学校/学历(归一)/专业(确定性、不依赖 summary 文本)
+export function deriveEducationFromArray(educationHistory) {
+  if (!Array.isArray(educationHistory)) return {};
+  let best = null, bestRank = -2;
+  for (const e of educationHistory) {
+    if (!e || typeof e !== "object") continue;
+    const canonical = normalizeDegree(e.degree || e.education);
+    if (!canonical) continue;
+    const rank = degreeRank(canonical);
+    if (rank > bestRank) {
+      bestRank = rank;
+      best = { education: canonical, school: String(e.school || "").trim(), major: String(e.major || "").trim() };
+    }
+  }
+  return best || {};
 }
 // 从 summary「教育背景」段取最高学历那一条的 学校/学历/专业
 export function deriveEducationFields(summary) {
@@ -662,7 +635,10 @@ function formatExperienceItem(item) {
   if (!item || typeof item !== "object") return cleanBulletText(item);
   const head = [item.company, item.title].map(cleanBulletText).filter(Boolean).join(" ");
   const period = cleanBulletText(item.period);
-  const summary = cleanBulletText(item.summary || item.description || item.responsibility);
+  // 方案 B 的经历项无 summary 键, 退而取 duties/achievements 前 2 条拼一句要点
+  const summary = cleanBulletText(item.summary || item.description || item.responsibility)
+    || [...(Array.isArray(item.duties) ? item.duties : []), ...(Array.isArray(item.achievements) ? item.achievements : [])]
+        .map(cleanBulletText).filter(Boolean).slice(0, 2).join("; ");
   let line = head || summary;
   if (period) line = line ? `${line} (${period})` : period;
   if (summary && summary !== line && !line.includes(summary)) line = line ? `${line} — ${summary}` : summary;
@@ -689,7 +665,123 @@ export function buildResumeDisplayFields(parsed = {}) {
   return { skills, experience, educationHistory };
 }
 
-// ─── 解析: 一次 chat, JSON 输出含 summary + 结构化字段 ─────────
+// ─── 方案 B: 从结构化 JSON 确定性拼装 HR 简报 txt ─────────────
+// 简报格式与字段 100% 由代码控制, 不再依赖 LLM 自由发挥 → 跨简历格式恒定。
+// 第一行恒为姓名(无标签), 与 deriveName / pickPhone / pickEmail 的简报兜底约定一致。
+function naText(value) {
+  const s = value == null ? "" : String(value).trim();
+  return s || NA;
+}
+// 时间段净化:
+//  1) 剥离日期反幻觉闸门可能留下的占位残片("未提供24" / "未提供-2002.06" 里的占位词)
+//  2) 必须含有效年份(19xx/20xx)或「至今/present」才保留, 否则(如 "GCSEs" / 纯残片)→ 空 → NA
+function periodText(value) {
+  let s = cleanBulletText(value).replace(/未提供或未解析到|未提供|未解析到/g, " ");
+  s = s.replace(/\s+/g, " ").replace(/^[\s\-–~/.,]+|[\s\-–~/.,]+$/g, "").trim();
+  if (!/(?:19|20)\d{2}|至今|present|now|current/i.test(s)) return "";
+  return s;
+}
+// 一组条目 → bullet 列表(空则 "- {NA}"); fmt 把元素映射成一行文本
+function bulletBlock(items, fmt = (x) => x) {
+  const lines = (Array.isArray(items) ? items : [])
+    .map((it) => cleanBulletText(fmt(it)))
+    .filter(Boolean);
+  return lines.length ? lines.map((l) => `- ${l}`).join("\n") : `- ${NA}`;
+}
+function formatLanguageLine(lang) {
+  if (!lang || typeof lang !== "object") return cleanBulletText(lang);
+  const name = cleanBulletText(lang.name);
+  const level = cleanBulletText(lang.level);
+  if (!name) return "";
+  return level ? `${name}(${level})` : name;
+}
+
+// 条目是否含有效内容(过滤 LLM 偶发吐出的全空经历/教育/项目占位条目)
+function anyFilled(...vals) {
+  return vals.some((v) => Array.isArray(v) ? v.some((x) => cleanBulletText(x)) : cleanBulletText(v));
+}
+
+export function assembleSummary(parsed = {}) {
+  const out = [];
+  // 头部
+  out.push(naText(parsed.name));
+  out.push(`当前职位:${naText(parsed.currentTitle)}`);
+  out.push(`所在地区:${naText(parsed.location)}`);
+  const phones = Array.isArray(parsed.phones) ? parsed.phones.map((p) => cleanBulletText(p)).filter(Boolean) : [];
+  const emails = Array.isArray(parsed.emails) ? parsed.emails.map((e) => cleanBulletText(e)).filter(Boolean) : [];
+  out.push(`联系电话:${phones.length ? phones.join(" / ") : NA}`);
+  out.push(`邮箱:${emails.length ? emails.join(" / ") : NA}`);
+
+  // 语言能力 / 关键技能 / 奖项证书
+  out.push("", "语言能力:", bulletBlock(parsed.languages, formatLanguageLine));
+  out.push("", "关键技能:", bulletBlock(parsed.skills));
+  out.push("", "奖项证书:", bulletBlock(parsed.awards));
+
+  // 教育背景(多段)
+  out.push("", "教育背景");
+  const edu = (Array.isArray(parsed.educationHistory) ? parsed.educationHistory : [])
+    .filter((e) => e && typeof e === "object" && anyFilled(e.school, e.degree, e.education, e.major, e.period));
+  if (!edu.length) {
+    out.push(`  ${NA}`);
+  } else {
+    edu.forEach((e, i) => {
+      e = e && typeof e === "object" ? e : {};
+      out.push(`${i + 1}.`);
+      out.push(`  学校:${naText(e.school)}`);
+      out.push(`  学历:${naText(normalizeDegree(e.degree || e.education))}`);
+      out.push(`  专业:${naText(e.major)}`);
+      out.push(`  时间:${naText(periodText(e.period))}`);
+    });
+  }
+
+  // 工作经历(多段)
+  out.push("", "工作经历");
+  const exp = (Array.isArray(parsed.experience) ? parsed.experience : [])
+    .filter((w) => w && typeof w === "object" && anyFilled(w.company, w.title, w.period, w.location, w.reports, w.duties, w.achievements));
+  if (!exp.length) {
+    out.push(`  ${NA}`);
+  } else {
+    exp.forEach((w, i) => {
+      w = w && typeof w === "object" ? w : {};
+      out.push(`${i + 1}.`);
+      out.push(`  公司:${naText(w.company)}`);
+      out.push(`  职位:${naText(w.title)}`);
+      out.push(`  时间:${naText(periodText(w.period))}`);
+      out.push(`  地点:${naText(w.location)}`);
+      out.push(`  下属人数:${naText(w.reports)}`);
+      out.push("  核心职责:");
+      out.push(...indentBullets(w.duties));
+      out.push("  关键成果:");
+      out.push(...indentBullets(w.achievements));
+    });
+  }
+
+  // 项目经验(多段)
+  out.push("", "项目经验");
+  const projects = (Array.isArray(parsed.projects) ? parsed.projects : [])
+    .filter((p) => p && typeof p === "object" && anyFilled(p.responsibility, p.output));
+  if (!projects.length) {
+    out.push(`  ${NA}`);
+  } else {
+    projects.forEach((p, i) => {
+      p = p && typeof p === "object" ? p : {};
+      out.push(`${i + 1}.`);
+      out.push(`  负责内容:${naText(p.responsibility)}`);
+      out.push(`  关键产出:${naText(p.output)}`);
+    });
+  }
+
+  return out.join("\n").trim();
+}
+// 二级缩进 bullet(工作经历的核心职责/关键成果); 空则 "  - {NA}"
+function indentBullets(items) {
+  const lines = (Array.isArray(items) ? items : [])
+    .map((it) => cleanBulletText(it))
+    .filter(Boolean);
+  return lines.length ? lines.map((l) => `  - ${l}`) : [`  - ${NA}`];
+}
+
+// ─── 解析: 一次 chat, LLM 出结构化 JSON → 后端拼装 summary ──────
 export async function parseResume({ buffer, filename, contentType, model }) {
   const { extractedText, meta: extractionMeta } = await extractResumeTextForLlm({ buffer, filename, contentType });
   // 简历解析强制走 non-reasoning model — 见 pickParseModel 注释
@@ -731,36 +823,50 @@ export async function parseResume({ buffer, filename, contentType, model }) {
     }
   }
 
-  const { summary: rawSummary, ...parsed } = result.json;
-  let summary = typeof rawSummary === "string" ? rawSummary.trim() : "";
+  // 方案 B: LLM 只出结构化 JSON, summary 由后端确定性拼装(下面 assembleSummary)
+  const parsed = (result.json && typeof result.json === "object") ? result.json : {};
 
-  // 反幻觉: 原文查无的日期 → 「未提供」(确定性闸门, 清 LLM 凭空生造/补全的日期)
-  summary = scrubHallucinatedDates(summary, extractedText);
+  // 反幻觉: 校验经历/教育的 period(确定性闸门, 清 LLM 凭空生造/补全的日期)
   if (Array.isArray(parsed.experience)) {
     for (const e of parsed.experience) {
       if (e && typeof e.period === "string") e.period = scrubHallucinatedDates(e.period, extractedText);
     }
   }
-
-  // yearsExp 不信任 LLM 心算: 用(已校验的)工作经历 period 确定性重算, 算得出就覆盖
-  const computedYears = computeYearsExp(parsed.experience, summary);
-  if (computedYears != null) parsed.yearsExp = computedYears;
-
-  // 顶层 education/school/major Kimi 常漏填(信息只进了 summary)→ 从 summary 教育段确定性派生兜底
-  if (!parsed.education || !parsed.school || !parsed.major) {
-    const edu = deriveEducationFields(summary);
-    if (!parsed.education && edu.education) parsed.education = edu.education;
-    if (!parsed.school && edu.school) parsed.school = edu.school;
-    if (!parsed.major && edu.major) parsed.major = edu.major;
+  if (Array.isArray(parsed.educationHistory)) {
+    for (const e of parsed.educationHistory) {
+      if (e && typeof e.period === "string") e.period = scrubHallucinatedDates(e.period, extractedText);
+    }
   }
-  // languages Kimi 常输出空 → 从原文语言段确定性派生兜底
+  // languages LLM 偶尔漏填 → 从原文语言段确定性派生兜底(summary 尚未拼装, 故只走原文词典)
   if (!Array.isArray(parsed.languages) || parsed.languages.length === 0) {
-    const langs = deriveLanguages(summary, extractedText);
+    const langs = deriveLanguages("", extractedText);
     if (langs.length) parsed.languages = langs;
   }
 
+  // 确定性拼装 HR 简报 txt(格式 100% 由代码控制, 与结构字段永远一致)
+  let summary = assembleSummary(parsed);
+  // 简报整体再过一遍日期反幻觉闸门(防职责/成果文本里夹带原文没有的日期)
+  summary = scrubHallucinatedDates(summary, extractedText);
+
+  // 顶层扁平字段(供列表/检索/匹配排序), 从结构化数组确定性派生:
+  // 1) 最高学历 → education/school/major
+  const eduFlat = deriveEducationFromArray(parsed.educationHistory);
+  if (eduFlat.education) parsed.education = eduFlat.education;
+  if (eduFlat.school) parsed.school = eduFlat.school;
+  if (eduFlat.major) parsed.major = eduFlat.major;
+  // 2) phones/emails 数组 → 单值 phone/email(resumes.js 的 pickPhone/pickEmail 兼容)
+  if (!parsed.phone && Array.isArray(parsed.phones) && parsed.phones.length) parsed.phone = parsed.phones[0];
+  if (!parsed.email && Array.isArray(parsed.emails) && parsed.emails.length) parsed.email = parsed.emails[0];
+  // 3) yearsExp 不信任 LLM 心算: 用(已校验的)工作经历 period 确定性重算, 算得出就覆盖
+  const computedYears = computeYearsExp(parsed.experience, summary);
+  if (computedYears != null) parsed.yearsExp = computedYears;
+
   // parseResume 负责简历事实抽取:summary + 基础信息 + tags + skills/experience/educationHistory。
   // matchAgainstJob 只做 JD 相关评估,不能再改写这些简历主体展示字段。
+
+  // 删掉「仅用于拼装简报」的辅助键(信息已烘进 summary / 已映射到 phone·email):
+  // parse-and-create 流程会 `{...parsed}` 整体展开进 Prisma create, 残留非列字段会让 create 抛错。
+  for (const k of ["currentTitle", "phones", "emails", "awards", "projects"]) delete parsed[k];
 
   return {
     summary,

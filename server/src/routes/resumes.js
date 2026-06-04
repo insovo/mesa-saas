@@ -74,7 +74,9 @@ function deriveName(parsedName, summary, fallback) {
   const pn = clean(parsedName);
   if (pn) return pn;
   const firstLine = clean((summary || "").split("\n")[0]);
-  if (firstLine && firstLine.length <= 20 && !firstLine.includes(":") && !firstLine.includes("：")) {
+  // 简报首行恒为姓名;但无姓名时拼装层会写占位符,绝不能把占位符当成真实姓名回填
+  const isPlaceholder = /^(未提供|未解析|未提供或未解析到)/.test(firstLine);
+  if (firstLine && firstLine.length <= 20 && !isPlaceholder && !firstLine.includes(":") && !firstLine.includes("：")) {
     return firstLine;
   }
   return fallback;
