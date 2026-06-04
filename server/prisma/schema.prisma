@@ -153,8 +153,8 @@ model Candidate {
   parsingStartedAt DateTime? @map("parsing_started_at")
 
   tags             String[] @default([])
-  // 两阶段:skills / experience / educationHistory 由 matchAgainstJob (阶段二) 产出 markdown bullet 字符串,
-  // 详见 server/src/lib/kimi.js + routes/resumes.js 写入逻辑。
+  // 简历事实展示字段:由 parseResume (阶段一纯抽取) 产出 markdown bullet 字符串,
+  // JD match 只更新匹配度/风险/亮点/洞察,不再改写这些字段。
   skills           String?  @db.Text // markdown bullet 字符串("- xxx\n- yyy")
   risks            String[] @default([])
   highlights       String[] @default([])

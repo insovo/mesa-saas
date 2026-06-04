@@ -208,7 +208,7 @@ export default function SharedCandidate() {
               <I name="sparkles" size={18} className="text-brand" />
               核心技能
             </h3>
-            {/* 两阶段:string → markdown bullet;array → 旧渲染兼容;空 → empty */}
+            {/* 简历事实字段:string → markdown bullet;array → 旧渲染兼容;空 → empty */}
             {typeof c.skills === "string" && c.skills.trim() ? (
               <MarkdownBullets md={c.skills} />
             ) : Array.isArray(c.skills) && c.skills.length > 0 ? (

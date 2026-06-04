@@ -387,7 +387,7 @@ Query: `status` / `candidateId` / `jobId` / `from`(date-time) / `to`(date-time) 
 }
 ```
 
-后端立即 202 返回 `task`,setImmediate(runParseAndCreate) 跑:R2 拉文件 → Kimi /files extract → /chat/completions JSON → 若 jobId 跑 matchAgainstJob → **Prisma create candidate**(已写 DB,owner=req.user.sub)→ markDone。前端 2s 轮询 §12.3 直到 done/failed。
+后端立即 202 返回 `task`,setImmediate(runParseAndCreate) 跑:R2 拉文件 → PDF 本地 layout 抽取或 Kimi /files fallback → /chat/completions JSON → 若 jobId 跑 matchAgainstJob → **Prisma create candidate**(已写 DB,owner=req.user.sub)→ markDone。前端 2s 轮询 §12.3 直到 done/failed。
 
 响应 202(mode="create"):
 ```json
@@ -414,15 +414,15 @@ Query: `status` / `candidateId` / `jobId` / `from`(date-time) / `to`(date-time) 
 
 `jobId` 语义(`hasOwnProperty` 区分 undefined / null):
 - **不传字段**:沿用候选人当前 `candidate.jobId`,不改 DB
-- **传 `null`**:取消 JD 关联,清空 `candidate.jobId` + jdMatch/risks/highlights/insights/skills/experience/educationHistory
+- **传 `null`**:取消 JD 关联,清空 `candidate.jobId` + jdMatch/risks/highlights/insights 等 JD 评估字段;保留/重写 skills/experience/educationHistory 等简历事实字段
 - **传 uuid**:切到该 JD,跑 matchAgainstJob,并同步把 `candidate.jobId` 也更新
 
 后端立即 202 返回 taskId,fire-and-forget 跑 Kimi(后端用 `candidate.attachment` 作 R2 key,**UPDATE** 现有 DB 行,不破坏 status/appliedFor/source/owner/documents)。绕过 Cloudflare 100s origin response 硬上限。
 
-**两阶段解析**(2026-05 改造):
-- parseResume 只产 `summary` + 基础字段(name/phone/email/school/major/yearsExp/...) + `tags`
-- matchAgainstJob(如有 jobId)二阶段产出 jdMatch + risks/highlights/insights/aiSuggestedTags/matchedFor/againstFor + skills/experience/educationHistory(markdown bullet 字符串)
-- 阶段一字段在 LLM 偶尔输出空数组时**保留旧值**(防 .doc 抖动清空旧数据)
+**解析流水线**(2026-06 改造):
+- 文件抽取:PDF 优先 `pdftotext -layout` 保留视觉顺序;扫描/空文本和 DOC/DOCX/DOC fallback 到 Kimi Files API;抽取后清理水印 token / Word 页脚 / 分页符
+- parseResume 产 `summary` + 基础字段(name/phone/email/school/major/yearsExp/...) + `tags/languages` + `skills/experience/educationHistory` markdown bullet 字符串
+- matchAgainstJob(如有 jobId)只产出 jdMatch + risks/highlights/insights/aiSuggestedTags/matchedFor/againstFor,不再改写简历主体展示字段
 
 响应 202(mode="reparse"):
 ```json

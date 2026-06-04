@@ -106,7 +106,7 @@ mesa/
 | ⑧ 后端 DTO 扩展(Candidate/Job/Interview 共 23 V2 字段 + LLM 写新字段) | ✅ |
 | ⑨ Reparse 异步任务化(POST 立即 202 + 前端轮询,绕 Cloudflare 100s 上限) | ✅ |
 | ⑩ Kimi 鲁棒性(4 层 JSON fallback + jsonrepair + 429/5xx 指数 backoff retry) | ✅ |
-| ⑪ 两阶段简历解析(parseResume 只产简报 + tags;matchAgainstJob 产 jdMatch/insights/skills/experience/educationHistory markdown) | ✅ |
+| ⑪ 简历解析流水线(PDF 优先本地 layout 抽取 + Kimi fallback;parseResume 产简历事实字段;matchAgainstJob 只产 JD 评估) | ✅ |
 | ⑫ ShareLink 可见性 toggle(showContact / showAttachments) + 面试 modal 动态字段 + ReparseConfirmModal 前置 JD 确认 | ✅ |
 
 ## License

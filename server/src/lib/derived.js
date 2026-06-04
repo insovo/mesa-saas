@@ -3,6 +3,10 @@
 
 export function computeProfileCompletion(c) {
   if (!c) return 0;
+  const hasListContent = (value) => {
+    if (Array.isArray(value)) return value.length > 0;
+    return typeof value === "string" && value.trim().length > 0;
+  };
   let s = 0;
   if (c.phone) s += 5;
   if (c.email) s += 5;
@@ -12,9 +16,9 @@ export function computeProfileCompletion(c) {
   if (c.location) s += 5;
   if (c.age != null) s += 5;
   if (c.yearsExp != null) s += 5;
-  if (Array.isArray(c.skills) && c.skills.length > 0) s += 15;
-  if (Array.isArray(c.experience) && c.experience.length > 0) s += 15;
-  if (Array.isArray(c.educationHistory) && c.educationHistory.length > 0) s += 10;
+  if (hasListContent(c.skills)) s += 15;
+  if (hasListContent(c.experience)) s += 15;
+  if (hasListContent(c.educationHistory)) s += 10;
   if (typeof c.aiSummary === "string" && c.aiSummary.length > 100) s += 15;
   const hasHi = Array.isArray(c.highlights) && c.highlights.length > 0;
   const hasRi = Array.isArray(c.risks) && c.risks.length > 0;

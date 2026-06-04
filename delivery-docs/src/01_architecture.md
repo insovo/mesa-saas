@@ -124,7 +124,7 @@ SystemSetting (KV, admin only · AES-256-GCM 加密敏感 value)
 | 表 | 用途 |
 |----|------|
 | `User` | 系统账号(ADMIN/RECRUITER/VIEWER 三角色) |
-| `Candidate` | 候选人,阶段一字段(aiSummary/tags/基础信息)+ 阶段二字段(skills/experience/educationHistory markdown · risks/highlights/insights · jdMatch/matchedFor/againstFor/aiSuggestedTags)+ jobId 关联 JD |
+| `Candidate` | 候选人,简历事实字段(aiSummary/tags/基础信息/skills/experience/educationHistory markdown)+ JD 评估字段(risks/highlights/insights · jdMatch/matchedFor/againstFor/aiSuggestedTags)+ jobId 关联 JD |
 | `Job` | 岗位,`description` 字段给 LLM 二次评估用 |
 | `Department` | 部门(自关联树) |
 | `Employee` | 已入职员工(候选人 → 员工转化) |
@@ -141,24 +141,37 @@ SystemSetting (KV, admin only · AES-256-GCM 加密敏感 value)
 
 以下为 demo.md 六阶段之外、上线后扩展实现的子系统:
 
-## 5A.1 LLM 两阶段简历解析(Kimi · Moonshot AI)
+## 5A.1 LLM 简历解析流水线(Kimi · Moonshot AI)
 
-**阶段一 parseResume — 只产简报 + tags + 基础字段**:
+**阶段一 文件正文抽取与清洗**:
 ```
 [ Upload UI ] -> [ POST /api/storage/presigned-url ] -> R2 mesa-resumes
         ↓
-[ POST /api/resumes/parse ] -> [ Kimi Files API 上传 ] -> [ /v1/chat/completions JSON mode ]
+[ POST /api/resumes/parse ] -> [ R2 拉文件 ]
+        ↓
+[ PDF: pdftotext -layout 优先,扫描/空文本 fallback Kimi Files API ]
+[ DOC/DOCX/DOC: Kimi Files API 抽取 ]
+        ↓
+[ 水印 token / Word 页脚 / form feed 噪声清洗 ]
+```
+
+**阶段二 parseResume — 产简历事实字段**:
+```
+[ 清洗后的简历正文 ] -> [ /v1/chat/completions JSON mode ]
         ↓
 [ summary 纯文本简报 + name/phone/email/school/major/yearsExp/tags/languages ]
+[ + skills / experience / educationHistory (markdown bullet 字符串,忠于简历原文) ]
         ↓
-[ 写入 Candidate (skills/experience/educationHistory 留空, 等阶段二) ]
+[ 写入 Candidate ]
 ```
 
 - 系统级配置:`SystemSetting (kimi.api_key/model/prompt)` · `api_key` AES-256-GCM 加密(密钥从 `JWT_SECRET` HKDF 派生)
 - admin 在 UI(Sidebar 弹 Modal)可改 key/model(从 `/v1/models` 动态拉)/prompt(20000 字符)
-- summary 是模板化纯文本(HR 可读),包含教育/工作/项目/技能 section,作为阶段二的唯一上下文
+- summary 是模板化纯文本(HR 可读),包含教育/工作/项目/技能 section
+- PDF layout 抽取用于解决多栏/表格/HR 系统导出简历的文本乱序问题;Kimi Files API 保留为扫描件 OCR 与 DOC/DOCX/DOC fallback
+- skills/experience/educationHistory 是简历事实展示字段,不随 JD 切换而改写
 
-## 5A.2 JD 二次匹配评估 — 阶段二 matchAgainstJob
+## 5A.2 JD 二次匹配评估 — matchAgainstJob
 
 **只在关联 JD 时跑**(reparse 前 ReparseConfirmModal 让用户先选/确认 JD):
 ```
@@ -166,15 +179,13 @@ SystemSetting (KV, admin only · AES-256-GCM 加密敏感 value)
         ↓
 [ jdMatch + risks/highlights + insights(up/down) ]
 [ + matchedFor / againstFor / aiSuggestedTags ]
-[ + skills / experience / educationHistory (markdown bullet 字符串) ]
         ↓
-[ 写入 Candidate (覆盖阶段二字段) ]
+[ 写入 Candidate (只覆盖 JD 评估字段) ]
 ```
 
 设计要点:
-- skills/experience/educationHistory **针对 JD** 输出:核心技能选支持得起 JD 要求的、工作经历按相关度排序、教育按时间倒序
 - 前端 `MarkdownBullets` 组件渲染(split "\n" + 去 `- ` 前缀 → li)
-- 未关联 JD 候选人这三个 section 显示「关联 JD 后自动生成」引导,点击触发 JD picker
+- 未产出简历事实字段时,这三个 section 显示「重新解析简历后自动生成」引导
 - 强 prompt:禁用"可能/或许"含糊词,无强匹配点必须写"未发现"
 - 触发时机:Upload 时关联 JD 自动跑;或 ReparseConfirmModal 用户切 JD 时跑;或 `POST /api/resumes/match` 显式 sync 调用
 

@@ -18,7 +18,7 @@ RUN npm ci --omit=dev && \
 FROM node:20-alpine AS runtime
 WORKDIR /app
 
-RUN apk add --no-cache openssl tini && \
+RUN apk add --no-cache openssl poppler-utils tini && \
     addgroup -S mesa && adduser -S mesa -G mesa
 
 ENV NODE_ENV=production

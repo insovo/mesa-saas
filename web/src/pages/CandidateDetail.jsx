@@ -343,7 +343,7 @@ function Empty({ icon = "inbox", title = "暂无数据", desc }) {
 
 // MarkdownBullets 已抽到 ../components/MarkdownBullets.jsx (SharedCandidate 也用)
 
-// 候选人未关联 JD / 关联了但 LLM 还没产数据时的引导卡片
+// 简历事实字段缺失时的引导卡片
 function NeedJobPlaceholder({ hasJob, onPickJob, fieldName }) {
   return (
     <div className="flex flex-col items-center justify-center py-8 text-center px-4">
@@ -353,19 +353,19 @@ function NeedJobPlaceholder({ hasJob, onPickJob, fieldName }) {
       {hasJob ? (
         <>
           <p className="text-sm font-bold text-[#1B254B]">暂无{fieldName}</p>
-          <p className="text-[11px] text-[#A3AED0] mt-1">已关联 JD, 重新解析后自动生成</p>
+          <p className="text-[11px] text-[#A3AED0] mt-1">重新解析简历后自动生成</p>
         </>
       ) : (
         <>
-          <p className="text-sm font-bold text-[#1B254B]">关联 JD 后自动生成</p>
-          <p className="text-[11px] text-[#A3AED0] mt-1 mb-3">{fieldName} 根据 JD 二次评估产出</p>
+          <p className="text-sm font-bold text-[#1B254B]">暂无{fieldName}</p>
+          <p className="text-[11px] text-[#A3AED0] mt-1 mb-3">重新解析简历后自动生成</p>
           {onPickJob && (
             <button
               type="button"
               onClick={onPickJob}
               className="text-[11px] font-bold text-[#422AFB] hover:underline inline-flex items-center gap-1"
             >
-              <I name="briefcase" size={11} /> 选择投递岗位
+              <I name="briefcase" size={11} /> 关联 JD
             </button>
           )}
         </>
@@ -3455,7 +3455,7 @@ function CandidateDetail() {
               <I name="sparkles" size={14} className="text-[#422AFB]" />
               核心技能
             </h3>
-            {/* 两阶段:阶段二由 JD match 产出 markdown 字符串;兼容旧 array 数据 */}
+            {/* 简历事实字段由 parseResume 产出 markdown 字符串;兼容旧 array 数据 */}
             {(() => {
               if (typeof c.skills === "string" && c.skills.trim()) {
                 return <MarkdownBullets md={c.skills} textSize="text-[11px]" />;
@@ -3511,7 +3511,7 @@ function CandidateDetail() {
             <I name="briefcase" size={16} className="text-[#422AFB]" />
             工作经历
           </h3>
-          {/* 两阶段:阶段二由 JD match 产出 markdown 字符串;兼容旧 array(结构化对象)数据 */}
+          {/* 简历事实字段由 parseResume 产出 markdown 字符串;兼容旧 array(结构化对象)数据 */}
           {(() => {
             if (typeof c.experience === "string" && c.experience.trim()) {
               return <MarkdownBullets md={c.experience} />;

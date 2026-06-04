@@ -1,4 +1,4 @@
-// 渲染 matchAgainstJob (两阶段解析阶段二) 输出的 markdown 无序列表字符串
+// 渲染简历事实字段使用的 markdown 无序列表字符串。
 // 只支持 - / • / · / * 开头的 bullet,不解析其它 markdown 语法。
 // 用 split("\n") + 去 bullet 前缀,每行渲染为带圆点的 li。
 export default function MarkdownBullets({ md, bulletColor = "#422AFB", textSize = "text-sm" }) {
