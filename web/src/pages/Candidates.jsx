@@ -199,6 +199,13 @@ export default function Candidates() {
         await new Promise((r) => setTimeout(r, 2000));
         const { data: { task } } = await api.get(`/resumes/parse-tasks/${taskId}`);
         if (task.status === "done" || task.status === "failed") { finalTask = task; break; }
+        // 兜底:task 状态可能因 Redis/内存存储竞态卡在 running,但候选人其实已解析完成。
+        // 直接查候选人自身 parsing(后端权威),已结束就视为完成,避免行永久卡「解析中」。
+        // 正常情况上面 task 已 done 先 break,不会走到这,零额外开销。
+        try {
+          const fresh = await resources.candidates.detail(c.id);
+          if (fresh && fresh.parsing === false && fresh.parser) { finalTask = { status: "done", candidate: fresh }; break; }
+        } catch { /* 兜底查询失败忽略,继续轮询 task */ }
       }
       if (!finalTask) {
         toast(`${c.name} 重新解析超时(>5 分钟)`, "error");
@@ -238,6 +245,7 @@ export default function Candidates() {
       toast(`重新解析失败 · ${c.name} · 完整错误已复制到剪贴板`, "error");
     } finally {
       setReparsingId(null);
+      load(); // 兜底:结束后用后端真实状态刷新列表(等效自动「切页面重进」),确保行不卡在「解析中」
     }
   }
 
