@@ -2940,7 +2940,11 @@ function CandidateDetail() {
 
   async function onDelete() {
     if (!confirm(`确定删除 ${c.name} 吗?`)) return;
-    try { await resources.candidates.remove(c.id); toast("已删除", "success"); }
+    try {
+      await resources.candidates.remove(c.id);
+      toast("已删除", "success");
+      navigate("/candidates"); // 删除后当前详情页数据已失效,跳回列表(否则页面仍显示已删候选人)
+    }
     catch (e) { toast(e.message, "error"); }
   }
 

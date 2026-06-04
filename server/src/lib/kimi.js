@@ -42,8 +42,8 @@ export const DEFAULT_PROMPT = `# Role: 简历信息提取专家
 
 ## 二、提取规则
 
-1. 只忠于简历原文,不推测、不编造
-2. 时间统一 YYYY.MM,"至今"保留
+1. 只忠于简历原文,不推测、不编造。**任何字段(姓名/公司/学校/证书/职位/专业/成果/技能)在原文找不到就填 null 或"未提供",严禁编造、脑补、凑数**。公司名、学校名、证书名等**专有名词必须照抄原文**(英文简历保持英文原名,不要自行翻译或改写,以便核对);专业、职责可适度归纳但必须忠于原文,不得添加原文没有的内容。
+2. 时间统一 YYYY.MM,"至今"保留。**只输出简历明确写出的时间**:简历只给一个日期(如教育的毕业/完成时间、只有入职没有离职)时,**只填这一个日期, 严禁补全或推算另一端**(尤其严禁给教育编造"入学时间"凑成区间);缺失的一端写"未提供"。每条记录的 学校/学历/专业 或 公司/职位/时间 必须取自原文**同一条**记录,严禁把不同记录的日期、学历、专业交叉拼接或错配。
 3. 工作经历、项目经历按时间倒序(最近的在前)
 4. 工作年限按工作经历自动计算,重叠时间不重复
 5. 985 / 211 / 双一流根据学校名称自动判断;无法判断则如实标注
@@ -84,7 +84,7 @@ export const DEFAULT_PROMPT = `# Role: 简历信息提取专家
     { "period": "2023.01 – 至今", "company": "公司全称", "title": "职位", "summary": "1-2 句要点" }
   ],
   "educationHistory": [
-    { "period": "2018.09 – 2022.06", "school": "...", "major": "...", "degree": "本科/硕士/博士" }
+    { "period": "只填简历明确写的时间; 很多简历教育只有毕业/完成时间, 就只填那一个(如 \"2022.06\"), 严禁编造入学时间凑成区间; 完全没有写 \"未提供\"", "school": "...", "major": "...", "degree": "本科/硕士/博士" }
   ],
   "languages": [
     { "name": "中文", "level": "母语" },
@@ -109,7 +109,7 @@ summary 内容必须是**纯文本**(无 Markdown / 无分隔线 / 无引导语)
   学校:{学校名称}
   学历:{学历}
   专业:{专业}
-  时间:{时间}
+  时间:{照抄简历; 只有毕业/完成时间就只写它(如 "2003.07"), 缺失写"未提供"; 严禁编造入学时间凑区间}
   学校标签:{985/211/双一流/其他/未提供}
 
 工作经历
@@ -418,6 +418,38 @@ export function computeYearsExp(experience, summary) {
   return years; // null 表示算不出 → 调用方 fallback 到 LLM 原值
 }
 
+// ─── 反幻觉: 原文日期存在性校验 ───────────────────────────────
+// LLM 可能输出原文不存在的日期(尤其给只有单边时间的经历补全另一端)。收集简历原文出现过的
+// 年份/年月, 对文本里查无依据的日期 token 打回「未提供」。保守(误删风险低): 原文该年完全没
+// 出现→判捏造; 原文有该年但抽不到月→不按月苛求; 原文一个年份都没抽到(纯图片简历)→整段不动。
+function collectOriginDates(text) {
+  const years = new Set();
+  const yms = new Set();
+  if (typeof text === "string") {
+    for (const m of text.matchAll(/(19|20)\d{2}/g)) {
+      const y = m[0];
+      years.add(y);
+      const tail = text.slice(m.index + 4, m.index + 9);
+      const mm = /^\s*[.\-/年]\s*(\d{1,2})/.exec(tail);
+      if (mm) yms.add(`${y}.${String(Math.min(12, Math.max(1, parseInt(mm[1], 10)))).padStart(2, "0")}`);
+    }
+  }
+  return { years, yms };
+}
+
+export function scrubHallucinatedDates(text, originText) {
+  if (typeof text !== "string" || !text) return text;
+  const { years, yms } = collectOriginDates(originText);
+  if (years.size === 0) return text; // 原文没抽到任何年份(纯图片/OCR 失败)→ 不动, 避免误删
+  const yearHasMonth = (y) => [...yms].some((s) => s.startsWith(`${y}.`));
+  return text.replace(/((?:19|20)\d{2})(?:\s*[.\-/年]\s*(\d{1,2}))?/g, (full, y, mm) => {
+    if (!years.has(y)) return "未提供";          // 原文根本没这个年份 → 凭空捏造
+    if (mm == null || !yearHasMonth(y)) return full; // 只精确到年 / 原文该年无月信息 → 放过
+    const norm = `${y}.${String(Math.min(12, Math.max(1, parseInt(mm, 10)))).padStart(2, "0")}`;
+    return yms.has(norm) ? full : "未提供";       // 原文该年有月份信息但对不上 → 月份是编的
+  });
+}
+
 // ─── 解析: 一次 chat, JSON 输出含 summary + 结构化字段 ─────────
 export async function parseResume({ buffer, filename, contentType, model }) {
   const file = await uploadFile({ buffer, filename, contentType });
@@ -462,9 +494,17 @@ export async function parseResume({ buffer, filename, contentType, model }) {
   }
 
   const { summary: rawSummary, ...parsed } = result.json;
-  const summary = typeof rawSummary === "string" ? rawSummary.trim() : "";
+  let summary = typeof rawSummary === "string" ? rawSummary.trim() : "";
 
-  // yearsExp 不信任 LLM 心算: 用工作经历 period 确定性重算, 算得出就覆盖(资深候选人常被 LLM 填 0/null)
+  // 反幻觉: 原文查无的日期 → 「未提供」(确定性闸门, 清 LLM 凭空生造/补全的日期)
+  summary = scrubHallucinatedDates(summary, extractedText);
+  if (Array.isArray(parsed.experience)) {
+    for (const e of parsed.experience) {
+      if (e && typeof e.period === "string") e.period = scrubHallucinatedDates(e.period, extractedText);
+    }
+  }
+
+  // yearsExp 不信任 LLM 心算: 用(已校验的)工作经历 period 确定性重算, 算得出就覆盖
   const computedYears = computeYearsExp(parsed.experience, summary);
   if (computedYears != null) parsed.yearsExp = computedYears;
 
