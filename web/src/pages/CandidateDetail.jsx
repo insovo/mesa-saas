@@ -2901,12 +2901,15 @@ function CandidateDetail() {
   }
 
   async function runJdMatch() {
-    if (!matchingJobId || !c?.id) return toast("请选 JD", "error");
+    // 简报卡「重新生成」直接调本函数,此时 matchingJobId 可能没走过选择流程仍为空 →
+    // fallback 到候选人当前已关联的 jobId,避免明明关联了 JD 却报「请选 JD」
+    const jobId = matchingJobId || c?.jobId;
+    if (!jobId || !c?.id) return toast("请选 JD", "error");
     setMatching(true);
     try {
-      const { data } = await api.post("/resumes/match", { candidateId: c.id, jobId: matchingJobId }, { timeout: LONG_TIMEOUT });
-      setC({ ...data.candidate, jobId: matchingJobId });
-      api.patch(`/candidates/${c.id}`, { jobId: matchingJobId }).catch(() => {});
+      const { data } = await api.post("/resumes/match", { candidateId: c.id, jobId }, { timeout: LONG_TIMEOUT });
+      setC({ ...data.candidate, jobId });
+      api.patch(`/candidates/${c.id}`, { jobId }).catch(() => {});
       toast(`✓ 评估完成: JD 匹配度 ${data.candidate.jdMatch ?? "—"}`, "success");
     } catch (e) { toast(e.message || "评估失败", "error"); }
     finally { setMatching(false); }
@@ -3353,8 +3356,11 @@ function CandidateDetail() {
                 <I name="file-text" size={12} /> 查看原始简历
               </button>
               <div className="flex-1" />
-              <Button size="sm" onClick={runJdMatch} disabled={matching} icon={<I name={matching ? "loader" : "sparkles"} size={12} className={matching ? "animate-spin" : ""} />}>
-                {matching ? "重评中" : "重新生成"}
+              <Button variant="ghost" size="sm" onClick={openReparse} disabled={reparsing} title="重新解析简历, 重出简报/教育/基础字段" icon={<I name={reparsing ? "loader" : "rotate-ccw"} size={12} className={reparsing ? "animate-spin" : ""} />}>
+                {reparsing ? "解析中" : "重新解析"}
+              </Button>
+              <Button size="sm" onClick={runJdMatch} disabled={matching} title="基于简报重新评估与当前 JD 的匹配度" icon={<I name={matching ? "loader" : "sparkles"} size={12} className={matching ? "animate-spin" : ""} />}>
+                {matching ? "重评中" : "重评 JD"}
               </Button>
             </div>
           </Card>
