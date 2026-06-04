@@ -71,7 +71,7 @@ export const DEFAULT_PROMPT = `# Role: 简历信息提取专家
   "school": "最高学历对应院校",
   "major": "专业",
   "location": "现居城市(如 上海·浦东)",
-  "yearsExp": 整数 或 null,
+  "yearsExp": 整数 或 null (= 各段工作经历时长之和、重叠不重复; 简历没写"工作年限:X年"时也要按 experience 各段 period 推算, 不要因为没汇总句就填 0/null),
   "phone": "保留原打码格式",
   "email": "邮箱",
   "appliedFor": "应聘岗位(没明确写就空字符串)",
@@ -347,6 +347,77 @@ async function pickParseModel(requested) {
   return adminConfigured;
 }
 
+// ─── 工作年限确定性计算 ──────────────────────────────────────────
+// LLM「心算」yearsExp 不可靠:资深候选人(简历不写"工作年限:X年"汇总句时)常被填 0/null,
+// 前端兜底就显示成「经验 < 1 年」严重误导。改为从 LLM 照抄的工作经历 period(可靠)用代码算:
+// 解析每段 [起,止] 月区间 → 合并重叠(简历规则:重叠时间不重复)→ 总月数 / 12 四舍五入。
+// 纯算法、可复现、不依赖 prompt 与 admin 是否改过生产 DB → 同一份简历每次结果一致。
+const NOW_TOKEN_RE = /至今|今|present|now|current|在职|目前|现在/i;
+
+// 把一段 period 文本(如 "2006.07 – 至今" / "2008.12 - 2010.09")解析成 [起月, 止月] 绝对月序号
+// (year*12 + month0-11)。无法确定起止则返回 null。nowAbs = 当前绝对月序号(用于"至今"与未来截断)。
+function periodToRange(period, nowAbs) {
+  if (typeof period !== "string" || !period.trim()) return null;
+  // 抓所有 19xx/20xx 年份及其紧随的月份(period 语义即时间, 误抓概率低)
+  const points = [];
+  for (const m of period.matchAll(/(19|20)\d{2}/g)) {
+    const year = parseInt(m[0], 10);
+    const tail = period.slice(m.index + 4, m.index + 9); // 形如 ".07" / "-11" / "年6"
+    const mm = /^\s*[.\-/年]?\s*(\d{1,2})/.exec(tail);
+    const month = mm ? Math.min(12, Math.max(1, parseInt(mm[1], 10))) : 1;
+    points.push(year * 12 + (month - 1));
+  }
+  if (points.length === 0) return null;
+  let start = points[0];
+  let end;
+  if (points.length >= 2) end = points[1];
+  else if (NOW_TOKEN_RE.test(period)) end = nowAbs;
+  else return null; // 只有起始年又无"至今" → 时长不可知, 跳过该段
+  if (end < start) [start, end] = [end, start]; // 顺序容错
+  end = Math.min(end, nowAbs); // 简历写到未来 → 截到当前
+  if (end < start) return null;
+  return [start, end];
+}
+
+// 从一组 period 文本算总工作年限(整数年);无任何有效区间则返回 null。
+// 导出供 backfill 脚本 / 单测复用。now 可注入便于测试。
+export function yearsFromPeriods(periods, now = new Date()) {
+  if (!Array.isArray(periods)) return null;
+  const nowAbs = now.getFullYear() * 12 + now.getMonth();
+  const ranges = periods
+    .map((p) => periodToRange(p, nowAbs))
+    .filter(Boolean)
+    .sort((a, b) => a[0] - b[0]);
+  if (ranges.length === 0) return null;
+  let total = 0;
+  let [curStart, curEnd] = ranges[0];
+  for (let i = 1; i < ranges.length; i++) {
+    const [s, e] = ranges[i];
+    if (s <= curEnd + 1) curEnd = Math.max(curEnd, e); // 重叠或相邻月(上段月底接下段月初)→ 合并
+    else { total += curEnd - curStart; [curStart, curEnd] = [s, e]; }
+  }
+  total += curEnd - curStart;
+  return Math.round(total / 12);
+}
+
+// experience 数组缺失时, 从最终简报(aiSummary 一定有)的「工作经历」段抓 period 兜底。
+export function periodsFromSummary(summary) {
+  if (typeof summary !== "string") return [];
+  const m = /工作经历([\s\S]*?)(?:\n\s*(?:项目经历|核心能力|技能|证书|综合评估)|$)/.exec(summary);
+  const block = m ? m[1] : "";
+  return [...block.matchAll(/时间[:：]\s*(.+)/g)].map((x) => x[1].trim()).filter(Boolean);
+}
+
+// 综合两个数据源算 yearsExp:优先 LLM experience 数组的 period,其次简报工作经历段。
+export function computeYearsExp(experience, summary) {
+  const fromArr = Array.isArray(experience)
+    ? experience.map((e) => e && e.period).filter(Boolean)
+    : [];
+  let years = yearsFromPeriods(fromArr);
+  if (years == null) years = yearsFromPeriods(periodsFromSummary(summary));
+  return years; // null 表示算不出 → 调用方 fallback 到 LLM 原值
+}
+
 // ─── 解析: 一次 chat, JSON 输出含 summary + 结构化字段 ─────────
 export async function parseResume({ buffer, filename, contentType, model }) {
   const file = await uploadFile({ buffer, filename, contentType });
@@ -392,6 +463,10 @@ export async function parseResume({ buffer, filename, contentType, model }) {
 
   const { summary: rawSummary, ...parsed } = result.json;
   const summary = typeof rawSummary === "string" ? rawSummary.trim() : "";
+
+  // yearsExp 不信任 LLM 心算: 用工作经历 period 确定性重算, 算得出就覆盖(资深候选人常被 LLM 填 0/null)
+  const computedYears = computeYearsExp(parsed.experience, summary);
+  if (computedYears != null) parsed.yearsExp = computedYears;
 
   // 注意: 两阶段解析 — parseResume 只负责 summary + 基础信息 + tags,
   // experience/educationHistory/skills 不再在这里产出 (即便 LLM 输出了也由调用方丢弃),

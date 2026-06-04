@@ -61,6 +61,12 @@ function safeMd(s) {
   return typeof s === "string" ? s.trim().slice(0, 5000) : "";
 }
 
+// 「待解析」是公开上传/飞书入库打的临时状态标记(upload-links.js),解析成功后必须剔除,
+// 否则候选人简报都出来了头部还挂「待解析」自相矛盾。来源标记「公开上传」保留(溯源价值)。
+function stripPendingTag(tags) {
+  return Array.isArray(tags) ? tags.filter((t) => t !== "待解析") : tags;
+}
+
 // 解析后回写候选人姓名:Kimi 偶发漏填结构化 name(但简报模板首行恒为姓名)。
 // 优先 parsed.name → 退而取简报首行(短、无冒号才认作姓名)→ 再退回 fallback(通常是文件名)。
 // 修复:飞书/公开上传的候选人初始 name=文件名,解析后应更新为真实姓名,别留文件名。
@@ -217,7 +223,7 @@ export async function runReparse(app, taskId, candidateId, model, jobIdOverride,
       yearsExp: parsed.yearsExp ?? existingCandidate.yearsExp,
       phone: pickPhone(parsed.phone, result.summary) ?? existingCandidate.phone,
       email: pickEmail(parsed.email, result.summary) ?? existingCandidate.email,
-      tags: (Array.isArray(parsed.tags) && parsed.tags.length > 0) ? parsed.tags : existingCandidate.tags,
+      tags: stripPendingTag((Array.isArray(parsed.tags) && parsed.tags.length > 0) ? parsed.tags : existingCandidate.tags),
       languages: (Array.isArray(parsed.languages) && parsed.languages.length > 0) ? parsed.languages : existingCandidate.languages,
       aiSummary: result.summary,
       parser: "Kimi",
