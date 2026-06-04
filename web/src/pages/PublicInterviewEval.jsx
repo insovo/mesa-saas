@@ -148,7 +148,7 @@ function RubricModal({ open, onClose, rubric }) {
 function ScoreInput({ value, onChange, disabled }) {
   const n = value == null ? null : Number(value);
   return (
-    <div className="flex items-center gap-2 flex-wrap">
+    <div className="flex items-center gap-2 w-full">
       <input
         type="number"
         min={1}
@@ -162,10 +162,11 @@ function ScoreInput({ value, onChange, disabled }) {
           const x = parseInt(v, 10);
           if (Number.isInteger(x) && x >= 1 && x <= 10) onChange(x);
         }}
-        className="w-16 h-10 rounded-xl border border-gray-200 px-2 text-center text-sm font-bold text-navy-700 outline-none focus:border-brand disabled:bg-gray-100"
+        className="w-12 h-9 shrink-0 rounded-xl border border-gray-200 px-1 text-center text-sm font-bold text-navy-700 outline-none focus:border-brand disabled:bg-gray-100"
         placeholder="-"
       />
-      <div className="flex gap-1" role="radiogroup" aria-label="评分 1-10">
+      {/* 圆点按可用宽度自适应收缩(flex-1 + aspect-square), 永不横向溢出手机屏 */}
+      <div className="flex gap-1 flex-1 min-w-0" role="radiogroup" aria-label="评分 1-10">
         {Array.from({ length: 10 }, (_, i) => i + 1).map((d) => (
           <button
             key={d}
@@ -174,7 +175,7 @@ function ScoreInput({ value, onChange, disabled }) {
             aria-checked={n === d}
             disabled={disabled}
             onClick={() => onChange(d)}
-            className={`w-7 h-7 rounded-full text-[11px] font-bold transition ${
+            className={`flex-1 min-w-0 aspect-square max-w-9 rounded-full text-[11px] font-bold transition ${
               n === d
                 ? "bg-brand-gradient text-white shadow"
                 : "bg-gray-100 text-gray-700 hover:bg-lightPrimary"
@@ -192,15 +193,16 @@ function ScoreRow({ dim, item, onChange, readonly }) {
   const w = weighted(dim.weight, item?.score);
   return (
     <div className="border-t border-gray-100 first:border-t-0 py-4">
-      <div className="flex flex-wrap items-start gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-3">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
             <p className="text-sm font-bold text-navy-700">{dim.name}<RequiredMark /></p>
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-lightPrimary text-brand font-bold">权重 {dim.weight}%</span>
           </div>
           <p className="text-[12px] text-gray-700 leading-relaxed">{dim.observation}</p>
         </div>
-        <div className="shrink-0 min-w-0">
+        {/* 手机端占满整行(竖堆在文字下方), 桌面端右侧定宽 360px → 圆点尺寸稳定舒适、不溢出不挤压 */}
+        <div className="w-full sm:w-[360px] sm:shrink-0">
           <ScoreInput
             value={item?.score ?? null}
             disabled={readonly}
@@ -684,7 +686,7 @@ export default function PublicInterviewEval() {
         )}
 
         {/* ── 一、候选人信息 ── */}
-        <Card className="p-7" data-eval-anchor="info">
+        <Card className="p-5 sm:p-7" data-eval-anchor="info">
           <h3 className="text-base font-bold text-navy-700 mb-5 flex items-center gap-2">
             <span className="w-7 h-7 rounded-full bg-brand-gradient text-white inline-flex items-center justify-center text-xs">一</span>
             候选人信息
@@ -757,7 +759,7 @@ export default function PublicInterviewEval() {
         </Card>
 
         {/* ── 二、核心评分项 ── */}
-        <Card className="p-7" data-eval-anchor="scores">
+        <Card className="p-5 sm:p-7" data-eval-anchor="scores">
           <div className="flex items-start justify-between gap-3 flex-wrap mb-5">
             <h3 className="text-base font-bold text-navy-700 flex items-center gap-2">
               <span className="w-7 h-7 rounded-full bg-brand-gradient text-white inline-flex items-center justify-center text-xs">二</span>
@@ -767,7 +769,7 @@ export default function PublicInterviewEval() {
             <button onClick={() => setRubricOpen(true)} className="text-[11px] text-brand hover:underline">不知道怎么评?查看评分标准 →</button>
           </div>
 
-          <div className="bg-gray-50/50 rounded-2xl px-5 py-2">
+          <div className="bg-gray-50/50 rounded-2xl px-3 sm:px-5 py-2">
             {dimensions.map((dim) => {
               const item = form.scores.find((s) => s.key === dim.key);
               return (
@@ -803,7 +805,7 @@ export default function PublicInterviewEval() {
         </Card>
 
         {/* ── 三、面试纪要 ── */}
-        <Card className="p-7" data-eval-anchor="final">
+        <Card className="p-5 sm:p-7" data-eval-anchor="final">
           <h3 className="text-base font-bold text-navy-700 mb-5 flex items-center gap-2">
             <span className="w-7 h-7 rounded-full bg-brand-gradient text-white inline-flex items-center justify-center text-xs">三</span>
             面试纪要
