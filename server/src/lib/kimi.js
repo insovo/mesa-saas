@@ -151,6 +151,10 @@ summary 内容必须是**纯文本**(无 Markdown / 无分隔线 / 无引导语)
 - {证书1}
 - {证书2}
 
+语言
+- {语言1, 含熟练度, 统一用中文语言名 + 括号熟练度, 如 中文(母语) / 英语(流利) / 法语(CEFR B2); 简历未写语言就整段写 "- 未提供"}
+- {语言2}
+
 综合评估
 工作年限:{工作年限}
 行业领域:{行业领域}
@@ -445,23 +449,46 @@ export function deriveEducationFields(summary) {
   return best || {};
 }
 // 从原文「语言/Languages」段确定性识别语言(只在语言段内匹配, 避免误抓职责描述里的 English)
+// 含各语言对主要语种的本地互称(英/法/德/西…), 让 fallback 也能识别非中英简历的语言段
 const LANG_DICT = [
-  ["中文", /chinese|mandarin|汉语|普通话|cantonese|粤语|中文/i],
-  ["英语", /english|英语|英文/i],
-  ["法语", /french|fran[çc]ais|法语/i],
-  ["日语", /japanese|日语|日本语/i],
-  ["德语", /german|deutsch|德语/i],
-  ["西班牙语", /spanish|espa[ñn]ol|西班牙语/i],
-  ["韩语", /korean|韩语/i],
-  ["俄语", /russian|俄语/i],
+  ["中文", /chinese|mandarin|chinois|chinesisch|chino|汉语|普通话|cantonese|粤语|中文/i],
+  ["英语", /english|anglais|englisch|ingl[ée]s|inglese|英语|英文|英語/i],
+  ["法语", /french|fran[çc]ais|franz[öo]sisch|franc[ée]s|francese|法语|法語/i],
+  ["日语", /japanese|japonais|japanisch|日语|日本语|日本語|日語/i],
+  ["德语", /german|deutsch|allemand|alem[áa]n|德语|德語/i],
+  ["西班牙语", /spanish|espa[ñn]ol|espagnol|spanisch|西班牙语/i],
+  ["韩语", /korean|cor[ée]en|韩语|韓語|한국어/i],
+  ["俄语", /russian|russe|russisch|俄语|俄語/i],
+  ["意大利语", /italian|italien|italienisch|italiano|意大利语/i],
+  ["葡萄牙语", /portuguese|portugais|portugiesisch|portugu[êe]s|葡萄牙语/i],
 ];
-export function deriveLanguages(text) {
-  if (typeof text !== "string") return [];
-  const seg = /(?:语言能力|外语能力|语言|languages?)\s*[:：\n]([\s\S]{0,200})/i.exec(text);
-  if (!seg) return []; // 没找到语言段 → 不派生(保持 Kimi 原值), 避免全文误匹配
-  const scope = seg[1];
+// 从 summary「语言」段解析(Kimi 已把任意语言/格式简历归一成中文模板, 跨简历泛化), 格式 "- 中文(母语)"
+function languagesFromSummary(summary) {
+  if (typeof summary !== "string") return [];
+  const m = /\n语言\s*\n([\s\S]*?)(?:\n\s*(?:综合评估|证书|核心能力|技能|工作经历|项目经历)|$)/.exec(summary);
+  if (!m) return [];
+  const out = [];
+  for (const raw of m[1].split("\n")) {
+    const l = raw.trim();
+    if (!l.startsWith("-")) continue;
+    const body = l.replace(/^-\s*/, "").trim();
+    if (!body || body === "未提供") continue;
+    const mm = /^(.+?)\s*[（(](.+?)[)）]\s*$/.exec(body);
+    if (mm) out.push({ name: mm[1].trim(), level: mm[2].trim() });
+    else out.push({ name: body, level: "" });
+  }
+  return out;
+}
+export function deriveLanguages(summary, extractedText) {
+  // 优先从 summary「语言」段(Kimi 归一化, 不依赖原文格式/语言 → 泛化好)
+  const fromSummary = languagesFromSummary(summary);
+  if (fromSummary.length) return fromSummary;
+  // fallback: 存量 summary 无语言段 / Kimi 漏写 → 原文语言段词典(段标题多语言, 仅兜底)
+  if (typeof extractedText !== "string") return [];
+  const seg = /(?:语言能力|外语能力|语言|langues?|languages?|sprachen|idiomas|언어|言語)\s*[:：\n]([\s\S]{0,200})/i.exec(extractedText);
+  if (!seg) return [];
   const found = [];
-  for (const [name, re] of LANG_DICT) if (re.test(scope)) found.push({ name, level: "" });
+  for (const [name, re] of LANG_DICT) if (re.test(seg[1])) found.push({ name, level: "" });
   return found;
 }
 
@@ -564,7 +591,7 @@ export async function parseResume({ buffer, filename, contentType, model }) {
   }
   // languages Kimi 常输出空 → 从原文语言段确定性派生兜底
   if (!Array.isArray(parsed.languages) || parsed.languages.length === 0) {
-    const langs = deriveLanguages(extractedText);
+    const langs = deriveLanguages(summary, extractedText);
     if (langs.length) parsed.languages = langs;
   }
 
