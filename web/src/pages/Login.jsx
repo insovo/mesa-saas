@@ -179,12 +179,19 @@ export default function Login() {
                 placeholder="请输入密码" autoComplete="current-password" required
                 className="absolute bg-transparent outline-none text-navy-700 placeholder:text-gray-400"
                 style={{ left: 1172, top: 523, width: 440, height: 52, paddingLeft: 72, fontSize: 19 }} />
-              {/* 眼睛切换(盖住烘焙的眼睛图标) */}
+              {/* 眼睛切换 — 卡片色底盖住烘焙眼睛(避免双眼重合),只留可切换的这个 */}
               <button type="button" onClick={() => setShowPwd((v) => !v)} aria-label="切换密码可见"
-                className="absolute flex items-center justify-center text-gray-400 hover:text-brand transition-colors"
-                style={{ left: 1616, top: 523, width: 54, height: 52 }}>
-                <I name={showPwd ? "eye" : "eye-off"} size={22} />
+                className="absolute flex items-center justify-center text-gray-400 hover:text-brand transition-colors rounded-lg"
+                style={{ left: 1608, top: 533, width: 58, height: 48, background: "#FCFCFC" }}>
+                <I name={showPwd ? "eye" : "eye-off"} size={24} />
               </button>
+              {/* 记住账号(真实复选框,接 remember 状态) */}
+              <label className="absolute flex items-center gap-2 cursor-pointer select-none"
+                style={{ left: 1180, top: 610, fontSize: 14, color: "#586187" }}>
+                <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)}
+                  className="accent-brand cursor-pointer" style={{ width: 16, height: 16 }} />
+                记住账号
+              </label>
               {/* 忘记密码(真实文本) */}
               <button type="button" onClick={() => setForgotOpen(true)}
                 className="absolute text-right hover:underline" style={{ left: 1470, top: 612, width: 200, fontSize: 14, fontWeight: 500, color: "#5B6CF0", letterSpacing: "0.4px" }}>
@@ -250,7 +257,11 @@ export default function Login() {
                   </button>
                 </div>
               </div>
-              <div className="flex justify-end">
+              <div className="flex items-center justify-between gap-2">
+                <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                  <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="accent-brand w-4 h-4" />
+                  <span className="text-xs text-gray-600">记住账号</span>
+                </label>
                 <button type="button" onClick={() => setForgotOpen(true)} className="text-xs font-medium text-brand hover:underline">忘记密码?</button>
               </div>
               {error && <div className="text-sm text-red-500 bg-red-50 rounded-xl px-4 py-3 flex items-center gap-2"><I name="alert-circle" size={16} />{error}</div>}
