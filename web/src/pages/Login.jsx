@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import gsap from "gsap";
 import { api } from "../lib/api.js";
@@ -47,15 +47,16 @@ export default function Login() {
   const stageRef = useRef(null);
   const scaleRef = useRef(null);
 
-  // 桌面设计稿等比缩放:JS 按实际视口取 contain 缩放并直接设舞台尺寸
-  // (不用 CSS 100vh:浏览器工具栏会让 100vh 大于可见高度 → 舞台过高底部被裁)
-  useEffect(() => {
+  // 桌面设计稿等比缩放:JS 按容器实际尺寸取 contain 缩放并直接设舞台尺寸
+  // - 用容器 clientWidth(非 window.innerWidth)——开浏览器侧边栏时可视区变窄,window 不准
+  // - useLayoutEffect 在绘制前就设好 scale,避免首帧原始尺寸闪烁
+  // - 缩放内层不能再有任何 CSS transform 动画(会覆盖 scale 导致缩放丢失 → 溢出被裁)
+  useLayoutEffect(() => {
     const el = scaleRef.current;
     if (!el) return;
     const stage = el.parentElement; // 16:9 舞台
     const outer = stage.parentElement; // fixed inset-0 容器 = 实际可视区(随侧边栏/窗口变化)
     const apply = () => {
-      // 用容器实际尺寸(而非 window.innerWidth)——开浏览器侧边栏时可视区变窄,window 不准
       const w = outer.clientWidth;
       const h = outer.clientHeight;
       if (!w || !h) return;
@@ -130,7 +131,7 @@ export default function Login() {
       {/* ===== 桌面(lg+):按设计稿原件 1:1 拼装,等比缩放铺满视口 ===== */}
       <div className="hidden lg:flex fixed inset-0 items-center justify-center overflow-hidden" style={{ background: "#ECEAF6" }}>
         <div className="relative" style={{ width: "1px", height: "1px" }}>
-          <div ref={scaleRef} className="absolute top-0 left-0 origin-top-left animate-fade-up"
+          <div ref={scaleRef} className="absolute top-0 left-0 origin-top-left"
             style={{ width: "1920px", height: "1080px" }}>
             {/* 背景设计图(色块/地球/药卡/卡片/输入框/按钮全在此) */}
             <img src={bgImg} alt="" draggable={false}
