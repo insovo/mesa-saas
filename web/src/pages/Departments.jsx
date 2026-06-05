@@ -196,7 +196,7 @@ export default function Departments() {
               <button
                 onClick={() => setView("tree")}
                 className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-bold transition-colors ${
-                  view === "tree" ? "bg-brand text-white" : "text-gray-700 hover:bg-lightPrimary"
+                  view === "tree" ? "bg-brand-gradient text-white shadow-button" : "text-gray-700 hover:bg-lightPrimary"
                 }`}
               >
                 <I name="list-tree" size={14} /> 树视图
@@ -204,7 +204,7 @@ export default function Departments() {
               <button
                 onClick={() => setView("chart")}
                 className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-bold transition-colors ${
-                  view === "chart" ? "bg-brand text-white" : "text-gray-700 hover:bg-lightPrimary"
+                  view === "chart" ? "bg-brand-gradient text-white shadow-button" : "text-gray-700 hover:bg-lightPrimary"
                 }`}
               >
                 <I name="network" size={14} /> 架构图

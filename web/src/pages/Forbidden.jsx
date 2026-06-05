@@ -124,7 +124,7 @@ export default function Forbidden() {
       <div className="fb-line mt-6 flex gap-3">
         <Link
           to="/dashboard"
-          className="px-4 py-2 rounded-xl bg-brand text-white text-sm font-medium hover:bg-[#3311DB] transition"
+          className="px-4 py-2 rounded-xl bg-brand-gradient text-white text-sm font-medium shadow-button hover:shadow-button-hover active:scale-95 transition-all"
         >
           返回概览
         </Link>

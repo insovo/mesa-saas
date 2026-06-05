@@ -112,8 +112,8 @@ export default function Jobs() {
           <button
             key={b.v}
             onClick={() => setUrgency(b.v === urgency ? "" : b.v)}
-            className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition
-              ${urgency === b.v ? "bg-brand text-white" : "text-gray-700 hover:bg-lightPrimary"}`}
+            className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all duration-200
+              ${urgency === b.v ? "bg-brand-gradient text-white shadow-button" : "text-gray-700 hover:bg-lightPrimary"}`}
           >
             {b.l}
           </button>
@@ -122,7 +122,7 @@ export default function Jobs() {
 
       <Card className="p-6">
         <div className="flex flex-wrap items-center gap-3 mb-5">
-          <div className="flex-1 min-w-[240px] flex items-center bg-lightPrimary rounded-xl pl-4 h-11">
+          <div className="flex-1 min-w-[240px] flex items-center bg-lightPrimary rounded-xl pl-4 h-11 transition-all duration-200 focus-within:bg-white focus-within:ring-4 focus-within:ring-brand/10">
             <I name="search" size={16} className="text-gray-400" />
             <input
               value={q}
@@ -145,8 +145,9 @@ export default function Jobs() {
             {items.map((j) => (
               <div
                 key={j.id}
-                className="group p-5 rounded-card bg-lightPrimary hover:bg-white hover:shadow-card transition relative"
+                className="group p-5 rounded-card bg-lightPrimary hover:bg-white hover:shadow-card-hover hover:-translate-y-1 transition-all duration-300 ease-out-expo relative overflow-hidden"
               >
+                <span className="absolute left-0 top-0 h-full w-1 bg-brand-gradient opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <h3 className="text-base font-bold text-navy-700 truncate">{j.title}</h3>

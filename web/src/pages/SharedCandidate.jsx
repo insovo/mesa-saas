@@ -112,9 +112,9 @@ export default function SharedCandidate() {
   const share = data.share;
 
   return (
-    <div className="min-h-screen bg-lightPrimary">
+    <div className="min-h-screen bg-lightPrimary bg-mesh-light">
       {/* 顶部 banner */}
-      <header className="bg-white border-b border-gray-200 py-4 px-4 md:px-8">
+      <header className="glass border-b border-white/40 py-4 px-4 md:px-8 sticky top-0 z-20">
         <div className="max-w-5xl mx-auto flex items-center justify-between gap-4 flex-wrap">
           <BrandLogo size="text-[20px] md:text-[22px]" className="font-semibold tracking-tight" style={{ fontFamily: "Poppins, sans-serif" }} />
           <div className="flex items-center gap-3 text-xs text-gray-600">
@@ -124,7 +124,7 @@ export default function SharedCandidate() {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 md:px-8 py-6 space-y-5">
+      <main className="max-w-5xl mx-auto px-4 md:px-8 py-6 space-y-5 animate-fade-up">
         {/* === 头部 === */}
         <Card className="p-5 md:p-7">
           <div className="flex flex-col md:flex-row items-start gap-4 md:gap-6">
@@ -593,7 +593,7 @@ function PublicReviewItem({ review, replies = [], token, onReply, updateReview, 
                 placeholder="请输入您当时填写的姓名"
                 className="flex-1 h-8 px-2 rounded-lg border border-gray-200 text-xs outline-none focus:border-brand"
               />
-              <button onClick={requestDelete} className="h-8 px-3 rounded-lg bg-brand text-white text-xs font-bold">提交</button>
+              <button onClick={requestDelete} className="h-8 px-3 rounded-lg bg-brand-gradient text-white text-xs font-bold shadow-button hover:shadow-button-hover active:scale-95 transition-all">提交</button>
               <button onClick={() => { setShowAsk(false); setAskName(""); }} className="h-8 px-2 text-gray-700 text-xs">取消</button>
             </div>
           )}
@@ -890,7 +890,7 @@ function PublicReviewModal({ open, onClose, candidate, token, replyTo, onCreated
                   key={n}
                   type="button"
                   onClick={() => setAuthorName(n)}
-                  className={`text-[11px] px-2 py-0.5 rounded-full transition ${authorName === n ? "bg-brand text-white" : "bg-lightPrimary text-gray-700 hover:bg-gray-200"}`}
+                  className={`text-[11px] px-2 py-0.5 rounded-full transition ${authorName === n ? "bg-brand-gradient text-white shadow-button" : "bg-lightPrimary text-gray-700 hover:bg-gray-200"}`}
                 >
                   {n}
                 </button>

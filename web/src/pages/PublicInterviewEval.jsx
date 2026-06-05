@@ -638,8 +638,8 @@ export default function PublicInterviewEval() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-lightPrimary via-white to-lightPrimary px-4 sm:px-5 py-8">
-      <div className="max-w-4xl mx-auto space-y-5 pb-32">
+    <div className="min-h-screen bg-lightPrimary bg-mesh-light px-4 sm:px-5 py-8">
+      <div className="max-w-4xl mx-auto space-y-5 pb-32 animate-fade-up">
         {/* ── 顶部 ── */}
         <Card className="p-6 relative overflow-hidden">
           <div className="absolute -right-20 -top-20 w-64 h-64 rounded-full bg-brand-gradient opacity-10 blur-3xl pointer-events-none"></div>

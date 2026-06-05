@@ -145,8 +145,8 @@ export default function PublicUpload() {
   const remaining = link.maxUploads != null ? Math.max(0, link.maxUploads - link.uploadCount) : null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-lightPrimary via-white to-lightPrimary px-5 py-10">
-      <div className="max-w-2xl mx-auto space-y-5">
+    <div className="min-h-screen bg-lightPrimary bg-mesh-light px-5 py-10">
+      <div className="max-w-2xl mx-auto space-y-5 animate-fade-up">
         {/* 头部 — 招聘官提示 */}
         <Card className="p-7 relative overflow-hidden">
           <div className="absolute -right-20 -top-20 w-64 h-64 rounded-full bg-brand-gradient opacity-10 blur-3xl"></div>

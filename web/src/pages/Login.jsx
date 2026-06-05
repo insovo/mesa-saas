@@ -3,10 +3,30 @@ import { useNavigate, useLocation } from "react-router-dom";
 import gsap from "gsap";
 import { api } from "../lib/api.js";
 import { setAuth, addSavedAccount } from "../lib/auth.js";
-import { Card, Button, Input, I, Modal, toast } from "../components/Primitives.jsx";
+import { Button, Input, I, Modal, toast } from "../components/Primitives.jsx";
 import { useAuth } from "../lib/authContext.jsx";
 import PasswordStrengthMeter from "../components/PasswordStrengthMeter.jsx";
-import BrandLogo from "../components/BrandLogo.jsx";
+// 登录页:背景图形 + 透明人像用素材;所有文字用真实 HTML 文本(清晰/可选中/不裁切)
+import bgImg from "../assets/login/bg.png";
+import portraitImg from "../assets/login/portrait.png";
+
+// 文字层(1920×1080 设计空间坐标)。grad=渐变文字,否则用 color。
+const TX_NAVY = "#1B2A4E", TX_SUB = "#8893B0", TX_FSUB = "#8E99B8", TX_LABEL = "#586187";
+const LOGIN_TEXTS = [
+  { c: "Overseas R&D", l: 234, t: 156, size: 32, weight: 700, ff: "Poppins, sans-serif", grad: "linear-gradient(90deg,#5B6CF0,#7C3AED 45%,#C026D3)", ls: "0.3px" },
+  { c: "智能化招聘管理,助力企业全球研发人才战略", l: 138, t: 346, size: 15.5, weight: 400, color: "#7E8AAC", ls: "0.4px" },
+  { c: "多渠道人才聚合", l: 234, t: 437, size: 16, weight: 700, color: TX_NAVY, ls: "1px" },
+  { c: "汇聚全球优质研发人才", l: 234, t: 472, size: 12.5, weight: 400, color: TX_FSUB, ls: "0.4px" },
+  { c: "智能筛选与匹配", l: 234, t: 549, size: 16, weight: 700, color: TX_NAVY, ls: "1px" },
+  { c: "AI 驱动,提升招聘效率", l: 234, t: 584, size: 12.5, weight: 400, color: TX_FSUB, ls: "0.4px" },
+  { c: "协同招聘管理", l: 234, t: 663, size: 16, weight: 700, color: TX_NAVY, ls: "1px" },
+  { c: "团队协作,流程透明高效", l: 234, t: 698, size: 12.5, weight: 400, color: TX_FSUB, ls: "0.4px" },
+  { c: "欢迎登录", l: 1326, t: 210, size: 33, weight: 700, color: TX_NAVY, ls: "4px" },
+  { c: "海外研发招聘管理系统", l: 1309, t: 285, size: 15.5, weight: 400, color: TX_SUB, ls: "1px" },
+  { c: "email", l: 1172, t: 344, size: 15, weight: 700, color: TX_LABEL, ls: "0.4px" },
+  { c: "密码", l: 1172, t: 490, size: 15, weight: 700, color: TX_LABEL, ls: "1px" },
+  { c: "数据安全保障 · 隐私严格保护", l: 1336, t: 980, size: 12.5, weight: 400, color: "#A2ABC6", ls: "0.4px" },
+];
 
 export default function Login() {
   const navigate = useNavigate();
@@ -22,6 +42,43 @@ export default function Login() {
   const [forgotOpen, setForgotOpen] = useState(false);
   const [mfaToken, setMfaToken] = useState(null); // 进入 MFA 第二步时持有
   const [remember, setRemember] = useState(false);
+  const [showPwd, setShowPwd] = useState(false);
+  const stageRef = useRef(null);
+  const scaleRef = useRef(null);
+
+  // 桌面设计稿等比缩放:JS 按实际视口取 contain 缩放并直接设舞台尺寸
+  // (不用 CSS 100vh:浏览器工具栏会让 100vh 大于可见高度 → 舞台过高底部被裁)
+  useEffect(() => {
+    const el = scaleRef.current;
+    if (!el) return;
+    const stage = el.parentElement; // 16:9 舞台
+    const apply = () => {
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const s = Math.min(vw / 1920, vh / 1080);
+      el.style.transform = `scale(${s})`;
+      stage.style.width = `${Math.round(1920 * s)}px`;
+      stage.style.height = `${Math.round(1080 * s)}px`;
+    };
+    apply();
+    window.addEventListener("resize", apply);
+    return () => window.removeEventListener("resize", apply);
+  }, []);
+
+  useEffect(() => {
+    if (!stageRef.current) return;
+    const ctx = gsap.context(() => {
+      gsap.from(".login-rise", {
+        y: 22,
+        opacity: 0,
+        duration: 0.7,
+        ease: "power3.out",
+        stagger: 0.1,
+        clearProps: "transform,opacity",
+      });
+    }, stageRef);
+    return () => ctx.revert();
+  }, []);
 
   async function onSubmit(e) {
     e.preventDefault();
@@ -64,117 +121,132 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden bg-lightPrimary">
-      {/* Brand gradient backdrop */}
-      <div
-        className="absolute -top-32 -right-32 w-[600px] h-[600px] rounded-full opacity-50"
-        style={{ background: "radial-gradient(circle, rgba(134,140,255,0.45) 0%, rgba(66,42,251,0) 70%)" }}
-      ></div>
-      <div
-        className="absolute -bottom-32 -left-32 w-[500px] h-[500px] rounded-full opacity-40"
-        style={{ background: "radial-gradient(circle, rgba(33,17,165,0.4) 0%, rgba(66,42,251,0) 70%)" }}
-      ></div>
+    <div ref={stageRef} className="min-h-screen relative overflow-hidden">
+      {/* ===== 桌面(lg+):按设计稿原件 1:1 拼装,等比缩放铺满视口 ===== */}
+      <div className="hidden lg:flex fixed inset-0 items-center justify-center overflow-hidden" style={{ background: "#ECEAF6" }}>
+        <div className="relative" style={{ width: "1px", height: "1px" }}>
+          <div ref={scaleRef} className="absolute top-0 left-0 origin-top-left animate-fade-up"
+            style={{ width: "1920px", height: "1080px" }}>
+            {/* 背景设计图(色块/地球/药卡/卡片/输入框/按钮/logo 图标全在此) */}
+            <img src={bgImg} alt="" draggable={false}
+              className="absolute top-0 left-0 select-none pointer-events-none" style={{ width: 1920, height: 1080 }} />
+            {/* 透明人像 */}
+            <img src={portraitImg} alt="" aria-hidden="true" draggable={false}
+              className="absolute select-none pointer-events-none" style={{ left: 2, top: 112, width: 1768, height: 961 }} />
+            {/* 文字层(真实 HTML 文本,非素材) */}
+            {LOGIN_TEXTS.map((x, i) => (
+              <div key={i} className="absolute pointer-events-none select-none" style={{
+                left: x.l, top: x.t, fontSize: x.size, fontWeight: x.weight,
+                letterSpacing: x.ls, lineHeight: 1, whiteSpace: "nowrap", fontFamily: x.ff,
+                ...(x.grad
+                  ? { background: x.grad, WebkitBackgroundClip: "text", backgroundClip: "text", WebkitTextFillColor: "transparent" }
+                  : { color: x.color }),
+              }}>{x.c}</div>
+            ))}
+            {/* 主标题(混色:navy + 粉渐变) */}
+            <div className="absolute pointer-events-none select-none font-bold"
+              style={{ left: 138, top: 234, fontSize: 38, letterSpacing: "4px", lineHeight: 1, whiteSpace: "nowrap" }}>
+              <span style={{ color: "#1B2A4E" }}>全球人才</span>
+              <span style={{ color: "#1B2A4E", margin: "0 9px" }}>·</span>
+              <span style={{ background: "linear-gradient(90deg,#D53872,#E0639B)", WebkitBackgroundClip: "text", backgroundClip: "text", WebkitTextFillColor: "transparent" }}>精准招聘</span>
+            </div>
 
-      <div className="relative w-full max-w-md">
-        <div className="flex items-center justify-center mb-6">
-          <BrandLogo
-            text="Overseas R&D"
-            size="text-[32px]"
-            style={{ fontFamily: "Poppins, sans-serif", fontWeight: 700, letterSpacing: "-0.3px" }}
-          />
-        </div>
-
-        <Card className="p-10">
-          <h1 className="text-2xl font-bold text-navy-700">登录工作台</h1>
-          <p className="text-sm text-gray-700 mt-2 mb-8">
-            <span className="font-accent">AI-native recruiting,</span> rebuilt around clarity.
-          </p>
-
-          <form onSubmit={onSubmit} className="space-y-5">
-            <Input
-              label="邮箱"
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="admin@mesa.local"
-              autoComplete="email"
-              required
-            />
-            <Input
-              label="密码"
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              autoComplete="current-password"
-              required
-            />
-
-            {error && (
-              <div className="text-sm text-red-500 bg-red-50 rounded-xl px-4 py-3 flex items-center gap-2">
-                <I name="alert-circle" size={16} />
-                {error}
-              </div>
-            )}
-            {deactivated && (
-              <div className="text-sm text-amber-700 bg-amber-50 rounded-xl px-4 py-3 space-y-1">
-                <div className="flex items-center gap-2 font-bold">
-                  <I name="shield-alert" size={16} />
-                  账号已被停用
-                </div>
-                <p className="text-xs text-amber-800">
-                  {deactivated.reason ? `原因:${deactivated.reason}` : "请联系系统管理员开通"}
-                </p>
-              </div>
-            )}
-
-            <Button type="submit" size="lg" disabled={submitting} className="w-full">
-              {submitting ? (
-                <>
-                  <I name="loader" size={16} className="animate-spin" />
-                  登录中...
-                </>
-              ) : (
-                <>
-                  登录
-                  <I name="arrow-right" size={16} />
-                </>
-              )}
-            </Button>
-
-            <div className="flex items-center justify-between gap-2">
-              <label className="inline-flex items-center gap-2 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={remember}
-                  onChange={(e) => setRemember(e.target.checked)}
-                  className="accent-brand w-4 h-4"
-                />
-                <span className="text-xs text-gray-700">记住账号 (可在右上「切换账号」一键登入)</span>
-              </label>
-              <button
-                type="button"
-                onClick={() => setForgotOpen(true)}
-                className="text-xs text-brand hover:underline"
-              >
+            {/* 透明可交互控件,覆盖在烘焙好的输入框/按钮上 */}
+            <form onSubmit={onSubmit}>
+              <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                placeholder="请输入邮箱" autoComplete="email" required
+                className="absolute bg-transparent outline-none text-navy-700 placeholder:text-gray-400"
+                style={{ left: 1172, top: 377, width: 500, height: 52, paddingLeft: 72, fontSize: 19 }} />
+              <input id="password" type={showPwd ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)}
+                placeholder="请输入密码" autoComplete="current-password" required
+                className="absolute bg-transparent outline-none text-navy-700 placeholder:text-gray-400"
+                style={{ left: 1172, top: 523, width: 440, height: 52, paddingLeft: 72, fontSize: 19 }} />
+              {/* 眼睛切换(盖住烘焙的眼睛图标) */}
+              <button type="button" onClick={() => setShowPwd((v) => !v)} aria-label="切换密码可见"
+                className="absolute flex items-center justify-center text-gray-400 hover:text-brand transition-colors"
+                style={{ left: 1616, top: 523, width: 54, height: 52 }}>
+                <I name={showPwd ? "eye" : "eye-off"} size={22} />
+              </button>
+              {/* 忘记密码(真实文本) */}
+              <button type="button" onClick={() => setForgotOpen(true)}
+                className="absolute text-right hover:underline" style={{ left: 1470, top: 612, width: 200, fontSize: 14, fontWeight: 500, color: "#5B6CF0", letterSpacing: "0.4px" }}>
                 忘记密码?
               </button>
-            </div>
-          </form>
-
-          <div className="mt-7 text-xs text-gray-600 bg-lightPrimary rounded-xl p-3 flex items-start gap-2">
-            <I name="info" size={14} className="text-brand mt-0.5 shrink-0" />
-            <span>
-              本地默认账号: <code className="font-mono text-navy-700">admin@mesa.local / mesa-dev-2026</code>
-            </span>
+              {/* 登录 提交(透明覆盖烘焙粉色按钮,真实文本) */}
+              <button type="submit" disabled={submitting} aria-label="登录"
+                className="absolute rounded-[16px] flex items-center justify-center gap-2 text-white active:scale-[0.99] transition-transform"
+                style={{ left: 1170, top: 694, width: 500, height: 82, fontSize: 21, fontWeight: 700, letterSpacing: "3px" }}>
+                {submitting
+                  ? (<span className="absolute inset-0 flex items-center justify-center rounded-[16px] gap-2" style={{ background: "#D53872", fontSize: 18, letterSpacing: "1px" }}><I name="loader" size={18} className="animate-spin" /> 登录中...</span>)
+                  : "登录"}
+              </button>
+              {/* 还没有账号 + 联系管理员开通(真实文本) */}
+              <div className="absolute select-none" style={{ left: 1300, top: 840, fontSize: 13.5, color: "#8893B0", letterSpacing: "0.4px", whiteSpace: "nowrap" }}>
+                还没有账号?
+              </div>
+              <button type="button"
+                className="absolute hover:underline" style={{ left: 1414, top: 840, fontSize: 13.5, fontWeight: 700, color: "#4A56C4", letterSpacing: "0.4px", whiteSpace: "nowrap" }}>
+                联系管理员开通
+              </button>
+              {/* 错误提示 */}
+              {(error || deactivated) && (
+                <div className="absolute text-center" style={{ left: 1170, top: 788, width: 500 }}>
+                  {error && <p className="text-sm text-red-600 bg-red-50/95 rounded-lg px-3 py-2 shadow-card-soft">{error}</p>}
+                  {deactivated && <p className="text-sm text-amber-700 bg-amber-50/95 rounded-lg px-3 py-2 shadow-card-soft">账号已被停用 · {deactivated.reason || "请联系系统管理员开通"}</p>}
+                </div>
+              )}
+            </form>
           </div>
-        </Card>
+        </div>
+      </div>
 
-        <p className="text-center text-xs text-gray-600 mt-6">
-          © 2026 Overseas R&amp;D · 由 LLM 解析驱动的招聘工作台
-        </p>
+      {/* ===== 移动端(<lg):简洁卡片(桌面设计稿等比缩放在窄屏不适用) ===== */}
+      <div className="lg:hidden min-h-screen flex items-center justify-center px-4 py-8"
+        style={{ background: "linear-gradient(155deg,#F3F5FC 0%,#F5F2FB 48%,#FCF4F8 100%)" }}>
+        <div className="login-rise w-full max-w-md">
+          <div className="flex items-center justify-center gap-2.5 mb-6">
+            <span className="flex items-center justify-center w-10 h-10 rounded-xl shadow-button shrink-0" style={{ background: "linear-gradient(135deg,#6E8BFF 0%,#7C3AED 100%)" }}>
+              <I name="users" size={20} className="text-white" strokeWidth={2.2} />
+            </span>
+            <span className="text-[26px] font-bold" style={{ fontFamily: "Poppins, sans-serif", background: "linear-gradient(90deg,#5B6CF0,#7C3AED 45%,#C026D3)", WebkitBackgroundClip: "text", backgroundClip: "text", WebkitTextFillColor: "transparent" }}>Overseas R&D</span>
+          </div>
+          <div className="rounded-[28px] bg-white/90 backdrop-blur-xl border border-white/80 shadow-glow-lg p-8">
+            <h1 className="text-3xl font-bold text-navy-800 tracking-tight">欢迎登录</h1>
+            <p className="text-sm text-gray-600 mt-2 mb-8">海外研发招聘管理系统</p>
+            <form onSubmit={onSubmit} className="space-y-5">
+              <div>
+                <label htmlFor="email-m" className="text-xs font-bold text-gray-700 ml-1 mb-2 block">email</label>
+                <div className="relative">
+                  <I name="mail" size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  <input id="email-m" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="请输入邮箱" autoComplete="email" required
+                    className="w-full h-[52px] rounded-2xl border border-gray-200 bg-white/60 pl-11 pr-4 text-sm text-navy-700 placeholder:text-gray-400 outline-none focus:border-brand focus:bg-white focus:ring-4 focus:ring-brand/10 transition-all" />
+                </div>
+              </div>
+              <div>
+                <label htmlFor="password-m" className="text-xs font-bold text-gray-700 ml-1 mb-2 block">密码</label>
+                <div className="relative">
+                  <I name="lock" size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  <input id="password-m" type={showPwd ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="请输入密码" autoComplete="current-password" required
+                    className="w-full h-[52px] rounded-2xl border border-gray-200 bg-white/60 pl-11 pr-11 text-sm text-navy-700 placeholder:text-gray-400 outline-none focus:border-brand focus:bg-white focus:ring-4 focus:ring-brand/10 transition-all" />
+                  <button type="button" onClick={() => setShowPwd((v) => !v)} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-brand transition" aria-label="切换密码可见">
+                    <I name={showPwd ? "eye" : "eye-off"} size={18} />
+                  </button>
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <button type="button" onClick={() => setForgotOpen(true)} className="text-xs font-medium text-brand hover:underline">忘记密码?</button>
+              </div>
+              {error && <div className="text-sm text-red-500 bg-red-50 rounded-xl px-4 py-3 flex items-center gap-2"><I name="alert-circle" size={16} />{error}</div>}
+              {deactivated && <div className="text-sm text-amber-700 bg-amber-50 rounded-xl px-4 py-3">账号已被停用 · {deactivated.reason || "请联系系统管理员开通"}</div>}
+              <button type="submit" disabled={submitting} className="w-full h-[54px] rounded-2xl text-white text-[15px] font-bold inline-flex items-center justify-center gap-2 shadow-[0_12px_28px_rgba(213,56,114,0.42)] active:scale-[0.98] transition-all disabled:opacity-70" style={{ background: "linear-gradient(90deg,#D53872 0%,#DF6395 100%)" }}>
+                {submitting ? (<><I name="loader" size={16} className="animate-spin" /> 登录中...</>) : (<>登录</>)}
+              </button>
+            </form>
+            <p className="text-center text-sm text-gray-600 mt-6">还没有账号? <span className="text-brand font-medium">联系管理员开通</span></p>
+          </div>
+          <div className="flex items-center justify-center gap-1.5 mt-5 text-xs text-gray-500"><I name="shield-check" size={13} className="text-emerald-500" /> 数据安全保障 · 隐私严格保护</div>
+          <p className="text-center text-[11px] text-gray-400 mt-2.5">本地默认账号 <code className="font-mono text-gray-500">admin@mesa.local / mesa-dev-2026</code></p>
+        </div>
       </div>
 
       {forgotOpen && (
