@@ -9,11 +9,12 @@ import PasswordStrengthMeter from "../components/PasswordStrengthMeter.jsx";
 // 登录页:背景图形 + 透明人像用素材;所有文字用真实 HTML 文本(清晰/可选中/不裁切)
 import bgImg from "../assets/login/bg.png";
 import portraitImg from "../assets/login/portrait.png";
+import sphereLogin from "../assets/login/sphere.mp4"; // 桌面 logo 循环球(底色融入登录页)
+import sphereWhite from "../assets/logo-sphere.mp4"; // 移动端 logo 循环球(白底融入卡片)
 
 // 文字层(1920×1080 设计空间坐标)。grad=渐变文字,否则用 color。
 const TX_NAVY = "#1B2A4E", TX_SUB = "#8893B0", TX_FSUB = "#8E99B8", TX_LABEL = "#586187";
 const LOGIN_TEXTS = [
-  { c: "Overseas R&D", l: 234, t: 156, size: 32, weight: 700, ff: "Poppins, sans-serif", grad: "linear-gradient(90deg,#5B6CF0,#7C3AED 45%,#C026D3)", ls: "0.3px" },
   { c: "智能化招聘管理,助力企业全球研发人才战略", l: 138, t: 346, size: 15.5, weight: 400, color: "#7E8AAC", ls: "0.4px" },
   { c: "多渠道人才聚合", l: 234, t: 437, size: 16, weight: 700, color: TX_NAVY, ls: "1px" },
   { c: "汇聚全球优质研发人才", l: 234, t: 472, size: 12.5, weight: 400, color: TX_FSUB, ls: "0.4px" },
@@ -127,9 +128,12 @@ export default function Login() {
         <div className="relative" style={{ width: "1px", height: "1px" }}>
           <div ref={scaleRef} className="absolute top-0 left-0 origin-top-left animate-fade-up"
             style={{ width: "1920px", height: "1080px" }}>
-            {/* 背景设计图(色块/地球/药卡/卡片/输入框/按钮/logo 图标全在此) */}
+            {/* 背景设计图(色块/地球/药卡/卡片/输入框/按钮全在此) */}
             <img src={bgImg} alt="" draggable={false}
               className="absolute top-0 left-0 select-none pointer-events-none" style={{ width: 1920, height: 1080 }} />
+            {/* logo 循环球(盖住烘焙的 app 图标,底色融入登录页,更大) */}
+            <video src={sphereLogin} autoPlay loop muted playsInline aria-hidden="true" draggable={false}
+              className="absolute select-none pointer-events-none object-cover" style={{ left: 132, top: 116, width: 96, height: 96 }} />
             {/* 透明人像 */}
             <img src={portraitImg} alt="" aria-hidden="true" draggable={false}
               className="absolute select-none pointer-events-none" style={{ left: 2, top: 112, width: 1768, height: 961 }} />
@@ -143,6 +147,15 @@ export default function Login() {
                   : { color: x.color }),
               }}>{x.c}</div>
             ))}
+            {/* 品牌名(流动渐变流光动效) */}
+            <div className="absolute pointer-events-none select-none animate-gradient-x"
+              style={{
+                left: 234, top: 156, fontSize: 32, fontWeight: 700, fontFamily: "Poppins, sans-serif",
+                letterSpacing: "0.3px", lineHeight: 1, whiteSpace: "nowrap",
+                background: "linear-gradient(90deg,#5B6CF0,#7C3AED,#C026D3,#7C3AED,#5B6CF0)",
+                backgroundSize: "200% auto",
+                WebkitBackgroundClip: "text", backgroundClip: "text", WebkitTextFillColor: "transparent",
+              }}>Overseas R&D</div>
             {/* 主标题(混色:navy + 粉渐变) */}
             <div className="absolute pointer-events-none select-none font-bold"
               style={{ left: 138, top: 234, fontSize: 38, letterSpacing: "4px", lineHeight: 1, whiteSpace: "nowrap" }}>
@@ -204,11 +217,10 @@ export default function Login() {
       <div className="lg:hidden min-h-screen flex items-center justify-center px-4 py-8"
         style={{ background: "linear-gradient(155deg,#F3F5FC 0%,#F5F2FB 48%,#FCF4F8 100%)" }}>
         <div className="login-rise w-full max-w-md">
-          <div className="flex items-center justify-center gap-2.5 mb-6">
-            <span className="flex items-center justify-center w-10 h-10 rounded-xl shadow-button shrink-0" style={{ background: "linear-gradient(135deg,#6E8BFF 0%,#7C3AED 100%)" }}>
-              <I name="users" size={20} className="text-white" strokeWidth={2.2} />
-            </span>
-            <span className="text-[26px] font-bold" style={{ fontFamily: "Poppins, sans-serif", background: "linear-gradient(90deg,#5B6CF0,#7C3AED 45%,#C026D3)", WebkitBackgroundClip: "text", backgroundClip: "text", WebkitTextFillColor: "transparent" }}>Overseas R&D</span>
+          <div className="flex items-center justify-center gap-2 mb-6">
+            <video src={sphereWhite} autoPlay loop muted playsInline aria-hidden="true"
+              className="w-11 h-11 shrink-0 object-cover pointer-events-none" style={{ mixBlendMode: "multiply" }} />
+            <span className="text-[26px] font-bold animate-gradient-x" style={{ fontFamily: "Poppins, sans-serif", background: "linear-gradient(90deg,#5B6CF0,#7C3AED,#C026D3,#7C3AED,#5B6CF0)", backgroundSize: "200% auto", WebkitBackgroundClip: "text", backgroundClip: "text", WebkitTextFillColor: "transparent" }}>Overseas R&D</span>
           </div>
           <div className="rounded-[28px] bg-white/90 backdrop-blur-xl border border-white/80 shadow-glow-lg p-8">
             <h1 className="text-3xl font-bold text-navy-800 tracking-tight">欢迎登录</h1>

@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { I, Modal, Button, toast } from "./Primitives.jsx";
 import BrandLogo from "./BrandLogo.jsx";
+import logoSphere from "../assets/logo-sphere.mp4";
 import { api } from "../lib/api.js";
 import { useMe } from "../lib/authContext.jsx";
 import { hasPage as canSeePage, isAdmin as checkIsAdmin } from "../lib/permissions.js";
@@ -210,18 +211,26 @@ export default function Sidebar({ user, mobileOpen = false, onMobileClose, colla
         {/* 头部 · logo + 收起按钮 */}
         <div className="flex items-center justify-between px-6 pt-9 md:pt-11">
           {!collapsed ? (
-            <BrandLogo
-              text="Overseas R&D"
-              size="text-[22px] md:text-[24px]"
-              className="tracking-tight"
-              style={{ fontFamily: "Poppins, sans-serif", fontWeight: 700 }}
-            />
+            <div className="flex items-center gap-2 min-w-0 whitespace-nowrap">
+              <video
+                src={logoSphere}
+                autoPlay loop muted playsInline
+                aria-hidden="true"
+                className="w-9 h-9 shrink-0 object-cover pointer-events-none"
+              />
+              <BrandLogo
+                text="Overseas R&D"
+                size="text-[17px]"
+                className="tracking-tight whitespace-nowrap"
+                style={{ fontFamily: "Poppins, sans-serif", fontWeight: 700 }}
+              />
+            </div>
           ) : (
-            <BrandLogo
-              text="O"
-              size="text-[22px]"
-              className="font-bold mx-auto"
-              style={{ fontFamily: "Poppins" }}
+            <video
+              src={logoSphere}
+              autoPlay loop muted playsInline
+              aria-hidden="true"
+              className="w-9 h-9 mx-auto shrink-0 object-cover pointer-events-none"
             />
           )}
           {/* 桌面端收起按钮 */}

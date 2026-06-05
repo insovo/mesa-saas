@@ -31,6 +31,8 @@ web/certs/
 *.png
 # 例外:前端产品静态素材(登录页人像等)必须入库,否则 CI/生产构建缺图失败
 !web/src/assets/**
+# 例外:public/ 下的 favicon 等静态资源必须入库
+!web/public/**
 
 # Git worktrees(本机隔离工作区,不入库)
 .worktrees/
