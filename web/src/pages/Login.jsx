@@ -53,17 +53,21 @@ export default function Login() {
     const el = scaleRef.current;
     if (!el) return;
     const stage = el.parentElement; // 16:9 舞台
+    const outer = stage.parentElement; // fixed inset-0 容器 = 实际可视区(随侧边栏/窗口变化)
     const apply = () => {
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
-      const s = Math.min(vw / 1920, vh / 1080);
+      // 用容器实际尺寸(而非 window.innerWidth)——开浏览器侧边栏时可视区变窄,window 不准
+      const w = outer.clientWidth;
+      const h = outer.clientHeight;
+      if (!w || !h) return;
+      const s = Math.min(w / 1920, h / 1080);
       el.style.transform = `scale(${s})`;
       stage.style.width = `${Math.round(1920 * s)}px`;
       stage.style.height = `${Math.round(1080 * s)}px`;
     };
     apply();
-    window.addEventListener("resize", apply);
-    return () => window.removeEventListener("resize", apply);
+    const ro = new ResizeObserver(apply);
+    ro.observe(outer);
+    return () => ro.disconnect();
   }, []);
 
   useEffect(() => {
