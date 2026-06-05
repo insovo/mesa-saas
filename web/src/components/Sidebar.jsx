@@ -250,26 +250,30 @@ export default function Sidebar({ user, mobileOpen = false, onMobileClose, colla
                   ? location.pathname === "/" || location.pathname.startsWith("/dashboard")
                   : location.pathname.startsWith(it.to);
               return (
-                <li key={it.to} className="relative">
+                <li key={it.to} className="relative px-3">
                   <NavLink
                     to={it.to}
                     onClick={onMobileClose}
-                    className={`my-[3px] flex w-full items-center text-left ${collapsed ? "md:justify-center md:px-0 px-9 py-2" : "px-9 py-2"}`}
+                    className={`group my-[3px] flex w-full items-center text-left rounded-xl transition-all duration-200
+                      ${collapsed ? "md:justify-center md:px-0 px-6 py-2.5" : "px-6 py-2.5"}
+                      ${isActive ? "bg-gradient-to-r from-brand-50 to-brand-50/40 shadow-[inset_0_0_0_1px_rgba(66,42,251,0.08)]" : "hover:bg-lightPrimary"}`}
                     title={collapsed ? it.label : undefined}
                   >
-                    <span className="flex items-center justify-center"
-                          style={{ width: 22, height: 22, color: isActive ? "#422AFB" : "#A3AED0" }}>
-                      <I name={it.icon} size={20} strokeWidth={isActive ? 2.4 : 2} />
+                    <span
+                      className={`flex items-center justify-center rounded-lg shrink-0 transition-all duration-300 ${isActive ? "bg-brand-gradient text-white shadow-button" : "text-gray-600 group-hover:text-brand"}`}
+                      style={{ width: 30, height: 30 }}
+                    >
+                      <I name={it.icon} size={17} strokeWidth={isActive ? 2.4 : 2} />
                     </span>
                     {!collapsed && (
-                      <span className={`ml-4 text-sm whitespace-nowrap ${isActive ? "font-bold text-navy-700" : "font-medium text-gray-700"}`}>
+                      <span className={`ml-3 text-sm whitespace-nowrap transition-colors ${isActive ? "font-bold text-navy-700" : "font-medium text-gray-700 group-hover:text-navy-700"}`}>
                         {it.label}
                       </span>
                     )}
                   </NavLink>
-                  {isActive && <div className="absolute right-0 top-1/2 -translate-y-1/2 h-9 w-1 rounded-l-lg bg-brand"></div>}
+                  {isActive && <div className="absolute right-0 top-1/2 -translate-y-1/2 h-7 w-1 rounded-l-full bg-brand-gradient shadow-glow"></div>}
                   {!collapsed && it.adminOnly && (
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-5 h-5 rounded-md bg-brand-50 text-brand"
+                    <span className="absolute right-6 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-5 h-5 rounded-md bg-brand-50 text-brand"
                           title="仅管理员可见">
                       <I name="shield-check" size={10} />
                     </span>

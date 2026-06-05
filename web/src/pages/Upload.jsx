@@ -757,7 +757,7 @@ export default function Upload() {
               <button
                 onClick={() => onReparse(selectedIds)}
                 disabled={bulkAssigning || !llmStatus?.configured}
-                className="inline-flex items-center gap-1 h-8 px-3 rounded-lg bg-brand text-white text-xs font-bold hover:bg-brand-hover disabled:opacity-50"
+                className="inline-flex items-center gap-1 h-8 px-3 rounded-lg bg-brand-gradient text-white text-xs font-bold shadow-button hover:shadow-button-hover active:scale-95 transition-all disabled:opacity-50"
                 title={!llmStatus?.configured ? "LLM 未配置,无法解析" : "用 Kimi 重新解析选中的简历"}
               >
                 <I name="sparkles" size={11} /> 批量解析 ({selectedIds.size})
@@ -840,7 +840,7 @@ export default function Upload() {
                       <button
                         onClick={() => onReparse([c.id])}
                         disabled={isReparsing}
-                        className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg bg-brand text-white text-[11px] font-bold hover:bg-brand-hover disabled:opacity-60 shrink-0"
+                        className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg bg-brand-gradient text-white text-[11px] font-bold shadow-button hover:shadow-button-hover active:scale-95 transition-all disabled:opacity-60 shrink-0"
                         title={isReparsing ? "正在解析中" : (c.parser ? "用 Kimi 重新解析这份简历" : "用 Kimi 解析这份简历")}
                       >
                         <I name={isReparsing ? "loader" : (c.parser ? "refresh-cw" : "sparkles")} size={10} className={isReparsing ? "animate-spin" : ""} />

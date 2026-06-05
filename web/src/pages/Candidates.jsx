@@ -298,8 +298,8 @@ export default function Candidates() {
       <Card className="p-4 !flex-row items-center justify-start gap-2 overflow-x-auto">
         <button
           onClick={() => setStatusFilter("")}
-          className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition
-            ${statusFilter === "" ? "bg-brand text-white" : "text-gray-700 hover:bg-lightPrimary"}`}
+          className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all duration-200
+            ${statusFilter === "" ? "bg-brand-gradient text-white shadow-button" : "text-gray-700 hover:bg-lightPrimary"}`}
         >
           全部 · {items.length}
         </button>
@@ -319,7 +319,7 @@ export default function Candidates() {
       {/* 工具栏 */}
       <Card className="p-4 md:p-6">
         <div className="flex flex-wrap items-center gap-2 md:gap-3 mb-4 md:mb-5">
-          <div className="flex-1 min-w-[160px] md:min-w-[240px] flex items-center bg-lightPrimary rounded-xl pl-4 h-11">
+          <div className="flex-1 min-w-[160px] md:min-w-[240px] flex items-center bg-lightPrimary rounded-xl pl-4 h-11 transition-all duration-200 focus-within:bg-white focus-within:ring-4 focus-within:ring-brand/10">
             <I name="search" size={16} className="text-gray-400" />
             <input
               value={q}
@@ -384,7 +384,7 @@ export default function Candidates() {
                   <button
                     onClick={onBulkReparse}
                     disabled={bulkAssigning || !llmStatus?.configured}
-                    className="inline-flex items-center gap-1 h-8 px-3 rounded-lg bg-brand text-white text-xs font-bold hover:bg-brand-hover disabled:opacity-50"
+                    className="inline-flex items-center gap-1 h-8 px-3 rounded-lg bg-brand-gradient text-white text-xs font-bold shadow-button hover:shadow-button-hover active:scale-95 transition-all disabled:opacity-50"
                     title={!llmStatus?.configured ? "LLM 未配置" : "批量重新解析选中的简历"}
                   >
                     <I name="sparkles" size={11} /> 批量解析 ({selectedIds.size})
@@ -399,7 +399,7 @@ export default function Candidates() {
               const isSelected = selectedIds.has(c.id);
               const isReparsing = reparsingIds.has(c.id) || reparsingId === c.id || c.parsing;
               return (
-              <li key={c.id} className={`py-4 group ${isSelected ? "bg-brand/5 -mx-2 px-2 rounded-lg" : ""}`}>
+              <li key={c.id} className={`py-4 group rounded-xl transition-colors duration-200 -mx-2 px-2 ${isSelected ? "bg-brand/5" : "hover:bg-lightPrimary/70"}`}>
                 {/* === 桌面端: 响应式单行列式(宽屏一行,中小屏 flex-wrap 自动换行) === */}
                 <div className="hidden md:flex md:flex-wrap items-center gap-x-3 gap-y-2.5 md:gap-x-4">
                   {/* 身份组:checkbox + 头像 + 姓名块,flex-1 + min-width 防压成 0 */}
@@ -462,7 +462,7 @@ export default function Candidates() {
                       <button
                         onClick={() => openReparse(c)}
                         disabled={isReparsing}
-                        className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg bg-brand text-white text-[11px] font-bold hover:bg-brand-hover disabled:opacity-60 shrink-0"
+                        className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg bg-brand-gradient text-white text-[11px] font-bold shadow-button hover:shadow-button-hover active:scale-95 transition-all disabled:opacity-60 shrink-0"
                         title={c.parser ? "用 Kimi 重新解析" : "用 Kimi 解析这份简历"}
                       >
                         <I name={isReparsing ? "loader" : (c.parser ? "refresh-cw" : "sparkles")} size={10} className={isReparsing ? "animate-spin" : ""} />

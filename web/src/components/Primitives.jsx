@@ -20,14 +20,15 @@ export function I({ name, size = 18, strokeWidth = 2, className = "", ...rest })
 }
 
 // === Card ===========================================================
+// hover: 传入后卡片获得统一抬升微交互(.lift)。gradient: 渐变描边卡。
 export const Card = forwardRef(function Card(
-  { children, className = "", extra = "", as: As = "div", ...rest },
+  { children, className = "", extra = "", as: As = "div", hover = false, gradient = false, ...rest },
   ref,
 ) {
   return (
     <As
       ref={ref}
-      className={`relative flex flex-col rounded-card bg-white bg-clip-border shadow-card ${className} ${extra}`}
+      className={`relative flex flex-col rounded-card bg-clip-border shadow-card ${gradient ? "gradient-border" : "bg-white"} ${hover ? "lift" : ""} ${className} ${extra}`}
       {...rest}
     >
       {children}
@@ -41,12 +42,13 @@ const BTN_SIZES = {
   md: "h-11 px-5 text-sm rounded-xl gap-2",
   lg: "h-12 px-6 text-base rounded-xl gap-2",
 };
+// primary 改为品牌渐变 + hover 辉光,统一全站主按钮的活力质感
 const BTN_VARIANTS = {
-  primary: "bg-brand text-white hover:bg-brand-hover active:bg-brand-active font-medium shadow-button",
+  primary: "bg-brand-gradient bg-[length:160%_160%] hover:bg-[position:100%_50%] text-white font-medium shadow-button hover:shadow-button-hover",
   secondary: "bg-lightPrimary text-navy-700 hover:bg-gray-200 font-medium",
-  ghost: "bg-transparent text-navy-700 hover:bg-lightPrimary border border-gray-200 font-medium",
-  danger: "bg-red-500 text-white hover:bg-red-600 active:bg-red-700 font-medium",
-  pill: "bg-brand text-white hover:bg-brand-hover font-medium rounded-full",
+  ghost: "bg-transparent text-navy-700 hover:bg-lightPrimary border border-gray-200 hover:border-brand/40 font-medium",
+  danger: "bg-gradient-to-br from-rose-500 to-red-600 text-white hover:shadow-[0_10px_28px_rgba(244,63,94,0.4)] font-medium",
+  pill: "bg-brand-gradient bg-[length:160%_160%] hover:bg-[position:100%_50%] text-white font-medium rounded-full shadow-button hover:shadow-button-hover",
 };
 
 export function Button({
@@ -62,7 +64,7 @@ export function Button({
   return (
     <As
       disabled={disabled}
-      className={`inline-flex items-center justify-center transition-colors duration-200 ${BTN_SIZES[size]} ${BTN_VARIANTS[variant]} ${disabled ? "opacity-60 cursor-not-allowed" : ""} ${className}`}
+      className={`inline-flex items-center justify-center transition-all duration-300 ease-out-expo active:scale-[0.97] ${BTN_SIZES[size]} ${BTN_VARIANTS[variant]} ${disabled ? "opacity-60 cursor-not-allowed pointer-events-none" : ""} ${className}`}
       {...rest}
     >
       {icon && <span className="inline-flex" style={{ lineHeight: 0 }}>{icon}</span>}
@@ -109,7 +111,7 @@ export function Input({
           onChange={onChange}
           placeholder={placeholder}
           required={required}
-          className={`flex h-12 w-full items-center rounded-xl border bg-white/0 p-3 text-sm outline-none placeholder:text-gray-400 focus:border-brand transition-colors ${icon ? "pl-10" : ""} ${stateCls} ${className}`}
+          className={`flex h-12 w-full items-center rounded-xl border bg-white/40 p-3 text-sm outline-none placeholder:text-gray-400 focus:border-brand focus:bg-white focus:ring-4 focus:ring-brand/10 transition-all duration-200 ${icon ? "pl-10" : ""} ${stateCls} ${className}`}
           {...rest}
         />
       </div>
@@ -391,8 +393,14 @@ export function Widget({ icon, label, value, accent = "#422AFB", subtitle, to })
       }`}
     >
       <div
-        className="flex items-center justify-center rounded-full shrink-0"
-        style={{ width: 56, height: 56, background: `${accent}15`, color: accent }}
+        className="flex items-center justify-center rounded-2xl shrink-0 shadow-inner-top transition-transform duration-300 group-hover:scale-105"
+        style={{
+          width: 56,
+          height: 56,
+          background: `linear-gradient(135deg, ${accent}1f 0%, ${accent}0d 100%)`,
+          color: accent,
+          boxShadow: `inset 0 0 0 1px ${accent}1a`,
+        }}
       >
         <I name={icon} size={26} strokeWidth={2.2} />
       </div>
@@ -433,7 +441,7 @@ export function Modal({ open, onClose, children, maxWidth = "max-w-2xl" }) {
   // 用 Portal 渲染到 document.body — 避免被 aside 的 overflow-y-auto / sticky 裁剪
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-navy-900/30 backdrop-blur-sm" onClick={onClose}></div>
+      <div className="absolute inset-0 bg-navy-900/40 backdrop-blur-sm animate-[fade-up_0.25s_ease]" onClick={onClose}></div>
       {/* Modal 自身限高 + 内部滚动:
             - max-h-[85vh] Tailwind 是绝对 fallback,所有现代浏览器都支持 vh
             - inline style 用 min(85vh, calc(100dvh - 4rem)),在支持 dvh 的浏览器进一步收紧
@@ -443,7 +451,7 @@ export function Modal({ open, onClose, children, maxWidth = "max-w-2xl" }) {
               用户能立刻看到"内容可滚"的视觉提示 */}
       <div
         ref={scrollRef}
-        className={`relative w-full ${maxWidth} bg-white rounded-card shadow-card overflow-y-auto max-h-[85vh]`}
+        className={`relative w-full ${maxWidth} bg-white rounded-card shadow-glow-lg overflow-y-auto max-h-[85vh] animate-scale-in`}
         style={{ maxHeight: "min(85vh, calc(100dvh - 4rem))" }}
       >
         {children}
@@ -456,11 +464,12 @@ export function Modal({ open, onClose, children, maxWidth = "max-w-2xl" }) {
 // === Empty ==========================================================
 export function Empty({ icon = "inbox", title = "暂无数据", desc }) {
   return (
-    <div className="flex flex-col items-center justify-center py-16 text-gray-600">
-      <div className="w-14 h-14 rounded-full bg-lightPrimary flex items-center justify-center mb-3">
-        <I name={icon} size={28} className="text-gray-400" />
+    <div className="flex flex-col items-center justify-center py-16 text-gray-600 animate-fade-up">
+      <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-br from-lightPrimary to-brand-50 flex items-center justify-center mb-4 shadow-card-soft">
+        <div className="absolute inset-0 rounded-2xl bg-brand-gradient opacity-[0.06]" />
+        <I name={icon} size={30} className="text-brand/60" />
       </div>
-      <p className="text-sm font-medium text-navy-700">{title}</p>
+      <p className="text-sm font-semibold text-navy-700">{title}</p>
       {desc && <p className="text-xs text-gray-600 mt-1">{desc}</p>}
     </div>
   );
@@ -506,10 +515,10 @@ export function ToastHost() {
       {items.map((t) => (
         <div
           key={t.id}
-          className={`px-4 py-3 rounded-xl shadow-card text-sm font-medium flex items-start gap-3
-            ${t.type === "error" ? "bg-red-500 text-white max-w-md" :
-              t.type === "success" ? "bg-green-500 text-white max-w-sm" :
-              "bg-navy-700 text-white max-w-sm"}`}
+          className={`px-4 py-3 rounded-xl shadow-glow-lg text-sm font-medium flex items-start gap-3 animate-slide-in-right
+            ${t.type === "error" ? "bg-gradient-to-br from-rose-500 to-red-600 text-white max-w-md" :
+              t.type === "success" ? "bg-gradient-to-br from-emerald-500 to-green-600 text-white max-w-sm" :
+              "bg-gradient-to-br from-navy-700 to-navy-800 text-white max-w-sm"}`}
         >
           <span className="flex-1 break-words whitespace-pre-wrap select-text">{t.msg}</span>
           {t.type === "error" && (

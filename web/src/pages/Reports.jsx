@@ -817,7 +817,7 @@ function SubscribeModal({ open, onClose }) {
                   key={f}
                   onClick={() => setFrequency(f)}
                   className={`flex-1 py-2 text-xs font-bold rounded-lg border transition ${
-                    frequency === f ? "bg-brand text-white border-brand" : "border-gray-200 text-gray-700 hover:border-brand/40"
+                    frequency === f ? "bg-brand-gradient text-white border-transparent shadow-button" : "border-gray-200 text-gray-700 hover:border-brand/40"
                   }`}
                 >
                   {f === "daily" ? "每日" : f === "weekly" ? "每周" : "每月"}
@@ -837,7 +837,7 @@ function SubscribeModal({ open, onClose }) {
                   key={c.k}
                   onClick={() => setChannel(c.k)}
                   className={`flex-1 py-2 text-xs font-bold rounded-lg border transition ${
-                    channel === c.k ? "bg-brand text-white border-brand" : "border-gray-200 text-gray-700 hover:border-brand/40"
+                    channel === c.k ? "bg-brand-gradient text-white border-transparent shadow-button" : "border-gray-200 text-gray-700 hover:border-brand/40"
                   }`}
                 >
                   {c.l}
@@ -862,7 +862,7 @@ function SubscribeModal({ open, onClose }) {
               toast("订阅设置已保存(待推送服务上线)", "success");
               onClose();
             }}
-            className="px-4 py-2 rounded-lg bg-brand text-white text-xs font-bold hover:bg-brand-hover"
+            className="px-4 py-2 rounded-lg bg-brand-gradient text-white text-xs font-bold shadow-button hover:shadow-button-hover active:scale-95 transition-all"
           >
             保存订阅
           </button>
@@ -1146,7 +1146,7 @@ function TrendCard({ report }) {
             onClick={() => setCompare(!compare)}
             className={`ml-2 px-2.5 py-1 rounded-full text-[11px] font-bold border transition ${
               compare
-                ? "bg-brand text-white border-brand"
+                ? "bg-brand-gradient text-white border-transparent shadow-button"
                 : "border-gray-200 text-gray-500 hover:text-brand"
             }`}
             title="对比上一周期(浅色虚线叠加)"

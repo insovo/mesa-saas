@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Link } from "react-router-dom";
+import gsap from "gsap";
 import { api, resources } from "../lib/api.js";
 import {
   Card,
@@ -14,7 +15,26 @@ import {
   StagePill,
   toast,
 } from "../components/Primitives.jsx";
-import { URGENCY_TONE } from "../lib/constants.js";
+import { URGENCY_TONE, STATUS_TONE, HIRE_STAGE_TONE } from "../lib/constants.js";
+
+// 分布列表行 — pill + 数值 + 比例迷你条(占满 maxCount 时满格),给纯列表加数据可视化感
+function DistRow({ pill, count, max, color }) {
+  const pct = max > 0 ? Math.max(4, Math.round((count / max) * 100)) : 0;
+  return (
+    <li className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        {pill}
+        <span className="text-sm font-bold text-navy-700 tabular-nums">{count}</span>
+      </div>
+      <div className="h-1.5 w-full rounded-full bg-lightPrimary overflow-hidden">
+        <div
+          className="h-full rounded-full transition-all duration-700 ease-out-expo"
+          style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${color}99, ${color})` }}
+        />
+      </div>
+    </li>
+  );
+}
 
 function formatDateTime(iso) {
   if (!iso) return "—";
@@ -94,18 +114,38 @@ export default function Dashboard() {
 
   const tilePalette = ["#422AFB", "#22C55E", "#F59E0B", "#3B82F6"];
 
+  return <DashboardView {...{ data, tilePalette, jobs, departments, llmStatus, reparsingIds, onAssign, onReparse }} />;
+}
+
+function DashboardView({ data, tilePalette, jobs, departments, llmStatus, reparsingIds, onAssign, onReparse }) {
+  const rootRef = useRef(null);
+  useEffect(() => {
+    if (!rootRef.current) return;
+    const ctx = gsap.context(() => {
+      gsap.from(".dash-rise", {
+        y: 18,
+        opacity: 0,
+        duration: 0.55,
+        ease: "power3.out",
+        stagger: 0.08,
+        clearProps: "transform,opacity",
+      });
+    }, rootRef);
+    return () => ctx.revert();
+  }, []);
+
   return (
-    <div className="space-y-6">
+    <div ref={rootRef} className="space-y-6">
       {/* === KPI 卡片 === */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
-        <Widget icon="users" label="候选人总数" value={data.counts.candidates} accent={tilePalette[0]} subtitle="覆盖全岗位" to="/candidates" />
-        <Widget icon="briefcase" label="在招岗位" value={data.counts.jobs} accent={tilePalette[1]} subtitle="持续招聘中" to="/jobs" />
-        <Widget icon="user-plus" label="入职员工" value={data.counts.employees} accent={tilePalette[2]} subtitle="试用 / 已转正" to="/newhire" />
-        <Widget icon="calendar-check" label="已排面试" value={data.counts.interviewsScheduled} accent={tilePalette[3]} subtitle="本周/近期" to="/interviews" />
+        <div className="dash-rise"><Widget icon="users" label="候选人总数" value={data.counts.candidates} accent={tilePalette[0]} subtitle="覆盖全岗位" to="/candidates" /></div>
+        <div className="dash-rise"><Widget icon="briefcase" label="在招岗位" value={data.counts.jobs} accent={tilePalette[1]} subtitle="持续招聘中" to="/jobs" /></div>
+        <div className="dash-rise"><Widget icon="user-plus" label="入职员工" value={data.counts.employees} accent={tilePalette[2]} subtitle="试用 / 已转正" to="/newhire" /></div>
+        <div className="dash-rise"><Widget icon="calendar-check" label="已排面试" value={data.counts.interviewsScheduled} accent={tilePalette[3]} subtitle="本周/近期" to="/interviews" /></div>
       </div>
 
       {/* === 最新候选人(全宽,容纳单行列式)=== */}
-      <Card className="p-6">
+      <Card className="dash-rise p-6">
           <div className="flex items-center justify-between mb-5">
             <div>
               <h2 className="title-card">最新候选人</h2>
@@ -181,7 +221,7 @@ export default function Dashboard() {
                         <button
                           onClick={() => onReparse(c)}
                           disabled={isReparsing}
-                          className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg bg-brand text-white text-[11px] font-bold hover:bg-brand-hover disabled:opacity-60 shrink-0"
+                          className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg bg-brand-gradient text-white text-[11px] font-bold shadow-button hover:shadow-button-hover active:scale-95 transition-all disabled:opacity-60 shrink-0"
                         >
                           <I name={isReparsing ? "loader" : (c.parser ? "refresh-cw" : "sparkles")} size={10} className={isReparsing ? "animate-spin" : ""} />
                           {isReparsing ? "解析中" : (c.parser ? "重新解析" : "解析")}
@@ -203,7 +243,7 @@ export default function Dashboard() {
       {/* === 面试 + 分布统计(4 列)=== */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
         {/* 即将到来的面试 */}
-        <Card className="p-6">
+        <Card className="dash-rise p-6">
           <div className="flex items-center justify-between mb-5">
             <h2 className="title-card">即将到来的面试</h2>
             <Link to="/interviews" className="text-xs text-brand hover:underline">
@@ -215,7 +255,7 @@ export default function Dashboard() {
           ) : (
             <ul className="space-y-3">
               {data.upcomingInterviews.map((iv) => (
-                <li key={iv.id} className="p-3 rounded-xl bg-lightPrimary">
+                <li key={iv.id} className="p-3 rounded-xl bg-lightPrimary hover:bg-brand-50/60 transition-colors duration-200">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-bold text-navy-700">{iv.candidateName}</p>
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-brand-50 text-brand font-bold">
@@ -238,47 +278,56 @@ export default function Dashboard() {
         </Card>
 
         {/* === 分布统计(并入上面 4 列网格)=== */}
-        <Card className="p-6">
+        <Card className="dash-rise p-6">
           <h2 className="title-card">候选人状态分布</h2>
-          <ul className="mt-4 space-y-2">
-            {data.candidatesByStatus.map((r) => (
-              <li key={r.status} className="flex items-center justify-between">
-                <StatusPill status={r.status || "待筛选"} />
-                <span className="text-sm font-bold text-navy-700">{r.count}</span>
-              </li>
-            ))}
+          <ul className="mt-4 space-y-3">
+            {(() => {
+              const max = Math.max(1, ...data.candidatesByStatus.map((r) => r.count));
+              return data.candidatesByStatus.map((r) => {
+                const tone = STATUS_TONE[r.status] || STATUS_TONE["待筛选"];
+                return (
+                  <DistRow key={r.status} count={r.count} max={max} color={tone.dot}
+                    pill={<StatusPill status={r.status || "待筛选"} />} />
+                );
+              });
+            })()}
           </ul>
         </Card>
 
-        <Card className="p-6">
+        <Card className="dash-rise p-6">
           <h2 className="title-card">入职员工阶段分布</h2>
-          <ul className="mt-4 space-y-2">
-            {data.employeesByStage.map((r) => (
-              <li key={r.stage} className="flex items-center justify-between">
-                <StagePill stage={r.stage || "待入职"} />
-                <span className="text-sm font-bold text-navy-700">{r.count}</span>
-              </li>
-            ))}
+          <ul className="mt-4 space-y-3">
+            {(() => {
+              const max = Math.max(1, ...data.employeesByStage.map((r) => r.count));
+              return data.employeesByStage.map((r) => {
+                const tone = HIRE_STAGE_TONE[r.stage] || HIRE_STAGE_TONE["待入职"];
+                return (
+                  <DistRow key={r.stage} count={r.count} max={max} color={tone.dot}
+                    pill={<StagePill stage={r.stage || "待入职"} />} />
+                );
+              });
+            })()}
           </ul>
         </Card>
 
-        <Card className="p-6">
+        <Card className="dash-rise p-6">
           <h2 className="title-card">岗位优先级</h2>
-          <ul className="mt-4 space-y-2">
-            {data.jobsByUrgency.map((r) => {
-              const tone = URGENCY_TONE[r.urgency] || URGENCY_TONE.mid;
-              return (
-                <li key={r.urgency} className="flex items-center justify-between">
-                  <span
-                    className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-bold"
-                    style={{ background: tone.bg, color: tone.fg }}
-                  >
-                    {tone.label}
-                  </span>
-                  <span className="text-sm font-bold text-navy-700">{r.count}</span>
-                </li>
-              );
-            })}
+          <ul className="mt-4 space-y-3">
+            {(() => {
+              const max = Math.max(1, ...data.jobsByUrgency.map((r) => r.count));
+              return data.jobsByUrgency.map((r) => {
+                const tone = URGENCY_TONE[r.urgency] || URGENCY_TONE.mid;
+                return (
+                  <DistRow key={r.urgency} count={r.count} max={max} color={tone.fg}
+                    pill={
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-bold"
+                        style={{ background: tone.bg, color: tone.fg }}>
+                        {tone.label}
+                      </span>
+                    } />
+                );
+              });
+            })()}
           </ul>
         </Card>
       </div>

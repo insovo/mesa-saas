@@ -86,6 +86,92 @@ body {
 }
 
 /* ================================================================
+   复用工具类 — 玻璃质感 / 渐变描边 / 微交互 / 流光骨架
+   全站通过 className 引用,集中维护,避免逐页重复内联样式
+   ================================================================ */
+@layer components {
+  /* 玻璃拟态卡片:半透明 + 模糊 + 顶部高光,用于 Topbar / 浮层 / hero */
+  .glass {
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: saturate(180%) blur(16px);
+    -webkit-backdrop-filter: saturate(180%) blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+  }
+  .glass-dark {
+    background: rgba(17, 28, 68, 0.55);
+    backdrop-filter: saturate(160%) blur(14px);
+    -webkit-backdrop-filter: saturate(160%) blur(14px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  /* 渐变描边卡片:1px brand→fuchsia 渐变环,内层白底 */
+  .gradient-border {
+    position: relative;
+    background:
+      linear-gradient(#fff, #fff) padding-box,
+      linear-gradient(135deg, #868CFF, #422AFB 50%, #C026D3) border-box;
+    border: 1.5px solid transparent;
+  }
+
+  /* 卡片 hover 抬升微交互 — 统一手感(列表项 / KPI / 入口卡) */
+  .lift {
+    transition: transform 0.32s cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: transform;
+  }
+  .lift:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 24px 50px -12px rgba(112, 144, 176, 0.28), 0 8px 20px -8px rgba(66, 42, 251, 0.12);
+  }
+
+  /* 渐变文字 — 标题强调 */
+  .text-gradient {
+    background-image: linear-gradient(120deg, #422AFB 0%, #7C3AED 45%, #C026D3 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+
+  /* 流光骨架屏 */
+  .skeleton {
+    position: relative;
+    overflow: hidden;
+    background: #EDF2F7;
+  }
+  .skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.65), transparent);
+    animation: shimmer 1.5s infinite;
+  }
+}
+
+@keyframes shimmer {
+  100% { transform: translateX(100%); }
+}
+
+/* 全站可聚焦元素的统一焦点环(键盘可达性 + 精致感) */
+@layer base {
+  a, button, input, select, textarea, [tabindex] {
+    outline-color: rgba(66, 42, 251, 0.5);
+  }
+}
+
+/* 用户偏好减少动画时:停掉持续型背景动效(极光漂移 / 浮动 / 流光),
+   保留一次性入场(fade-up/scale-in,时长短不致眩晕) */
+@media (prefers-reduced-motion: reduce) {
+  .animate-aurora-drift,
+  .animate-float,
+  .animate-gradient-x,
+  .animate-glow-pulse {
+    animation: none !important;
+  }
+}
+
+/* ================================================================
    Brand Logo「Overseas R&D」字符级循环动效 v2
    两层叠加循环:
      1. brand-shine (6s linear infinite): 蓝→紫→紫红→红 渐变流光横扫

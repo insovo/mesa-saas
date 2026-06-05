@@ -97,7 +97,7 @@ function FilterChip({ active, stage, count, onClick, label }) {
       onClick={onClick}
       className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition-colors whitespace-nowrap ${
         active
-          ? "bg-brand text-white"
+          ? "bg-brand-gradient text-white shadow-button"
           : "bg-lightPrimary text-navy-700 hover:bg-white hover:shadow-card"
       }`}
     >

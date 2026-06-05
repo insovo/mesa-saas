@@ -135,14 +135,14 @@ export default function Topbar() {
   const user = me;
 
   return (
-    <header className="sticky top-0 z-20 bg-lightPrimary/80 backdrop-blur-sm">
+    <header className="sticky top-0 z-20 bg-lightPrimary/70 backdrop-blur-md border-b border-white/40">
       <div className="flex items-center gap-4 px-4 md:px-8 pt-7 pb-5 pl-16 md:pl-8">
         <div className="min-w-0 flex-1">
           <p className="text-xs font-medium text-gray-700">Overseas R&amp;D · 招聘工作台</p>
           <h1 className="title-page mt-1 text-[22px] md:text-page-title">{title}</h1>
         </div>
 
-        <div className="hidden md:flex items-center bg-white rounded-full shadow-card pl-5 pr-2 h-[60px] w-[420px]">
+        <div className="hidden md:flex items-center bg-white rounded-full shadow-card pl-5 pr-2 h-[60px] w-[420px] transition-all duration-200 focus-within:ring-4 focus-within:ring-brand/10 focus-within:shadow-glow">
           <I name="search" size={18} className="text-gray-400 shrink-0" />
           <input
             placeholder="搜索候选人 / 岗位 / 部门..."
@@ -151,17 +151,17 @@ export default function Topbar() {
         </div>
 
         <div className="flex items-center gap-2 md:gap-3">
-          <button className="hidden sm:flex w-11 h-11 rounded-full bg-white shadow-card items-center justify-center text-gray-700 hover:text-brand transition">
+          <button className="hidden sm:flex w-11 h-11 rounded-full bg-white shadow-card items-center justify-center text-gray-700 hover:text-brand hover:-translate-y-0.5 hover:shadow-glow transition-all duration-200">
             <I name="bell" size={18} />
           </button>
-          <button className="hidden sm:flex w-11 h-11 rounded-full bg-white shadow-card items-center justify-center text-gray-700 hover:text-brand transition">
+          <button className="hidden sm:flex w-11 h-11 rounded-full bg-white shadow-card items-center justify-center text-gray-700 hover:text-brand hover:-translate-y-0.5 hover:shadow-glow transition-all duration-200">
             <I name="moon" size={18} />
           </button>
 
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setMenuOpen((v) => !v)}
-              className="flex items-center gap-3 pl-1 pr-3 h-11 rounded-full bg-white shadow-card hover:shadow-md transition"
+              className="flex items-center gap-3 pl-1 pr-3 h-11 rounded-full bg-white shadow-card hover:shadow-glow hover:-translate-y-0.5 transition-all duration-200"
             >
               <Avatar name={user?.name || user?.email || "U"} src={user?.avatar} size={36} />
               <div className="text-left hidden sm:block">
@@ -171,7 +171,7 @@ export default function Topbar() {
               <I name="chevron-down" size={14} className="text-gray-400" />
             </button>
             {menuOpen && (
-              <div ref={popoverRef} className="absolute right-0 top-12 w-64 rounded-card bg-white shadow-card overflow-hidden z-30">
+              <div ref={popoverRef} className="absolute right-0 top-12 w-64 rounded-card bg-white shadow-glow-lg border border-white/60 overflow-hidden z-30">
                 <div className="px-4 py-3 border-b border-gray-200 tb-menu-item">
                   <div className="flex items-center gap-3">
                     <Avatar name={user?.name || user?.email || "U"} src={user?.avatar} size={40} />

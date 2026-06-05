@@ -478,7 +478,7 @@ export default function EmployeeDetail() {
                         onClick={() => setFilter(c.k)}
                         className={`text-[11px] font-bold px-3 py-1.5 rounded-lg transition-colors ${
                           active
-                            ? "bg-brand text-white"
+                            ? "bg-brand-gradient text-white shadow-button"
                             : "bg-lightPrimary text-navy-700 hover:bg-white hover:shadow-card"
                         }`}
                       >
