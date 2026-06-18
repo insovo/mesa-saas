@@ -11,6 +11,7 @@
 
 import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
+import { buildResumeDisplayFields } from "../src/lib/kimi.js";
 
 const prisma = new PrismaClient();
 
@@ -490,15 +491,12 @@ async function main() {
 
   console.log("[seed] seeding candidates...");
   const candidateIdByExternal = {};
-  // 兼容 schema:skills/experience/educationHistory 已改为 markdown bullet 字符串
-  const toBullets = (v) =>
-    Array.isArray(v) ? v.map((s) => `- ${s}`).join("\n") : v ?? null;
+  // schema:skills/experience/educationHistory 为 markdown bullet 字符串
+  // 复用生产 parseResume 同款拼装,确保 demo 与真实解析格式一致(对象数组也能正确转,不再出 [object Object])
   for (const raw of CANDIDATES_SAMPLE) {
     const c = {
       ...raw,
-      skills: toBullets(raw.skills),
-      experience: toBullets(raw.experience),
-      educationHistory: toBullets(raw.educationHistory),
+      ...buildResumeDisplayFields(raw),
     };
     const cand = await prisma.candidate.upsert({
       where: { externalId: c.externalId },
