@@ -143,6 +143,13 @@ function cardParsing() {
 export default async function feishuRoutes(app) {
   // 公开端点,不挂 authenticate
   app.post("/card-callback", async (req, reply) => {
+    // 0) 未配置 Verification Token 则禁用端点 —— 否则任何人都能调用回调逻辑
+    //    (建/改候选人、触发 LLM 解析)。强制配置后才放行,不再「跳过校验」裸奔。
+    if (!VERIFICATION_TOKEN) {
+      app.log.error("FEISHU_VERIFICATION_TOKEN 未配置,飞书回调端点已禁用");
+      return reply.code(503).send({ error: "feishu_callback_disabled" });
+    }
+
     let body = req.body || {};
 
     // 1) 密文解密(配了 Encrypt Key 时)
@@ -169,13 +176,9 @@ export default async function feishuRoutes(app) {
 
     // 3) 来源校验(Verification Token)
     const token = body?.header?.token;
-    if (VERIFICATION_TOKEN) {
-      if (token !== VERIFICATION_TOKEN) {
-        app.log.warn("飞书回调 token 不匹配,拒绝");
-        return reply.code(403).send({ error: "invalid_token" });
-      }
-    } else {
-      app.log.warn("FEISHU_VERIFICATION_TOKEN 未配置,跳过来源校验(建议尽快配置)");
+    if (token !== VERIFICATION_TOKEN) {
+      app.log.warn("飞书回调 token 不匹配,拒绝");
+      return reply.code(403).send({ error: "invalid_token" });
     }
 
     // 4) 仅处理卡片点击

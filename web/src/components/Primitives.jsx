@@ -4,18 +4,20 @@
 import { useEffect, useState, useRef, forwardRef } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
-import * as Lucide from "lucide-react";
+import HelpCircle from "lucide-react/dist/esm/icons/help-circle.mjs"; // 深度导入避免拉入 barrel
+import { ICON_MAP } from "../lib/iconMap.js";
 import { STATUS_TONE, HIRE_STAGE_TONE, TASK_STATUS_TONE, URGENCY_TONE } from "../lib/constants.js";
 
 // === Icon ===========================================================
-// 兼容 ui_kits 里 <I name="xxx" /> 的写法。
-// lucide-react 用 PascalCase 命名(如 LayoutDashboard);这里把 kebab-case 自动转过去。
-function pascal(name) {
-  return name.split("-").map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join("");
-}
-
+// 兼容 ui_kits 里 <I name="xxx" /> 的写法。图标从 src/lib/iconMap.js 的显式映射查找,
+// 让 lucide-react 可被 tree-shake(不再 import * 全量打包)。新增图标后重跑:
+//   node scripts/gen-icon-map.mjs
+// 映射缺失时回退 HelpCircle,dev 下 console.warn 以便补登记。
 export function I({ name, size = 18, strokeWidth = 2, className = "", ...rest }) {
-  const Icon = Lucide[pascal(name)] || Lucide.HelpCircle;
+  const Icon = ICON_MAP[name] || HelpCircle;
+  if (import.meta.env.DEV && !ICON_MAP[name]) {
+    console.warn(`[I] 未登记图标 "${name}",已回退 HelpCircle。请重跑 scripts/gen-icon-map.mjs`);
+  }
   return <Icon size={size} strokeWidth={strokeWidth} className={className} {...rest} />;
 }
 

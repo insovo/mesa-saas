@@ -30,7 +30,8 @@
 // 合入生产: V2 设计稿 1:1 接管 /candidates/:id。
 // mockApi → resources/api;接 useParams 拿真实候选人 id;新字段(documents/insights/aiSuggestedTags 等)生产 API 暂未返回,渲染处用 ?? [] / ?? null 兜底。
 import React, { useEffect, useMemo, useState } from "react";
-import * as Lucide from "lucide-react";
+import HelpCircle from "lucide-react/dist/esm/icons/help-circle.mjs";
+import { ICON_MAP } from "../lib/iconMap.js";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { api, resources, LONG_TIMEOUT } from "../lib/api.js";
 import { getUser } from "../lib/auth.js";
@@ -76,12 +77,9 @@ function parseDur(s) {
 //    所有 brand/navy/lightPrimary 都改成 arbitrary value, 不依赖 tailwind.config)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function pascal(name) {
-  return (name || "help-circle").split("-").map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join("");
-}
-
+// 复用全局图标映射(scripts/gen-icon-map.mjs 已扫描本文件用到的图标),避免 import * 拉入 barrel
 function I({ name, size = 18, strokeWidth = 2, className = "", ...rest }) {
-  const Icon = Lucide[pascal(name)] || Lucide.HelpCircle;
+  const Icon = ICON_MAP[name] || HelpCircle;
   return <Icon size={size} strokeWidth={strokeWidth} className={className} {...rest} />;
 }
 

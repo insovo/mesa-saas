@@ -13,6 +13,24 @@ export default defineConfig(({ mode }) => {
   const apiPort = Number(env.VITE_API_PORT) || 3001;
   return {
     plugins: [react()],
+    build: {
+      // 把第三方库按归属切成稳定 vendor chunk:它们极少变动,业务代码频繁迭代,
+      // 分开后每次部署用户只需重新下载变化的业务 chunk,长期缓存命中率更高。
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes("node_modules")) return;
+            if (id.includes("react-router") || id.includes("/react-dom/") || id.includes("/react/") || id.includes("/scheduler/")) return "react-vendor";
+            if (id.includes("recharts") || id.includes("/d3-") || id.includes("/victory")) return "charts";
+            if (id.includes("/gsap") || id.includes("@gsap/")) return "gsap";
+            if (id.includes("@dnd-kit")) return "dnd";
+            if (id.includes("lucide-react")) return "icons";
+            if (id.includes("/axios/")) return "axios";
+            return "vendor";
+          },
+        },
+      },
+    },
     server: {
       port: devPort,
       host: "127.0.0.1",

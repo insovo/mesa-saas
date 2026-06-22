@@ -256,16 +256,19 @@ export async function runReparse(app, taskId, candidateId, model, jobIdOverride,
       updateData.againstFor = llmFields.againstFor;
       updateData.insights = llmFields.insights;
     }
-    const updated = await app.prisma.candidate.update({
-      where: { id: existingCandidate.id },
-      data: updateData,
+    // 事务化:update candidate + 换 JD 清理 employee 原子完成,避免数据脱钩(坑#40)。
+    const updated = await app.prisma.$transaction(async (tx) => {
+      const u = await tx.candidate.update({
+        where: { id: existingCandidate.id },
+        data: updateData,
+      });
+      // 换 JD 后:若对应 employee 还停留在「待入职」(HR 未推进入职流程)就清掉,
+      // 已经手工推进过(入职准备/入职当天/试用期/已转正/延期试用)的保留,不破坏 HR 数据。
+      if (jobIdChanged) {
+        await cleanupEmployeeOnJobChange(tx, existingCandidate.id, app.log);
+      }
+      return u;
     });
-
-    // 换 JD 后:若对应 employee 还停留在「待入职」(HR 未推进入职流程)就清掉,
-    // 已经手工推进过(入职准备/入职当天/试用期/已转正/延期试用)的保留,不破坏 HR 数据。
-    if (jobIdChanged) {
-      await cleanupEmployeeOnJobChange(app.prisma, existingCandidate.id, app.log);
-    }
 
     await markDone(app, taskId, { candidate: withDerivedCandidate(updated), match, reparsed: true });
     app.log.info({ taskId, candidateId, jdMatch: updated.jdMatch }, "reparse task done");
@@ -525,7 +528,7 @@ export default async function resumesRoutes(app) {
       req.log.error({ err, key }, "kimi parseJobDescription failed");
       return reply.code(err.statusCode || 502).send({
         error: err.code || "kimi_error",
-        message: err.message?.slice(0, 500) || "Kimi JD 解析失败",
+        message: "JD 解析失败,请稍后重试", // 细节只进 server log,不向客户端暴露 LLM 原始错误
       });
     }
   });
@@ -562,9 +565,10 @@ export default async function resumesRoutes(app) {
         model,
       });
     } catch (err) {
+      req.log.error({ err, candidateId, jobId }, "kimi matchAgainstJob failed");
       return reply.code(err.statusCode || 502).send({
-        error: "kimi_error",
-        message: err.message?.slice(0, 300),
+        error: err.code || "kimi_error",
+        message: "JD 评估失败,请稍后重试", // 细节只进 server log,不向客户端暴露 LLM 原始错误
       });
     }
 

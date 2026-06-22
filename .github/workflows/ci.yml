@@ -36,6 +36,8 @@ jobs:
       - run: npx prisma generate
       - name: Syntax-check entry
         run: node --check src/index.js
+      - name: Unit tests
+        run: npm test
 
   web:
     name: web · build
