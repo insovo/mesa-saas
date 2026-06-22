@@ -152,6 +152,8 @@ mesa/
 - 中文 UI 文案,技术术语保留英文(JD / API / CLI / MCP)
 - **必填项 `*` 统一红色**:所有必填 label 用 `<RequiredMark />`(`Primitives.jsx`)渲染红 `*`,或在 `Input` 组件传 `required` prop 自动渲染。**禁止**手写 `" *"` 字符串(无颜色控制 + 易遗漏)
 - **多选/多标签输入**:当前 `PublicInterviewEval.jsx` 内 `Combobox` 局部组件实现 chip-style 多选(已选项作 chip 显示在 input 内 + × 移除 + 自由输入 + 分组下拉 + Enter 加自定义 + Backspace 删最后)。若其他页面要复用(多 tag / 多技能 / 多语言),上抽到 `Primitives.jsx`
+- **图表**:统一用 **shadcn/ui charts**(<https://ui.shadcn.com/charts>,底层即 `recharts`,与现有 Reports 页一致)。**不引入其他图表库**(echarts / chart.js / d3 直绘等),保持依赖单一 + 主题统一
+- **动画**:统一用 **GSAP**(`gsap` + `@gsap/react` 的 `useGSAP`,现有 Sidebar / Reports / OrgChartTree 已用),并遵守 `prefers-reduced-motion`(参照 `Reports.jsx` 的 `ensureMotionPref`)。**不引入其他动画库**(framer-motion 等)
 
 ---
 
