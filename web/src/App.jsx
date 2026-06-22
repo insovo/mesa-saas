@@ -1,29 +1,32 @@
-import { useEffect } from "react";
+import { useEffect, lazy, Suspense } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import AuthGuard from "./components/AuthGuard.jsx";
 import Layout from "./components/Layout.jsx";
 import RequirePermission from "./components/RequirePermission.jsx";
+import { LoadingBlock } from "./components/Primitives.jsx";
+import Forbidden from "./pages/Forbidden.jsx"; // 已被 RequirePermission 静态依赖,lazy 无意义
 import { setUnauthorizedHandler } from "./lib/api.js";
 
-import Login from "./pages/Login.jsx";
-import Dashboard from "./pages/Dashboard.jsx";
-import Candidates from "./pages/Candidates.jsx";
-import CandidateDetail from "./pages/CandidateDetail.jsx";
-import Jobs from "./pages/Jobs.jsx";
-import Upload from "./pages/Upload.jsx";
-import Staff from "./pages/Staff.jsx";
-import EmployeeDetail from "./pages/EmployeeDetail.jsx";
-import NewHire from "./pages/NewHire.jsx";
-import Departments from "./pages/Departments.jsx";
-import Interviews from "./pages/Interviews.jsx";
-import Reports from "./pages/Reports.jsx";
-import SharedCandidate from "./pages/SharedCandidate.jsx";
-import PublicUpload from "./pages/PublicUpload.jsx";
-import Users from "./pages/Users.jsx";
-import AuditLog from "./pages/AuditLog.jsx";
-import Forbidden from "./pages/Forbidden.jsx";
-import PublicInterviewEval from "./pages/PublicInterviewEval.jsx";
-import ShareSettings from "./pages/ShareSettings.jsx";
+// 页面组件全部走 React.lazy 动态导入 → 每个页面单独 chunk,首屏只下载当前路由所需代码。
+// 新增页面只需在此追加一行 lazy() 并在下方挂路由,保持与原 import 列表一致的可读性。
+const Login = lazy(() => import("./pages/Login.jsx"));
+const Dashboard = lazy(() => import("./pages/Dashboard.jsx"));
+const Candidates = lazy(() => import("./pages/Candidates.jsx"));
+const CandidateDetail = lazy(() => import("./pages/CandidateDetail.jsx"));
+const Jobs = lazy(() => import("./pages/Jobs.jsx"));
+const Upload = lazy(() => import("./pages/Upload.jsx"));
+const Staff = lazy(() => import("./pages/Staff.jsx"));
+const EmployeeDetail = lazy(() => import("./pages/EmployeeDetail.jsx"));
+const NewHire = lazy(() => import("./pages/NewHire.jsx"));
+const Departments = lazy(() => import("./pages/Departments.jsx"));
+const Interviews = lazy(() => import("./pages/Interviews.jsx"));
+const Reports = lazy(() => import("./pages/Reports.jsx"));
+const SharedCandidate = lazy(() => import("./pages/SharedCandidate.jsx"));
+const PublicUpload = lazy(() => import("./pages/PublicUpload.jsx"));
+const Users = lazy(() => import("./pages/Users.jsx"));
+const AuditLog = lazy(() => import("./pages/AuditLog.jsx"));
+const PublicInterviewEval = lazy(() => import("./pages/PublicInterviewEval.jsx"));
+const ShareSettings = lazy(() => import("./pages/ShareSettings.jsx"));
 
 // 路由 → 所需 pageKey 映射
 const PAGE = {
@@ -55,7 +58,8 @@ export default function App() {
   }, [navigate]);
 
   return (
-    <Routes>
+    <Suspense fallback={<LoadingBlock height="h-screen" label="页面加载中..." />}>
+      <Routes>
       <Route path="/login" element={<Login />} />
       {/* 公开页 — 不在 AuthGuard 内 */}
       <Route path="/share/:token" element={<SharedCandidate />} />
@@ -88,6 +92,7 @@ export default function App() {
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
-    </Routes>
+      </Routes>
+    </Suspense>
   );
 }

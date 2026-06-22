@@ -3,6 +3,8 @@ import Fastify from "fastify";
 import prismaPlugin from "./plugins/prisma.js";
 import jwtPlugin from "./plugins/jwt.js";
 import corsPlugin from "./plugins/cors.js";
+import helmetPlugin from "./plugins/helmet.js";
+import rateLimitPlugin from "./plugins/rateLimit.js";
 import redisPlugin from "./plugins/redis.js";
 import r2Plugin from "./plugins/r2.js";
 import authRoutes from "./routes/auth.js";
@@ -44,9 +46,11 @@ const app = Fastify({
   },
 });
 
+await app.register(helmetPlugin);
 await app.register(corsPlugin);
 await app.register(prismaPlugin);
 await app.register(redisPlugin);
+await app.register(rateLimitPlugin); // 依赖 redis(可选),须在 redisPlugin 之后
 await app.register(r2Plugin);
 await app.register(jwtPlugin);
 

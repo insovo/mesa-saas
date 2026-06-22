@@ -58,7 +58,7 @@ export async function issueCode(prisma, { email, userId = null, purpose, ip = nu
   }
 
   const code = gen6();
-  const codeHash = await bcrypt.hash(code, 8);
+  const codeHash = await bcrypt.hash(code, 10); // cost 10:旧 cost-8 hash 自带 cost,compare 不受影响
 
   await prisma.emailVerificationCode.create({
     data: {

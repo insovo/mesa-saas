@@ -209,34 +209,36 @@ export default async function candidatesRoutes(app) {
     }
 
     try {
-      const updated = await app.prisma.candidate.update({
-        where: { id },
-        data,
-        include: { department: true },
-      });
+      // 事务化:update candidate + 切 JD 清理 employee + status 触发的自动转化,
+      // 必须原子完成,避免 candidate 已改但 employee 未同步导致 NewHire 数据脱钩(坑#40)。
+      const updated = await app.prisma.$transaction(async (tx) => {
+        const u = await tx.candidate.update({
+          where: { id },
+          data,
+          include: { department: true },
+        });
 
-      // 切 JD 后清理 employee(只清「待入职」未推进的, 已推进的保留)
-      if (jobIdChanged) {
-        await cleanupEmployeeOnJobChange(app.prisma, updated.id, app.log);
-      }
+        // 切 JD 后清理 employee(只清「待入职」未推进的, 已推进的保留);best-effort
+        if (jobIdChanged) {
+          await cleanupEmployeeOnJobChange(tx, u.id, app.log);
+        }
 
-      // 自动转化:candidate.status 切到「待入职」/「已入职」时, 自动创建 employee
-      // 策略:仅在 employee 不存在时 create。已存在则**不动 stage**(尊重 HR 已推进的进度),
-      // 避免把推进到「入职当天/试用期」的人回退到「待入职」。
-      const nextStage = mapStatusToStage(updated.status);
-      if (nextStage) {
-        try {
-          const existing = await app.prisma.employee.findUnique({
-            where: { candidateId: updated.id },
+        // 自动转化:status 切到「待入职」/「已入职」时自动创建 employee。
+        // 仅在 employee 不存在时 create,已存在则**不动 stage**(尊重 HR 已推进的进度),
+        // 避免把推进到「入职当天/试用期」的人回退到「待入职」。
+        // 失败会回滚整个事务 → status 与 employee 保持一致,不再静默脱钩。
+        const nextStage = mapStatusToStage(u.status);
+        if (nextStage) {
+          const existing = await tx.employee.findUnique({
+            where: { candidateId: u.id },
           });
           if (!existing) {
-            const empData = candidateToEmployeeData(updated);
-            if (empData) await app.prisma.employee.create({ data: empData });
+            const empData = candidateToEmployeeData(u);
+            if (empData) await tx.employee.create({ data: empData });
           }
-        } catch (e) {
-          app.log?.warn({ err: e?.message, candidateId: updated.id }, "auto-create employee failed");
         }
-      }
+        return u;
+      });
       return { candidate: withDerived(updated) };
     } catch (err) {
       if (err.code === "P2025") return reply.code(404).send({ error: "not_found" });
