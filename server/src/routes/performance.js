@@ -323,6 +323,7 @@ export default async function performanceRoutes(app) {
             selfTotal: true,
             selfToken: true,
             managerToken: true,
+            expiresAt: true,
             createdAt: true,
             submittedAt: true,
           },
