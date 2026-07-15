@@ -12,6 +12,7 @@ export const PAGE_KEYS = Object.freeze([
   "newhire",
   "departments",
   "interviews",
+  "performance",
   "reports",
   "users",
   "system.llm",
@@ -52,6 +53,7 @@ export const DEFAULT_NEW_USER_PAGE_KEYS = Object.freeze([
   "staff",
   "newhire",
   "interviews",
+  "performance",
   "reports",
 ]);
 

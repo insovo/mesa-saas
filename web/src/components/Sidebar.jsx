@@ -21,6 +21,7 @@ const ITEMS = [
   { to: "/newhire",      label: "入职管理",   icon: "user-plus",        pageKey: "newhire" },
   { to: "/departments",  label: "部门管理",   icon: "building-2",       pageKey: "departments" },
   { to: "/interviews",   label: "面试安排",   icon: "calendar",         pageKey: "interviews" },
+  { to: "/performance",  label: "绩效评价",   icon: "clipboard-check",  pageKey: "performance" },
   { to: "/reports",      label: "数据报表",   icon: "bar-chart-3",      pageKey: "reports" },
   { to: "/share-settings", label: "分享设置", icon: "share-2",         pageKey: "share.settings" },
   { to: "/users",        label: "用户管理",   icon: "shield-check",     pageKey: "users", adminOnly: true },

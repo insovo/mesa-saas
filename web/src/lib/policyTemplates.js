@@ -8,7 +8,7 @@ export const POLICY_TEMPLATES = Object.freeze({
     desc: "候选人 CRUD + 分享 + 上传 + 面试。看不到部门管理 / 用户管理 / 系统配置。",
     pageKeys: [
       "dashboard", "candidates", "candidate.detail", "jobs", "upload",
-      "staff", "newhire", "interviews", "reports",
+      "staff", "newhire", "interviews", "performance", "reports",
     ],
     moduleKeys: [
       "candidate.contact", "candidate.attachments", "candidate.aiInsights",
