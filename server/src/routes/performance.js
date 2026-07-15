@@ -240,8 +240,12 @@ async function ensureEmployeeForHiredCandidate(prisma, candidate) {
 }
 
 export default async function performanceRoutes(app) {
+  // ─── 登录态: 必须先 authenticate,否则 assertPage 无 req.user → 误报「账号已停用」
+  app.register(async (admin) => {
+    admin.addHook("preHandler", admin.authenticate);
+
   // ─── 人员列表 ─────────────────────────────────────────────────
-  app.get("/performance/people", {
+  admin.get("/performance/people", {
     schema: {
       querystring: {
         type: "object",
@@ -339,7 +343,7 @@ export default async function performanceRoutes(app) {
   });
 
   // ─── 新建人员（默认试用期 + 绩效来源） ────────────────────────
-  app.post("/performance/people", {
+  admin.post("/performance/people", {
     schema: {
       body: {
         type: "object",
@@ -384,7 +388,7 @@ export default async function performanceRoutes(app) {
   });
 
   // ─── 创建评价 ─────────────────────────────────────────────────
-  app.post("/performance/evaluations", {
+  admin.post("/performance/evaluations", {
     schema: {
       body: {
         type: "object",
@@ -452,7 +456,7 @@ export default async function performanceRoutes(app) {
     return reply.code(201).send({ evaluation: adminShape(created) });
   });
 
-  app.get("/performance/evaluations", {
+  admin.get("/performance/evaluations", {
     schema: {
       querystring: {
         type: "object",
@@ -482,7 +486,7 @@ export default async function performanceRoutes(app) {
     return { items: items.map(adminShape) };
   });
 
-  app.get("/performance/evaluations/:id", async (req, reply) => {
+  admin.get("/performance/evaluations/:id", async (req, reply) => {
     const access = await assertPage(req, reply, "performance");
     if (!access) return;
     const ev = await app.prisma.performanceEvaluation.findFirst({
@@ -492,7 +496,7 @@ export default async function performanceRoutes(app) {
     return { evaluation: adminShape(ev) };
   });
 
-  app.patch("/performance/evaluations/:id", {
+  admin.patch("/performance/evaluations/:id", {
     schema: {
       body: {
         type: "object",
@@ -585,7 +589,7 @@ export default async function performanceRoutes(app) {
     return { evaluation: adminShape(updated) };
   });
 
-  app.post("/performance/evaluations/:id/revoke", async (req, reply) => {
+  admin.post("/performance/evaluations/:id/revoke", async (req, reply) => {
     const access = await assertPage(req, reply, "performance");
     if (!access) return;
     const ev = await app.prisma.performanceEvaluation.findFirst({
@@ -603,7 +607,7 @@ export default async function performanceRoutes(app) {
     return { evaluation: adminShape(updated) };
   });
 
-  app.get("/performance/evaluations/:id/export.xlsx", {
+  admin.get("/performance/evaluations/:id/export.xlsx", {
     schema: {
       querystring: {
         type: "object",
@@ -635,6 +639,8 @@ export default async function performanceRoutes(app) {
       return reply.code(500).send({ error: "export_failed", message: err.message });
     }
   });
+
+  }); // end authenticated scope
 
   // ─── 公开端 ───────────────────────────────────────────────────
   app.get("/public/performance-eval/:token", async (req, reply) => {
