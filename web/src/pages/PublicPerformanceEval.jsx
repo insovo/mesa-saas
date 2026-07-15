@@ -51,7 +51,7 @@ export default function PublicPerformanceEval() {
       if (!dirtyRef.current || !formRef.current) return;
       try {
         setSaving(true);
-        const payload = buildPatch(formRef.current, meta.role);
+        const payload = { ...buildPatch(formRef.current, meta.role), autosave: true };
         const { data } = await api.patch(`/public/performance-eval/${token}`, payload);
         setForm(data.evaluation);
         setMeta(data.meta);
@@ -123,12 +123,15 @@ export default function PublicPerformanceEval() {
   }
 
   async function onSubmit() {
-    if (!form || readonly) return;
-    // save first
+    // 次数用尽时字段只读，但仍允许提交已填内容
+    if (!form || (!meta?.canSubmit && readonly)) return;
+    if (!meta?.canSubmit) return;
     try {
       setSubmitting(true);
-      const payload = buildPatch(form, role);
-      await api.patch(`/public/performance-eval/${token}`, payload);
+      if (!readonly) {
+        const payload = buildPatch(form, role);
+        await api.patch(`/public/performance-eval/${token}`, payload);
+      }
       const { data } = await api.post(`/public/performance-eval/${token}/submit`);
       setForm(data.evaluation);
       setMeta(data.meta);
@@ -201,6 +204,12 @@ export default function PublicPerformanceEval() {
               {form.reviewPeriod ? ` · ${form.reviewPeriod}` : ""}
               {saving ? " · 保存中…" : ""}
               {readonly ? " · 只读" : ""}
+              {meta?.maxEdits != null && !meta?.editsExhausted && (
+                <> · 剩余可保存 {meta.editsRemaining}/{meta.maxEdits} 次</>
+              )}
+              {meta?.editsExhausted && meta?.canSubmit && (
+                <span className="text-rose-600"> · 修改次数已用尽，请尽快提交</span>
+              )}
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -368,14 +377,17 @@ export default function PublicPerformanceEval() {
               </Button>
             )}
             {!readonly && (
-              <>
-                <Button size="sm" variant="ghost" disabled={saving} onClick={saveNow}>
-                  保存草稿
-                </Button>
-                <Button size="sm" disabled={submitting} onClick={onSubmit}>
-                  {submitting ? "提交中…" : role === "manager" ? "提交主管评价" : "提交自评"}
-                </Button>
-              </>
+              <Button size="sm" variant="ghost" disabled={saving} onClick={saveNow}>
+                保存草稿
+              </Button>
+            )}
+            {meta?.canSubmit && (
+              <Button size="sm" disabled={submitting} onClick={onSubmit}>
+                {submitting ? "提交中…" : role === "manager" ? "提交主管评价" : "提交自评"}
+              </Button>
+            )}
+            {!meta?.canSubmit && readonly && !meta?.canExport && (
+              <span className="text-xs text-[#A0AEC0] self-center">已提交或已锁定</span>
             )}
           </div>
         </div>

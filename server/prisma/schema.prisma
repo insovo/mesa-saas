@@ -685,6 +685,13 @@ model PerformanceEvaluation {
   exportedCount Int       @default(0) @map("exported_count")
   lastViewedAt  DateTime? @map("last_viewed_at")
   viewCount     Int       @default(0) @map("view_count")
+
+  // 各角色可修改次数：null=不限；达上限后公开页草稿只读（仍允许提交）
+  selfMaxEdits     Int? @map("self_max_edits")
+  managerMaxEdits  Int? @map("manager_max_edits")
+  selfEditCount    Int  @default(0) @map("self_edit_count")
+  managerEditCount Int  @default(0) @map("manager_edit_count")
+
   revokedAt     DateTime? @map("revoked_at")
   revokedBy     String?   @map("revoked_by") @db.Uuid
   deletedAt     DateTime? @map("deleted_at")
