@@ -334,6 +334,7 @@ export function CreatePerformancePersonModal({ open, onClose, onCreated }) {
   const [form, setForm] = useState({
     name: "",
     position: "",
+    jobId: "",
     department: "",
     level: "",
     lineManager: "",
@@ -341,19 +342,56 @@ export function CreatePerformancePersonModal({ open, onClose, onCreated }) {
     phone: "",
     email: "",
   });
+  const [jobs, setJobs] = useState([]);
+  const [jobMenuOpen, setJobMenuOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (open) {
-      setForm({
-        name: "", position: "", department: "", level: "",
-        lineManager: "", employeeNo: "", phone: "", email: "",
-      });
-    }
+    if (!open) return;
+    setForm({
+      name: "", position: "", jobId: "", department: "", level: "",
+      lineManager: "", employeeNo: "", phone: "", email: "",
+    });
+    setJobMenuOpen(false);
+    resources.jobs.list({ take: 200 })
+      .then((d) => setJobs(d.items || []))
+      .catch(() => setJobs([]));
   }, [open]);
 
   function set(k, v) {
     setForm((s) => ({ ...s, [k]: v }));
+  }
+
+  const jobQuery = form.position.trim().toLowerCase();
+  const filteredJobs = !jobQuery
+    ? jobs.slice(0, 12)
+    : jobs.filter((j) =>
+        (j.title || "").toLowerCase().includes(jobQuery)
+        || (j.dept || "").toLowerCase().includes(jobQuery)
+      ).slice(0, 12);
+
+  function pickJob(job) {
+    setForm((s) => ({
+      ...s,
+      jobId: job.id,
+      position: job.title || "",
+      department: s.department || job.dept || "",
+    }));
+    setJobMenuOpen(false);
+  }
+
+  function onPositionChange(value) {
+    // 自由输入：断开与已选 JD 的绑定（除非标题仍完全等于该 JD）
+    setForm((s) => {
+      const matched = jobs.find((j) => j.id === s.jobId);
+      const stillLinked = matched && matched.title === value;
+      return {
+        ...s,
+        position: value,
+        jobId: stillLinked ? s.jobId : "",
+      };
+    });
+    setJobMenuOpen(true);
   }
 
   async function onSubmit() {
@@ -363,6 +401,7 @@ export function CreatePerformancePersonModal({ open, onClose, onCreated }) {
       const { employee } = await resources.performance.createPerson({
         name: form.name.trim(),
         position: form.position.trim() || undefined,
+        jobId: form.jobId || undefined,
         department: form.department.trim() || undefined,
         level: form.level.trim() || undefined,
         lineManager: form.lineManager.trim() || undefined,
@@ -392,9 +431,39 @@ export function CreatePerformancePersonModal({ open, onClose, onCreated }) {
           <Input className="mt-1" value={form.name} onChange={(e) => set("name", e.target.value)} />
         </label>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <label className="block text-xs font-bold text-navy-700">
+          <label className="block text-xs font-bold text-navy-700 relative">
             岗位 / Position
-            <Input className="mt-1" value={form.position} onChange={(e) => set("position", e.target.value)} />
+            <span className="ml-1 font-normal text-[10px] text-[#A0AEC0]">
+              {form.jobId ? "已关联岗位模块" : "可搜索关联或手输"}
+            </span>
+            <Input
+              className="mt-1"
+              value={form.position}
+              onChange={(e) => onPositionChange(e.target.value)}
+              onFocus={() => setJobMenuOpen(true)}
+              onBlur={() => setTimeout(() => setJobMenuOpen(false), 150)}
+              placeholder="输入或从岗位列表选择"
+              autoComplete="off"
+            />
+            {jobMenuOpen && filteredJobs.length > 0 && (
+              <ul className="absolute z-20 left-0 right-0 mt-1 max-h-48 overflow-y-auto rounded-xl border border-[#E9ECEF] bg-white shadow-card py-1">
+                {filteredJobs.map((j) => (
+                  <li key={j.id}>
+                    <button
+                      type="button"
+                      className={`w-full text-left px-3 py-2 text-xs hover:bg-lightPrimary ${
+                        form.jobId === j.id ? "bg-brand/5 text-brand font-bold" : "text-navy-700"
+                      }`}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => pickJob(j)}
+                    >
+                      <div className="font-bold">{j.title}</div>
+                      {j.dept && <div className="text-[10px] text-[#A0AEC0] mt-0.5">{j.dept}</div>}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </label>
           <label className="block text-xs font-bold text-navy-700">
             部门 / Department
