@@ -137,9 +137,35 @@ function adminShape(ev) {
     exportedAt: ev.exportedAt,
     exportedCount: ev.exportedCount,
     viewCount: ev.viewCount,
+    selfMaxEdits: ev.selfMaxEdits ?? null,
+    managerMaxEdits: ev.managerMaxEdits ?? null,
+    selfEditCount: ev.selfEditCount ?? 0,
+    managerEditCount: ev.managerEditCount ?? 0,
     createdAt: ev.createdAt,
     updatedAt: ev.updatedAt,
   };
+}
+
+function parseMaxEdits(v) {
+  if (v === undefined) return undefined;
+  if (v === null || v === "" || v === "unlimited") return null;
+  const n = parseInt(v, 10);
+  if (!Number.isFinite(n) || n < 1 || n > 999) {
+    throw Object.assign(new Error("可修改次数须为 1–999 或不限"), {
+      statusCode: 400,
+      code: "invalid_max_edits",
+    });
+  }
+  return n;
+}
+
+function roleEditState(ev, role) {
+  const max = role === "self" ? ev.selfMaxEdits : ev.managerMaxEdits;
+  const used = role === "self" ? (ev.selfEditCount || 0) : (ev.managerEditCount || 0);
+  const unlimited = max == null;
+  const remaining = unlimited ? null : Math.max(0, max - used);
+  const exhausted = !unlimited && used >= max;
+  return { maxEdits: max ?? null, editCount: used, remaining, exhausted, unlimited };
 }
 
 function publicShape(ev, role) {
@@ -164,6 +190,9 @@ function publicShape(ev, role) {
     : role === "manager"
       ? !!ev.managerSubmittedAt
       : false;
+  const edits = roleEditState(ev, role);
+  // 次数用尽 → 草稿不可再改，但仍可提交（若尚未提交）
+  const readonly = locked || roleDone || edits.exhausted;
 
   return {
     evaluation: {
@@ -189,7 +218,11 @@ function publicShape(ev, role) {
       role,
       expiresAt: ev.expiresAt,
       templateVersion: ev.templateVersion,
-      readonly: locked || roleDone,
+      readonly,
+      editsExhausted: edits.exhausted,
+      maxEdits: edits.maxEdits,
+      editCount: edits.editCount,
+      editsRemaining: edits.remaining,
       canSubmit: !locked && !roleDone,
       canExport: ev.status === "submitted",
       selfSubmittedAt: ev.selfSubmittedAt,
@@ -323,6 +356,11 @@ export default async function performanceRoutes(app) {
             selfTotal: true,
             selfToken: true,
             managerToken: true,
+            expiresAt: true,
+            selfMaxEdits: true,
+            managerMaxEdits: true,
+            selfEditCount: true,
+            managerEditCount: true,
             createdAt: true,
             submittedAt: true,
           },
@@ -430,6 +468,8 @@ export default async function performanceRoutes(app) {
           lineManager: { type: "string", maxLength: 100 },
           duration: { type: "string" },
           evalDate: { type: "string" },
+          selfMaxEdits: { type: ["integer", "null"] },
+          managerMaxEdits: { type: ["integer", "null"] },
         },
       },
     },
@@ -460,6 +500,15 @@ export default async function performanceRoutes(app) {
       return reply.code(e.statusCode || 400).send({ error: e.code || "bad_request", message: e.message });
     }
 
+    let selfMaxEdits = null;
+    let managerMaxEdits = null;
+    try {
+      if ("selfMaxEdits" in req.body) selfMaxEdits = parseMaxEdits(req.body.selfMaxEdits);
+      if ("managerMaxEdits" in req.body) managerMaxEdits = parseMaxEdits(req.body.managerMaxEdits);
+    } catch (e) {
+      return reply.code(e.statusCode || 400).send({ error: e.code, message: e.message });
+    }
+
     const evalDate = req.body.evalDate ? new Date(req.body.evalDate) : new Date();
     const created = await app.prisma.performanceEvaluation.create({
       data: {
@@ -481,6 +530,8 @@ export default async function performanceRoutes(app) {
         templateVersion: TEMPLATE_VERSION,
         templateFileHash: getTemplateHash(AUTHORITATIVE_LANG),
         createdBy: access.userId,
+        selfMaxEdits,
+        managerMaxEdits,
       },
     });
 
@@ -548,6 +599,10 @@ export default async function performanceRoutes(app) {
           regenerateSelfToken: { type: "boolean" },
           regenerateManagerToken: { type: "boolean" },
           status: { type: "string" },
+          selfMaxEdits: { type: ["integer", "null"] },
+          managerMaxEdits: { type: ["integer", "null"] },
+          resetSelfEditCount: { type: "boolean" },
+          resetManagerEditCount: { type: "boolean" },
         },
       },
     },
@@ -575,8 +630,19 @@ export default async function performanceRoutes(app) {
       return { evaluation: adminShape(updated) };
     }
 
+    const applyEditLimitFields = (data) => {
+      try {
+        if ("selfMaxEdits" in body) data.selfMaxEdits = parseMaxEdits(body.selfMaxEdits);
+        if ("managerMaxEdits" in body) data.managerMaxEdits = parseMaxEdits(body.managerMaxEdits);
+      } catch (e) {
+        throw e;
+      }
+      if (body.resetSelfEditCount || body.regenerateSelfToken) data.selfEditCount = 0;
+      if (body.resetManagerEditCount || body.regenerateManagerToken) data.managerEditCount = 0;
+    };
+
     if (ev.status === "submitted" || ev.status === "revoked") {
-      // 仅允许轮换 token / 改 expires
+      // 仅允许轮换 token / 改 expires / 改次数上限
       const data = {};
       if (body.regenerateSelfToken) data.selfToken = tokenGen();
       if (body.regenerateManagerToken) data.managerToken = tokenGen();
@@ -586,6 +652,11 @@ export default async function performanceRoutes(app) {
         } catch (e) {
           return reply.code(e.statusCode || 400).send({ error: e.code, message: e.message });
         }
+      }
+      try {
+        applyEditLimitFields(data);
+      } catch (e) {
+        return reply.code(e.statusCode || 400).send({ error: e.code, message: e.message });
       }
       if (Object.keys(data).length === 0) {
         return reply.code(409).send({ error: "locked", message: "已提交的评价不可再改内容" });
@@ -611,6 +682,11 @@ export default async function performanceRoutes(app) {
     }
     if (body.regenerateSelfToken) data.selfToken = tokenGen();
     if (body.regenerateManagerToken) data.managerToken = tokenGen();
+    try {
+      applyEditLimitFields(data);
+    } catch (e) {
+      return reply.code(e.statusCode || 400).send({ error: e.code, message: e.message });
+    }
     if (Array.isArray(body.scores)) {
       data.scores = mergeScores(ev.scores, body.scores, "admin");
       Object.assign(data, recomputeDerived(data.scores));
@@ -703,6 +779,7 @@ export default async function performanceRoutes(app) {
           position: { type: "string" },
           department: { type: "string" },
           level: { type: "string" },
+          autosave: { type: "boolean" },
         },
       },
     },
@@ -725,7 +802,18 @@ export default async function performanceRoutes(app) {
       return reply.code(409).send({ error: "locked", message: "主管评价已提交" });
     }
 
+    const edits = roleEditState(ev, role);
+    if (edits.exhausted) {
+      return reply.code(429).send({
+        error: "edit_quota_exceeded",
+        message: `可修改次数已用尽（${edits.editCount}/${edits.maxEdits}），请联系 HR 重置或重生成链接`,
+        maxEdits: edits.maxEdits,
+        editCount: edits.editCount,
+      });
+    }
+
     const body = req.body || {};
+    const isAutosave = !!body.autosave;
     const data = {};
     if (Array.isArray(body.scores)) {
       data.scores = mergeScores(ev.scores, body.scores, role);
@@ -746,6 +834,12 @@ export default async function performanceRoutes(app) {
     }
 
     if (Object.keys(data).length === 0) return publicShape(ev, role);
+
+    // 30s 自动保存不占配额；手动保存草稿 / 提交前写入计数
+    if (!isAutosave) {
+      if (role === "self") data.selfEditCount = { increment: 1 };
+      else data.managerEditCount = { increment: 1 };
+    }
 
     const updated = await app.prisma.performanceEvaluation.update({
       where: { id: ev.id },

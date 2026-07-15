@@ -5,6 +5,7 @@ import { Card, Button, I, Empty, LoadingBlock, Avatar, toast, StagePill } from "
 import PerformanceShareModal, {
   CreatePerformanceEvalModal,
   CreatePerformancePersonModal,
+  PerformanceEvalViewModal,
 } from "../components/PerformanceShareModal.jsx";
 
 const STATUS_LABEL = {
@@ -23,6 +24,18 @@ function StatusChip({ status }) {
   );
 }
 
+/** 已完成 / 已撤销 / 已出结果的可查看 */
+function canViewEval(ev) {
+  if (!ev) return false;
+  return (
+    ev.status === "submitted" ||
+    ev.status === "revoked" ||
+    ev.status === "self_done" ||
+    ev.rating != null ||
+    ev.managerTotal != null
+  );
+}
+
 export default function Performance() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -30,6 +43,7 @@ export default function Performance() {
   const [personOpen, setPersonOpen] = useState(false);
   const [evalTarget, setEvalTarget] = useState(null);
   const [shareTarget, setShareTarget] = useState(null); // { employee, evaluation }
+  const [viewTarget, setViewTarget] = useState(null); // { employee, evaluationId }
 
   async function load(search = q) {
     setLoading(true);
@@ -99,6 +113,7 @@ export default function Performance() {
               <tbody>
                 {items.map((emp) => {
                   const latest = emp.latestEvaluation;
+                  const viewable = canViewEval(latest);
                   return (
                     <tr key={emp.id} className="border-b border-[#F4F7FE] hover:bg-lightPrimary/30">
                       <td className="px-4 py-3">
@@ -126,10 +141,36 @@ export default function Performance() {
                       </td>
                       <td className="px-4 py-3">
                         {latest ? (
-                          <div className="space-y-1">
+                          <button
+                            type="button"
+                            className={`text-left space-y-1 rounded-lg -mx-1 px-1 py-0.5 transition ${
+                              viewable
+                                ? "hover:bg-brand/5 cursor-pointer group"
+                                : "cursor-default"
+                            }`}
+                            disabled={!viewable}
+                            onClick={() => {
+                              if (!viewable) return;
+                              setViewTarget({ employee: emp, evaluationId: latest.id });
+                            }}
+                            title={viewable ? "查看评价详情" : undefined}
+                          >
                             <div className="flex items-center gap-2 flex-wrap">
                               <StatusChip status={latest.status} />
-                              <span className="text-xs text-[#707EAE]">{latest.reviewPeriod}</span>
+                              <span
+                                className={`text-xs ${
+                                  viewable
+                                    ? "text-brand font-bold group-hover:underline"
+                                    : "text-[#707EAE]"
+                                }`}
+                              >
+                                {latest.reviewPeriod}
+                              </span>
+                              {viewable && (
+                                <span className="text-[10px] text-brand/70 font-medium inline-flex items-center gap-0.5">
+                                  <I name="eye" size={11} /> 查看
+                                </span>
+                              )}
                             </div>
                             {latest.rating && (
                               <div className="text-[11px] text-navy-700 font-medium">
@@ -137,13 +178,22 @@ export default function Performance() {
                                 {latest.managerTotal != null ? ` · ${latest.managerTotal}` : ""}
                               </div>
                             )}
-                          </div>
+                          </button>
                         ) : (
                           <span className="text-xs text-[#A0AEC0]">尚未发起</span>
                         )}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-2 flex-wrap">
+                          {viewable && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setViewTarget({ employee: emp, evaluationId: latest.id })}
+                            >
+                              <I name="eye" size={14} /> 查看
+                            </Button>
+                          )}
                           <Button size="sm" variant="ghost" onClick={() => setEvalTarget(emp)}>
                             <I name="clipboard-plus" size={14} /> 发起评价
                           </Button>
@@ -178,6 +228,15 @@ export default function Performance() {
         onCreated={(ev) => {
           setShareTarget({ employee: evalTarget, evaluation: ev });
           load();
+        }}
+      />
+      <PerformanceEvalViewModal
+        open={!!viewTarget}
+        employee={viewTarget?.employee}
+        evaluationId={viewTarget?.evaluationId}
+        onClose={() => setViewTarget(null)}
+        onShare={(ev) => {
+          setShareTarget({ employee: viewTarget?.employee, evaluation: ev });
         }}
       />
       <PerformanceShareModal

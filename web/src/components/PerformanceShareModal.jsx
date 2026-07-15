@@ -21,50 +21,179 @@ function publicUrl(token) {
   return `${window.location.origin}/performance-eval/${token}`;
 }
 
-function fmtExpiry(expiresAt) {
-  if (!expiresAt) return "永久有效";
-  const d = new Date(expiresAt);
-  const days = Math.ceil((d.getTime() - Date.now()) / 86400000);
-  if (days < 0) return "已过期";
-  if (days === 0) return "今日过期";
-  return `${days} 天后过期`;
+/** @returns {{ kind: 'revoked'|'expired'|'today'|'soon'|'ok'|'forever', label: string, invalid: boolean }} */
+function getLinkValidity(ev) {
+  if (!ev) return { kind: "ok", label: "", invalid: false };
+  if (ev.status === "revoked") {
+    return { kind: "revoked", label: "已撤销", invalid: true };
+  }
+  if (!ev.expiresAt) {
+    return { kind: "forever", label: "永久有效", invalid: false };
+  }
+  const ms = new Date(ev.expiresAt).getTime() - Date.now();
+  if (ms < 0) {
+    return { kind: "expired", label: "已过期 · 链接失效", invalid: true };
+  }
+  const days = Math.ceil(ms / 86400000);
+  if (days === 0) return { kind: "today", label: "今日过期", invalid: false };
+  if (days <= 3) return { kind: "soon", label: `${days} 天后过期`, invalid: false };
+  return { kind: "ok", label: `${days} 天后过期`, invalid: false };
 }
 
-function LinkPanel({ title, hint, token, onRegen, busy }) {
-  const url = token ? publicUrl(token) : "";
+const VALIDITY_CHIP = {
+  revoked: "bg-rose-100 text-rose-700 ring-1 ring-rose-200",
+  expired: "bg-rose-100 text-rose-700 ring-1 ring-rose-200",
+  today: "bg-amber-100 text-amber-800 ring-1 ring-amber-200",
+  soon: "bg-amber-100 text-amber-800 ring-1 ring-amber-200",
+  ok: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200",
+  forever: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200",
+};
+
+function ValidityChip({ validity }) {
+  if (!validity?.label) return null;
+  const icon = validity.invalid ? "ban" : validity.kind === "forever" ? "check-circle" : "clock";
   return (
-    <div className="rounded-xl border border-[#E9ECEF] p-4 space-y-3">
+    <span
+      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold ${VALIDITY_CHIP[validity.kind] || VALIDITY_CHIP.ok}`}
+    >
+      <I name={icon} size={12} />
+      {validity.label}
+    </span>
+  );
+}
+
+function LinkPanel({
+  title,
+  hint,
+  token,
+  onRegen,
+  busy,
+  invalid,
+  invalidReason,
+  maxEdits,
+  editCount,
+  onMaxEditsChange,
+}) {
+  const url = token ? publicUrl(token) : "";
+  const unlimited = maxEdits == null;
+  const used = editCount || 0;
+  const remaining = unlimited ? null : Math.max(0, maxEdits - used);
+  const exhausted = !unlimited && used >= maxEdits;
+
+  const EDIT_PRESETS = [
+    { value: null, label: "不限" },
+    { value: 3, label: "3 次" },
+    { value: 5, label: "5 次" },
+    { value: 10, label: "10 次" },
+  ];
+
+  return (
+    <div
+      className={`rounded-xl border p-4 space-y-3 relative ${
+        invalid || exhausted ? "border-rose-300 bg-rose-50/40" : "border-[#E9ECEF] bg-white"
+      }`}
+    >
+      {invalid && (
+        <div className="absolute -top-2.5 left-4">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-600 text-white text-[10px] font-bold shadow-sm">
+            <I name="ban" size={11} /> 已失效
+          </span>
+        </div>
+      )}
       <div className="flex items-start justify-between gap-2">
         <div>
-          <div className="text-sm font-bold text-navy-700">{title}</div>
+          <div className={`text-sm font-bold ${invalid ? "text-rose-800" : "text-navy-700"}`}>{title}</div>
           <div className="text-[11px] text-[#707EAE] mt-0.5">{hint}</div>
+          {invalid && invalidReason && (
+            <div className="text-[11px] text-rose-600 font-medium mt-1 flex items-center gap-1">
+              <I name="alert-triangle" size={12} />
+              {invalidReason}
+            </div>
+          )}
         </div>
         <Button
           size="sm"
           variant="ghost"
-          disabled={busy || !token}
+          disabled={busy || !token || invalid}
           onClick={onRegen}
-          title="重新生成链接"
+          title={invalid ? "请先恢复有效期后再重生成" : "重新生成链接（同时重置已用次数）"}
         >
           <I name="refresh-cw" size={14} /> 重生成
         </Button>
       </div>
+
+      {onMaxEditsChange && (
+        <div className="rounded-lg bg-lightPrimary/50 px-3 py-2.5 space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[11px] font-bold text-navy-700">可修改次数</span>
+            <span
+              className={`text-[10px] font-bold ${
+                exhausted ? "text-rose-600" : "text-[#707EAE]"
+              }`}
+            >
+              {unlimited
+                ? `已手动保存 ${used} 次 · 不限`
+                : exhausted
+                  ? `已用尽 ${used}/${maxEdits}`
+                  : `已用 ${used}/${maxEdits} · 剩 ${remaining}`}
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {EDIT_PRESETS.map((p) => {
+              const active = (p.value == null && maxEdits == null) || p.value === maxEdits;
+              return (
+                <button
+                  key={String(p.value)}
+                  type="button"
+                  disabled={busy || invalid}
+                  onClick={() => onMaxEditsChange(p.value)}
+                  className={`px-2.5 py-1 rounded-full text-[10px] font-bold transition ${
+                    active
+                      ? "bg-brand-gradient text-white"
+                      : "bg-white border border-[#E9ECEF] text-[#707EAE] hover:border-brand/40"
+                  }`}
+                >
+                  {p.label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-[10px] text-[#A0AEC0]">
+            仅「保存草稿 / 提交」计入；自动保存不占次数。重生成链接会清零计数。
+          </p>
+        </div>
+      )}
+
       {token ? (
-        <div className="flex flex-col sm:flex-row gap-4 items-center">
-          <div className="bg-white p-2 rounded-lg border border-[#E9ECEF]">
+        <div className={`flex flex-col sm:flex-row gap-4 items-center ${invalid ? "opacity-50 grayscale" : ""}`}>
+          <div className="bg-white p-2 rounded-lg border border-[#E9ECEF] relative">
             <QRCodeSVG value={url} size={112} />
+            {invalid && (
+              <div className="absolute inset-0 flex items-center justify-center bg-white/70 rounded-lg">
+                <span className="text-[11px] font-bold text-rose-700 px-2 py-1 rounded bg-rose-100">不可用</span>
+              </div>
+            )}
           </div>
           <div className="flex-1 w-full space-y-2">
-            <code className="block text-[11px] break-all bg-lightPrimary rounded-lg px-3 py-2 text-navy-700">
+            <code
+              className={`block text-[11px] break-all rounded-lg px-3 py-2 ${
+                invalid
+                  ? "bg-rose-100/60 text-rose-800 line-through decoration-rose-400"
+                  : "bg-lightPrimary text-navy-700"
+              }`}
+            >
               {url}
             </code>
             <Button
               size="sm"
+              variant={invalid ? "ghost" : "primary"}
+              disabled={invalid}
               onClick={() => {
                 navigator.clipboard.writeText(url).then(() => toast("链接已复制", "success"));
               }}
             >
-              <I name="copy" size={14} /> 复制链接
+              <I name={invalid ? "ban" : "copy"} size={14} />
+              {invalid ? "链接已失效" : "复制链接"}
             </Button>
           </div>
         </div>
@@ -89,10 +218,14 @@ export default function PerformanceShareModal({
   const [busy, setBusy] = useState(false);
   const [exportLang, setExportLang] = useState("zh-en");
   const ev = evaluation;
+  const validity = getLinkValidity(ev);
 
   useEffect(() => {
-    if (open) setDuration("30d");
-  }, [open, ev?.id]);
+    if (!open) return;
+    // 打开时尽量反映当前链接状态（过期也默认提示选 30 天续期）
+    if (!ev?.expiresAt) setDuration("forever");
+    else setDuration("30d");
+  }, [open, ev?.id, ev?.expiresAt]);
 
   async function patch(body) {
     if (!ev?.id) return;
@@ -101,6 +234,24 @@ export default function PerformanceShareModal({
       const { evaluation: updated } = await resources.performance.updateEvaluation(ev.id, body);
       onUpdated?.(updated);
       toast("已更新", "success");
+    } catch (err) {
+      toast(err.response?.data?.message || err.message, "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function renewAndRegen() {
+    if (!ev?.id) return;
+    setBusy(true);
+    try {
+      const { evaluation: updated } = await resources.performance.updateEvaluation(ev.id, {
+        duration,
+        regenerateSelfToken: true,
+        regenerateManagerToken: true,
+      });
+      onUpdated?.(updated);
+      toast("已恢复有效期并重生成链接", "success");
     } catch (err) {
       toast(err.response?.data?.message || err.message, "error");
     } finally {
@@ -151,18 +302,20 @@ export default function PerformanceShareModal({
     <Modal open={open} onClose={onClose} maxWidth="max-w-2xl">
       <div className="p-6 space-y-5">
         <div className="flex items-start justify-between gap-3">
-          <div>
+          <div className="space-y-2 min-w-0">
             <h3 className="text-lg font-bold text-navy-700 flex items-center gap-2">
               <I name="share-2" size={20} className="text-brand" />
               分享绩效评价
             </h3>
-            <p className="text-xs text-[#707EAE] mt-1">
-              {employee?.name || ev?.employeeName}
-              {ev?.reviewPeriod ? ` · ${ev.reviewPeriod}` : ""}
-              {ev?.expiresAt !== undefined ? ` · ${fmtExpiry(ev.expiresAt)}` : ""}
-            </p>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-[#707EAE]">
+              <span>
+                {employee?.name || ev?.employeeName}
+                {ev?.reviewPeriod ? ` · ${ev.reviewPeriod}` : ""}
+              </span>
+              {ev && <ValidityChip validity={validity} />}
+            </div>
           </div>
-          <button type="button" onClick={onClose} className="text-[#A0AEC0] hover:text-navy-700">
+          <button type="button" onClick={onClose} className="text-[#A0AEC0] hover:text-navy-700 shrink-0">
             <I name="x" size={20} />
           </button>
         </div>
@@ -171,13 +324,40 @@ export default function PerformanceShareModal({
           <p className="text-sm text-[#707EAE]">请先为此员工发起绩效评价。</p>
         ) : (
           <>
+            {validity.invalid && (
+              <div
+                className={`rounded-xl border px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 ${
+                  validity.kind === "revoked"
+                    ? "border-rose-300 bg-rose-50"
+                    : "border-rose-300 bg-rose-50"
+                }`}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-bold text-rose-800 flex items-center gap-1.5">
+                    <I name="ban" size={16} />
+                    {validity.kind === "revoked" ? "评价已撤销，公开链接不可用" : "链接已过期，公开页无法访问"}
+                  </div>
+                  <p className="text-[11px] text-rose-700/80 mt-1">
+                    {validity.kind === "revoked"
+                      ? "如需继续收集评分，请重新发起评价。"
+                      : "请先选择有效期并点「恢复并重生成」，再发给员工 / 主管。"}
+                  </p>
+                </div>
+                {validity.kind === "expired" && (
+                  <Button size="sm" disabled={busy} onClick={renewAndRegen}>
+                    <I name="refresh-cw" size={14} /> 恢复并重生成
+                  </Button>
+                )}
+              </div>
+            )}
+
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs text-[#707EAE]">链接有效期</span>
               {DURATIONS.map((d) => (
                 <button
                   key={d.value}
                   type="button"
-                  disabled={busy}
+                  disabled={busy || validity.kind === "revoked"}
                   onClick={() => {
                     setDuration(d.value);
                     patch({ duration: d.value });
@@ -198,6 +378,17 @@ export default function PerformanceShareModal({
               hint="发给被评价员工填写自评分数（E 列）"
               token={ev.selfToken}
               busy={busy}
+              invalid={validity.invalid}
+              invalidReason={
+                validity.kind === "revoked"
+                  ? "评价已撤销"
+                  : validity.kind === "expired"
+                    ? "已过期，对方扫码将提示链接失效"
+                    : null
+              }
+              maxEdits={ev.selfMaxEdits}
+              editCount={ev.selfEditCount}
+              onMaxEditsChange={(v) => patch({ selfMaxEdits: v })}
               onRegen={() => patch({ regenerateSelfToken: true })}
             />
             <LinkPanel
@@ -205,6 +396,17 @@ export default function PerformanceShareModal({
               hint="发给直属主管填写主管评分（F 列）；主管提交后整单锁定"
               token={ev.managerToken}
               busy={busy}
+              invalid={validity.invalid}
+              invalidReason={
+                validity.kind === "revoked"
+                  ? "评价已撤销"
+                  : validity.kind === "expired"
+                    ? "已过期，对方扫码将提示链接失效"
+                    : null
+              }
+              maxEdits={ev.managerMaxEdits}
+              editCount={ev.managerEditCount}
+              onMaxEditsChange={(v) => patch({ managerMaxEdits: v })}
               onRegen={() => patch({ regenerateManagerToken: true })}
             />
 
@@ -244,20 +446,250 @@ export default function PerformanceShareModal({
   );
 }
 
+const SCORE_DIM_LABELS = {
+  goals: "业绩与目标达成",
+  culture: "文化认同与沟通协作",
+  quality: "工作质量与专业能力",
+  compliance: "合规·安全·数据保护",
+  innovation: "创新与持续改进",
+};
+
+/** 评价周期单位：默认季度，自动落到当前 Q/H/年 */
+const PERIOD_UNITS = [
+  { value: "quarter", label: "季度" },
+  { value: "half", label: "半年" },
+  { value: "year", label: "年度" },
+  { value: "custom", label: "自定义" },
+];
+
+function currentPeriodParts(date = new Date()) {
+  const year = date.getFullYear();
+  const month = date.getMonth(); // 0-11
+  const quarter = Math.floor(month / 3) + 1;
+  const half = month < 6 ? 1 : 2;
+  return { year, quarter, half };
+}
+
+function buildPeriodLabel(unit, year, part) {
+  if (unit === "quarter") return `${year}Q${part}`;
+  if (unit === "half") return `${year}H${part}`;
+  if (unit === "year") return String(year);
+  return "";
+}
+
+function defaultPeriodForUnit(unit, date = new Date()) {
+  const { year, quarter, half } = currentPeriodParts(date);
+  if (unit === "quarter") return buildPeriodLabel("quarter", year, quarter);
+  if (unit === "half") return buildPeriodLabel("half", year, half);
+  if (unit === "year") return buildPeriodLabel("year", year);
+  return buildPeriodLabel("quarter", year, quarter);
+}
+
+function periodOptionsForUnit(unit, date = new Date()) {
+  const { year } = currentPeriodParts(date);
+  const years = [year - 1, year, year + 1];
+  if (unit === "quarter") {
+    return years.flatMap((y) => [1, 2, 3, 4].map((q) => buildPeriodLabel("quarter", y, q)));
+  }
+  if (unit === "half") {
+    return years.flatMap((y) => [1, 2].map((h) => buildPeriodLabel("half", y, h)));
+  }
+  if (unit === "year") {
+    return years.map((y) => buildPeriodLabel("year", y));
+  }
+  return [];
+}
+
+/**
+ * 查看绩效评价详情（已完成 / 已撤销等历史记录）
+ */
+export function PerformanceEvalViewModal({ open, onClose, employee, evaluationId, onShare }) {
+  const [loading, setLoading] = useState(true);
+  const [ev, setEv] = useState(null);
+
+  useEffect(() => {
+    if (!open || !evaluationId) return;
+    let cancelled = false;
+    setLoading(true);
+    setEv(null);
+    resources.performance
+      .getEvaluation(evaluationId)
+      .then((d) => {
+        if (!cancelled) setEv(d.evaluation || d);
+      })
+      .catch((err) => {
+        if (!cancelled) toast(err.response?.data?.message || err.message, "error");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [open, evaluationId]);
+
+  const validity = getLinkValidity(ev);
+  const scores = Array.isArray(ev?.scores) ? ev.scores : [];
+
+  return (
+    <Modal open={open} onClose={onClose} maxWidth="max-w-2xl">
+      <div className="p-6 space-y-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-2 min-w-0">
+            <h3 className="text-lg font-bold text-navy-700 flex items-center gap-2">
+              <I name="eye" size={20} className="text-brand" />
+              查看绩效评价
+            </h3>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-[#707EAE]">
+              <span>
+                {employee?.name || ev?.employeeName}
+                {ev?.reviewPeriod ? ` · ${ev.reviewPeriod}` : ""}
+              </span>
+              {ev && <ValidityChip validity={validity} />}
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="text-[#A0AEC0] hover:text-navy-700 shrink-0">
+            <I name="x" size={20} />
+          </button>
+        </div>
+
+        {loading ? (
+          <p className="text-sm text-[#707EAE] py-8 text-center">加载中…</p>
+        ) : !ev ? (
+          <p className="text-sm text-[#707EAE]">未找到评价记录</p>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { k: "岗位", v: ev.position },
+                { k: "部门", v: ev.department },
+                { k: "主管", v: ev.lineManager },
+                { k: "职级", v: ev.level },
+              ].map((x) => (
+                <div key={x.k} className="rounded-xl bg-lightPrimary/60 px-3 py-2">
+                  <div className="text-[10px] text-[#A0AEC0] font-bold">{x.k}</div>
+                  <div className="text-xs text-navy-700 font-medium mt-0.5 truncate">{x.v || "—"}</div>
+                </div>
+              ))}
+            </div>
+
+            <div className="rounded-xl border border-[#E9ECEF] overflow-hidden">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-lightPrimary/50 text-[#707EAE] text-left">
+                    <th className="px-3 py-2 font-bold">维度</th>
+                    <th className="px-3 py-2 font-bold w-14">权重</th>
+                    <th className="px-3 py-2 font-bold w-16">自评</th>
+                    <th className="px-3 py-2 font-bold w-16">主管</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {scores.map((s) => (
+                    <tr key={s.key} className="border-t border-[#F4F7FE]">
+                      <td className="px-3 py-2 text-navy-700 font-medium">
+                        {SCORE_DIM_LABELS[s.key] || s.name || s.key}
+                      </td>
+                      <td className="px-3 py-2 font-mono text-[#707EAE]">{s.weight ?? "—"}</td>
+                      <td className="px-3 py-2 font-mono">{s.selfScore ?? "—"}</td>
+                      <td className="px-3 py-2 font-mono font-bold text-navy-700">
+                        {s.managerScore ?? "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="rounded-xl bg-brand/5 border border-brand/15 px-4 py-3">
+                <div className="text-[10px] text-[#707EAE] font-bold">主管总分</div>
+                <div className="text-lg font-bold text-brand">
+                  {ev.managerTotal != null ? ev.managerTotal : "—"}
+                </div>
+              </div>
+              <div className="rounded-xl bg-lightPrimary px-4 py-3">
+                <div className="text-[10px] text-[#707EAE] font-bold">自评参考</div>
+                <div className="text-lg font-bold text-navy-700">
+                  {ev.selfTotal != null ? ev.selfTotal : "—"}
+                </div>
+              </div>
+              {ev.rating && (
+                <div className="rounded-xl bg-lightPrimary px-4 py-3 flex-1 min-w-[140px]">
+                  <div className="text-[10px] text-[#707EAE] font-bold">等级</div>
+                  <div className="text-sm font-bold text-navy-700 mt-0.5">{ev.rating}</div>
+                </div>
+              )}
+            </div>
+
+            {(ev.achievements || ev.developmentPlan || ev.nextGoals) && (
+              <div className="space-y-3 text-xs">
+                {ev.achievements && (
+                  <div>
+                    <div className="font-bold text-[#707EAE] mb-1">本期主要成果</div>
+                    <p className="text-navy-700 whitespace-pre-wrap">{ev.achievements}</p>
+                  </div>
+                )}
+                {ev.developmentPlan && (
+                  <div>
+                    <div className="font-bold text-[#707EAE] mb-1">改进与发展计划</div>
+                    <p className="text-navy-700 whitespace-pre-wrap">{ev.developmentPlan}</p>
+                  </div>
+                )}
+                {ev.nextGoals && (
+                  <div>
+                    <div className="font-bold text-[#707EAE] mb-1">下一周期目标</div>
+                    <p className="text-navy-700 whitespace-pre-wrap">{ev.nextGoals}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="ghost" onClick={onClose}>关闭</Button>
+              {onShare && (
+                <Button
+                  onClick={() => {
+                    onShare(ev);
+                    onClose();
+                  }}
+                >
+                  <I name="share-2" size={14} /> 分享 / 导出
+                </Button>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 /** 发起评价表单 */
 export function CreatePerformanceEvalModal({ open, onClose, employee, onCreated }) {
+  const [periodUnit, setPeriodUnit] = useState("quarter");
   const [reviewPeriod, setReviewPeriod] = useState("");
   const [lineManager, setLineManager] = useState("");
   const [duration, setDuration] = useState("30d");
+  const [selfMaxEdits, setSelfMaxEdits] = useState(null);
+  const [managerMaxEdits, setManagerMaxEdits] = useState(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!open) return;
-    const y = new Date().getFullYear();
-    setReviewPeriod(`${y}H1`);
+    setPeriodUnit("quarter");
+    setReviewPeriod(defaultPeriodForUnit("quarter"));
     setLineManager(employee?.directManager || "");
     setDuration("30d");
+    setSelfMaxEdits(null);
+    setManagerMaxEdits(null);
   }, [open, employee]);
+
+  function switchUnit(unit) {
+    setPeriodUnit(unit);
+    if (unit === "custom") {
+      if (!reviewPeriod.trim()) setReviewPeriod(defaultPeriodForUnit("quarter"));
+      return;
+    }
+    setReviewPeriod(defaultPeriodForUnit(unit));
+  }
 
   async function onSubmit() {
     if (!reviewPeriod.trim()) return toast("请填写评价周期", "error");
@@ -268,6 +700,8 @@ export function CreatePerformanceEvalModal({ open, onClose, employee, onCreated 
         reviewPeriod: reviewPeriod.trim(),
         lineManager: lineManager.trim() || undefined,
         duration,
+        selfMaxEdits,
+        managerMaxEdits,
       });
       toast("评价已创建", "success");
       onCreated?.(evaluation);
@@ -279,20 +713,101 @@ export function CreatePerformanceEvalModal({ open, onClose, employee, onCreated 
     }
   }
 
+  const presets = periodOptionsForUnit(periodUnit);
+  const currentDefault = defaultPeriodForUnit(periodUnit === "custom" ? "quarter" : periodUnit);
+  const EDIT_PRESETS = [
+    { value: null, label: "不限" },
+    { value: 3, label: "3 次" },
+    { value: 5, label: "5 次" },
+    { value: 10, label: "10 次" },
+  ];
+
+  function MaxEditChips({ value, onChange, label }) {
+    return (
+      <div>
+        <div className="text-[11px] font-bold text-[#707EAE] mb-1.5">{label}</div>
+        <div className="flex flex-wrap gap-1.5">
+          {EDIT_PRESETS.map((p) => {
+            const active = (p.value == null && value == null) || p.value === value;
+            return (
+              <button
+                key={String(p.value)}
+                type="button"
+                onClick={() => onChange(p.value)}
+                className={`px-2.5 py-1 rounded-full text-[10px] font-bold transition ${
+                  active
+                    ? "bg-brand-gradient text-white"
+                    : "bg-lightPrimary text-[#707EAE] hover:text-navy-700"
+                }`}
+              >
+                {p.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <Modal open={open} onClose={onClose} maxWidth="max-w-md">
       <div className="p-6 space-y-4">
         <h3 className="text-lg font-bold text-navy-700">发起绩效评价</h3>
         <p className="text-xs text-[#707EAE]">{employee?.name}</p>
-        <label className="block text-xs font-bold text-navy-700">
-          评价周期 / Review Period <RequiredMark />
-          <Input
-            className="mt-1"
-            value={reviewPeriod}
-            onChange={(e) => setReviewPeriod(e.target.value)}
-            placeholder="例如 2026H1 / 2026Q2"
-          />
-        </label>
+
+        <div>
+          <div className="text-xs font-bold text-navy-700 mb-2">
+            评价周期 / Review Period <RequiredMark />
+          </div>
+          <div className="flex flex-wrap gap-2 mb-3">
+            {PERIOD_UNITS.map((u) => (
+              <button
+                key={u.value}
+                type="button"
+                onClick={() => switchUnit(u.value)}
+                className={`px-3 py-1 rounded-full text-xs font-bold transition ${
+                  periodUnit === u.value
+                    ? "bg-brand-gradient text-white"
+                    : "bg-lightPrimary text-[#707EAE] hover:text-navy-700"
+                }`}
+              >
+                {u.label}
+              </button>
+            ))}
+          </div>
+
+          {periodUnit !== "custom" ? (
+            <div className="flex flex-wrap gap-2 mb-2 max-h-28 overflow-y-auto">
+              {presets.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setReviewPeriod(p)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition ${
+                    reviewPeriod === p
+                      ? "border-brand bg-brand/5 text-brand"
+                      : "border-[#E9ECEF] text-[#707EAE] hover:border-brand/40 hover:text-navy-700"
+                  }`}
+                >
+                  {p}
+                  {p === currentDefault && (
+                    <span className="ml-1 text-[9px] font-normal text-[#A0AEC0]">当前</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <Input
+              value={reviewPeriod}
+              onChange={(e) => setReviewPeriod(e.target.value)}
+              placeholder="例如 2026Q2 / 2026H1 / 2026 全年"
+            />
+          )}
+          <p className="text-[11px] text-[#A0AEC0] mt-1">
+            默认按当前季度自动匹配；可切换半年 / 年度，或自定义文案。
+          </p>
+        </div>
+
         <label className="block text-xs font-bold text-navy-700">
           直属主管 / Line Manager
           <Input
@@ -302,6 +817,14 @@ export function CreatePerformanceEvalModal({ open, onClose, employee, onCreated 
             placeholder="主管姓名"
           />
         </label>
+
+        <div className="rounded-xl border border-[#E9ECEF] p-3 space-y-3">
+          <div className="text-xs font-bold text-navy-700">可修改次数</div>
+          <MaxEditChips label="自评链接" value={selfMaxEdits} onChange={setSelfMaxEdits} />
+          <MaxEditChips label="主管评价链接" value={managerMaxEdits} onChange={setManagerMaxEdits} />
+          <p className="text-[10px] text-[#A0AEC0]">自动保存不占次数；「保存草稿 / 提交」会计入。</p>
+        </div>
+
         <div>
           <div className="text-xs font-bold text-navy-700 mb-2">链接有效期</div>
           <div className="flex flex-wrap gap-2">
