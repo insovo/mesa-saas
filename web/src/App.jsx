@@ -20,6 +20,7 @@ const EmployeeDetail = lazy(() => import("./pages/EmployeeDetail.jsx"));
 const NewHire = lazy(() => import("./pages/NewHire.jsx"));
 const Departments = lazy(() => import("./pages/Departments.jsx"));
 const Interviews = lazy(() => import("./pages/Interviews.jsx"));
+const Performance = lazy(() => import("./pages/Performance.jsx"));
 const Reports = lazy(() => import("./pages/Reports.jsx"));
 const SharedCandidate = lazy(() => import("./pages/SharedCandidate.jsx"));
 const PublicUpload = lazy(() => import("./pages/PublicUpload.jsx"));
@@ -39,6 +40,7 @@ const PAGE = {
   newhire: "newhire",
   departments: "departments",
   interviews: "interviews",
+  performance: "performance",
   reports: "reports",
   users: "users",
   shareSettings: "share.settings",
@@ -84,6 +86,7 @@ export default function App() {
         <Route path="/newhire/:id" element={<Page pageKey={PAGE.newhire} element={<EmployeeDetail />} />} />
         <Route path="/departments" element={<Page pageKey={PAGE.departments} element={<Departments />} />} />
         <Route path="/interviews" element={<Page pageKey={PAGE.interviews} element={<Interviews />} />} />
+        <Route path="/performance" element={<Page pageKey={PAGE.performance} element={<Performance />} />} />
         <Route path="/reports" element={<Page pageKey={PAGE.reports} element={<Reports />} />} />
         <Route path="/share-settings" element={<Page pageKey={PAGE.shareSettings} element={<ShareSettings />} />} />
         <Route path="/users" element={<RequirePermission pageKey={PAGE.users} adminOnly><Users /></RequirePermission>} />

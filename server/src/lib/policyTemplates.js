@@ -16,6 +16,7 @@ export const POLICY_TEMPLATES = Object.freeze({
       "staff",
       "newhire",
       "interviews",
+      "performance",
       "reports",
     ],
     moduleKeys: [

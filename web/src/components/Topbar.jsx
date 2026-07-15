@@ -29,6 +29,7 @@ const PAGE_TITLES = {
   "/newhire": "入职管理",
   "/departments": "部门管理",
   "/interviews": "面试安排",
+  "/performance": "绩效评价",
   "/reports": "数据报表",
   "/users": "用户与权限管理",
 };
