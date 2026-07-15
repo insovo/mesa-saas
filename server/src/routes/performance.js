@@ -351,6 +351,7 @@ export default async function performanceRoutes(app) {
         properties: {
           name: { type: "string", minLength: 1, maxLength: 100 },
           position: { type: "string", maxLength: 120 },
+          jobId: { type: "string", format: "uuid" },
           department: { type: "string", maxLength: 120 },
           level: { type: "string", maxLength: 60 },
           lineManager: { type: "string", maxLength: 100 },
@@ -366,12 +367,28 @@ export default async function performanceRoutes(app) {
     if (!access) return;
 
     const body = req.body;
+    let jobId = body.jobId || null;
+    let appliedFor = body.position?.trim() || null;
+    let dept = body.department?.trim() || null;
+
+    if (jobId) {
+      const job = await app.prisma.job.findUnique({
+        where: { id: jobId },
+        select: { id: true, title: true, dept: true },
+      });
+      if (!job) return reply.code(422).send({ error: "invalid_job", message: "岗位不存在" });
+      // 选中关联岗位时，标题/部门以 JD 为准（请求里可显式覆盖部门）
+      appliedFor = job.title;
+      if (!dept && job.dept) dept = job.dept;
+    }
+
     const tags = ["绩效评价"];
     const created = await app.prisma.employee.create({
       data: {
         name: body.name.trim(),
-        appliedFor: body.position?.trim() || null,
-        dept: body.department?.trim() || null,
+        appliedFor,
+        jobId,
+        dept,
         level: body.level?.trim() || null,
         directManager: body.lineManager?.trim() || null,
         externalId: body.employeeNo?.trim() || null,
