@@ -353,6 +353,7 @@ export default async function performanceRoutes(app) {
           position: { type: "string", maxLength: 120 },
           jobId: { type: "string", format: "uuid" },
           department: { type: "string", maxLength: 120 },
+          departmentId: { type: "string", format: "uuid" },
           level: { type: "string", maxLength: 60 },
           lineManager: { type: "string", maxLength: 100 },
           employeeNo: { type: "string", maxLength: 60 },
@@ -370,6 +371,7 @@ export default async function performanceRoutes(app) {
     let jobId = body.jobId || null;
     let appliedFor = body.position?.trim() || null;
     let dept = body.department?.trim() || null;
+    const departmentId = body.departmentId || null;
 
     if (jobId) {
       const job = await app.prisma.job.findUnique({
@@ -377,9 +379,21 @@ export default async function performanceRoutes(app) {
         select: { id: true, title: true, dept: true },
       });
       if (!job) return reply.code(422).send({ error: "invalid_job", message: "岗位不存在" });
-      // 选中关联岗位时，标题/部门以 JD 为准（请求里可显式覆盖部门）
+      // 选中关联岗位时，标题以 JD 为准；部门可由 departmentId / 手输覆盖
       appliedFor = job.title;
-      if (!dept && job.dept) dept = job.dept;
+      if (!dept && !departmentId && job.dept) dept = job.dept;
+    }
+
+    // Employee 仅有 dept 字符串字段（无 departmentId FK）——关联部门时写入名称
+    if (departmentId) {
+      const department = await app.prisma.department.findUnique({
+        where: { id: departmentId },
+        select: { id: true, name: true },
+      });
+      if (!department) {
+        return reply.code(422).send({ error: "invalid_department", message: "部门不存在" });
+      }
+      dept = department.name;
     }
 
     const tags = ["绩效评价"];

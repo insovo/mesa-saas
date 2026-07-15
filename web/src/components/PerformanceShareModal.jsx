@@ -329,69 +329,145 @@ export function CreatePerformanceEvalModal({ open, onClose, employee, onCreated 
   );
 }
 
-/** 新建人员 */
+function ComboboxMenu({ open, items, activeId, onPick, renderItem }) {
+  if (!open || items.length === 0) return null;
+  return (
+    <ul className="absolute z-20 left-0 right-0 mt-1 max-h-48 overflow-y-auto rounded-xl border border-[#E9ECEF] bg-white shadow-card py-1">
+      {items.map((item) => (
+        <li key={item.id}>
+          <button
+            type="button"
+            className={`w-full text-left px-3 py-2 text-xs hover:bg-lightPrimary ${
+              activeId === item.id ? "bg-brand/5 text-brand font-bold" : "text-navy-700"
+            }`}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => onPick(item)}
+          >
+            {renderItem(item)}
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function filterByQuery(list, query, fields) {
+  const q = (query || "").trim().toLowerCase();
+  if (!q) return list.slice(0, 12);
+  return list
+    .filter((item) => fields.some((f) => String(item[f] || "").toLowerCase().includes(q)))
+    .slice(0, 12);
+}
+
+/** 新建人员 — 岗位/部门/主管/电话/邮箱均可关联或手输 */
 export function CreatePerformancePersonModal({ open, onClose, onCreated }) {
   const [form, setForm] = useState({
     name: "",
     position: "",
     jobId: "",
     department: "",
+    departmentId: "",
     level: "",
     lineManager: "",
+    lineManagerId: "",
     employeeNo: "",
     phone: "",
     email: "",
   });
   const [jobs, setJobs] = useState([]);
-  const [jobMenuOpen, setJobMenuOpen] = useState(false);
+  const [departments, setDepartments] = useState([]);
+  const [people, setPeople] = useState([]);
+  const [menu, setMenu] = useState(null); // job | dept | manager | phone | email
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setForm({
-      name: "", position: "", jobId: "", department: "", level: "",
-      lineManager: "", employeeNo: "", phone: "", email: "",
+      name: "", position: "", jobId: "", department: "", departmentId: "",
+      level: "", lineManager: "", lineManagerId: "", employeeNo: "", phone: "", email: "",
     });
-    setJobMenuOpen(false);
-    resources.jobs.list({ take: 200 })
-      .then((d) => setJobs(d.items || []))
-      .catch(() => setJobs([]));
+    setMenu(null);
+    Promise.all([
+      resources.jobs.list({ take: 200 }).then((d) => d.items || []).catch(() => []),
+      resources.departments.list().then((d) => d.items || []).catch(() => []),
+      resources.performance.listPeople().then((d) => d.items || []).catch(() => []),
+    ]).then(([jobItems, deptItems, peopleItems]) => {
+      setJobs(jobItems);
+      setDepartments(deptItems);
+      setPeople(peopleItems);
+    });
   }, [open]);
 
   function set(k, v) {
     setForm((s) => ({ ...s, [k]: v }));
   }
 
-  const jobQuery = form.position.trim().toLowerCase();
-  const filteredJobs = !jobQuery
-    ? jobs.slice(0, 12)
-    : jobs.filter((j) =>
-        (j.title || "").toLowerCase().includes(jobQuery)
-        || (j.dept || "").toLowerCase().includes(jobQuery)
-      ).slice(0, 12);
+  const filteredJobs = filterByQuery(jobs, form.position, ["title", "dept"]);
+  const filteredDepts = filterByQuery(departments, form.department, ["name", "code", "head"]);
+  const filteredManagers = filterByQuery(people, form.lineManager, ["name", "appliedFor", "dept"]);
+  const filteredPhonePeople = filterByQuery(people, form.phone, ["name", "phone", "appliedFor"]);
+  const filteredEmailPeople = filterByQuery(people, form.email, ["name", "email", "appliedFor"]);
 
   function pickJob(job) {
     setForm((s) => ({
       ...s,
       jobId: job.id,
       position: job.title || "",
-      department: s.department || job.dept || "",
+      // 未选手动部门时，用 JD 上的部门名预填（不自动挂 departmentId）
+      department: s.departmentId ? s.department : (s.department || job.dept || ""),
     }));
-    setJobMenuOpen(false);
+    setMenu(null);
   }
 
   function onPositionChange(value) {
-    // 自由输入：断开与已选 JD 的绑定（除非标题仍完全等于该 JD）
     setForm((s) => {
       const matched = jobs.find((j) => j.id === s.jobId);
       const stillLinked = matched && matched.title === value;
-      return {
-        ...s,
-        position: value,
-        jobId: stillLinked ? s.jobId : "",
-      };
+      return { ...s, position: value, jobId: stillLinked ? s.jobId : "" };
     });
-    setJobMenuOpen(true);
+    setMenu("job");
+  }
+
+  function pickDept(dept) {
+    setForm((s) => ({ ...s, departmentId: dept.id, department: dept.name || "" }));
+    setMenu(null);
+  }
+
+  function onDepartmentChange(value) {
+    setForm((s) => {
+      const matched = departments.find((d) => d.id === s.departmentId);
+      const stillLinked = matched && matched.name === value;
+      return { ...s, department: value, departmentId: stillLinked ? s.departmentId : "" };
+    });
+    setMenu("dept");
+  }
+
+  function pickManager(person) {
+    setForm((s) => ({
+      ...s,
+      lineManagerId: person.id,
+      lineManager: person.name || "",
+    }));
+    setMenu(null);
+  }
+
+  function onLineManagerChange(value) {
+    setForm((s) => {
+      const matched = people.find((p) => p.id === s.lineManagerId);
+      const stillLinked = matched && matched.name === value;
+      return { ...s, lineManager: value, lineManagerId: stillLinked ? s.lineManagerId : "" };
+    });
+    setMenu("manager");
+  }
+
+  function pickPhoneFromPerson(person) {
+    set("phone", person.phone || "");
+    setMenu(null);
+  }
+
+  function pickEmailFromPerson(person) {
+    set("email", person.email || "");
+    setMenu(null);
   }
 
   async function onSubmit() {
@@ -403,6 +479,7 @@ export function CreatePerformancePersonModal({ open, onClose, onCreated }) {
         position: form.position.trim() || undefined,
         jobId: form.jobId || undefined,
         department: form.department.trim() || undefined,
+        departmentId: form.departmentId || undefined,
         level: form.level.trim() || undefined,
         lineManager: form.lineManager.trim() || undefined,
         employeeNo: form.employeeNo.trim() || undefined,
@@ -419,12 +496,14 @@ export function CreatePerformancePersonModal({ open, onClose, onCreated }) {
     }
   }
 
+  const blurClose = () => setTimeout(() => setMenu(null), 150);
+
   return (
     <Modal open={open} onClose={onClose} maxWidth="max-w-lg">
       <div className="p-6 space-y-4">
         <h3 className="text-lg font-bold text-navy-700">新建已入职人员</h3>
         <p className="text-xs text-[#707EAE]">
-          将写入「现有人员」列表，阶段默认试用期，来源：绩效评价新建。
+          将写入「现有人员」列表，阶段默认试用期，来源：绩效评价新建。岗位 / 部门 / 主管 / 电话 / 邮箱均可搜索已有数据或手输。
         </p>
         <label className="block text-xs font-bold text-navy-700">
           姓名 / Name <RequiredMark />
@@ -440,34 +519,54 @@ export function CreatePerformancePersonModal({ open, onClose, onCreated }) {
               className="mt-1"
               value={form.position}
               onChange={(e) => onPositionChange(e.target.value)}
-              onFocus={() => setJobMenuOpen(true)}
-              onBlur={() => setTimeout(() => setJobMenuOpen(false), 150)}
+              onFocus={() => setMenu("job")}
+              onBlur={blurClose}
               placeholder="输入或从岗位列表选择"
               autoComplete="off"
             />
-            {jobMenuOpen && filteredJobs.length > 0 && (
-              <ul className="absolute z-20 left-0 right-0 mt-1 max-h-48 overflow-y-auto rounded-xl border border-[#E9ECEF] bg-white shadow-card py-1">
-                {filteredJobs.map((j) => (
-                  <li key={j.id}>
-                    <button
-                      type="button"
-                      className={`w-full text-left px-3 py-2 text-xs hover:bg-lightPrimary ${
-                        form.jobId === j.id ? "bg-brand/5 text-brand font-bold" : "text-navy-700"
-                      }`}
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => pickJob(j)}
-                    >
-                      <div className="font-bold">{j.title}</div>
-                      {j.dept && <div className="text-[10px] text-[#A0AEC0] mt-0.5">{j.dept}</div>}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <ComboboxMenu
+              open={menu === "job"}
+              items={filteredJobs}
+              activeId={form.jobId}
+              onPick={pickJob}
+              renderItem={(j) => (
+                <>
+                  <div className="font-bold">{j.title}</div>
+                  {j.dept && <div className="text-[10px] text-[#A0AEC0] mt-0.5">{j.dept}</div>}
+                </>
+              )}
+            />
           </label>
-          <label className="block text-xs font-bold text-navy-700">
+          <label className="block text-xs font-bold text-navy-700 relative">
             部门 / Department
-            <Input className="mt-1" value={form.department} onChange={(e) => set("department", e.target.value)} />
+            <span className="ml-1 font-normal text-[10px] text-[#A0AEC0]">
+              {form.departmentId ? "已关联部门模块" : "可搜索关联或手输"}
+            </span>
+            <Input
+              className="mt-1"
+              value={form.department}
+              onChange={(e) => onDepartmentChange(e.target.value)}
+              onFocus={() => setMenu("dept")}
+              onBlur={blurClose}
+              placeholder="输入或从部门列表选择"
+              autoComplete="off"
+            />
+            <ComboboxMenu
+              open={menu === "dept"}
+              items={filteredDepts}
+              activeId={form.departmentId}
+              onPick={pickDept}
+              renderItem={(d) => (
+                <>
+                  <div className="font-bold">{d.name}</div>
+                  {(d.code || d.head) && (
+                    <div className="text-[10px] text-[#A0AEC0] mt-0.5">
+                      {[d.code, d.head].filter(Boolean).join(" · ")}
+                    </div>
+                  )}
+                </>
+              )}
+            />
           </label>
           <label className="block text-xs font-bold text-navy-700">
             职级 / Level
@@ -477,17 +576,90 @@ export function CreatePerformancePersonModal({ open, onClose, onCreated }) {
             工号 / ID
             <Input className="mt-1" value={form.employeeNo} onChange={(e) => set("employeeNo", e.target.value)} />
           </label>
-          <label className="block text-xs font-bold text-navy-700">
+          <label className="block text-xs font-bold text-navy-700 relative">
             直属主管 / Line Manager
-            <Input className="mt-1" value={form.lineManager} onChange={(e) => set("lineManager", e.target.value)} />
+            <span className="ml-1 font-normal text-[10px] text-[#A0AEC0]">
+              {form.lineManagerId ? "已关联现有人员" : "可搜索关联或手输"}
+            </span>
+            <Input
+              className="mt-1"
+              value={form.lineManager}
+              onChange={(e) => onLineManagerChange(e.target.value)}
+              onFocus={() => setMenu("manager")}
+              onBlur={blurClose}
+              placeholder="输入或从现有人员选择"
+              autoComplete="off"
+            />
+            <ComboboxMenu
+              open={menu === "manager"}
+              items={filteredManagers}
+              activeId={form.lineManagerId}
+              onPick={pickManager}
+              renderItem={(p) => (
+                <>
+                  <div className="font-bold">{p.name}</div>
+                  <div className="text-[10px] text-[#A0AEC0] mt-0.5">
+                    {[p.appliedFor, p.dept].filter(Boolean).join(" · ") || "现有人员"}
+                  </div>
+                </>
+              )}
+            />
           </label>
-          <label className="block text-xs font-bold text-navy-700">
+          <label className="block text-xs font-bold text-navy-700 relative">
             电话 / Phone
-            <Input className="mt-1" value={form.phone} onChange={(e) => set("phone", e.target.value)} />
+            <span className="ml-1 font-normal text-[10px] text-[#A0AEC0]">可从现有人员带入或手输</span>
+            <Input
+              className="mt-1"
+              value={form.phone}
+              onChange={(e) => { set("phone", e.target.value); setMenu("phone"); }}
+              onFocus={() => setMenu("phone")}
+              onBlur={blurClose}
+              placeholder="输入或选择人员带入电话"
+              autoComplete="off"
+            />
+            <ComboboxMenu
+              open={menu === "phone"}
+              items={filteredPhonePeople}
+              activeId={null}
+              onPick={pickPhoneFromPerson}
+              renderItem={(p) => (
+                <>
+                  <div className="font-bold">{p.name}</div>
+                  <div className="text-[10px] text-[#A0AEC0] mt-0.5">
+                    {p.phone || "无电话"}
+                    {p.dept ? ` · ${p.dept}` : ""}
+                  </div>
+                </>
+              )}
+            />
           </label>
-          <label className="block text-xs font-bold text-navy-700 sm:col-span-2">
+          <label className="block text-xs font-bold text-navy-700 relative sm:col-span-2">
             邮箱 / Email
-            <Input className="mt-1" value={form.email} onChange={(e) => set("email", e.target.value)} />
+            <span className="ml-1 font-normal text-[10px] text-[#A0AEC0]">可从现有人员带入或手输</span>
+            <Input
+              className="mt-1"
+              value={form.email}
+              onChange={(e) => { set("email", e.target.value); setMenu("email"); }}
+              onFocus={() => setMenu("email")}
+              onBlur={blurClose}
+              placeholder="输入或选择人员带入邮箱"
+              autoComplete="off"
+            />
+            <ComboboxMenu
+              open={menu === "email"}
+              items={filteredEmailPeople}
+              activeId={null}
+              onPick={pickEmailFromPerson}
+              renderItem={(p) => (
+                <>
+                  <div className="font-bold">{p.name}</div>
+                  <div className="text-[10px] text-[#A0AEC0] mt-0.5">
+                    {p.email || "无邮箱"}
+                    {p.dept ? ` · ${p.dept}` : ""}
+                  </div>
+                </>
+              )}
+            />
           </label>
         </div>
         <div className="flex justify-end gap-2 pt-2">
