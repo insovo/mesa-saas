@@ -27,6 +27,7 @@ const PublicUpload = lazy(() => import("./pages/PublicUpload.jsx"));
 const Users = lazy(() => import("./pages/Users.jsx"));
 const AuditLog = lazy(() => import("./pages/AuditLog.jsx"));
 const PublicInterviewEval = lazy(() => import("./pages/PublicInterviewEval.jsx"));
+const PublicPerformanceEval = lazy(() => import("./pages/PublicPerformanceEval.jsx"));
 const ShareSettings = lazy(() => import("./pages/ShareSettings.jsx"));
 
 // 路由 → 所需 pageKey 映射
@@ -68,6 +69,7 @@ export default function App() {
       <Route path="/upload/:token" element={<PublicUpload />} />
       {/* 公开面试评价页 — 不在 AuthGuard 内,面试官通过 token 直接填写 */}
       <Route path="/interview-eval/:token" element={<PublicInterviewEval />} />
+      <Route path="/performance-eval/:token" element={<PublicPerformanceEval />} />
       <Route
         element={
           <AuthGuard>

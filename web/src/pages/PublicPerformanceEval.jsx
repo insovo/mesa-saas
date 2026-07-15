@@ -1,0 +1,478 @@
+// 公开绩效评价页 — /performance-eval/:token（自评或主管，按 token 识别角色）
+// 默认中英双语 UI；30s 自动保存草稿
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useParams } from "react-router-dom";
+import { api } from "../lib/api.js";
+import {
+  Card, Button, Input, I, toast, LoadingBlock, ToastHost, LiquidLoader, RequiredMark,
+} from "../components/Primitives.jsx";
+
+export default function PublicPerformanceEval() {
+  const { token } = useParams();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [meta, setMeta] = useState(null);
+  const [form, setForm] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [rubricOpen, setRubricOpen] = useState(false);
+  const dirtyRef = useRef(false);
+  const formRef = useRef(null);
+
+  useEffect(() => {
+    formRef.current = form;
+  }, [form]);
+
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      const { data } = await api.get(`/public/performance-eval/${token}`);
+      setMeta(data.meta);
+      setForm(data.evaluation);
+    } catch (err) {
+      const msg = err.response?.data?.message || err.message;
+      setError(msg || "链接无效");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line
+  }, [token]);
+
+  // 30s autosave
+  useEffect(() => {
+    if (!form || meta?.readonly) return undefined;
+    const id = setInterval(async () => {
+      if (!dirtyRef.current || !formRef.current) return;
+      try {
+        setSaving(true);
+        const payload = buildPatch(formRef.current, meta.role);
+        const { data } = await api.patch(`/public/performance-eval/${token}`, payload);
+        setForm(data.evaluation);
+        setMeta(data.meta);
+        dirtyRef.current = false;
+      } catch {
+        /* soft */
+      } finally {
+        setSaving(false);
+      }
+    }, 30000);
+    return () => clearInterval(id);
+  }, [form, meta?.readonly, meta?.role, token]);
+
+  const role = meta?.role;
+  const readonly = meta?.readonly;
+
+  const liveManagerTotal = useMemo(() => {
+    if (!form?.scores) return null;
+    const all = form.scores.every((s) => s.managerScore != null && s.managerScore !== "");
+    if (!all) return form.managerTotal ?? null;
+    let sum = 0;
+    for (const s of form.scores) {
+      sum += (Number(s.weight) * Number(s.managerScore)) / 100;
+    }
+    return Math.round(sum * 10) / 10;
+  }, [form]);
+
+  const liveSelfTotal = useMemo(() => {
+    if (!form?.scores) return null;
+    const all = form.scores.every((s) => s.selfScore != null && s.selfScore !== "");
+    if (!all) return form.selfTotal ?? null;
+    let sum = 0;
+    for (const s of form.scores) {
+      sum += (Number(s.weight) * Number(s.selfScore)) / 100;
+    }
+    return Math.round(sum * 10) / 10;
+  }, [form]);
+
+  function patchForm(updater) {
+    if (readonly) return;
+    dirtyRef.current = true;
+    setForm((prev) => updater(prev));
+  }
+
+  function setScore(key, field, value) {
+    patchForm((prev) => ({
+      ...prev,
+      scores: prev.scores.map((s) =>
+        s.key === key ? { ...s, [field]: value === "" ? null : value } : s
+      ),
+    }));
+  }
+
+  async function saveNow() {
+    if (!form || readonly) return;
+    setSaving(true);
+    try {
+      const payload = buildPatch(form, role);
+      const { data } = await api.patch(`/public/performance-eval/${token}`, payload);
+      setForm(data.evaluation);
+      setMeta(data.meta);
+      dirtyRef.current = false;
+      toast("已保存草稿 / Draft saved", "success");
+    } catch (err) {
+      toast(err.response?.data?.message || err.message, "error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onSubmit() {
+    if (!form || readonly) return;
+    // save first
+    try {
+      setSubmitting(true);
+      const payload = buildPatch(form, role);
+      await api.patch(`/public/performance-eval/${token}`, payload);
+      const { data } = await api.post(`/public/performance-eval/${token}/submit`);
+      setForm(data.evaluation);
+      setMeta(data.meta);
+      dirtyRef.current = false;
+      toast(role === "manager" ? "主管评价已提交，整单已锁定" : "自评已提交", "success");
+    } catch (err) {
+      toast(err.response?.data?.message || err.message, "error");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function onExport(lang = "zh-en") {
+    try {
+      const res = await api.get(`/public/performance-eval/${token}/export.xlsx`, {
+        params: { lang },
+        responseType: "blob",
+      });
+      const blob = new Blob([res.data], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `绩效评价_${form?.employeeName || "export"}_${lang}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (err) {
+      toast(err.response?.data?.message || err.message, "error");
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-lightPrimary flex items-center justify-center">
+        <LoadingBlock height="h-32" label="加载评价表…" />
+      </div>
+    );
+  }
+
+  if (error || !form) {
+    return (
+      <div className="min-h-screen bg-lightPrimary flex items-center justify-center p-6">
+        <Card className="p-8 max-w-md text-center space-y-3">
+          <I name="link-off" size={36} className="text-[#A0AEC0] mx-auto" />
+          <h1 className="text-lg font-bold text-navy-700">无法打开评价链接</h1>
+          <p className="text-sm text-[#707EAE]">{error || "Not found"}</p>
+        </Card>
+        <ToastHost />
+      </div>
+    );
+  }
+
+  const displayTotal = role === "self" ? liveSelfTotal : liveManagerTotal;
+  const roleTitle = role === "self"
+    ? "员工自评 / Employee Self-assessment"
+    : "主管评价 / Manager Evaluation";
+
+  return (
+    <div className="min-h-screen bg-lightPrimary pb-24">
+      <ToastHost />
+      <header className="bg-white border-b border-[#E9ECEF] sticky top-0 z-20">
+        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <div className="text-[11px] font-bold text-brand tracking-wide uppercase">
+              MESA Recruit · Performance
+            </div>
+            <h1 className="text-lg font-bold text-navy-700">{roleTitle}</h1>
+            <p className="text-xs text-[#707EAE]">
+              {form.employeeName}
+              {form.reviewPeriod ? ` · ${form.reviewPeriod}` : ""}
+              {saving ? " · 保存中…" : ""}
+              {readonly ? " · 只读" : ""}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <LiquidLoader
+              level={displayTotal != null ? Math.min(100, displayTotal) : 0}
+              label={displayTotal != null ? displayTotal : ""}
+              size={64}
+              loading={displayTotal == null}
+            />
+            <Button size="sm" variant="ghost" onClick={() => setRubricOpen(true)}>
+              <I name="book-open" size={14} /> 评分标准
+            </Button>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-5xl mx-auto px-4 py-6 space-y-5">
+        <Card className="p-5 space-y-4">
+          <h2 className="text-sm font-bold text-navy-700">
+            一、被评价人信息 / Employee Information
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Field label="姓名 / Name" value={form.employeeName} readOnly />
+            <Field
+              label="岗位 / Position"
+              value={form.position || ""}
+              readOnly={readonly || role !== "self"}
+              onChange={(v) => patchForm((p) => ({ ...p, position: v }))}
+            />
+            <Field
+              label="工号 / ID"
+              value={form.employeeNo || ""}
+              readOnly={readonly || role !== "self"}
+              onChange={(v) => patchForm((p) => ({ ...p, employeeNo: v }))}
+            />
+            <Field
+              label="直属主管 / Line Manager"
+              value={form.lineManager || ""}
+              readOnly={readonly || role !== "manager"}
+              onChange={(v) => patchForm((p) => ({ ...p, lineManager: v }))}
+            />
+            <Field
+              label="部门 / Department"
+              value={form.department || ""}
+              readOnly={readonly || role !== "self"}
+              onChange={(v) => patchForm((p) => ({ ...p, department: v }))}
+            />
+            <Field
+              label="职级 / Level"
+              value={form.level || ""}
+              readOnly={readonly || role !== "self"}
+              onChange={(v) => patchForm((p) => ({ ...p, level: v }))}
+            />
+            <Field label="评价周期 / Review Period" value={form.reviewPeriod} readOnly />
+            <Field
+              label="评价日期 / Date"
+              value={form.evalDate ? String(form.evalDate).slice(0, 10) : ""}
+              readOnly
+            />
+          </div>
+        </Card>
+
+        <Card className="p-5 space-y-4">
+          <h2 className="text-sm font-bold text-navy-700">
+            二、绩效评分 / Performance Scoring
+            <span className="ml-2 text-[11px] font-normal text-[#707EAE]">
+              每项 1–100 · 权重合计 100
+            </span>
+          </h2>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs min-w-[720px]">
+              <thead>
+                <tr className="text-left text-[#A0AEC0] border-b border-[#E9ECEF]">
+                  <th className="py-2 pr-2 w-8">No.</th>
+                  <th className="py-2 pr-2">评价维度 / Dimension</th>
+                  <th className="py-2 pr-2 w-14">权重%</th>
+                  <th className="py-2 pr-2 w-24">自评 Self {role === "self" && <RequiredMark />}</th>
+                  <th className="py-2 pr-2 w-24">主管 Manager {role === "manager" && <RequiredMark />}</th>
+                  <th className="py-2">证据与说明 / Evidence</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(form.scores || []).map((s, idx) => (
+                  <tr key={s.key} className="border-b border-[#F4F7FE] align-top">
+                    <td className="py-3 text-[#A0AEC0]">{idx + 1}</td>
+                    <td className="py-3">
+                      <div className="font-bold text-navy-700">{s.name}</div>
+                      <div className="text-[10px] text-[#707EAE] mt-0.5">{s.nameEn}</div>
+                      <div className="text-[10px] text-[#A0AEC0] mt-1">{s.observation}</div>
+                    </td>
+                    <td className="py-3 font-mono">{s.weight}</td>
+                    <td className="py-3">
+                      <ScoreInput
+                        value={s.selfScore}
+                        disabled={readonly || role !== "self"}
+                        onChange={(v) => setScore(s.key, "selfScore", v)}
+                      />
+                    </td>
+                    <td className="py-3">
+                      <ScoreInput
+                        value={s.managerScore}
+                        disabled={readonly || role !== "manager"}
+                        onChange={(v) => setScore(s.key, "managerScore", v)}
+                      />
+                    </td>
+                    <td className="py-3">
+                      <textarea
+                        rows={2}
+                        disabled={readonly}
+                        value={s.evidence || ""}
+                        onChange={(e) => setScore(s.key, "evidence", e.target.value)}
+                        className="w-full rounded-xl border border-[#E9ECEF] px-2 py-1.5 text-xs outline-none focus:border-brand disabled:bg-gray-50"
+                        placeholder="事实与数据 / Facts & data"
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex flex-wrap gap-4 text-xs text-[#707EAE]">
+            <span>自评参考总分 Self: <b className="text-navy-700">{liveSelfTotal ?? "—"}</b></span>
+            <span>主管加权总分 Manager: <b className="text-navy-700">{liveManagerTotal ?? "—"}</b></span>
+            {form.rating && <span>等级 Rating: <b className="text-navy-700">{form.rating}</b></span>}
+            {form.pipTriggered === true && (
+              <span className="text-amber-700 font-bold">触发 PIP / PIP triggered</span>
+            )}
+          </div>
+        </Card>
+
+        <Card className="p-5 space-y-4">
+          <h2 className="text-sm font-bold text-navy-700">
+            三、目标·成果·发展 / Goals, Achievements & Development
+          </h2>
+          <TextArea
+            label="本期主要成果 / Key achievements"
+            value={form.achievements || ""}
+            disabled={readonly}
+            onChange={(v) => patchForm((p) => ({ ...p, achievements: v }))}
+          />
+          <TextArea
+            label="改进与发展计划 / Improvement & development"
+            value={form.developmentPlan || ""}
+            disabled={readonly}
+            onChange={(v) => patchForm((p) => ({ ...p, developmentPlan: v }))}
+          />
+          <TextArea
+            label="下一周期目标 / Next-period goals"
+            value={form.nextGoals || ""}
+            disabled={readonly}
+            onChange={(v) => patchForm((p) => ({ ...p, nextGoals: v }))}
+          />
+        </Card>
+      </main>
+
+      <footer className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t border-[#E9ECEF] z-20">
+        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+          <div className="text-[11px] text-[#707EAE]">
+            基于事实与岗位相关行为打分 · GDPR/LOPDGDD 目的限定
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {meta?.canExport && (
+              <Button size="sm" variant="ghost" onClick={() => onExport("zh-en")}>
+                <I name="download" size={14} /> 导出 Excel
+              </Button>
+            )}
+            {!readonly && (
+              <>
+                <Button size="sm" variant="ghost" disabled={saving} onClick={saveNow}>
+                  保存草稿
+                </Button>
+                <Button size="sm" disabled={submitting} onClick={onSubmit}>
+                  {submitting ? "提交中…" : role === "manager" ? "提交主管评价" : "提交自评"}
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      </footer>
+
+      {rubricOpen && (
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/30" onClick={() => setRubricOpen(false)}>
+          <div
+            className="w-full max-w-md h-full bg-white shadow-xl overflow-y-auto p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-navy-700">评分标准 / Scoring Criteria</h3>
+              <button type="button" onClick={() => setRubricOpen(false)}>
+                <I name="x" size={20} className="text-[#A0AEC0]" />
+              </button>
+            </div>
+            <div className="space-y-3">
+              {(meta?.scoringRubric || []).map((r) => (
+                <div key={r.range} className="rounded-xl border border-[#E9ECEF] p-3">
+                  <div className="text-xs font-bold text-brand">{r.range}</div>
+                  <div className="text-sm font-bold text-navy-700 mt-0.5">{r.level}</div>
+                  <p className="text-xs text-[#707EAE] mt-1 leading-relaxed">{r.desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function buildPatch(form, role) {
+  return {
+    scores: (form.scores || []).map((s) => ({
+      key: s.key,
+      weight: s.weight,
+      selfScore: s.selfScore,
+      managerScore: s.managerScore,
+      evidence: s.evidence,
+    })),
+    achievements: form.achievements,
+    developmentPlan: form.developmentPlan,
+    nextGoals: form.nextGoals,
+    ...(role === "self"
+      ? {
+          employeeNo: form.employeeNo,
+          position: form.position,
+          department: form.department,
+          level: form.level,
+        }
+      : {}),
+    ...(role === "manager" ? { lineManager: form.lineManager } : {}),
+  };
+}
+
+function Field({ label, value, onChange, readOnly }) {
+  return (
+    <label className="block text-[11px] font-bold text-[#707EAE]">
+      {label}
+      <Input
+        className="mt-1"
+        value={value || ""}
+        disabled={readOnly}
+        onChange={(e) => onChange?.(e.target.value)}
+      />
+    </label>
+  );
+}
+
+function ScoreInput({ value, onChange, disabled }) {
+  return (
+    <input
+      type="number"
+      min={1}
+      max={100}
+      step={1}
+      disabled={disabled}
+      value={value ?? ""}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-20 rounded-xl border border-[#E9ECEF] px-2 py-1.5 text-sm outline-none focus:border-brand disabled:bg-gray-50"
+    />
+  );
+}
+
+function TextArea({ label, value, onChange, disabled }) {
+  return (
+    <label className="block text-[11px] font-bold text-[#707EAE]">
+      {label}
+      <textarea
+        rows={3}
+        disabled={disabled}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="mt-1 w-full rounded-xl border border-[#E9ECEF] px-3 py-2 text-sm text-navy-700 outline-none focus:border-brand disabled:bg-gray-50"
+      />
+    </label>
+  );
+}
