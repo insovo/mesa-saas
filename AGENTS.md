@@ -347,3 +347,27 @@ SystemSetting  独立 KV (kimi.api_key / kimi.model / kimi.prompt 等)
 2. **不主动** `git commit` / `git push` / 创建 PR / 启动 ultrareview / SSH 到生产 / 改 Cloudflare 配置 —— 全部需用户明确指令
 3. 长驻进程后台跑并在交付时说明如何停止
 4. 任何凭证 / Token / 密码 / API Key 永远不写入代码 / 注释 / commit message / mock 数据 / 聊天记录持久层
+
+---
+
+## Cursor Cloud specific instructions
+
+面向在 Cursor Cloud 环境里跑本仓库的后续 agent。启动脚本(update script)已自动跑过 `npm install`(`server/` + `web/`)与 `prisma generate`,**下面只列非显而易见的启动注意事项**。常规命令见 README.md「一分钟跑起来」与 `server/package.json` scripts。
+
+- **无 Docker,数据库是原生 apt 安装**:该环境没有 Docker,所以 `docker-compose.dev.yml` 用不了。PostgreSQL 16 与 Redis 7 是 apt 原生装的。**无 systemd**,每次新 VM 启动后需手动拉起服务:
+  ```bash
+  sudo pg_ctlcluster 16 main start        # PostgreSQL :5432
+  sudo redis-server --daemonize yes        # Redis :6379(可选,fail-soft)
+  ```
+- **DB 角色/库**:已建 `mesa` 角色(密码 `mesa_dev_only`)+ `mesa` 库,与 `server/.env.example` 的 `DATABASE_URL` 对齐。若快照未保留数据(连不上或表缺失),重建:
+  ```bash
+  sudo -u postgres psql -c "CREATE ROLE mesa LOGIN PASSWORD 'mesa_dev_only'; ALTER ROLE mesa CREATEDB;"
+  sudo -u postgres psql -c "CREATE DATABASE mesa OWNER mesa;"
+  cd server && npx prisma migrate deploy && npm run prisma:seed
+  ```
+  (启动脚本**不**跑 migrate/seed,避免每次启动写库;首次或库为空时手动跑一次即可。)
+- **server/.env**:被 gitignore,不会随快照进 git,但文件本身随 VM 快照保留。若缺失,`cp server/.env.example server/.env` 后用 `openssl rand -hex 32` 填 `JWT_SECRET`(否则后端拒绝启动)。
+- **跑服务**:后端 `cd server && npm run dev`(:3001,`node --watch` 热重载);前端 `cd web && npm run dev`(:5173,Vite 已 proxy `/api` → :3001,免 CORS)。默认账号 `admin@mesa.local / mesa-dev-2026`。
+- **可选服务全部 fail-soft**:R2 / Kimi(LLM 解析)/ Resend(邮件)/ Feishu 未配置时后端照常启动,仅对应功能降级(文件上传、AI 简历解析、邮件、飞书回调),核心招聘 CRUD 不受影响。
+- **Node 版本**:环境是 Node 22,项目文档标注 Node 20(CI 用 20)。当前依赖(含 Vite 8)在 Node 22 下 `npm install` / `build` / `test` 均通过。
+- **检查项**:后端测试 `cd server && npm test`(`node --test`);前端构建 `cd web && npm run build`。**两个包都没有 lint 脚本**。
