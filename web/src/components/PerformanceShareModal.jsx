@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { QRCodeSVG } from "qrcode.react";
 import { resources, api } from "../lib/api.js";
 import { Modal, Button, Input, I, toast, RequiredMark } from "./Primitives.jsx";
@@ -329,12 +330,38 @@ export function CreatePerformanceEvalModal({ open, onClose, employee, onCreated 
   );
 }
 
-function ComboboxMenu({ open, items, activeId, onPick, renderItem }) {
-  if (!open || items.length === 0) return null;
-  return (
-    <ul className="absolute z-20 left-0 right-0 mt-1 max-h-48 overflow-y-auto rounded-xl border border-[#E9ECEF] bg-white shadow-card py-1">
+/** Portal 到 body + fixed，避免 Modal overflow 裁切；mousedown preventDefault 防 blur 抢先关菜单 */
+function ComboboxMenu({ open, anchorRef, items, activeId, onPick, renderItem }) {
+  const [box, setBox] = useState(null);
+
+  useLayoutEffect(() => {
+    if (!open || !anchorRef?.current) {
+      setBox(null);
+      return;
+    }
+    const update = () => {
+      const r = anchorRef.current.getBoundingClientRect();
+      setBox({ top: r.bottom + 4, left: r.left, width: r.width });
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [open, anchorRef, items.length]);
+
+  if (!open || !box || items.length === 0) return null;
+
+  return createPortal(
+    <ul
+      className="fixed z-[120] max-h-48 overflow-y-auto rounded-xl border border-[#E9ECEF] bg-white shadow-card py-1"
+      style={{ top: box.top, left: box.left, width: box.width }}
+      role="listbox"
+    >
       {items.map((item) => (
-        <li key={item.id}>
+        <li key={item.id} role="option">
           <button
             type="button"
             className={`w-full text-left px-3 py-2 text-xs hover:bg-lightPrimary ${
@@ -347,7 +374,8 @@ function ComboboxMenu({ open, items, activeId, onPick, renderItem }) {
           </button>
         </li>
       ))}
-    </ul>
+    </ul>,
+    document.body,
   );
 }
 
@@ -379,6 +407,12 @@ export function CreatePerformancePersonModal({ open, onClose, onCreated }) {
   const [people, setPeople] = useState([]);
   const [menu, setMenu] = useState(null); // job | dept | manager | phone | email
   const [busy, setBusy] = useState(false);
+  const blurTimer = useRef(null);
+  const jobAnchorRef = useRef(null);
+  const deptAnchorRef = useRef(null);
+  const managerAnchorRef = useRef(null);
+  const phoneAnchorRef = useRef(null);
+  const emailAnchorRef = useRef(null);
 
   useEffect(() => {
     if (!open) return;
@@ -387,19 +421,36 @@ export function CreatePerformancePersonModal({ open, onClose, onCreated }) {
       level: "", lineManager: "", lineManagerId: "", employeeNo: "", phone: "", email: "",
     });
     setMenu(null);
+    let cancelled = false;
     Promise.all([
       resources.jobs.list({ take: 200 }).then((d) => d.items || []).catch(() => []),
       resources.departments.list().then((d) => d.items || []).catch(() => []),
       resources.performance.listPeople().then((d) => d.items || []).catch(() => []),
     ]).then(([jobItems, deptItems, peopleItems]) => {
+      if (cancelled) return;
       setJobs(jobItems);
       setDepartments(deptItems);
       setPeople(peopleItems);
     });
+    return () => {
+      cancelled = true;
+      clearTimeout(blurTimer.current);
+    };
   }, [open]);
 
   function set(k, v) {
     setForm((s) => ({ ...s, [k]: v }));
+  }
+
+  function openMenu(key) {
+    clearTimeout(blurTimer.current);
+    setMenu(key);
+  }
+
+  function scheduleCloseMenu() {
+    clearTimeout(blurTimer.current);
+    // 切字段时：旧字段 blur 会排队关菜单，需被新字段 focus 取消
+    blurTimer.current = setTimeout(() => setMenu(null), 180);
   }
 
   const filteredJobs = filterByQuery(jobs, form.position, ["title", "dept"]);
@@ -425,7 +476,7 @@ export function CreatePerformancePersonModal({ open, onClose, onCreated }) {
       const stillLinked = matched && matched.title === value;
       return { ...s, position: value, jobId: stillLinked ? s.jobId : "" };
     });
-    setMenu("job");
+    openMenu("job");
   }
 
   function pickDept(dept) {
@@ -439,7 +490,7 @@ export function CreatePerformancePersonModal({ open, onClose, onCreated }) {
       const stillLinked = matched && matched.name === value;
       return { ...s, department: value, departmentId: stillLinked ? s.departmentId : "" };
     });
-    setMenu("dept");
+    openMenu("dept");
   }
 
   function pickManager(person) {
@@ -457,7 +508,7 @@ export function CreatePerformancePersonModal({ open, onClose, onCreated }) {
       const stillLinked = matched && matched.name === value;
       return { ...s, lineManager: value, lineManagerId: stillLinked ? s.lineManagerId : "" };
     });
-    setMenu("manager");
+    openMenu("manager");
   }
 
   function pickPhoneFromPerson(person) {
@@ -496,8 +547,6 @@ export function CreatePerformancePersonModal({ open, onClose, onCreated }) {
     }
   }
 
-  const blurClose = () => setTimeout(() => setMenu(null), 150);
-
   return (
     <Modal open={open} onClose={onClose} maxWidth="max-w-lg">
       <div className="p-6 space-y-4">
@@ -510,22 +559,27 @@ export function CreatePerformancePersonModal({ open, onClose, onCreated }) {
           <Input className="mt-1" value={form.name} onChange={(e) => set("name", e.target.value)} />
         </label>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <label className="block text-xs font-bold text-navy-700 relative">
-            岗位 / Position
-            <span className="ml-1 font-normal text-[10px] text-[#A0AEC0]">
-              {form.jobId ? "已关联岗位模块" : "可搜索关联或手输"}
-            </span>
-            <Input
-              className="mt-1"
-              value={form.position}
-              onChange={(e) => onPositionChange(e.target.value)}
-              onFocus={() => setMenu("job")}
-              onBlur={blurClose}
-              placeholder="输入或从岗位列表选择"
-              autoComplete="off"
-            />
+          {/* 不用 label 包 button 列表，避免点选抢焦点把下拉关掉 */}
+          <div className="block text-xs font-bold text-navy-700">
+            <div>
+              岗位 / Position
+              <span className="ml-1 font-normal text-[10px] text-[#A0AEC0]">
+                {form.jobId ? "已关联岗位模块" : "可搜索关联或手输"}
+              </span>
+            </div>
+            <div ref={jobAnchorRef} className="mt-1">
+              <Input
+                value={form.position}
+                onChange={(e) => onPositionChange(e.target.value)}
+                onFocus={() => openMenu("job")}
+                onBlur={scheduleCloseMenu}
+                placeholder="输入或从岗位列表选择"
+                autoComplete="off"
+              />
+            </div>
             <ComboboxMenu
               open={menu === "job"}
+              anchorRef={jobAnchorRef}
               items={filteredJobs}
               activeId={form.jobId}
               onPick={pickJob}
@@ -536,23 +590,27 @@ export function CreatePerformancePersonModal({ open, onClose, onCreated }) {
                 </>
               )}
             />
-          </label>
-          <label className="block text-xs font-bold text-navy-700 relative">
-            部门 / Department
-            <span className="ml-1 font-normal text-[10px] text-[#A0AEC0]">
-              {form.departmentId ? "已关联部门模块" : "可搜索关联或手输"}
-            </span>
-            <Input
-              className="mt-1"
-              value={form.department}
-              onChange={(e) => onDepartmentChange(e.target.value)}
-              onFocus={() => setMenu("dept")}
-              onBlur={blurClose}
-              placeholder="输入或从部门列表选择"
-              autoComplete="off"
-            />
+          </div>
+          <div className="block text-xs font-bold text-navy-700">
+            <div>
+              部门 / Department
+              <span className="ml-1 font-normal text-[10px] text-[#A0AEC0]">
+                {form.departmentId ? "已关联部门模块" : "可搜索关联或手输"}
+              </span>
+            </div>
+            <div ref={deptAnchorRef} className="mt-1">
+              <Input
+                value={form.department}
+                onChange={(e) => onDepartmentChange(e.target.value)}
+                onFocus={() => openMenu("dept")}
+                onBlur={scheduleCloseMenu}
+                placeholder="输入或从部门列表选择"
+                autoComplete="off"
+              />
+            </div>
             <ComboboxMenu
               open={menu === "dept"}
+              anchorRef={deptAnchorRef}
               items={filteredDepts}
               activeId={form.departmentId}
               onPick={pickDept}
@@ -567,7 +625,7 @@ export function CreatePerformancePersonModal({ open, onClose, onCreated }) {
                 </>
               )}
             />
-          </label>
+          </div>
           <label className="block text-xs font-bold text-navy-700">
             职级 / Level
             <Input className="mt-1" value={form.level} onChange={(e) => set("level", e.target.value)} />
@@ -576,22 +634,26 @@ export function CreatePerformancePersonModal({ open, onClose, onCreated }) {
             工号 / ID
             <Input className="mt-1" value={form.employeeNo} onChange={(e) => set("employeeNo", e.target.value)} />
           </label>
-          <label className="block text-xs font-bold text-navy-700 relative">
-            直属主管 / Line Manager
-            <span className="ml-1 font-normal text-[10px] text-[#A0AEC0]">
-              {form.lineManagerId ? "已关联现有人员" : "可搜索关联或手输"}
-            </span>
-            <Input
-              className="mt-1"
-              value={form.lineManager}
-              onChange={(e) => onLineManagerChange(e.target.value)}
-              onFocus={() => setMenu("manager")}
-              onBlur={blurClose}
-              placeholder="输入或从现有人员选择"
-              autoComplete="off"
-            />
+          <div className="block text-xs font-bold text-navy-700">
+            <div>
+              直属主管 / Line Manager
+              <span className="ml-1 font-normal text-[10px] text-[#A0AEC0]">
+                {form.lineManagerId ? "已关联现有人员" : "可搜索关联或手输"}
+              </span>
+            </div>
+            <div ref={managerAnchorRef} className="mt-1">
+              <Input
+                value={form.lineManager}
+                onChange={(e) => onLineManagerChange(e.target.value)}
+                onFocus={() => openMenu("manager")}
+                onBlur={scheduleCloseMenu}
+                placeholder="输入或从现有人员选择"
+                autoComplete="off"
+              />
+            </div>
             <ComboboxMenu
               open={menu === "manager"}
+              anchorRef={managerAnchorRef}
               items={filteredManagers}
               activeId={form.lineManagerId}
               onPick={pickManager}
@@ -604,21 +666,25 @@ export function CreatePerformancePersonModal({ open, onClose, onCreated }) {
                 </>
               )}
             />
-          </label>
-          <label className="block text-xs font-bold text-navy-700 relative">
-            电话 / Phone
-            <span className="ml-1 font-normal text-[10px] text-[#A0AEC0]">可从现有人员带入或手输</span>
-            <Input
-              className="mt-1"
-              value={form.phone}
-              onChange={(e) => { set("phone", e.target.value); setMenu("phone"); }}
-              onFocus={() => setMenu("phone")}
-              onBlur={blurClose}
-              placeholder="输入或选择人员带入电话"
-              autoComplete="off"
-            />
+          </div>
+          <div className="block text-xs font-bold text-navy-700">
+            <div>
+              电话 / Phone
+              <span className="ml-1 font-normal text-[10px] text-[#A0AEC0]">可从现有人员带入或手输</span>
+            </div>
+            <div ref={phoneAnchorRef} className="mt-1">
+              <Input
+                value={form.phone}
+                onChange={(e) => { set("phone", e.target.value); openMenu("phone"); }}
+                onFocus={() => openMenu("phone")}
+                onBlur={scheduleCloseMenu}
+                placeholder="输入或选择人员带入电话"
+                autoComplete="off"
+              />
+            </div>
             <ComboboxMenu
               open={menu === "phone"}
+              anchorRef={phoneAnchorRef}
               items={filteredPhonePeople}
               activeId={null}
               onPick={pickPhoneFromPerson}
@@ -632,21 +698,25 @@ export function CreatePerformancePersonModal({ open, onClose, onCreated }) {
                 </>
               )}
             />
-          </label>
-          <label className="block text-xs font-bold text-navy-700 relative sm:col-span-2">
-            邮箱 / Email
-            <span className="ml-1 font-normal text-[10px] text-[#A0AEC0]">可从现有人员带入或手输</span>
-            <Input
-              className="mt-1"
-              value={form.email}
-              onChange={(e) => { set("email", e.target.value); setMenu("email"); }}
-              onFocus={() => setMenu("email")}
-              onBlur={blurClose}
-              placeholder="输入或选择人员带入邮箱"
-              autoComplete="off"
-            />
+          </div>
+          <div className="block text-xs font-bold text-navy-700 sm:col-span-2">
+            <div>
+              邮箱 / Email
+              <span className="ml-1 font-normal text-[10px] text-[#A0AEC0]">可从现有人员带入或手输</span>
+            </div>
+            <div ref={emailAnchorRef} className="mt-1">
+              <Input
+                value={form.email}
+                onChange={(e) => { set("email", e.target.value); openMenu("email"); }}
+                onFocus={() => openMenu("email")}
+                onBlur={scheduleCloseMenu}
+                placeholder="输入或选择人员带入邮箱"
+                autoComplete="off"
+              />
+            </div>
             <ComboboxMenu
               open={menu === "email"}
+              anchorRef={emailAnchorRef}
               items={filteredEmailPeople}
               activeId={null}
               onPick={pickEmailFromPerson}
@@ -660,7 +730,7 @@ export function CreatePerformancePersonModal({ open, onClose, onCreated }) {
                 </>
               )}
             />
-          </label>
+          </div>
         </div>
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="ghost" onClick={onClose}>取消</Button>
