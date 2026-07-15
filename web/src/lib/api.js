@@ -138,6 +138,15 @@ export const resources = {
     // 触发浏览器下载,后端响应带 Content-Disposition
     exportUrl: (id) => `/api/interview-evals/${id}/export.xlsx`,
   },
+  performance: {
+    listPeople: (params) => api.get("/performance/people", { params }).then((r) => r.data),
+    createPerson: (body) => api.post("/performance/people", body).then((r) => r.data),
+    createEvaluation: (body) => api.post("/performance/evaluations", body).then((r) => r.data),
+    listEvaluations: (params) => api.get("/performance/evaluations", { params }).then((r) => r.data),
+    getEvaluation: (id) => api.get(`/performance/evaluations/${id}`).then((r) => r.data),
+    updateEvaluation: (id, body) => api.patch(`/performance/evaluations/${id}`, body).then((r) => r.data),
+    revokeEvaluation: (id) => api.post(`/performance/evaluations/${id}/revoke`).then((r) => r.data),
+  },
   // 飞书 bot 自动分享设置(全局策略 + 单人偏好)
   feishuConfig: {
     getShareDefaults: () => api.get("/feishu-config/share-defaults").then((r) => r.data),

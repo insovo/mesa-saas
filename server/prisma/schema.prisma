@@ -184,12 +184,13 @@ model Candidate {
   departmentId String?     @map("department_id") @db.Uuid
   department   Department? @relation("CandidateDepartment", fields: [departmentId], references: [id], onDelete: SetNull)
 
-  interviews           Interview[]
-  employee             Employee?
-  notes                CandidateNote[]
-  shareLinks           ShareLink[]
-  reviews              Review[]
-  interviewEvaluations InterviewEvaluation[]
+  interviews             Interview[]
+  employee               Employee?
+  notes                  CandidateNote[]
+  shareLinks             ShareLink[]
+  reviews                Review[]
+  interviewEvaluations   InterviewEvaluation[]
+  performanceEvaluations PerformanceEvaluation[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -319,6 +320,8 @@ model Employee {
   source           String?
   attachment       String?
   tags             String[] @default([])
+
+  performanceEvaluations PerformanceEvaluation[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -631,4 +634,69 @@ model InterviewEvaluation {
   @@index([createdBy])
   @@index([status])
   @@map("interview_evaluations")
+}
+
+// 属地员工绩效评价 — 锚定 Employee；自评 / 主管双 token 公开填写；导出四语种 Excel
+model PerformanceEvaluation {
+  id String @id @default(uuid()) @db.Uuid
+
+  employeeId  String    @map("employee_id") @db.Uuid
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  candidateId String?   @map("candidate_id") @db.Uuid
+  candidate   Candidate? @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+
+  selfToken    String @unique @map("self_token")
+  managerToken String @unique @map("manager_token")
+
+  // draft → self_done → submitted → revoked
+  status    String    @default("draft")
+  expiresAt DateTime? @map("expires_at")
+
+  employeeName  String  @map("employee_name")
+  employeeNo    String? @map("employee_no")
+  position      String?
+  department    String?
+  level         String?
+  lineManager   String? @map("line_manager")
+  reviewPeriod  String  @map("review_period")
+  evalDate      DateTime? @map("eval_date")
+
+  // [{ key, weight, selfScore, managerScore, evidence }]
+  scores Json @default("[]")
+
+  achievements    String? @db.Text
+  developmentPlan String? @map("development_plan") @db.Text
+  nextGoals       String? @map("next_goals") @db.Text
+
+  selfTotal     Float?   @map("self_total")
+  managerTotal  Float?   @map("manager_total")
+  rating        String?
+  pipTriggered  Boolean? @map("pip_triggered")
+
+  selfSubmittedAt    DateTime? @map("self_submitted_at")
+  managerSubmittedAt DateTime? @map("manager_submitted_at")
+
+  templateVersion  String  @default("v1") @map("template_version")
+  templateFileHash String? @map("template_file_hash")
+
+  createdBy     String?   @map("created_by") @db.Uuid
+  submittedAt   DateTime? @map("submitted_at")
+  exportedAt    DateTime? @map("exported_at")
+  exportedCount Int       @default(0) @map("exported_count")
+  lastViewedAt  DateTime? @map("last_viewed_at")
+  viewCount     Int       @default(0) @map("view_count")
+  revokedAt     DateTime? @map("revoked_at")
+  revokedBy     String?   @map("revoked_by") @db.Uuid
+  deletedAt     DateTime? @map("deleted_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([employeeId])
+  @@index([candidateId])
+  @@index([selfToken])
+  @@index([managerToken])
+  @@index([createdBy])
+  @@index([status])
+  @@map("performance_evaluations")
 }

@@ -24,9 +24,11 @@ import reviewsRoutes from "./routes/reviews.js";
 import usersRoutes from "./routes/users.js";
 import auditRoutes from "./routes/audit.js";
 import interviewEvalsRoutes from "./routes/interview-evals.js";
+import performanceRoutes from "./routes/performance.js";
 import feishuRoutes from "./routes/feishu.js";
 import feishuConfigRoutes from "./routes/feishu-config.js";
 import { verifyTemplateOnBoot } from "./lib/interviewEvalTemplate.js";
+import { verifyPerformanceTemplatesOnBoot } from "./lib/performanceEvalTemplate.js";
 
 const requiredEnv = ["DATABASE_URL", "JWT_SECRET", "WEB_ORIGIN"];
 for (const key of requiredEnv) {
@@ -80,6 +82,8 @@ await app.register(usersRoutes, { prefix: "/api/users" });
 await app.register(auditRoutes, { prefix: "/api/audit-logs" });
 // interview-evals: admin 在 /api/candidates/:id/interview-evals + /api/interview-evals/:id,公开在 /api/public/interview-eval/:token
 await app.register(interviewEvalsRoutes, { prefix: "/api" });
+// performance: 登录态 /api/performance/* + 公开 /api/public/performance-eval/:token
+await app.register(performanceRoutes, { prefix: "/api" });
 // feishu: 卡片回调(card.action.trigger),公开端点(AuthGuard 外),靠 Verification Token 校验
 await app.register(feishuRoutes, { prefix: "/api/feishu" });
 // feishu-config: bot 自动分享设置(登录态,全局仅 admin)
@@ -91,6 +95,14 @@ try {
   app.log.info({ tplHash }, "interview eval template verified");
 } catch (err) {
   app.log.fatal({ err }, "interview eval template verification failed");
+  process.exit(1);
+}
+
+try {
+  const perfHashes = verifyPerformanceTemplatesOnBoot();
+  app.log.info({ perfHashes }, "performance eval templates verified");
+} catch (err) {
+  app.log.fatal({ err }, "performance eval template verification failed");
   process.exit(1);
 }
 
