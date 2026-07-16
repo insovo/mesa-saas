@@ -32,7 +32,15 @@ api.interceptors.response.use(
   (res) => res,
   (err) => {
     const status = err.response?.status;
-    if (status === 401) {
+    const url = String(err.config?.url || "");
+    const code = err.response?.data?.error;
+    const isPublic = url.includes("/public/");
+    const isAccessKey =
+      code === "access_key_required" ||
+      code === "access_key_invalid" ||
+      code === "access_key_locked" ||
+      code === "access_key_not_configured";
+    if (status === 401 && !isPublic && !isAccessKey) {
       clearAuth();
       if (onUnauthorized) onUnauthorized();
     }
@@ -146,6 +154,10 @@ export const resources = {
     getEvaluation: (id) => api.get(`/performance/evaluations/${id}`).then((r) => r.data),
     updateEvaluation: (id, body) => api.patch(`/performance/evaluations/${id}`, body).then((r) => r.data),
     revokeEvaluation: (id) => api.post(`/performance/evaluations/${id}/revoke`).then((r) => r.data),
+    ensureAccessKeys: (id) =>
+      api.post(`/performance/evaluations/${id}/access-keys/ensure`).then((r) => r.data),
+    bulkAccessKeys: (body) =>
+      api.post("/performance/evaluations/access-keys/bulk", body).then((r) => r.data),
     getHrSignature: () => api.get("/performance/hr-signature").then((r) => r.data),
     hrSignaturePresign: (body) => api.post("/performance/hr-signature/presigned-url", body).then((r) => r.data),
     saveHrSignature: (body) => api.put("/performance/hr-signature", body).then((r) => r.data),

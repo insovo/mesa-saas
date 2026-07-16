@@ -651,6 +651,14 @@ model PerformanceEvaluation {
   selfToken    String @unique @map("self_token")
   managerToken String @unique @map("manager_token")
 
+  // 公开链接第二因子：仅存 bcrypt hash，明文只在生成/设置时返回一次
+  selfAccessKeyHash    String?   @map("self_access_key_hash")
+  managerAccessKeyHash String?   @map("manager_access_key_hash")
+  selfAccessKeyFailCount    Int       @default(0) @map("self_access_key_fail_count")
+  managerAccessKeyFailCount Int       @default(0) @map("manager_access_key_fail_count")
+  selfAccessKeyLockedUntil    DateTime? @map("self_access_key_locked_until")
+  managerAccessKeyLockedUntil DateTime? @map("manager_access_key_locked_until")
+
   // draft → self_done → submitted → revoked
   status    String    @default("draft")
   expiresAt DateTime? @map("expires_at")

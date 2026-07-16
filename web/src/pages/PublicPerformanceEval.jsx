@@ -1,5 +1,5 @@
 // 公开绩效评价页 — /performance-eval/:token（自评或主管，按 token 识别角色）
-// 默认中英双语 UI；30s 自动保存草稿
+// 默认中英双语 UI；30s 自动保存草稿；访问密钥第二因子
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -11,10 +11,17 @@ import SignaturePad from "../components/SignaturePad.jsx";
 import { signerKeySelf, signerKeyManager } from "../lib/perfSignatureCache.js";
 import { gsap, D, E, ensureMotionPref } from "../anim/gsap.js";
 
+const ACCESS_KEY_HEADER = "X-Perf-Access-Key";
+
 export default function PublicPerformanceEval() {
   const { token } = useParams();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [needAccessKey, setNeedAccessKey] = useState(false);
+  const [accessKeyInput, setAccessKeyInput] = useState("");
+  const [accessKeyError, setAccessKeyError] = useState(null);
+  const [unlocking, setUnlocking] = useState(false);
+  const accessKeyRef = useRef(null);
   const [meta, setMeta] = useState(null);
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -29,18 +36,69 @@ export default function PublicPerformanceEval() {
     formRef.current = form;
   }, [form]);
 
+  function withAccessKey(config = {}) {
+    const headers = { ...(config.headers || {}) };
+    if (accessKeyRef.current) headers[ACCESS_KEY_HEADER] = accessKeyRef.current;
+    return { ...config, headers };
+  }
+
+  function handleAccessGateError(err) {
+    const code = err.response?.data?.error;
+    const msg = err.response?.data?.message || err.message;
+    if (
+      code === "access_key_required" ||
+      code === "access_key_invalid" ||
+      code === "access_key_locked" ||
+      code === "access_key_not_configured"
+    ) {
+      setNeedAccessKey(true);
+      setForm(null);
+      setMeta(null);
+      setAccessKeyError(msg || "请输入访问密钥");
+      if (code === "access_key_invalid") accessKeyRef.current = null;
+      return true;
+    }
+    return false;
+  }
+
   async function load() {
     setLoading(true);
     setError(null);
     try {
-      const { data } = await api.get(`/public/performance-eval/${token}`);
+      const { data } = await api.get(`/public/performance-eval/${token}`, withAccessKey());
+      setNeedAccessKey(false);
+      setAccessKeyError(null);
       setMeta(data.meta);
       setForm(data.evaluation);
     } catch (err) {
-      const msg = err.response?.data?.message || err.message;
-      setError(msg || "链接无效");
+      if (handleAccessGateError(err)) {
+        /* gated */
+      } else {
+        const msg = err.response?.data?.message || err.message;
+        setError(msg || "链接无效");
+      }
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function unlockWithKey(e) {
+    e?.preventDefault?.();
+    const key = accessKeyInput.trim();
+    if (!key) {
+      setAccessKeyError("请输入访问密钥");
+      return;
+    }
+    setUnlocking(true);
+    setAccessKeyError(null);
+    accessKeyRef.current = key;
+    try {
+      await load();
+      if (!accessKeyRef.current) {
+        /* invalid cleared in handle */
+      }
+    } finally {
+      setUnlocking(false);
     }
   }
 
@@ -51,18 +109,22 @@ export default function PublicPerformanceEval() {
 
   // 30s autosave
   useEffect(() => {
-    if (!form || meta?.readonly) return undefined;
+    if (!form || meta?.readonly || !accessKeyRef.current) return undefined;
     const id = setInterval(async () => {
       if (!dirtyRef.current || !formRef.current) return;
       try {
         setSaving(true);
         const payload = { ...buildPatch(formRef.current, meta.role), autosave: true };
-        const { data } = await api.patch(`/public/performance-eval/${token}`, payload);
+        const { data } = await api.patch(
+          `/public/performance-eval/${token}`,
+          payload,
+          withAccessKey()
+        );
         setForm(data.evaluation);
         setMeta(data.meta);
         dirtyRef.current = false;
-      } catch {
-        /* soft */
+      } catch (err) {
+        handleAccessGateError(err);
       } finally {
         setSaving(false);
       }
@@ -121,13 +183,19 @@ export default function PublicPerformanceEval() {
     setSaving(true);
     try {
       const payload = buildPatch(form, role);
-      const { data } = await api.patch(`/public/performance-eval/${token}`, payload);
+      const { data } = await api.patch(
+        `/public/performance-eval/${token}`,
+        payload,
+        withAccessKey()
+      );
       setForm(data.evaluation);
       setMeta(data.meta);
       dirtyRef.current = false;
       toast("已保存草稿 / Draft saved", "success");
     } catch (err) {
-      toast(err.response?.data?.message || err.message, "error");
+      if (!handleAccessGateError(err)) {
+        toast(err.response?.data?.message || err.message, "error");
+      }
     } finally {
       setSaving(false);
     }
@@ -139,7 +207,8 @@ export default function PublicPerformanceEval() {
     try {
       const { data: presign } = await api.post(
         `/public/performance-eval/${token}/signature/presigned-url`,
-        { contentType: "image/png", expectedSize: blob.size }
+        { contentType: "image/png", expectedSize: blob.size },
+        withAccessKey()
       );
       const putRes = await fetch(presign.uploadUrl, {
         method: "PUT",
@@ -147,14 +216,18 @@ export default function PublicPerformanceEval() {
         body: blob,
       });
       if (!putRes.ok) throw new Error(`上传失败 (${putRes.status})`);
-      const { data } = await api.put(`/public/performance-eval/${token}/signature`, {
-        key: presign.key,
-      });
+      const { data } = await api.put(
+        `/public/performance-eval/${token}/signature`,
+        { key: presign.key },
+        withAccessKey()
+      );
       setForm(data.evaluation);
       setMeta(data.meta);
       toast("签名已保存", "success");
     } catch (err) {
-      toast(err.response?.data?.message || err.message || "签名保存失败", "error");
+      if (!handleAccessGateError(err)) {
+        toast(err.response?.data?.message || err.message || "签名保存失败", "error");
+      }
     } finally {
       setSigning(false);
     }
@@ -233,14 +306,19 @@ export default function PublicPerformanceEval() {
       setSubmitting(true);
       if (!readonly) {
         const payload = buildPatch(form, role);
-        await api.patch(`/public/performance-eval/${token}`, payload);
+        await api.patch(`/public/performance-eval/${token}`, payload, withAccessKey());
       }
-      const { data } = await api.post(`/public/performance-eval/${token}/submit`);
+      const { data } = await api.post(
+        `/public/performance-eval/${token}/submit`,
+        {},
+        withAccessKey()
+      );
       setForm(data.evaluation);
       setMeta(data.meta);
       dirtyRef.current = false;
       toast(role === "manager" ? "主管评价已提交，整单已锁定" : "自评已提交", "success");
     } catch (err) {
+      if (handleAccessGateError(err)) return;
       const code = err.response?.data?.error;
       if (code === "signature_required") {
         document.getElementById("perf-signature-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -253,10 +331,10 @@ export default function PublicPerformanceEval() {
 
   async function onExport(lang = "zh-en") {
     try {
-      const res = await api.get(`/public/performance-eval/${token}/export.xlsx`, {
-        params: { lang },
-        responseType: "blob",
-      });
+      const res = await api.get(
+        `/public/performance-eval/${token}/export.xlsx`,
+        withAccessKey({ params: { lang }, responseType: "blob" })
+      );
       const blob = new Blob([res.data], {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       });
@@ -266,14 +344,50 @@ export default function PublicPerformanceEval() {
       a.click();
       URL.revokeObjectURL(a.href);
     } catch (err) {
-      toast(err.response?.data?.message || err.message, "error");
+      if (!handleAccessGateError(err)) {
+        toast(err.response?.data?.message || err.message, "error");
+      }
     }
   }
 
-  if (loading) {
+  if (loading && !needAccessKey) {
     return (
       <div className="min-h-screen bg-lightPrimary flex items-center justify-center">
         <LoadingBlock height="h-32" label="加载评价表…" />
+      </div>
+    );
+  }
+
+  if (needAccessKey && !form) {
+    return (
+      <div className="min-h-screen bg-lightPrimary flex items-center justify-center p-6">
+        <ToastHost />
+        <Card className="p-8 max-w-md w-full space-y-4">
+          <div className="text-center space-y-2">
+            <I name="key-round" size={36} className="text-brand mx-auto" />
+            <h1 className="text-lg font-bold text-navy-700">输入访问密钥</h1>
+            <p className="text-sm text-[#707EAE]">
+              此评价链接受密钥保护，请输入 HR 提供的访问密钥后继续。
+            </p>
+          </div>
+          <form onSubmit={unlockWithKey} className="space-y-3">
+            <Input
+              type="text"
+              autoFocus
+              autoComplete="off"
+              placeholder="6–10 位访问密钥"
+              value={accessKeyInput}
+              onChange={(e) => setAccessKeyInput(e.target.value)}
+              className="text-center tracking-widest font-mono"
+            />
+            {accessKeyError && (
+              <p className="text-xs text-rose-600 text-center">{accessKeyError}</p>
+            )}
+            <Button type="submit" className="w-full" disabled={unlocking || loading}>
+              {unlocking || loading ? "验证中…" : "进入评价"}
+            </Button>
+          </form>
+        </Card>
       </div>
     );
   }

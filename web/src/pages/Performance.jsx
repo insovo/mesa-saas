@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { resources } from "../lib/api.js";
-import { Card, Button, I, Empty, LoadingBlock, Avatar, toast, StagePill } from "../components/Primitives.jsx";
+import { Card, Button, I, Empty, LoadingBlock, Avatar, toast, StagePill, Modal, Input } from "../components/Primitives.jsx";
 import PerformanceShareModal, {
   CreatePerformanceEvalModal,
   CreatePerformancePersonModal,
@@ -59,6 +59,11 @@ export default function Performance() {
   const [embedHrBatch, setEmbedHrBatch] = useState(false);
   const [hasHrStamp, setHasHrStamp] = useState(false);
   const [batchBusy, setBatchBusy] = useState(false);
+  const [keyTargets, setKeyTargets] = useState(() => ["self", "manager"]);
+  const [setKeyValue, setSetKeyValue] = useState("");
+  const [keyResultOpen, setKeyResultOpen] = useState(false);
+  const [keyResultItems, setKeyResultItems] = useState([]);
+  const [keyResultMode, setKeyResultMode] = useState("generate");
 
   async function load(search = q) {
     setLoading(true);
@@ -80,14 +85,20 @@ export default function Performance() {
     // eslint-disable-next-line
   }, []);
 
+  const keyableIds = useMemo(() => {
+    return items
+      .filter((emp) => emp.latestEvaluation && emp.latestEvaluation.status !== "revoked")
+      .map((emp) => emp.latestEvaluation.id);
+  }, [items]);
+
   const exportableIds = useMemo(() => {
     return items
       .filter((emp) => emp.latestEvaluation?.status === "submitted")
       .map((emp) => emp.latestEvaluation.id);
   }, [items]);
 
-  const allExportableSelected =
-    exportableIds.length > 0 && exportableIds.every((id) => selected.has(id));
+  const allKeyableSelected =
+    keyableIds.length > 0 && keyableIds.every((id) => selected.has(id));
 
   function toggleOne(evalId) {
     setSelected((prev) => {
@@ -98,18 +109,63 @@ export default function Performance() {
     });
   }
 
-  function toggleAllExportable() {
-    if (allExportableSelected) {
-      setSelected(new Set());
-    } else {
-      setSelected(new Set(exportableIds));
+  function toggleAllKeyable() {
+    if (allKeyableSelected) setSelected(new Set());
+    else setSelected(new Set(keyableIds));
+  }
+
+  function toggleKeyTarget(t) {
+    setKeyTargets((prev) => {
+      if (prev.includes(t)) {
+        const next = prev.filter((x) => x !== t);
+        return next.length ? next : prev;
+      }
+      return [...prev, t];
+    });
+  }
+
+  async function runBulkKeys(mode) {
+    const ids = [...selected];
+    if (ids.length === 0) {
+      toast("请先勾选评价记录", "error");
+      return;
+    }
+    if (mode === "set") {
+      const k = setKeyValue.trim();
+      if (!k) {
+        toast("请输入统一访问密钥", "error");
+        return;
+      }
+    }
+    setBatchBusy(true);
+    try {
+      const data = await resources.performance.bulkAccessKeys({
+        evaluationIds: ids,
+        targets: keyTargets,
+        mode,
+        accessKey: mode === "set" ? setKeyValue.trim() : undefined,
+      });
+      setKeyResultMode(mode);
+      setKeyResultItems(data.items || []);
+      setKeyResultOpen(true);
+      toast(
+        mode === "generate"
+          ? `已为 ${data.count} 份评价刷新随机密钥`
+          : `已为 ${data.count} 份评价设置统一密钥`,
+        "success"
+      );
+      if (mode === "set") setSetKeyValue("");
+    } catch (err) {
+      toast(err.response?.data?.message || err.message, "error");
+    } finally {
+      setBatchBusy(false);
     }
   }
 
   async function batchExport() {
-    const ids = [...selected];
+    const ids = [...selected].filter((id) => exportableIds.includes(id));
     if (ids.length === 0) {
-      toast("请先勾选已完成的评价", "error");
+      toast("请勾选「已完成」的评价后再导出", "error");
       return;
     }
     if (embedHrBatch && !hasHrStamp) {
@@ -170,7 +226,7 @@ export default function Performance() {
         </Button>
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <HrSignatureManager onChange={(d) => setHasHrStamp(!!d?.hasSignature)} />
         <Card className="p-4 space-y-3">
           <div className="text-sm font-bold text-navy-700 flex items-center gap-1.5">
@@ -200,6 +256,48 @@ export default function Performance() {
             {batchBusy ? "导出中…" : `下载选中 (${selected.size})`}
           </Button>
         </Card>
+        <Card className="p-4 space-y-3">
+          <div className="text-sm font-bold text-navy-700 flex items-center gap-1.5">
+            <I name="key-round" size={16} className="text-brand" />
+            批量访问密钥
+          </div>
+          <p className="text-[11px] text-[#707EAE]">
+            勾选评价后：刷新则每人不同随机密钥；统一设置则勾选人共用同一密钥（适合主管评多人）。
+          </p>
+          <div className="flex flex-wrap gap-2 text-xs">
+            {[
+              { id: "self", label: "自评" },
+              { id: "manager", label: "主管" },
+            ].map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => toggleKeyTarget(t.id)}
+                className={`px-3 py-1 rounded-full font-bold transition ${
+                  keyTargets.includes(t.id)
+                    ? "bg-brand-gradient text-white"
+                    : "bg-lightPrimary text-[#707EAE]"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <Input
+            className="!h-10 text-xs font-mono"
+            placeholder="统一密钥（设置时填写，6–10 位）"
+            value={setKeyValue}
+            onChange={(e) => setSetKeyValue(e.target.value)}
+          />
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="ghost" disabled={batchBusy || selected.size === 0} onClick={() => runBulkKeys("generate")}>
+              <I name="refresh-cw" size={14} /> 刷新随机密钥
+            </Button>
+            <Button size="sm" disabled={batchBusy || selected.size === 0} onClick={() => runBulkKeys("set")}>
+              <I name="key-round" size={14} /> 设置统一密钥
+            </Button>
+          </div>
+        </Card>
       </div>
 
       <Card className="p-0 overflow-hidden">
@@ -221,10 +319,10 @@ export default function Performance() {
                   <th className="px-3 py-3 w-10">
                     <input
                       type="checkbox"
-                      checked={allExportableSelected}
-                      disabled={exportableIds.length === 0}
-                      onChange={toggleAllExportable}
-                      title="全选已完成"
+                      checked={allKeyableSelected}
+                      disabled={keyableIds.length === 0}
+                      onChange={toggleAllKeyable}
+                      title="全选可管理评价"
                       className="rounded border-[#E9ECEF] text-brand focus:ring-brand"
                     />
                   </th>
@@ -240,14 +338,15 @@ export default function Performance() {
                   const latest = emp.latestEvaluation;
                   const viewable = canViewEval(latest);
                   const canExport = latest?.status === "submitted";
+                  const canKey = !!latest && latest.status !== "revoked";
                   return (
                     <tr key={emp.id} className="border-b border-[#F4F7FE] hover:bg-lightPrimary/30">
                       <td className="px-3 py-3">
                         <input
                           type="checkbox"
-                          disabled={!canExport}
-                          checked={canExport && selected.has(latest.id)}
-                          onChange={() => canExport && toggleOne(latest.id)}
+                          disabled={!canKey}
+                          checked={canKey && selected.has(latest.id)}
+                          onChange={() => canKey && toggleOne(latest.id)}
                           className="rounded border-[#E9ECEF] text-brand focus:ring-brand disabled:opacity-30"
                         />
                       </td>
@@ -357,8 +456,12 @@ export default function Performance() {
         open={!!evalTarget}
         employee={evalTarget}
         onClose={() => setEvalTarget(null)}
-        onCreated={(ev) => {
-          setShareTarget({ employee: evalTarget, evaluation: ev });
+        onCreated={(ev, keys) => {
+          setShareTarget({
+            employee: evalTarget,
+            evaluation: ev,
+            initialAccessKeys: keys || null,
+          });
           load();
         }}
       />
@@ -375,6 +478,7 @@ export default function Performance() {
         open={!!shareTarget}
         employee={shareTarget?.employee}
         evaluation={shareTarget?.evaluation}
+        initialAccessKeys={shareTarget?.initialAccessKeys}
         onClose={() => setShareTarget(null)}
         onUpdated={(ev) => {
           setShareTarget((s) => (s ? { ...s, evaluation: ev } : s));
@@ -384,6 +488,63 @@ export default function Performance() {
           if (shareTarget?.employee) setEvalTarget(shareTarget.employee);
         }}
       />
+      <Modal open={keyResultOpen} onClose={() => setKeyResultOpen(false)} maxWidth="max-w-2xl">
+        <div className="p-6 space-y-4">
+          <div>
+            <h3 className="text-lg font-bold text-navy-700">
+              {keyResultMode === "generate" ? "随机密钥已生成" : "统一密钥已设置"}
+            </h3>
+            <p className="text-xs text-amber-700 mt-1">
+              明文仅此展示一次，请立即复制发给对方；关闭后无法再查看。
+            </p>
+          </div>
+          <div className="max-h-[50vh] overflow-auto rounded-xl border border-[#E9ECEF]">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-lightPrimary/50 text-left text-[#707EAE]">
+                  <th className="px-3 py-2">员工</th>
+                  <th className="px-3 py-2">自评密钥</th>
+                  <th className="px-3 py-2">主管密钥</th>
+                </tr>
+              </thead>
+              <tbody>
+                {keyResultItems.map((it) => (
+                  <tr key={it.evaluationId} className="border-t border-[#F4F7FE]">
+                    <td className="px-3 py-2 font-bold text-navy-700">{it.employeeName}</td>
+                    <td className="px-3 py-2 font-mono">
+                      {it.selfAccessKey || "—"}
+                      {it.selfAccessKey && (
+                        <button
+                          type="button"
+                          className="ml-2 text-brand"
+                          onClick={() => navigator.clipboard.writeText(it.selfAccessKey).then(() => toast("已复制", "success"))}
+                        >
+                          复制
+                        </button>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 font-mono">
+                      {it.managerAccessKey || "—"}
+                      {it.managerAccessKey && (
+                        <button
+                          type="button"
+                          className="ml-2 text-brand"
+                          onClick={() => navigator.clipboard.writeText(it.managerAccessKey).then(() => toast("已复制", "success"))}
+                        >
+                          复制
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex justify-end">
+            <Button size="sm" onClick={() => setKeyResultOpen(false)}>关闭</Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
