@@ -174,8 +174,8 @@ function LinkPanel({
       )}
 
       {token ? (
-        <div className={`flex flex-col sm:flex-row gap-4 items-center ${invalid ? "opacity-50 grayscale" : ""}`}>
-          <div className="bg-white p-2 rounded-lg border border-[#E9ECEF] relative">
+        <div className={`flex flex-col sm:flex-row gap-4 items-stretch ${invalid ? "opacity-50 grayscale" : ""}`}>
+          <div className="bg-white p-2 rounded-lg border border-[#E9ECEF] relative shrink-0 self-center sm:self-stretch flex items-center">
             <QRCodeSVG value={url} size={112} />
             {invalid && (
               <div className="absolute inset-0 flex items-center justify-center bg-white/70 rounded-lg">
@@ -183,7 +183,7 @@ function LinkPanel({
               </div>
             )}
           </div>
-          <div className="flex-1 w-full space-y-2">
+          <div className="flex-1 w-full min-w-0 flex flex-col justify-between gap-2">
             <code
               className={`block text-[11px] break-all rounded-lg px-3 py-2 ${
                 invalid
@@ -193,23 +193,6 @@ function LinkPanel({
             >
               {url}
             </code>
-            <Button
-              size="sm"
-              variant={invalid ? "ghost" : "primary"}
-              disabled={invalid}
-              onClick={() => {
-                if (!accessKey) {
-                  toast("当前未展示密钥明文，请先刷新随机密钥或设置密钥后再复制", "error");
-                  return;
-                }
-                navigator.clipboard
-                  .writeText(buildLinkKeyClipboardText(url, accessKey))
-                  .then(() => toast("链接与密钥已复制", "success"));
-              }}
-            >
-              <I name={invalid ? "ban" : "copy"} size={14} />
-              {invalid ? "链接已失效" : "复制链接密钥"}
-            </Button>
 
             <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2.5 space-y-2">
               <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-800">
@@ -226,7 +209,7 @@ function LinkPanel({
                 </p>
               )}
               <p className="text-[10px] text-amber-700/70">请立即复制发给对方；关闭后无法再查看明文。</p>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <Button size="sm" variant="ghost" disabled={busy || invalid} onClick={onRefreshKey}>
                   <I name="refresh-cw" size={13} /> 刷新随机密钥
                 </Button>
@@ -240,6 +223,24 @@ function LinkPanel({
                   }}
                 >
                   <I name="pencil" size={13} /> 设置密钥
+                </Button>
+                <Button
+                  size="sm"
+                  variant={invalid ? "ghost" : "primary"}
+                  className="ml-auto"
+                  disabled={invalid}
+                  onClick={() => {
+                    if (!accessKey) {
+                      toast("当前未展示密钥明文，请先刷新随机密钥或设置密钥后再复制", "error");
+                      return;
+                    }
+                    navigator.clipboard
+                      .writeText(buildLinkKeyClipboardText(url, accessKey))
+                      .then(() => toast("链接与密钥已复制", "success"));
+                  }}
+                >
+                  <I name={invalid ? "ban" : "copy"} size={13} />
+                  {invalid ? "链接已失效" : "复制链接密钥"}
                 </Button>
               </div>
               {setKeyOpen && (
