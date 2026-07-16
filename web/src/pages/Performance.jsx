@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { resources } from "../lib/api.js";
+import { HIRE_STAGES } from "../lib/constants.js";
 import { Card, Button, I, Empty, LoadingBlock, Avatar, toast, StagePill, Modal, Input } from "../components/Primitives.jsx";
 import PerformanceShareModal, {
   CreatePerformanceEvalModal,
@@ -22,6 +23,77 @@ function StatusChip({ status }) {
     <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold ${cfg.tone}`}>
       {cfg.label}
     </span>
+  );
+}
+
+/** 表头列快速筛选：chevron + 下拉；「全部」清空 */
+function HeaderFilter({ label, active, open, onToggle, children }) {
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) onToggle(false);
+    }
+    function onKey(e) {
+      if (e.key === "Escape") onToggle(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open, onToggle]);
+
+  return (
+    <div ref={wrapRef} className="relative inline-flex">
+      <button
+        type="button"
+        onClick={() => onToggle(!open)}
+        className={`inline-flex items-center gap-1 font-bold uppercase tracking-wide transition ${
+          active ? "text-brand" : "text-[#A0AEC0] hover:text-navy-700"
+        }`}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+      >
+        {label}
+        <I name={active ? "filter" : "chevron-down"} size={12} className={active ? "text-brand" : ""} />
+      </button>
+      {open && (
+        <div
+          className="absolute left-0 top-full z-30 mt-1 min-w-[160px] max-h-64 overflow-y-auto rounded-xl border border-[#E9ECEF] bg-white py-1 shadow-card"
+          role="listbox"
+        >
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FilterOption({ selected, onClick, children }) {
+  return (
+    <button
+      type="button"
+      role="option"
+      aria-selected={selected}
+      onClick={onClick}
+      className={`flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs transition hover:bg-lightPrimary ${
+        selected ? "font-bold text-brand" : "text-navy-700"
+      }`}
+    >
+      <span className="truncate">{children}</span>
+      {selected && <I name="check" size={12} className="shrink-0 text-brand" />}
+    </button>
+  );
+}
+
+function FilterSectionLabel({ children }) {
+  return (
+    <div className="px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wide text-[#A0AEC0]">
+      {children}
+    </div>
   );
 }
 
@@ -65,6 +137,10 @@ export default function Performance() {
   const [keyResultOpen, setKeyResultOpen] = useState(false);
   const [keyResultItems, setKeyResultItems] = useState([]);
   const [keyResultMode, setKeyResultMode] = useState("generate");
+  const [filterJob, setFilterJob] = useState("");
+  const [filterDept, setFilterDept] = useState("");
+  const [filterStage, setFilterStage] = useState("");
+  const [openFilter, setOpenFilter] = useState(null); // "jobDept" | "stage" | null
 
   async function load(search = q) {
     setLoading(true);
@@ -97,17 +173,50 @@ export default function Performance() {
     // eslint-disable-next-line
   }, []);
 
-  const keyableIds = useMemo(() => {
-    return items
-      .filter((emp) => emp.latestEvaluation && emp.latestEvaluation.status !== "revoked")
-      .map((emp) => emp.latestEvaluation.id);
+  const jobOptions = useMemo(() => {
+    const names = new Set();
+    for (const e of items) {
+      if (e.appliedFor) names.add(e.appliedFor);
+    }
+    return Array.from(names).sort((a, b) => a.localeCompare(b, "zh"));
   }, [items]);
 
+  const deptOptions = useMemo(() => {
+    const names = new Set();
+    for (const e of items) {
+      if (e.dept) names.add(e.dept);
+    }
+    return Array.from(names).sort((a, b) => a.localeCompare(b, "zh"));
+  }, [items]);
+
+  const stageOptions = useMemo(() => {
+    const present = new Set(items.map((e) => e.stage).filter(Boolean));
+    const extra = [...present]
+      .filter((s) => !HIRE_STAGES.includes(s))
+      .sort((a, b) => a.localeCompare(b, "zh"));
+    return [...HIRE_STAGES, ...extra];
+  }, [items]);
+
+  const filtered = useMemo(() => {
+    return items.filter((e) => {
+      if (filterJob && e.appliedFor !== filterJob) return false;
+      if (filterDept && e.dept !== filterDept) return false;
+      if (filterStage && e.stage !== filterStage) return false;
+      return true;
+    });
+  }, [items, filterJob, filterDept, filterStage]);
+
+  const keyableIds = useMemo(() => {
+    return filtered
+      .filter((emp) => emp.latestEvaluation && emp.latestEvaluation.status !== "revoked")
+      .map((emp) => emp.latestEvaluation.id);
+  }, [filtered]);
+
   const exportableIds = useMemo(() => {
-    return items
+    return filtered
       .filter((emp) => emp.latestEvaluation?.status === "submitted")
       .map((emp) => emp.latestEvaluation.id);
-  }, [items]);
+  }, [filtered]);
 
   const allKeyableSelected =
     keyableIds.length > 0 && keyableIds.every((id) => selected.has(id));
@@ -218,8 +327,8 @@ export default function Performance() {
   return (
     <div className="space-y-6">
       <Card className="p-4 !flex-row flex-wrap items-center gap-3 justify-between">
-        <div className="flex items-center gap-2 flex-1 min-w-[200px]">
-          <div className="relative flex-1 max-w-md">
+        <div className="flex items-center gap-2 flex-1 min-w-[200px] flex-wrap">
+          <div className="relative flex-1 max-w-md min-w-[180px]">
             <I name="search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#A0AEC0]" />
             <input
               value={q}
@@ -229,6 +338,44 @@ export default function Performance() {
               className="w-full pl-9 pr-3 py-2 rounded-xl border border-[#E9ECEF] text-sm outline-none focus:border-brand"
             />
           </div>
+          <select
+            value={filterJob}
+            onChange={(e) => setFilterJob(e.target.value)}
+            className="h-9 px-3 rounded-xl border border-[#E9ECEF] bg-white text-sm text-navy-700 outline-none focus:border-brand max-w-[180px]"
+            title="按岗位筛选"
+          >
+            <option value="">全部岗位</option>
+            {jobOptions.map((j) => (
+              <option key={j} value={j}>
+                {j}
+              </option>
+            ))}
+          </select>
+          <select
+            value={filterDept}
+            onChange={(e) => setFilterDept(e.target.value)}
+            className="h-9 px-3 rounded-xl border border-[#E9ECEF] bg-white text-sm text-navy-700 outline-none focus:border-brand max-w-[180px]"
+            title="按部门筛选"
+          >
+            <option value="">全部部门</option>
+            {deptOptions.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </select>
+          {(filterJob || filterDept) && (
+            <button
+              type="button"
+              onClick={() => {
+                setFilterJob("");
+                setFilterDept("");
+              }}
+              className="text-xs text-[#707EAE] hover:text-brand font-medium px-1"
+            >
+              清除筛选
+            </button>
+          )}
           <Button size="sm" variant="ghost" onClick={() => load()}>
             <I name="refresh-cw" size={14} /> 刷新
           </Button>
@@ -343,17 +490,111 @@ export default function Performance() {
                     />
                   </th>
                   <th className="px-4 py-3 font-bold">员工</th>
-                  <th className="px-4 py-3 font-bold">岗位 / 部门</th>
-                  <th className="px-4 py-3 font-bold">阶段</th>
+                  <th className="px-4 py-3">
+                    <HeaderFilter
+                      label="岗位 / 部门"
+                      active={!!(filterJob || filterDept)}
+                      open={openFilter === "jobDept"}
+                      onToggle={(next) => setOpenFilter(next ? "jobDept" : null)}
+                    >
+                      <FilterOption
+                        selected={!filterJob && !filterDept}
+                        onClick={() => {
+                          setFilterJob("");
+                          setFilterDept("");
+                          setOpenFilter(null);
+                        }}
+                      >
+                        全部
+                      </FilterOption>
+                      {jobOptions.length > 0 && (
+                        <>
+                          <FilterSectionLabel>岗位</FilterSectionLabel>
+                          {jobOptions.map((job) => (
+                            <FilterOption
+                              key={`job:${job}`}
+                              selected={filterJob === job}
+                              onClick={() => {
+                                setFilterJob(filterJob === job ? "" : job);
+                                setOpenFilter(null);
+                              }}
+                            >
+                              {job}
+                            </FilterOption>
+                          ))}
+                        </>
+                      )}
+                      {deptOptions.length > 0 && (
+                        <>
+                          <FilterSectionLabel>部门</FilterSectionLabel>
+                          {deptOptions.map((dept) => (
+                            <FilterOption
+                              key={`dept:${dept}`}
+                              selected={filterDept === dept}
+                              onClick={() => {
+                                setFilterDept(filterDept === dept ? "" : dept);
+                                setOpenFilter(null);
+                              }}
+                            >
+                              {dept}
+                            </FilterOption>
+                          ))}
+                        </>
+                      )}
+                      {jobOptions.length === 0 && deptOptions.length === 0 && (
+                        <div className="px-3 py-2 text-xs text-[#A0AEC0]">暂无可筛选项</div>
+                      )}
+                    </HeaderFilter>
+                  </th>
+                  <th className="px-4 py-3">
+                    <HeaderFilter
+                      label="阶段"
+                      active={!!filterStage}
+                      open={openFilter === "stage"}
+                      onToggle={(next) => setOpenFilter(next ? "stage" : null)}
+                    >
+                      <FilterOption
+                        selected={!filterStage}
+                        onClick={() => {
+                          setFilterStage("");
+                          setOpenFilter(null);
+                        }}
+                      >
+                        全部
+                      </FilterOption>
+                      {stageOptions.map((s) => (
+                        <FilterOption
+                          key={s}
+                          selected={filterStage === s}
+                          onClick={() => {
+                            setFilterStage(filterStage === s ? "" : s);
+                            setOpenFilter(null);
+                          }}
+                        >
+                          {s}
+                        </FilterOption>
+                      ))}
+                    </HeaderFilter>
+                  </th>
                   <th className="px-4 py-3 font-bold">最近评价</th>
                   <th className="px-4 py-3 font-bold text-right">操作</th>
                 </tr>
               </thead>
               <tbody>
-                {items.map((emp) => {
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-10">
+                      <Empty
+                        icon="filter"
+                        title="没有匹配筛选条件的人"
+                        desc="试试清除表头「岗位 / 部门」或「阶段」筛选，或调整搜索关键词。"
+                      />
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((emp) => {
                   const latest = emp.latestEvaluation;
                   const viewable = canViewEval(latest);
-                  const canExport = latest?.status === "submitted";
                   const canKey = !!latest && latest.status !== "revoked";
                   return (
                     <tr key={emp.id} className="border-b border-[#F4F7FE] hover:bg-lightPrimary/30">
@@ -456,7 +697,8 @@ export default function Performance() {
                       </td>
                     </tr>
                   );
-                })}
+                })
+                )}
               </tbody>
             </table>
           </div>
