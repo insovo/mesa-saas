@@ -88,6 +88,11 @@ function LinkPanel({
   const exhausted = !unlimited && used >= maxEdits;
   const [setMode, setSetMode] = useState(false);
   const [setKeyValue, setSetKeyValue] = useState("");
+  const [keyVisible, setKeyVisible] = useState(false);
+
+  useEffect(() => {
+    setKeyVisible(false);
+  }, [accessKey]);
 
   const EDIT_PRESETS = [
     { value: null, label: "不限" },
@@ -107,6 +112,12 @@ function LinkPanel({
     await onSetKey?.(next);
     exitSetMode();
   };
+
+  const keyDisplay = accessKey
+    ? keyVisible
+      ? accessKey
+      : "•".repeat(accessKey.length)
+    : "••••••••";
 
   return (
     <div
@@ -234,21 +245,29 @@ function LinkPanel({
                       确认
                     </Button>
                   </>
-                ) : accessKey ? (
-                  <code className="inline-flex items-center h-9 font-mono text-sm font-bold tracking-wider text-navy-700 bg-white px-2 rounded border border-amber-100">
-                    {accessKey}
-                  </code>
                 ) : (
-                  <span className="font-normal text-amber-800/80 truncate min-w-0">
-                    明文仅在生成/刷新时显示一次
-                  </span>
+                  <>
+                    <code className="inline-flex items-center h-9 font-mono text-sm font-bold tracking-wider text-navy-700 bg-white px-2 rounded border border-amber-100 min-w-0">
+                      {keyDisplay}
+                    </code>
+                    <button
+                      type="button"
+                      disabled={!accessKey}
+                      onClick={() => setKeyVisible((v) => !v)}
+                      title={
+                        !accessKey
+                          ? "明文仅在生成/刷新后可用"
+                          : keyVisible
+                            ? "隐藏密钥"
+                            : "显示密钥"
+                      }
+                      className="inline-flex items-center justify-center h-9 w-9 shrink-0 rounded-lg border border-amber-100 bg-white text-amber-800 hover:bg-amber-50 disabled:opacity-40 disabled:pointer-events-none transition"
+                    >
+                      <I name={keyVisible ? "eye-off" : "eye"} size={14} />
+                    </button>
+                  </>
                 )}
               </div>
-              <p className="text-[10px] text-amber-700/70 truncate">
-                {accessKey
-                  ? "请立即复制发给对方；关闭后无法再查看明文。"
-                  : "可刷新随机密钥或手动设置。关闭后无法再查看明文。"}
-              </p>
               <div className="flex flex-wrap items-center gap-1.5">
                 <Button
                   size="sm"
