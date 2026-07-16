@@ -81,6 +81,19 @@ function tokenGen() {
   return randomBytes(24).toString("base64url");
 }
 
+export function tokenRegenerationFields(body, makeToken = tokenGen) {
+  const data = {};
+  if (body.regenerateSelfToken) {
+    data.selfToken = makeToken();
+    data.selfEditCount = 0;
+  }
+  if (body.regenerateManagerToken) {
+    data.managerToken = makeToken();
+    data.managerEditCount = 0;
+  }
+  return data;
+}
+
 function computeExpiresAt(duration) {
   if (!duration || duration === "forever") return null;
   const match = String(duration).match(/^(\d+)\s*(s|m|h|d)$/i);
@@ -898,15 +911,13 @@ export default async function performanceRoutes(app) {
       } catch (e) {
         throw e;
       }
-      if (body.resetSelfEditCount || body.regenerateSelfToken) data.selfEditCount = 0;
-      if (body.resetManagerEditCount || body.regenerateManagerToken) data.managerEditCount = 0;
+      if (body.resetSelfEditCount) data.selfEditCount = 0;
+      if (body.resetManagerEditCount) data.managerEditCount = 0;
     };
 
     if (ev.status === "submitted" || ev.status === "revoked") {
       // 仅允许轮换 token / 改 expires / 改次数上限
-      const data = {};
-      if (body.regenerateSelfToken) data.selfToken = tokenGen();
-      if (body.regenerateManagerToken) data.managerToken = tokenGen();
+      const data = tokenRegenerationFields(body);
       if (body.duration !== undefined) {
         try {
           data.expiresAt = computeExpiresAt(body.duration);
@@ -926,7 +937,7 @@ export default async function performanceRoutes(app) {
       return { evaluation: adminShape(updated) };
     }
 
-    const data = {};
+    const data = tokenRegenerationFields(body);
     for (const k of ["employeeName", "employeeNo", "position", "department", "level", "lineManager", "reviewPeriod", "areasForImprovement", "developmentPlan"]) {
       if (k in body) {
         if (body[k] == null) data[k] = null;
@@ -948,8 +959,6 @@ export default async function performanceRoutes(app) {
         return reply.code(e.statusCode || 400).send({ error: e.code, message: e.message });
       }
     }
-    if (body.regenerateSelfToken) data.selfToken = tokenGen();
-    if (body.regenerateManagerToken) data.managerToken = tokenGen();
     try {
       applyEditLimitFields(data);
     } catch (e) {
