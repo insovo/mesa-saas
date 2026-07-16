@@ -54,6 +54,15 @@
       "backend": 3041,
       "frontend": 5213,
       "since": "2026-07-16"
+    },
+    {
+      "slot": 5,
+      "name": "perf-copy-link-key",
+      "path": ".worktrees/fix/perf-copy-link-key",
+      "branch": "fix/perf-copy-link-key",
+      "backend": 3051,
+      "frontend": 5223,
+      "since": "2026-07-16"
     }
   ]
 }
