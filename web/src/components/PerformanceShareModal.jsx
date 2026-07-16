@@ -16,37 +16,34 @@ function publicUrl(token) {
 }
 
 /**
- * 链接 + 密钥 + 中英保密提示，供一键复制发给对方。
+ * 链接 + 密钥，行内中文(English)格式，供一键复制发给对方。
  * @param {"self"|"manager"} role
  * employeeNo 缺失时写入字面量 "null"
  */
 function buildLinkKeyClipboardText({ role, url, accessKey, employeeName, employeeNo }) {
   const name = employeeName || "";
   const no = employeeNo == null || employeeNo === "" ? "null" : String(employeeNo);
-  const privacyZh = "涉及个人绩效，请妥善保管个人链接和密钥。";
-  const privacyEn =
-    "This link contains personal performance data. Please keep the URL and access key confidential.";
+  const privacy =
+    "涉及个人绩效，请妥善保管个人链接和密钥(This link contains personal performance data. Please keep the URL and access key confidential).";
   if (role === "manager") {
     return [
-      "主管评价 / Manager Evaluation",
-      `姓名/Name: ${name}`,
-      `工号/Employee ID: ${no}`,
-      privacyZh,
-      privacyEn,
-      "自评/评价链接:",
+      "主管评价(Manager Evaluation)",
+      `姓名(Name): ${name}`,
+      `工号(Employee ID): ${no}`,
+      privacy,
+      "主管链接(Manager evaluation link):",
       url,
-      `访问密钥: ${accessKey}`,
+      `访问密钥(Access Key): ${accessKey}`,
     ].join("\n");
   }
   return [
-    "绩效自评 / Self-assessment",
-    `姓名/Name: ${name}`,
-    `工号/Employee ID: ${no}`,
-    privacyZh,
-    privacyEn,
-    "自评链接:",
+    "绩效自评(Self-assessment)",
+    `姓名(Name): ${name}`,
+    `工号(Employee ID): ${no}`,
+    privacy,
+    "自评链接(Self-assessment link):",
     url,
-    `访问密钥: ${accessKey}`,
+    `访问密钥(Access Key): ${accessKey}`,
   ].join("\n");
 }
 
