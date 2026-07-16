@@ -144,6 +144,51 @@
       "backend": 3141,
       "frontend": 5313,
       "since": "2026-07-16"
+    },
+    {
+      "slot": 15,
+      "name": "perf-copy-template",
+      "path": ".worktrees/fix/perf-copy-template",
+      "branch": "fix/perf-copy-template",
+      "backend": 3151,
+      "frontend": 5323,
+      "since": "2026-07-16"
+    },
+    {
+      "slot": 16,
+      "name": "perf-key-export",
+      "path": ".worktrees/feature/perf-key-export",
+      "branch": "feature/perf-key-export",
+      "backend": 3161,
+      "frontend": 5333,
+      "since": "2026-07-16"
+    },
+    {
+      "slot": 17,
+      "name": "share-hr-seal-btn",
+      "path": ".worktrees/fix/share-hr-seal-btn",
+      "branch": "fix/share-hr-seal-btn",
+      "backend": 3171,
+      "frontend": 5343,
+      "since": "2026-07-16"
+    },
+    {
+      "slot": 18,
+      "name": "perf-regen-keep-key",
+      "path": ".worktrees/fix/perf-regen-keep-key",
+      "branch": "fix/perf-regen-keep-key",
+      "backend": 3181,
+      "frontend": 5353,
+      "since": "2026-07-16"
+    },
+    {
+      "slot": 19,
+      "name": "perf-copy-paren-format",
+      "path": ".worktrees/fix/perf-copy-paren-format",
+      "branch": "fix/perf-copy-paren-format",
+      "backend": 3191,
+      "frontend": 5363,
+      "since": "2026-07-16"
     }
   ]
 }
