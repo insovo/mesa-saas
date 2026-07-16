@@ -828,7 +828,8 @@ export default async function performanceRoutes(app) {
         if (k in body) data[k] = body[k] == null ? null : String(body[k]).slice(0, 120);
       }
     }
-    if (role === "manager" && "lineManager" in body) {
+    // 直属主管：自评 / 主管均可填写
+    if ("lineManager" in body) {
       data.lineManager = body.lineManager == null ? null : String(body.lineManager).slice(0, 100);
     }
 
