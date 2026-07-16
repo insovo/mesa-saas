@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { QRCodeSVG } from "qrcode.react";
 import { resources } from "../lib/api.js";
 import { Modal, Button, Input, I, toast, RequiredMark } from "./Primitives.jsx";
-import HrSignatureManager, { blobErrorMessage } from "./HrSignatureManager.jsx";
+import { blobErrorMessage } from "./HrSignatureManager.jsx";
 
 const DURATIONS = [
   { value: "7d", label: "7 天" },
@@ -368,6 +368,27 @@ export default function PerformanceShareModal({
     setManagerAccessKey(initialAccessKeys?.managerAccessKey || null);
   }, [open, ev?.id, initialAccessKeys?.selfAccessKey, initialAccessKeys?.managerAccessKey]);
 
+  useEffect(() => {
+    if (!open) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await resources.performance.getHrSignature();
+        if (cancelled) return;
+        setHasHrStamp(!!data?.hasSignature);
+        if (!data?.hasSignature) setEmbedHr(false);
+      } catch {
+        if (!cancelled) {
+          setHasHrStamp(false);
+          setEmbedHr(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
   // 旧评价补齐缺失密钥（每个评价打开 Modal 只跑一次）
   const ensuredIdRef = useRef(null);
   useEffect(() => {
@@ -634,15 +655,6 @@ export default function PerformanceShareModal({
               onSetKey={(k) => setRoleKey("manager", k)}
             />
 
-            <HrSignatureManager
-              compact
-              key={open ? `hr-${ev.id}` : "hr-closed"}
-              onChange={(d) => {
-                setHasHrStamp(!!d?.hasSignature);
-                if (!d?.hasSignature) setEmbedHr(false);
-              }}
-            />
-
             <div className="rounded-xl border border-[#E9ECEF] p-4 space-y-3">
               <div className="text-sm font-bold text-navy-700">导出 Excel（中英双语）</div>
               <label className={`flex items-center gap-2 text-xs ${hasHrStamp ? "text-navy-700" : "text-[#A0AEC0]"}`}>
@@ -654,7 +666,11 @@ export default function PerformanceShareModal({
                   className="rounded border-[#E9ECEF] text-brand focus:ring-brand"
                 />
                 嵌入 HR 签名
-                {!hasHrStamp && <span className="text-[10px] text-[#A0AEC0]">（请先上传电子章）</span>}
+                {!hasHrStamp && (
+                  <span className="text-[10px] text-[#A0AEC0]">
+                    （请先在列表页「HR电子章」上传）
+                  </span>
+                )}
               </label>
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" disabled={busy} onClick={onExport}>
