@@ -150,6 +150,8 @@ export const resources = {
     listPeople: (params) => api.get("/performance/people", { params }).then((r) => r.data),
     createPerson: (body) => api.post("/performance/people", body).then((r) => r.data),
     createEvaluation: (body) => api.post("/performance/evaluations", body).then((r) => r.data),
+    bulkCreateEvaluations: (body) =>
+      api.post("/performance/evaluations/bulk", body).then((r) => r.data),
     listEvaluations: (params) => api.get("/performance/evaluations", { params }).then((r) => r.data),
     getEvaluation: (id) => api.get(`/performance/evaluations/${id}`).then((r) => r.data),
     updateEvaluation: (id, body) => api.patch(`/performance/evaluations/${id}`, body).then((r) => r.data),

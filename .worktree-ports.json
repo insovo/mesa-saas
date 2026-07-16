@@ -189,6 +189,15 @@
       "backend": 3191,
       "frontend": 5363,
       "since": "2026-07-16"
+    },
+    {
+      "slot": 22,
+      "name": "perf-bulk-create-eval",
+      "path": ".worktrees/feature/perf-bulk-create-eval",
+      "branch": "feature/perf-bulk-create-eval",
+      "backend": 3221,
+      "frontend": 5393,
+      "since": "2026-07-16"
     }
   ]
 }

@@ -825,6 +825,121 @@ export default async function performanceRoutes(app) {
     });
   });
 
+  // ─── 批量发起评价（新周期） ───────────────────────────────────
+  admin.post("/performance/evaluations/bulk", {
+    schema: {
+      body: {
+        type: "object",
+        required: ["employeeIds", "reviewPeriod"],
+        properties: {
+          employeeIds: {
+            type: "array",
+            items: { type: "string", format: "uuid" },
+            minItems: 1,
+            maxItems: 100,
+          },
+          reviewPeriod: { type: "string", minLength: 1, maxLength: 120 },
+          duration: { type: "string" },
+          evalDate: { type: "string" },
+          selfMaxEdits: { type: ["integer", "null"] },
+          managerMaxEdits: { type: ["integer", "null"] },
+        },
+      },
+    },
+  }, async (req, reply) => {
+    const access = await assertPage(req, reply, "performance");
+    if (!access) return;
+
+    const employeeIds = [...new Set(req.body.employeeIds || [])];
+    if (employeeIds.length === 0) {
+      return reply.code(400).send({ error: "bad_request", message: "请选择员工" });
+    }
+    if (employeeIds.length > 100) {
+      return reply.code(400).send({ error: "batch_too_large", message: "单次最多 100 人" });
+    }
+
+    let expiresAt = null;
+    try {
+      expiresAt = computeExpiresAt(req.body.duration || "30d");
+    } catch (e) {
+      return reply.code(e.statusCode || 400).send({ error: e.code || "bad_request", message: e.message });
+    }
+
+    let selfMaxEdits = null;
+    let managerMaxEdits = null;
+    try {
+      if ("selfMaxEdits" in req.body) selfMaxEdits = parseMaxEdits(req.body.selfMaxEdits);
+      if ("managerMaxEdits" in req.body) managerMaxEdits = parseMaxEdits(req.body.managerMaxEdits);
+    } catch (e) {
+      return reply.code(e.statusCode || 400).send({ error: e.code, message: e.message });
+    }
+
+    const evalDateRaw = req.body.evalDate ? new Date(req.body.evalDate) : new Date();
+    const evalDate = Number.isNaN(evalDateRaw.getTime()) ? new Date() : evalDateRaw;
+    const reviewPeriod = req.body.reviewPeriod.trim();
+
+    const where = { id: { in: employeeIds } };
+    if (!access.isAdmin) {
+      const scopeWhere = await buildEmployeeScopeWhere(req);
+      Object.assign(where, scopeWhere || {});
+    }
+
+    const emps = await app.prisma.employee.findMany({
+      where,
+      include: { candidate: { select: { id: true, status: true } } },
+    });
+    if (emps.length === 0) {
+      return reply.code(404).send({ error: "not_found", message: "未找到可操作的员工" });
+    }
+
+    const items = [];
+    for (const emp of emps) {
+      const selfAccessKey = generateAccessKey();
+      const managerAccessKey = generateAccessKey();
+      const [selfSealed, managerSealed] = await Promise.all([
+        sealAccessKey(selfAccessKey),
+        sealAccessKey(managerAccessKey),
+      ]);
+      const created = await app.prisma.performanceEvaluation.create({
+        data: {
+          employeeId: emp.id,
+          candidateId: emp.candidateId || null,
+          selfToken: tokenGen(),
+          managerToken: tokenGen(),
+          selfAccessKeyHash: selfSealed.hash,
+          managerAccessKeyHash: managerSealed.hash,
+          selfAccessKeyEnc: selfSealed.enc,
+          managerAccessKeyEnc: managerSealed.enc,
+          status: "draft",
+          expiresAt,
+          employeeName: emp.name,
+          employeeNo: emp.externalId || null,
+          position: emp.appliedFor || null,
+          department: emp.dept || null,
+          level: emp.level || null,
+          lineManager: emp.directManager || null,
+          reviewPeriod,
+          evalDate,
+          scores: defaultScoresPayload(),
+          templateVersion: TEMPLATE_VERSION,
+          templateFileHash: getTemplateHash(AUTHORITATIVE_LANG),
+          createdBy: access.userId,
+          selfMaxEdits,
+          managerMaxEdits,
+        },
+      });
+      items.push({
+        evaluation: adminShape(created),
+        employeeId: emp.id,
+        employeeName: emp.name,
+        selfAccessKey,
+        managerAccessKey,
+      });
+    }
+
+    return reply.code(201).send({ count: items.length, items });
+  });
+
   admin.get("/performance/evaluations", {
     schema: {
       querystring: {
