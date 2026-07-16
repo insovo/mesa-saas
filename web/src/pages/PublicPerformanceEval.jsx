@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "../lib/api.js";
 import {
-  Card, Button, Input, I, toast, LoadingBlock, ToastHost, LiquidLoader, RequiredMark,
+  Card, Button, Input, I, toast, LoadingBlock, ToastHost, LiquidLoader, RequiredMark, Modal,
 } from "../components/Primitives.jsx";
 import SignaturePad from "../components/SignaturePad.jsx";
 import { signerKeySelf, signerKeyManager } from "../lib/perfSignatureCache.js";
@@ -21,6 +21,7 @@ export default function PublicPerformanceEval() {
   const [submitting, setSubmitting] = useState(false);
   const [signing, setSigning] = useState(false);
   const [rubricOpen, setRubricOpen] = useState(false);
+  const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
   const dirtyRef = useRef(false);
   const formRef = useRef(null);
 
@@ -159,10 +160,41 @@ export default function PublicPerformanceEval() {
     }
   }
 
-  async function onSubmit() {
+  function requestSubmit() {
     // 次数用尽时字段只读，但仍允许提交已填内容
     if (!form || (!meta?.canSubmit && readonly)) return;
     if (!meta?.canSubmit) return;
+
+    // 自评：基本信息提交时必填
+    if (role === "self") {
+      const infoChecks = [
+        { key: "employeeName", label: "姓名" },
+        { key: "position", label: "岗位" },
+        { key: "employeeNo", label: "工号" },
+        { key: "department", label: "部门" },
+        { key: "level", label: "职级" },
+        { key: "reviewPeriod", label: "评价周期" },
+        {
+          key: "evalDate",
+          label: "评价日期",
+          get: (f) => (f.evalDate ? String(f.evalDate).slice(0, 10) : ""),
+        },
+      ];
+      for (const f of infoChecks) {
+        const raw = f.get ? f.get(form) : form[f.key];
+        if (!String(raw || "").trim()) {
+          toast(`请填写「${f.label}」后再提交`, "error");
+          document.getElementById("perf-info-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+          return;
+        }
+      }
+    }
+
+    if (role === "manager" && !String(form.lineManager || "").trim()) {
+      toast("请填写「直属主管」后再提交", "error");
+      document.getElementById("perf-info-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
 
     // 自评：目标·成果·发展提交时必填（草稿不校验）
     if (role === "self") {
@@ -187,6 +219,17 @@ export default function PublicPerformanceEval() {
       return;
     }
 
+    // 自评：二次确认后再提交
+    if (role === "self") {
+      setSubmitConfirmOpen(true);
+      return;
+    }
+    confirmSubmit();
+  }
+
+  async function confirmSubmit() {
+    if (!form || !meta?.canSubmit) return;
+    setSubmitConfirmOpen(false);
     try {
       setSubmitting(true);
       if (!readonly) {
@@ -296,7 +339,7 @@ export default function PublicPerformanceEval() {
                   size={56}
                   loading={liveManagerTotal == null}
                 />
-                <span className="text-[10px] font-medium text-[#707EAE] leading-none">主管</span>
+                <span className="text-[10px] font-medium text-[#707EAE] leading-none">Manager</span>
               </div>
             </div>
             <div className="flex flex-col items-stretch gap-1.5">
@@ -317,47 +360,67 @@ export default function PublicPerformanceEval() {
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-6 space-y-5">
-        <Card className="p-5 space-y-4">
+        <Card id="perf-info-section" className="p-5 space-y-4">
           <h2 className="text-sm font-bold text-navy-700">
             一、被评价人信息 / Employee Information
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Field label="姓名 / Name" value={form.employeeName} readOnly />
+            <Field
+              label="姓名 / Name"
+              value={form.employeeName}
+              required={role === "self" && meta?.canSubmit}
+              readOnly={readonly || role !== "self"}
+              onChange={(v) => patchForm((p) => ({ ...p, employeeName: v }))}
+            />
             <Field
               label="岗位 / Position"
               value={form.position || ""}
+              required={role === "self" && meta?.canSubmit}
               readOnly={readonly || role !== "self"}
               onChange={(v) => patchForm((p) => ({ ...p, position: v }))}
             />
             <Field
               label="工号 / ID"
               value={form.employeeNo || ""}
+              required={role === "self" && meta?.canSubmit}
               readOnly={readonly || role !== "self"}
               onChange={(v) => patchForm((p) => ({ ...p, employeeNo: v }))}
             />
             <Field
               label="直属主管 / Line Manager"
               value={form.lineManager || ""}
+              required={role === "manager" && meta?.canSubmit}
               readOnly={readonly}
               onChange={(v) => patchForm((p) => ({ ...p, lineManager: v }))}
             />
             <Field
               label="部门 / Department"
               value={form.department || ""}
+              required={role === "self" && meta?.canSubmit}
               readOnly={readonly || role !== "self"}
               onChange={(v) => patchForm((p) => ({ ...p, department: v }))}
             />
             <Field
               label="职级 / Level"
               value={form.level || ""}
+              required={role === "self" && meta?.canSubmit}
               readOnly={readonly || role !== "self"}
               onChange={(v) => patchForm((p) => ({ ...p, level: v }))}
             />
-            <Field label="评价周期 / Review Period" value={form.reviewPeriod} readOnly />
+            <Field
+              label="评价周期 / Review Period"
+              value={form.reviewPeriod}
+              required={role === "self" && meta?.canSubmit}
+              readOnly={readonly || role !== "self"}
+              onChange={(v) => patchForm((p) => ({ ...p, reviewPeriod: v }))}
+            />
             <Field
               label="评价日期 / Date"
               value={form.evalDate ? String(form.evalDate).slice(0, 10) : ""}
-              readOnly
+              required={role === "self" && meta?.canSubmit}
+              readOnly={readonly || role !== "self"}
+              type="date"
+              onChange={(v) => patchForm((p) => ({ ...p, evalDate: v || null }))}
             />
           </div>
         </Card>
@@ -455,6 +518,7 @@ export default function PublicPerformanceEval() {
             value={form.achievements || ""}
             disabled={readonly || role !== "self"}
             required={role === "self"}
+            maxLength={500}
             onChange={(v) => patchForm((p) => ({ ...p, achievements: v }))}
           />
           <TextArea
@@ -462,6 +526,7 @@ export default function PublicPerformanceEval() {
             value={form.developmentPlan || ""}
             disabled={readonly || role !== "self"}
             required={role === "self"}
+            maxLength={500}
             onChange={(v) => patchForm((p) => ({ ...p, developmentPlan: v }))}
           />
           <TextArea
@@ -469,6 +534,7 @@ export default function PublicPerformanceEval() {
             value={form.nextGoals || ""}
             disabled={readonly || role !== "self"}
             required={role === "self"}
+            maxLength={500}
             onChange={(v) => patchForm((p) => ({ ...p, nextGoals: v }))}
           />
         </Card>
@@ -573,7 +639,7 @@ export default function PublicPerformanceEval() {
               </Button>
             )}
             {meta?.canSubmit && (
-              <Button size="sm" disabled={submitting} onClick={onSubmit}>
+              <Button size="sm" disabled={submitting} onClick={requestSubmit}>
                 {submitting ? "提交中…" : role === "manager" ? "提交主管评价" : "提交自评"}
               </Button>
             )}
@@ -583,6 +649,35 @@ export default function PublicPerformanceEval() {
           </div>
         </div>
       </footer>
+
+      <Modal open={submitConfirmOpen} onClose={() => !submitting && setSubmitConfirmOpen(false)} maxWidth="max-w-md">
+        <div className="p-6 space-y-4">
+          <div className="flex items-start gap-3">
+            <div className="shrink-0 w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center">
+              <I name="alert-triangle" size={20} className="text-amber-600" />
+            </div>
+            <div className="min-w-0 space-y-1">
+              <h3 className="text-base font-bold text-navy-700">确认提交自评？</h3>
+              <p className="text-sm text-[#707EAE] leading-relaxed">
+                提交后自评内容将锁定，不可再修改。请确认评分、成果说明与签字均已核对无误。
+              </p>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={submitting}
+              onClick={() => setSubmitConfirmOpen(false)}
+            >
+              再检查一下
+            </Button>
+            <Button size="sm" disabled={submitting} onClick={confirmSubmit}>
+              {submitting ? "提交中…" : "确认提交"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {rubricOpen && (
         <div className="fixed inset-0 z-50 flex justify-end bg-black/30" onClick={() => setRubricOpen(false)}>
@@ -647,21 +742,26 @@ function buildPatch(form, role) {
           achievements: form.achievements,
           developmentPlan: form.developmentPlan,
           nextGoals: form.nextGoals,
+          employeeName: form.employeeName,
           employeeNo: form.employeeNo,
           position: form.position,
           department: form.department,
           level: form.level,
+          reviewPeriod: form.reviewPeriod,
+          evalDate: form.evalDate ? String(form.evalDate).slice(0, 10) : null,
         }
       : {}),
   };
 }
 
-function Field({ label, value, onChange, readOnly }) {
+function Field({ label, value, onChange, readOnly, required = false, type = "text" }) {
   return (
     <label className="block text-[11px] font-bold text-[#707EAE]">
       {label}
+      {required && <RequiredMark />}
       <Input
         className="mt-1"
+        type={type}
         value={value || ""}
         disabled={readOnly}
         onChange={(e) => onChange?.(e.target.value)}
@@ -821,16 +921,30 @@ function ScoreSlider({ value, onChange, disabled }) {
   );
 }
 
-function TextArea({ label, value, onChange, disabled, required = false }) {
+function TextArea({ label, value, onChange, disabled, required = false, maxLength }) {
+  const len = String(value || "").length;
   return (
     <label className="block text-[11px] font-bold text-[#707EAE]">
-      {label}
-      {required && <RequiredMark />}
+      <span className="flex items-center justify-between gap-2">
+        <span>
+          {label}
+          {required && <RequiredMark />}
+        </span>
+        {maxLength != null && (
+          <span className={`font-medium tabular-nums ${len >= maxLength ? "text-rose-600" : "text-[#A0AEC0]"}`}>
+            {len}/{maxLength}
+          </span>
+        )}
+      </span>
       <textarea
         rows={3}
         disabled={disabled}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        maxLength={maxLength}
+        onChange={(e) => {
+          const v = e.target.value;
+          onChange(maxLength != null ? v.slice(0, maxLength) : v);
+        }}
         className="mt-1 w-full rounded-xl border border-[#E9ECEF] px-3 py-2 text-sm text-navy-700 outline-none focus:border-brand disabled:bg-gray-50"
       />
     </label>

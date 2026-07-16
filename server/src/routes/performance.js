@@ -731,7 +731,14 @@ export default async function performanceRoutes(app) {
 
     const data = {};
     for (const k of ["employeeName", "employeeNo", "position", "department", "level", "lineManager", "reviewPeriod", "achievements", "developmentPlan", "nextGoals"]) {
-      if (k in body) data[k] = body[k] == null ? null : String(body[k]);
+      if (k in body) {
+        if (body[k] == null) data[k] = null;
+        else if (["achievements", "developmentPlan", "nextGoals"].includes(k)) {
+          data[k] = String(body[k]).slice(0, 500);
+        } else {
+          data[k] = String(body[k]);
+        }
+      }
     }
     if (body.evalDate !== undefined) {
       const d = body.evalDate ? new Date(body.evalDate) : null;
@@ -1060,10 +1067,13 @@ export default async function performanceRoutes(app) {
           developmentPlan: { type: "string" },
           nextGoals: { type: "string" },
           lineManager: { type: "string" },
+          employeeName: { type: "string" },
           employeeNo: { type: "string" },
           position: { type: "string" },
           department: { type: "string" },
           level: { type: "string" },
+          reviewPeriod: { type: "string" },
+          evalDate: { type: ["string", "null"] },
           autosave: { type: "boolean" },
         },
       },
@@ -1107,10 +1117,14 @@ export default async function performanceRoutes(app) {
     // 目标·成果·发展：仅自评可写；主管只读
     if (role === "self") {
       for (const k of ["achievements", "developmentPlan", "nextGoals"]) {
-        if (k in body) data[k] = body[k] == null ? null : String(body[k]).slice(0, 4000);
+        if (k in body) data[k] = body[k] == null ? null : String(body[k]).slice(0, 500);
       }
-      for (const k of ["employeeNo", "position", "department", "level"]) {
+      for (const k of ["employeeName", "employeeNo", "position", "department", "level", "reviewPeriod"]) {
         if (k in body) data[k] = body[k] == null ? null : String(body[k]).slice(0, 120);
+      }
+      if ("evalDate" in body) {
+        const d = body.evalDate ? new Date(body.evalDate) : null;
+        data.evalDate = d && !Number.isNaN(d.getTime()) ? d : null;
       }
     }
     // 直属主管：自评 / 主管均可填写
@@ -1167,6 +1181,31 @@ export default async function performanceRoutes(app) {
           });
         }
       }
+      // 基本信息：提交时必填
+      const infoChecks = [
+        { key: "employeeName", label: "姓名" },
+        { key: "position", label: "岗位" },
+        { key: "employeeNo", label: "工号" },
+        { key: "department", label: "部门" },
+        { key: "level", label: "职级" },
+        { key: "reviewPeriod", label: "评价周期" },
+      ];
+      for (const f of infoChecks) {
+        if (!String(ev[f.key] || "").trim()) {
+          return reply.code(422).send({
+            error: "validation_failed",
+            message: `请填写「${f.label}」后再提交`,
+            field: f.key,
+          });
+        }
+      }
+      if (!ev.evalDate) {
+        return reply.code(422).send({
+          error: "validation_failed",
+          message: "请填写「评价日期」后再提交",
+          field: "evalDate",
+        });
+      }
       // 目标·成果·发展：提交时必填（草稿保存不校验）
       const summaryChecks = [
         { key: "achievements", label: "本期主要成果" },
@@ -1201,6 +1240,13 @@ export default async function performanceRoutes(app) {
         error: "signature_required",
         message: "请先完成主管签字后再提交",
         field: "signature",
+      });
+    }
+    if (!String(ev.lineManager || "").trim()) {
+      return reply.code(422).send({
+        error: "validation_failed",
+        message: "请填写「直属主管」后再提交",
+        field: "lineManager",
       });
     }
     for (const dim of SCORE_DIMENSIONS) {
