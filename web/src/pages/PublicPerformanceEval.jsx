@@ -8,6 +8,7 @@ import {
   Card, Button, Input, I, toast, LoadingBlock, ToastHost, LiquidLoader, RequiredMark,
 } from "../components/Primitives.jsx";
 import SignaturePad from "../components/SignaturePad.jsx";
+import { signerKeySelf, signerKeyManager } from "../lib/perfSignatureCache.js";
 import { gsap, D, E, ensureMotionPref } from "../anim/gsap.js";
 
 export default function PublicPerformanceEval() {
@@ -512,6 +513,7 @@ export default function PublicPerformanceEval() {
               sig={meta?.signatures?.self}
               canEdit={role === "self" && meta?.canSign}
               busy={signing}
+              signerKey={role === "self" ? signerKeySelf(form.employeeNo, form.employeeName) : null}
               onConfirm={uploadSignature}
             />
             <SignatureSlot
@@ -520,6 +522,7 @@ export default function PublicPerformanceEval() {
               sig={meta?.signatures?.manager}
               canEdit={role === "manager" && meta?.canSign}
               busy={signing}
+              signerKey={role === "manager" ? signerKeyManager(form.lineManager) : null}
               onConfirm={uploadSignature}
             />
             <div className="space-y-2">
@@ -589,7 +592,7 @@ export default function PublicPerformanceEval() {
   );
 }
 
-function SignatureSlot({ title, required, sig, canEdit, busy, onConfirm }) {
+function SignatureSlot({ title, required, sig, canEdit, busy, signerKey, onConfirm }) {
   return (
     <div className="space-y-2">
       <div className="text-xs font-bold text-navy-700">
@@ -602,6 +605,7 @@ function SignatureSlot({ title, required, sig, canEdit, busy, onConfirm }) {
         existingSignedAt={sig?.signedAt || null}
         disabled={!canEdit}
         busy={busy}
+        signerKey={canEdit ? signerKey : null}
         onConfirm={onConfirm}
       />
     </div>

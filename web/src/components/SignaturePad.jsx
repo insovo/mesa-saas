@@ -1,10 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, I } from "./Primitives.jsx";
+import { cachedSignatureToBlob, loadCachedSignature, saveCachedSignature } from "../lib/perfSignatureCache.js";
 
-/**
- * 手写 / 上传签名 → PNG Blob（透明底）
- * 上传路径：近白像素透明化 + 包围盒裁切，无云端 AI。
- */
+/** 手写签名 → PNG Blob（透明底）；可选 signerKey 本机缓存复用 */
 export default function SignaturePad({
   existingUrl,
   existingSignedAt,
@@ -13,8 +11,8 @@ export default function SignaturePad({
   onConfirm,
   onClearPreview,
   label = "签名",
+  signerKey = null,
 }) {
-  const [mode, setMode] = useState("draw"); // draw | upload
   const canvasRef = useRef(null);
   const drawing = useRef(false);
   const [hasInk, setHasInk] = useState(false);
@@ -22,12 +20,17 @@ export default function SignaturePad({
   const [localBusy, setLocalBusy] = useState(false);
   const previewUrl = cleared ? null : (existingUrl || null);
 
+  const cached = useMemo(() => {
+    if (!signerKey || previewUrl || disabled) return null;
+    return loadCachedSignature(signerKey);
+  }, [signerKey, previewUrl, disabled]);
+
   useEffect(() => {
     setCleared(false);
   }, [existingUrl]);
 
   useEffect(() => {
-    if (mode !== "draw" || previewUrl) return;
+    if (previewUrl) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -42,7 +45,7 @@ export default function SignaturePad({
     ctx.lineWidth = 2.2;
     ctx.clearRect(0, 0, rect.width, rect.height);
     setHasInk(false);
-  }, [mode, previewUrl]);
+  }, [previewUrl, cleared]);
 
   function pos(e) {
     const canvas = canvasRef.current;
@@ -84,30 +87,29 @@ export default function SignaturePad({
     setHasInk(false);
   }
 
-  async function confirmDraw() {
-    if (!hasInk || !canvasRef.current) return;
+  async function persistAndConfirm(blob) {
+    if (!blob) return;
     setLocalBusy(true);
     try {
-      const blob = await trimCanvasToPng(canvasRef.current);
-      if (!blob) return;
+      if (signerKey) await saveCachedSignature(signerKey, blob);
       await onConfirm?.(blob);
     } finally {
       setLocalBusy(false);
     }
   }
 
-  async function onFile(e) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file || disabled) return;
-    setLocalBusy(true);
-    try {
-      const blob = await processUploadToPng(file);
-      if (!blob) return;
-      await onConfirm?.(blob);
-    } finally {
-      setLocalBusy(false);
-    }
+  async function confirmDraw() {
+    if (!hasInk || !canvasRef.current) return;
+    const blob = await trimCanvasToPng(canvasRef.current);
+    if (!blob) return;
+    await persistAndConfirm(blob);
+  }
+
+  async function applyCached() {
+    if (!signerKey) return;
+    const blob = await cachedSignatureToBlob(signerKey);
+    if (!blob) return;
+    await persistAndConfirm(blob);
   }
 
   const isBusy = busy || localBusy;
@@ -161,53 +163,36 @@ export default function SignaturePad({
 
   return (
     <div className="space-y-2">
-      <div className="flex gap-1">
-        <button
-          type="button"
-          onClick={() => setMode("draw")}
-          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold ${
-            mode === "draw" ? "bg-brand/10 text-brand" : "text-[#707EAE] hover:bg-gray-50"
-          }`}
-        >
-          手写
-        </button>
-        <button
-          type="button"
-          onClick={() => setMode("upload")}
-          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold ${
-            mode === "upload" ? "bg-brand/10 text-brand" : "text-[#707EAE] hover:bg-gray-50"
-          }`}
-        >
-          上传图片
-        </button>
-      </div>
-
-      {mode === "draw" ? (
-        <>
-          <canvas
-            ref={canvasRef}
-            className="w-full h-28 rounded-xl border border-[#E9ECEF] bg-white touch-none cursor-crosshair"
-            onPointerDown={start}
-            onPointerMove={move}
-            onPointerUp={end}
-            onPointerLeave={end}
-          />
-          <div className="flex gap-2">
-            <Button size="sm" variant="ghost" disabled={isBusy || !hasInk} onClick={clearCanvas}>
-              清除
-            </Button>
-            <Button size="sm" disabled={isBusy || !hasInk} onClick={confirmDraw}>
-              {isBusy ? "保存中…" : "确认签名"}
-            </Button>
+      {cached && (
+        <div className="rounded-xl border border-brand/20 bg-brand/5 p-2 flex items-center gap-2">
+          <img src={cached.dataUrl} alt="上次签名" className="h-10 object-contain shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="text-[11px] font-bold text-navy-700">本机已保存签名</div>
+            <div className="text-[10px] text-[#A0AEC0] truncate">
+              {cached.savedAt ? `保存于 ${new Date(cached.savedAt).toLocaleDateString()}` : ""}
+            </div>
           </div>
-        </>
-      ) : (
-        <label className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[#E9ECEF] bg-white p-6 cursor-pointer hover:border-brand/40 min-h-[120px]">
-          <I name="upload" size={18} className="text-[#A0AEC0]" />
-          <span className="text-xs text-[#707EAE]">拍照或选择签名图（自动去白底裁切）</span>
-          <input type="file" accept="image/*" className="hidden" disabled={isBusy} onChange={onFile} />
-        </label>
+          <Button size="sm" disabled={isBusy} onClick={applyCached}>
+            一键使用
+          </Button>
+        </div>
       )}
+      <canvas
+        ref={canvasRef}
+        className="w-full h-28 rounded-xl border border-[#E9ECEF] bg-white touch-none cursor-crosshair"
+        onPointerDown={start}
+        onPointerMove={move}
+        onPointerUp={end}
+        onPointerLeave={end}
+      />
+      <div className="flex gap-2">
+        <Button size="sm" variant="ghost" disabled={isBusy || !hasInk} onClick={clearCanvas}>
+          清除
+        </Button>
+        <Button size="sm" disabled={isBusy || !hasInk} onClick={confirmDraw}>
+          {isBusy ? "保存中…" : "确认签名"}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -246,77 +231,4 @@ function trimCanvasToPng(sourceCanvas) {
   out.height = th;
   out.getContext("2d").drawImage(sourceCanvas, minX, minY, tw, th, 0, 0, tw, th);
   return new Promise((resolve) => out.toBlob((b) => resolve(b), "image/png"));
-}
-
-/** 上传图：近白透明 + 包围盒裁切 → PNG */
-function processUploadToPng(file) {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      try {
-        const maxSide = 1200;
-        let w = img.naturalWidth;
-        let h = img.naturalHeight;
-        const scale = Math.min(1, maxSide / Math.max(w, h));
-        w = Math.max(1, Math.round(w * scale));
-        h = Math.max(1, Math.round(h * scale));
-        const canvas = document.createElement("canvas");
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(img, 0, 0, w, h);
-        URL.revokeObjectURL(url);
-
-        const imageData = ctx.getImageData(0, 0, w, h);
-        const d = imageData.data;
-        const threshold = 240;
-        let minX = w;
-        let minY = h;
-        let maxX = -1;
-        let maxY = -1;
-        for (let i = 0; i < d.length; i += 4) {
-          const r = d[i];
-          const g = d[i + 1];
-          const b = d[i + 2];
-          const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-          if (lum >= threshold) {
-            d[i + 3] = 0;
-          } else {
-            const x = (i / 4) % w;
-            const y = Math.floor(i / 4 / w);
-            if (x < minX) minX = x;
-            if (y < minY) minY = y;
-            if (x > maxX) maxX = x;
-            if (y > maxY) maxY = y;
-          }
-        }
-        ctx.putImageData(imageData, 0, 0);
-        if (maxX < 0) {
-          resolve(null);
-          return;
-        }
-        const pad = 6;
-        minX = Math.max(0, minX - pad);
-        minY = Math.max(0, minY - pad);
-        maxX = Math.min(w - 1, maxX + pad);
-        maxY = Math.min(h - 1, maxY + pad);
-        const tw = maxX - minX + 1;
-        const th = maxY - minY + 1;
-        const out = document.createElement("canvas");
-        out.width = tw;
-        out.height = th;
-        out.getContext("2d").drawImage(canvas, minX, minY, tw, th, 0, 0, tw, th);
-        out.toBlob((blob) => resolve(blob), "image/png");
-      } catch (err) {
-        URL.revokeObjectURL(url);
-        reject(err);
-      }
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error("图片加载失败"));
-    };
-    img.src = url;
-  });
 }

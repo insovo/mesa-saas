@@ -1,13 +1,16 @@
 import { useEffect, useState } from "react";
 import { resources } from "../lib/api.js";
+import { getUser } from "../lib/auth.js";
+import { signerKeyHr } from "../lib/perfSignatureCache.js";
 import { Button, I, toast } from "./Primitives.jsx";
 import SignaturePad from "./SignaturePad.jsx";
 
-/** 管理员 HR 电子章：手写/上传 → 存当前账号，供导出嵌入 */
+/** 管理员 HR 电子章：手写 → 存当前账号，供导出嵌入 */
 export default function HrSignatureManager({ compact = false, onChange }) {
   const [info, setInfo] = useState(null);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
+  const hrSignerKey = signerKeyHr(getUser()?.id);
 
   async function load() {
     try {
@@ -97,6 +100,7 @@ export default function HrSignatureManager({ compact = false, onChange }) {
           label="HR 电子章"
           disabled={false}
           busy={busy}
+          signerKey={hrSignerKey}
           onConfirm={onConfirm}
         />
       ) : (
