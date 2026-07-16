@@ -37,6 +37,15 @@ import {
 import {
   candidateToEmployeeData,
 } from "../lib/candidateToEmployee.js";
+import {
+  generateAccessKey,
+  validateAccessKeyFormat,
+  hashAccessKey,
+  compareAccessKey,
+  readAccessKeyFromRequest,
+  ACCESS_KEY_MAX_FAILS,
+  ACCESS_KEY_LOCK_MS,
+} from "../lib/perfAccessKey.js";
 
 function monthBucket() {
   const d = new Date();
@@ -174,6 +183,8 @@ function adminShape(ev) {
     managerSignedAt: ev.managerSignedAt ?? null,
     hasSelfSignature: !!ev.selfSignatureKey,
     hasManagerSignature: !!ev.managerSignatureKey,
+    hasSelfAccessKey: !!ev.selfAccessKeyHash,
+    hasManagerAccessKey: !!ev.managerAccessKeyHash,
     createdAt: ev.createdAt,
     updatedAt: ev.updatedAt,
   };
@@ -323,6 +334,102 @@ function assertNotExpired(ev) {
       code: "performance_eval_revoked",
     });
   }
+}
+
+function accessKeyFields(role) {
+  if (role === "self") {
+    return {
+      hash: "selfAccessKeyHash",
+      fail: "selfAccessKeyFailCount",
+      lock: "selfAccessKeyLockedUntil",
+    };
+  }
+  return {
+    hash: "managerAccessKeyHash",
+    fail: "managerAccessKeyFailCount",
+    lock: "managerAccessKeyLockedUntil",
+  };
+}
+
+/**
+ * 公开端第二因子：过期/撤销 + 访问密钥。
+ * @returns {{ ok: true, ev } | { ok: false, status: number, body: object }}
+ */
+async function assertPublicAccess(prisma, ev, role, req) {
+  try {
+    assertNotExpired(ev);
+  } catch (e) {
+    return { ok: false, status: e.statusCode, body: { error: e.code, message: e.message } };
+  }
+
+  const f = accessKeyFields(role);
+  const hash = ev[f.hash];
+  if (!hash) {
+    return {
+      ok: false,
+      status: 403,
+      body: {
+        error: "access_key_not_configured",
+        message: "访问密钥尚未配置，请联系 HR 获取",
+      },
+    };
+  }
+
+  const lockedUntil = ev[f.lock];
+  if (lockedUntil && new Date(lockedUntil).getTime() > Date.now()) {
+    return {
+      ok: false,
+      status: 403,
+      body: { error: "access_key_locked", message: "尝试次数过多，请稍后再试" },
+    };
+  }
+
+  const plain = readAccessKeyFromRequest(req);
+  if (!plain) {
+    return {
+      ok: false,
+      status: 401,
+      body: { error: "access_key_required", message: "请输入访问密钥" },
+    };
+  }
+
+  const match = await compareAccessKey(plain, hash);
+  if (!match) {
+    const nextFail = (ev[f.fail] || 0) + 1;
+    const data = { [f.fail]: nextFail };
+    let locked = false;
+    if (nextFail >= ACCESS_KEY_MAX_FAILS) {
+      data[f.lock] = new Date(Date.now() + ACCESS_KEY_LOCK_MS);
+      data[f.fail] = 0;
+      locked = true;
+    }
+    const updated = await prisma.performanceEvaluation.update({
+      where: { id: ev.id },
+      data,
+    });
+    Object.assign(ev, updated);
+    if (locked) {
+      return {
+        ok: false,
+        status: 403,
+        body: { error: "access_key_locked", message: "尝试次数过多，请 10 分钟后再试" },
+      };
+    }
+    return {
+      ok: false,
+      status: 401,
+      body: { error: "access_key_invalid", message: "访问密钥错误" },
+    };
+  }
+
+  if ((ev[f.fail] || 0) > 0 || ev[f.lock]) {
+    const updated = await prisma.performanceEvaluation.update({
+      where: { id: ev.id },
+      data: { [f.fail]: 0, [f.lock]: null },
+    });
+    Object.assign(ev, updated);
+  }
+  return { ok: true, ev };
 }
 
 async function ensureEmployeeForHiredCandidate(prisma, candidate) {
@@ -572,12 +679,20 @@ export default async function performanceRoutes(app) {
     }
 
     const evalDate = req.body.evalDate ? new Date(req.body.evalDate) : new Date();
+    const selfAccessKey = generateAccessKey();
+    const managerAccessKey = generateAccessKey();
+    const [selfAccessKeyHash, managerAccessKeyHash] = await Promise.all([
+      hashAccessKey(selfAccessKey),
+      hashAccessKey(managerAccessKey),
+    ]);
     const created = await app.prisma.performanceEvaluation.create({
       data: {
         employeeId: emp.id,
         candidateId: emp.candidateId || null,
         selfToken: tokenGen(),
         managerToken: tokenGen(),
+        selfAccessKeyHash,
+        managerAccessKeyHash,
         status: "draft",
         expiresAt,
         employeeName: emp.name,
@@ -597,7 +712,11 @@ export default async function performanceRoutes(app) {
       },
     });
 
-    return reply.code(201).send({ evaluation: adminShape(created) });
+    return reply.code(201).send({
+      evaluation: adminShape(created),
+      selfAccessKey,
+      managerAccessKey,
+    });
   });
 
   admin.get("/performance/evaluations", {
@@ -782,6 +901,130 @@ export default async function performanceRoutes(app) {
     return { evaluation: adminShape(updated) };
   });
 
+  // 批量 / 单条：刷新随机密钥 或 统一设置
+  admin.post("/performance/evaluations/access-keys/bulk", {
+    schema: {
+      body: {
+        type: "object",
+        required: ["evaluationIds", "targets", "mode"],
+        properties: {
+          evaluationIds: { type: "array", items: { type: "string", format: "uuid" }, minItems: 1, maxItems: 100 },
+          targets: {
+            type: "array",
+            items: { type: "string", enum: ["self", "manager"] },
+            minItems: 1,
+            maxItems: 2,
+          },
+          mode: { type: "string", enum: ["generate", "set"] },
+          accessKey: { type: "string" },
+        },
+      },
+    },
+  }, async (req, reply) => {
+    const access = await assertPage(req, reply, "performance");
+    if (!access) return;
+    const { evaluationIds, targets, mode } = req.body;
+    const targetSet = [...new Set(targets)];
+    if (!targetSet.length) {
+      return reply.code(400).send({ error: "invalid_targets", message: "请选择自评或主管" });
+    }
+
+    let sharedPlain = null;
+    let sharedHash = null;
+    if (mode === "set") {
+      const v = validateAccessKeyFormat(req.body.accessKey);
+      if (!v.ok) return reply.code(400).send({ error: "invalid_access_key", message: v.message });
+      sharedPlain = v.key;
+      sharedHash = await hashAccessKey(sharedPlain);
+    }
+
+    const where = {
+      id: { in: evaluationIds },
+      deletedAt: null,
+      status: { not: "revoked" },
+    };
+    if (!access.isAdmin) {
+      const scopeWhere = await buildEmployeeScopeWhere(req);
+      where.employee = scopeWhere || undefined;
+    }
+
+    const rows = await app.prisma.performanceEvaluation.findMany({
+      where,
+      select: {
+        id: true,
+        employeeName: true,
+        selfAccessKeyHash: true,
+        managerAccessKeyHash: true,
+      },
+    });
+    if (rows.length === 0) {
+      return reply.code(404).send({ error: "not_found", message: "未找到可操作的评价" });
+    }
+
+    const items = [];
+    for (const row of rows) {
+      const data = {};
+      const item = { evaluationId: row.id, employeeName: row.employeeName };
+      for (const role of targetSet) {
+        const f = accessKeyFields(role);
+        const plain = mode === "set" ? sharedPlain : generateAccessKey();
+        const hash = mode === "set" ? sharedHash : await hashAccessKey(plain);
+        data[f.hash] = hash;
+        data[f.fail] = 0;
+        data[f.lock] = null;
+        if (role === "self") item.selfAccessKey = plain;
+        else item.managerAccessKey = plain;
+      }
+      await app.prisma.performanceEvaluation.update({ where: { id: row.id }, data });
+      items.push(item);
+    }
+
+    return { mode, targets: targetSet, count: items.length, items };
+  });
+
+  // 旧评价补齐缺失密钥（打开分享 Modal 时调用）；仅返回新生成的明文
+  admin.post("/performance/evaluations/:id/access-keys/ensure", async (req, reply) => {
+    const access = await assertPage(req, reply, "performance");
+    if (!access) return;
+    const ev = await app.prisma.performanceEvaluation.findFirst({
+      where: { id: req.params.id, deletedAt: null },
+    });
+    if (!ev) return reply.code(404).send({ error: "not_found" });
+    if (!access.isAdmin) {
+      const scopeWhere = await buildEmployeeScopeWhere(req);
+      const ok = await app.prisma.employee.findFirst({
+        where: { id: ev.employeeId, ...(scopeWhere || {}) },
+        select: { id: true },
+      });
+      if (!ok) return reply.code(404).send({ error: "not_found" });
+    }
+
+    const data = {};
+    const out = { evaluationId: ev.id, selfAccessKey: null, managerAccessKey: null, generated: [] };
+    if (!ev.selfAccessKeyHash) {
+      const plain = generateAccessKey();
+      data.selfAccessKeyHash = await hashAccessKey(plain);
+      data.selfAccessKeyFailCount = 0;
+      data.selfAccessKeyLockedUntil = null;
+      out.selfAccessKey = plain;
+      out.generated.push("self");
+    }
+    if (!ev.managerAccessKeyHash) {
+      const plain = generateAccessKey();
+      data.managerAccessKeyHash = await hashAccessKey(plain);
+      data.managerAccessKeyFailCount = 0;
+      data.managerAccessKeyLockedUntil = null;
+      out.managerAccessKey = plain;
+      out.generated.push("manager");
+    }
+
+    let updated = ev;
+    if (Object.keys(data).length) {
+      updated = await app.prisma.performanceEvaluation.update({ where: { id: ev.id }, data });
+    }
+    return { evaluation: adminShape(updated), ...out };
+  });
+
   admin.get("/performance/evaluations/:id/export.xlsx", {
     schema: {
       querystring: {
@@ -950,16 +1193,13 @@ export default async function performanceRoutes(app) {
   app.get("/public/performance-eval/:token", async (req, reply) => {
     const found = await findByPublicToken(app.prisma, req.params.token);
     if (!found) return reply.code(404).send({ error: "not_found" });
-    try {
-      assertNotExpired(found.ev);
-    } catch (e) {
-      return reply.code(e.statusCode).send({ error: e.code, message: e.message });
-    }
+    const gate = await assertPublicAccess(app.prisma, found.ev, found.role, req);
+    if (!gate.ok) return reply.code(gate.status).send(gate.body);
     await app.prisma.performanceEvaluation.update({
-      where: { id: found.ev.id },
+      where: { id: gate.ev.id },
       data: { viewCount: { increment: 1 }, lastViewedAt: new Date() },
     });
-    return publicShape(found.ev, found.role, app.r2);
+    return publicShape(gate.ev, found.role, app.r2);
   });
 
   app.post("/public/performance-eval/:token/signature/presigned-url", {
@@ -976,12 +1216,9 @@ export default async function performanceRoutes(app) {
   }, async (req, reply) => {
     const found = await findByPublicToken(app.prisma, req.params.token);
     if (!found) return reply.code(404).send({ error: "not_found" });
-    const { ev, role } = found;
-    try {
-      assertNotExpired(ev);
-    } catch (e) {
-      return reply.code(e.statusCode).send({ error: e.code, message: e.message });
-    }
+    const gate = await assertPublicAccess(app.prisma, found.ev, found.role, req);
+    if (!gate.ok) return reply.code(gate.status).send(gate.body);
+    const { ev, role } = { ev: gate.ev, role: found.role };
     if (ev.status === "submitted" || ev.status === "revoked") {
       return reply.code(409).send({ error: "locked", message: "评价已锁定，不可再签" });
     }
@@ -1017,12 +1254,9 @@ export default async function performanceRoutes(app) {
   }, async (req, reply) => {
     const found = await findByPublicToken(app.prisma, req.params.token);
     if (!found) return reply.code(404).send({ error: "not_found" });
-    const { ev, role } = found;
-    try {
-      assertNotExpired(ev);
-    } catch (e) {
-      return reply.code(e.statusCode).send({ error: e.code, message: e.message });
-    }
+    const gate = await assertPublicAccess(app.prisma, found.ev, found.role, req);
+    if (!gate.ok) return reply.code(gate.status).send(gate.body);
+    const { ev, role } = { ev: gate.ev, role: found.role };
     if (ev.status === "submitted" || ev.status === "revoked") {
       return reply.code(409).send({ error: "locked", message: "评价已锁定，不可再签" });
     }
@@ -1077,12 +1311,9 @@ export default async function performanceRoutes(app) {
   }, async (req, reply) => {
     const found = await findByPublicToken(app.prisma, req.params.token);
     if (!found) return reply.code(404).send({ error: "not_found" });
-    const { ev, role } = found;
-    try {
-      assertNotExpired(ev);
-    } catch (e) {
-      return reply.code(e.statusCode).send({ error: e.code, message: e.message });
-    }
+    const gate = await assertPublicAccess(app.prisma, found.ev, found.role, req);
+    if (!gate.ok) return reply.code(gate.status).send(gate.body);
+    const { ev, role } = { ev: gate.ev, role: found.role };
     if (ev.status === "submitted") {
       return reply.code(409).send({ error: "locked", message: "评价已提交，不可再改" });
     }
@@ -1146,12 +1377,9 @@ export default async function performanceRoutes(app) {
   app.post("/public/performance-eval/:token/submit", async (req, reply) => {
     const found = await findByPublicToken(app.prisma, req.params.token);
     if (!found) return reply.code(404).send({ error: "not_found" });
-    const { ev, role } = found;
-    try {
-      assertNotExpired(ev);
-    } catch (e) {
-      return reply.code(e.statusCode).send({ error: e.code, message: e.message });
-    }
+    const gate = await assertPublicAccess(app.prisma, found.ev, found.role, req);
+    if (!gate.ok) return reply.code(gate.status).send(gate.body);
+    const { ev, role } = { ev: gate.ev, role: found.role };
     if (ev.status === "submitted") {
       return reply.code(409).send({ error: "already_submitted" });
     }
@@ -1277,7 +1505,9 @@ export default async function performanceRoutes(app) {
   }, async (req, reply) => {
     const found = await findByPublicToken(app.prisma, req.params.token);
     if (!found) return reply.code(404).send({ error: "not_found" });
-    const { ev } = found;
+    const gate = await assertPublicAccess(app.prisma, found.ev, found.role, req);
+    if (!gate.ok) return reply.code(gate.status).send(gate.body);
+    const { ev } = gate;
     if (ev.status !== "submitted") {
       return reply.code(409).send({ error: "not_submitted", message: "评价提交后才能导出" });
     }

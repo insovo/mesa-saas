@@ -45,6 +45,15 @@
       "backend": 3031,
       "frontend": 5203,
       "since": "2026-07-16"
+    },
+    {
+      "slot": 4,
+      "name": "performance-access-key",
+      "path": ".worktrees/feature/performance-access-key",
+      "branch": "feature/performance-access-key",
+      "backend": 3041,
+      "frontend": 5213,
+      "since": "2026-07-16"
     }
   ]
 }

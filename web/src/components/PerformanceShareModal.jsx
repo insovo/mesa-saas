@@ -60,7 +60,10 @@ function LinkPanel({
   title,
   hint,
   token,
+  accessKey,
   onRegen,
+  onRefreshKey,
+  onSetKey,
   busy,
   invalid,
   invalidReason,
@@ -73,6 +76,8 @@ function LinkPanel({
   const used = editCount || 0;
   const remaining = unlimited ? null : Math.max(0, maxEdits - used);
   const exhausted = !unlimited && used >= maxEdits;
+  const [setKeyOpen, setSetKeyOpen] = useState(false);
+  const [setKeyValue, setSetKeyValue] = useState("");
 
   const EDIT_PRESETS = [
     { value: null, label: "不限" },
@@ -189,6 +194,71 @@ function LinkPanel({
               <I name={invalid ? "ban" : "copy"} size={14} />
               {invalid ? "链接已失效" : "复制链接"}
             </Button>
+
+            <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2.5 space-y-2">
+              <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-800">
+                <I name="key-round" size={13} />
+                访问密钥
+              </div>
+              {accessKey ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <code className="font-mono text-sm font-bold tracking-wider text-navy-700 bg-white px-2 py-1 rounded border border-amber-100">
+                    {accessKey}
+                  </code>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={invalid}
+                    onClick={() => {
+                      navigator.clipboard.writeText(accessKey).then(() => toast("密钥已复制", "success"));
+                    }}
+                  >
+                    <I name="copy" size={14} /> 复制密钥
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-[11px] text-amber-800/80">
+                  明文仅在生成/刷新时显示一次。可刷新随机密钥或手动设置。
+                </p>
+              )}
+              <p className="text-[10px] text-amber-700/70">请立即复制发给对方；关闭后无法再查看明文。</p>
+              <div className="flex flex-wrap gap-1.5">
+                <Button size="sm" variant="ghost" disabled={busy || invalid} onClick={onRefreshKey}>
+                  <I name="refresh-cw" size={13} /> 刷新随机密钥
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={busy || invalid}
+                  onClick={() => {
+                    setSetKeyValue("");
+                    setSetKeyOpen((v) => !v);
+                  }}
+                >
+                  <I name="pencil" size={13} /> 设置密钥
+                </Button>
+              </div>
+              {setKeyOpen && (
+                <div className="flex flex-wrap gap-2 items-center pt-1">
+                  <Input
+                    className="!h-9 text-xs font-mono flex-1 min-w-[140px]"
+                    placeholder="6–10 位，含大小写+数字"
+                    value={setKeyValue}
+                    onChange={(e) => setSetKeyValue(e.target.value)}
+                  />
+                  <Button
+                    size="sm"
+                    disabled={busy || !setKeyValue.trim()}
+                    onClick={async () => {
+                      await onSetKey?.(setKeyValue.trim());
+                      setSetKeyOpen(false);
+                    }}
+                  >
+                    确认
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       ) : (
@@ -208,21 +278,97 @@ export default function PerformanceShareModal({
   evaluation,
   onUpdated,
   onNewEvaluation,
+  initialAccessKeys,
 }) {
   const [duration, setDuration] = useState("30d");
   const [busy, setBusy] = useState(false);
   const [embedHr, setEmbedHr] = useState(false);
   const [hasHrStamp, setHasHrStamp] = useState(false);
+  const [selfAccessKey, setSelfAccessKey] = useState(null);
+  const [managerAccessKey, setManagerAccessKey] = useState(null);
   const ev = evaluation;
   const validity = getLinkValidity(ev);
 
   useEffect(() => {
     if (!open) return;
-    // 打开时尽量反映当前链接状态（过期也默认提示选 30 天续期）
     if (!ev?.expiresAt) setDuration("forever");
     else setDuration("30d");
     setEmbedHr(false);
-  }, [open, ev?.id, ev?.expiresAt]);
+    setSelfAccessKey(initialAccessKeys?.selfAccessKey || null);
+    setManagerAccessKey(initialAccessKeys?.managerAccessKey || null);
+  }, [open, ev?.id, ev?.expiresAt, initialAccessKeys?.selfAccessKey, initialAccessKeys?.managerAccessKey]);
+
+  // 旧评价补齐缺失密钥（每个评价打开 Modal 只跑一次）
+  const ensuredIdRef = useRef(null);
+  useEffect(() => {
+    if (!open || !ev?.id || validity.kind === "revoked") return undefined;
+    if (ensuredIdRef.current === ev.id) return undefined;
+    ensuredIdRef.current = ev.id;
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await resources.performance.ensureAccessKeys(ev.id);
+        if (cancelled) return;
+        if (data.evaluation) onUpdated?.(data.evaluation);
+        if (data.selfAccessKey) setSelfAccessKey(data.selfAccessKey);
+        if (data.managerAccessKey) setManagerAccessKey(data.managerAccessKey);
+        if (data.generated?.length) {
+          toast("已自动生成访问密钥，请立即复制", "success");
+        }
+      } catch {
+        ensuredIdRef.current = null;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line
+  }, [open, ev?.id]);
+
+  useEffect(() => {
+    if (!open) ensuredIdRef.current = null;
+  }, [open]);
+
+  async function refreshRoleKey(role) {
+    if (!ev?.id) return;
+    setBusy(true);
+    try {
+      const data = await resources.performance.bulkAccessKeys({
+        evaluationIds: [ev.id],
+        targets: [role],
+        mode: "generate",
+      });
+      const item = data.items?.[0];
+      if (role === "self" && item?.selfAccessKey) setSelfAccessKey(item.selfAccessKey);
+      if (role === "manager" && item?.managerAccessKey) setManagerAccessKey(item.managerAccessKey);
+      toast("已刷新随机密钥，请立即复制", "success");
+    } catch (err) {
+      toast(err.response?.data?.message || err.message, "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function setRoleKey(role, accessKey) {
+    if (!ev?.id) return;
+    setBusy(true);
+    try {
+      const data = await resources.performance.bulkAccessKeys({
+        evaluationIds: [ev.id],
+        targets: [role],
+        mode: "set",
+        accessKey,
+      });
+      const item = data.items?.[0];
+      if (role === "self" && item?.selfAccessKey) setSelfAccessKey(item.selfAccessKey);
+      if (role === "manager" && item?.managerAccessKey) setManagerAccessKey(item.managerAccessKey);
+      toast("访问密钥已更新", "success");
+    } catch (err) {
+      toast(err.response?.data?.message || err.message, "error");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function patch(body) {
     if (!ev?.id) return;
@@ -378,6 +524,7 @@ export default function PerformanceShareModal({
               title="自评链接 / Self-assessment"
               hint="发给被评价员工填写自评分数（E 列）"
               token={ev.selfToken}
+              accessKey={selfAccessKey}
               busy={busy}
               invalid={validity.invalid}
               invalidReason={
@@ -391,11 +538,14 @@ export default function PerformanceShareModal({
               editCount={ev.selfEditCount}
               onMaxEditsChange={(v) => patch({ selfMaxEdits: v })}
               onRegen={() => patch({ regenerateSelfToken: true })}
+              onRefreshKey={() => refreshRoleKey("self")}
+              onSetKey={(k) => setRoleKey("self", k)}
             />
             <LinkPanel
               title="主管评价链接 / Manager"
               hint="发给直属主管填写主管评分（F 列）；主管提交后整单锁定"
               token={ev.managerToken}
+              accessKey={managerAccessKey}
               busy={busy}
               invalid={validity.invalid}
               invalidReason={
@@ -409,6 +559,8 @@ export default function PerformanceShareModal({
               editCount={ev.managerEditCount}
               onMaxEditsChange={(v) => patch({ managerMaxEdits: v })}
               onRegen={() => patch({ regenerateManagerToken: true })}
+              onRefreshKey={() => refreshRoleKey("manager")}
+              onSetKey={(k) => setRoleKey("manager", k)}
             />
 
             <HrSignatureManager
@@ -713,7 +865,7 @@ export function CreatePerformanceEvalModal({ open, onClose, employee, onCreated 
     if (!reviewPeriod.trim()) return toast("请填写评价周期", "error");
     setBusy(true);
     try {
-      const { evaluation } = await resources.performance.createEvaluation({
+      const { evaluation, selfAccessKey, managerAccessKey } = await resources.performance.createEvaluation({
         employeeId: employee.id,
         reviewPeriod: reviewPeriod.trim(),
         lineManager: lineManager.trim() || undefined,
@@ -721,8 +873,8 @@ export function CreatePerformanceEvalModal({ open, onClose, employee, onCreated 
         selfMaxEdits,
         managerMaxEdits,
       });
-      toast("评价已创建", "success");
-      onCreated?.(evaluation);
+      toast("评价已创建，请复制访问密钥发给对方", "success");
+      onCreated?.(evaluation, { selfAccessKey, managerAccessKey });
       onClose();
     } catch (err) {
       toast(err.response?.data?.message || err.message, "error");
