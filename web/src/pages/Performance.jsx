@@ -4,6 +4,7 @@ import { resources } from "../lib/api.js";
 import { HIRE_STAGES } from "../lib/constants.js";
 import { Card, Button, I, Empty, LoadingBlock, Avatar, toast, StagePill, Modal, Input } from "../components/Primitives.jsx";
 import PerformanceShareModal, {
+  buildLinkKeyClipboardText,
   CreatePerformanceEvalModal,
   BulkCreatePerformanceEvalModal,
   CreatePerformancePersonModal,
@@ -921,6 +922,9 @@ export default function Performance() {
           const items = (data?.items || []).map((it) => ({
             evaluationId: it.evaluation?.id,
             employeeName: it.employeeName,
+            employeeNo: it.evaluation?.employeeNo,
+            selfToken: it.evaluation?.selfToken,
+            managerToken: it.evaluation?.managerToken,
             selfAccessKey: it.selfAccessKey,
             managerAccessKey: it.managerAccessKey,
           }));
@@ -989,9 +993,6 @@ export default function Performance() {
                   ? "新周期评价已创建"
                   : "统一密钥已设置"}
             </h3>
-            <p className="text-xs text-amber-700 mt-1">
-              明文仅此展示一次，请立即复制发给对方；关闭后无法再查看。
-            </p>
           </div>
           <div className="max-h-[50vh] overflow-auto rounded-xl border border-[#E9ECEF]">
             <table className="w-full text-xs">
@@ -1011,10 +1012,16 @@ export default function Performance() {
                       {it.selfAccessKey && (
                         <button
                           type="button"
-                          className="ml-2 text-brand"
-                          onClick={() => navigator.clipboard.writeText(it.selfAccessKey).then(() => toast("已复制", "success"))}
+                          className="ml-2 whitespace-nowrap text-brand"
+                          onClick={() => navigator.clipboard.writeText(buildLinkKeyClipboardText({
+                            role: "self",
+                            url: `${window.location.origin}/performance-eval/${it.selfToken}`,
+                            accessKey: it.selfAccessKey,
+                            employeeName: it.employeeName,
+                            employeeNo: it.employeeNo,
+                          })).then(() => toast("链接与密钥已复制", "success"))}
                         >
-                          复制
+                          复制链接密钥
                         </button>
                       )}
                     </td>
@@ -1023,10 +1030,16 @@ export default function Performance() {
                       {it.managerAccessKey && (
                         <button
                           type="button"
-                          className="ml-2 text-brand"
-                          onClick={() => navigator.clipboard.writeText(it.managerAccessKey).then(() => toast("已复制", "success"))}
+                          className="ml-2 whitespace-nowrap text-brand"
+                          onClick={() => navigator.clipboard.writeText(buildLinkKeyClipboardText({
+                            role: "manager",
+                            url: `${window.location.origin}/performance-eval/${it.managerToken}`,
+                            accessKey: it.managerAccessKey,
+                            employeeName: it.employeeName,
+                            employeeNo: it.employeeNo,
+                          })).then(() => toast("链接与密钥已复制", "success"))}
                         >
-                          复制
+                          复制链接密钥
                         </button>
                       )}
                     </td>

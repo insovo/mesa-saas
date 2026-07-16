@@ -20,7 +20,7 @@ function publicUrl(token) {
  * @param {"self"|"manager"} role
  * employeeNo 缺失时写入字面量 "null"
  */
-function buildLinkKeyClipboardText({ role, url, accessKey, employeeName, employeeNo }) {
+export function buildLinkKeyClipboardText({ role, url, accessKey, employeeName, employeeNo }) {
   const name = employeeName || "";
   const no = employeeNo == null || employeeNo === "" ? "null" : String(employeeNo);
   const privacy =

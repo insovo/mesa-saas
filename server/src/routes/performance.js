@@ -1170,6 +1170,9 @@ export default async function performanceRoutes(app) {
       select: {
         id: true,
         employeeName: true,
+        employeeNo: true,
+        selfToken: true,
+        managerToken: true,
         selfAccessKeyHash: true,
         managerAccessKeyHash: true,
       },
@@ -1181,7 +1184,13 @@ export default async function performanceRoutes(app) {
     const items = [];
     for (const row of rows) {
       const data = {};
-      const item = { evaluationId: row.id, employeeName: row.employeeName };
+      const item = {
+        evaluationId: row.id,
+        employeeName: row.employeeName,
+        employeeNo: row.employeeNo,
+        selfToken: row.selfToken,
+        managerToken: row.managerToken,
+      };
       for (const role of targetSet) {
         const f = accessKeyFields(role);
         let plain;
