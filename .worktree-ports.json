@@ -63,6 +63,15 @@
       "backend": 3051,
       "frontend": 5223,
       "since": "2026-07-16"
+    },
+    {
+      "slot": 6,
+      "name": "perf-copy-btn-layout",
+      "path": ".worktrees/fix/perf-copy-btn-layout",
+      "branch": "fix/perf-copy-btn-layout",
+      "backend": 3061,
+      "frontend": 5233,
+      "since": "2026-07-16"
     }
   ]
 }
