@@ -158,6 +158,8 @@ export const resources = {
       api.post(`/performance/evaluations/${id}/access-keys/ensure`).then((r) => r.data),
     bulkAccessKeys: (body) =>
       api.post("/performance/evaluations/access-keys/bulk", body).then((r) => r.data),
+    exportAccessKeys: (body) =>
+      api.post("/performance/evaluations/access-keys/export.xlsx", body, { responseType: "blob" }),
     getHrSignature: () => api.get("/performance/hr-signature").then((r) => r.data),
     hrSignaturePresign: (body) => api.post("/performance/hr-signature/presigned-url", body).then((r) => r.data),
     saveHrSignature: (body) => api.put("/performance/hr-signature", body).then((r) => r.data),
