@@ -479,14 +479,25 @@ export default function PublicPerformanceEval() {
                       />
                     </td>
                     <td className="py-3">
-                      <textarea
-                        rows={2}
-                        disabled={readonly}
-                        value={s.evidence || ""}
-                        onChange={(e) => setScore(s.key, "evidence", e.target.value)}
-                        className="w-full rounded-xl border border-[#E9ECEF] px-2 py-1.5 text-xs outline-none focus:border-brand disabled:bg-gray-50"
-                        placeholder="事实与数据 / Facts & data"
-                      />
+                      {(() => {
+                        const evLen = String(s.evidence || "").length;
+                        return (
+                          <div>
+                            <textarea
+                              rows={2}
+                              disabled={readonly}
+                              maxLength={200}
+                              value={s.evidence || ""}
+                              onChange={(e) => setScore(s.key, "evidence", e.target.value.slice(0, 200))}
+                              className="w-full rounded-xl border border-[#E9ECEF] px-2 py-1.5 text-xs outline-none focus:border-brand disabled:bg-gray-50"
+                              placeholder="事实与数据 / Facts & data"
+                            />
+                            <div className={`mt-0.5 text-right text-[10px] tabular-nums ${evLen >= 200 ? "text-rose-600" : "text-[#A0AEC0]"}`}>
+                              {evLen}/200
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </td>
                   </tr>
                   );
@@ -623,16 +634,27 @@ export default function PublicPerformanceEval() {
               </p>
             </div>
           </div>
-          <div className="flex justify-end gap-2 pt-1">
+          <div className="flex justify-end gap-2 pt-1 flex-wrap">
             <Button
               size="sm"
               variant="ghost"
-              disabled={submitting}
+              disabled={submitting || saving}
               onClick={() => setSubmitConfirmOpen(false)}
             >
               再检查一下
             </Button>
-            <Button size="sm" disabled={submitting} onClick={confirmSubmit}>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={submitting || saving || readonly}
+              onClick={async () => {
+                await saveNow();
+                setSubmitConfirmOpen(false);
+              }}
+            >
+              {saving ? "保存中…" : "保存草稿"}
+            </Button>
+            <Button size="sm" disabled={submitting || saving} onClick={confirmSubmit}>
               {submitting ? "提交中…" : "确认提交"}
             </Button>
           </div>
