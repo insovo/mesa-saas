@@ -15,6 +15,16 @@ function publicUrl(token) {
   return `${window.location.origin}/performance-eval/${token}`;
 }
 
+/** 链接 + 密钥 + 中英保密提示，供一键复制发给对方 */
+function buildLinkKeyClipboardText(url, accessKey) {
+  return [
+    url,
+    `访问密钥 / Access Key: ${accessKey}`,
+    "涉及个人绩效，请妥善保管个人链接和密钥。",
+    "This link contains personal performance data. Please keep the URL and access key confidential.",
+  ].join("\n");
+}
+
 /** @returns {{ kind: 'revoked'|'expired'|'today'|'soon'|'ok'|'forever', label: string, invalid: boolean }} */
 function getLinkValidity(ev) {
   if (!ev) return { kind: "ok", label: "", invalid: false };
@@ -188,11 +198,17 @@ function LinkPanel({
               variant={invalid ? "ghost" : "primary"}
               disabled={invalid}
               onClick={() => {
-                navigator.clipboard.writeText(url).then(() => toast("链接已复制", "success"));
+                if (!accessKey) {
+                  toast("当前未展示密钥明文，请先刷新随机密钥或设置密钥后再复制", "error");
+                  return;
+                }
+                navigator.clipboard
+                  .writeText(buildLinkKeyClipboardText(url, accessKey))
+                  .then(() => toast("链接与密钥已复制", "success"));
               }}
             >
               <I name={invalid ? "ban" : "copy"} size={14} />
-              {invalid ? "链接已失效" : "复制链接"}
+              {invalid ? "链接已失效" : "复制链接密钥"}
             </Button>
 
             <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2.5 space-y-2">
@@ -201,21 +217,9 @@ function LinkPanel({
                 访问密钥
               </div>
               {accessKey ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  <code className="font-mono text-sm font-bold tracking-wider text-navy-700 bg-white px-2 py-1 rounded border border-amber-100">
-                    {accessKey}
-                  </code>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={invalid}
-                    onClick={() => {
-                      navigator.clipboard.writeText(accessKey).then(() => toast("密钥已复制", "success"));
-                    }}
-                  >
-                    <I name="copy" size={14} /> 复制密钥
-                  </Button>
-                </div>
+                <code className="inline-block font-mono text-sm font-bold tracking-wider text-navy-700 bg-white px-2 py-1 rounded border border-amber-100">
+                  {accessKey}
+                </code>
               ) : (
                 <p className="text-[11px] text-amber-800/80">
                   明文仅在生成/刷新时显示一次。可刷新随机密钥或手动设置。
