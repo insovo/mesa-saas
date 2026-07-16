@@ -1,6 +1,6 @@
-// 绩效评价 → xlsx 导出器（四语种模板）
-// 公式列 G11:G15 / D17 / G18 / G19 / G20 / C29 完全不动
-// 签字图嵌入 A34:C34 / D34:F34 / G34:H34；日期写入 B35 / E35 / H35
+// 绩效评价 → xlsx 导出器（中英双语 v2 模板）
+// 公式列 G11:G17 / D18 / G19 / G20 / G21 完全不动
+// 签字图嵌入 A30:C30 / D30:F30 / G30:H30；日期写入 A31 / D31 / G31
 
 import ExcelJS from "exceljs";
 import {
@@ -36,7 +36,7 @@ function formatDate(d) {
 
 /**
  * @param {object} evaluation Prisma PerformanceEvaluation
- * @param {string} lang zh|zh-en|zh-es|en
+ * @param {string} lang zh-en
  * @param {{ selfPng?: Buffer|null, managerPng?: Buffer|null, hrPng?: Buffer|null, hrSignedAt?: Date|string|null }} [images]
  */
 export async function renderPerformanceToXlsx(evaluation, lang = AUTHORITATIVE_LANG, images = {}) {
@@ -71,9 +71,7 @@ export async function renderPerformanceToXlsx(evaluation, lang = AUTHORITATIVE_L
   const scoresByKey = new Map((evaluation.scores || []).map((s) => [s.key, s]));
   for (const dim of SCORE_DIMENSIONS) {
     const item = scoresByKey.get(dim.key) || {};
-    if (item.weight != null && Number(item.weight) !== dim.weight) {
-      ws.getCell(dim.weightCell).value = Number(item.weight);
-    }
+    // D 列以金样为准，不覆盖权重
     if (item.selfScore != null && item.selfScore !== "") {
       const n = Number(item.selfScore);
       if (Number.isFinite(n)) ws.getCell(dim.selfScoreCell).value = n;
@@ -88,9 +86,8 @@ export async function renderPerformanceToXlsx(evaluation, lang = AUTHORITATIVE_L
   }
 
   const summaryValues = {
-    achievements: evaluation.achievements,
+    areasForImprovement: evaluation.areasForImprovement,
     developmentPlan: evaluation.developmentPlan,
-    nextGoals: evaluation.nextGoals,
   };
   for (const f of SUMMARY_FIELDS) {
     const v = summaryValues[f.key];
@@ -112,7 +109,7 @@ export async function renderPerformanceToXlsx(evaluation, lang = AUTHORITATIVE_L
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   })();
   const langTag = LANG_LABELS[lang] || lang;
-  const filename = `属地员工绩效评价表_${langTag}_${safeFilename(evaluation.employeeName)}_${safeFilename(evaluation.reviewPeriod || "周期")}_${dateStr}.xlsx`;
+  const filename = `属地人员月度绩效评价表_${langTag}_${safeFilename(evaluation.employeeName)}_${safeFilename(evaluation.reviewPeriod || "周期")}_${dateStr}.xlsx`;
 
   return { buffer: Buffer.from(buffer), filename };
 }
@@ -136,7 +133,6 @@ async function embedSignature(wb, ws, role, pngBuffer, signedAt) {
     const cell = ws.getCell(dateCell);
     const prev = cell.value;
     const label = typeof prev === "string" && prev.trim() ? prev.trim().replace(/\s*$/, "") : "日期 Date:";
-    // 合并格已有「日期 Date:」标签，追加签署日，避免盖掉文案
     cell.value = sanitizeForExcel(`${label} ${formatted}`);
   }
 }

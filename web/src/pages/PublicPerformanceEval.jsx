@@ -76,7 +76,7 @@ export default function PublicPerformanceEval() {
   const liveManagerTotal = useMemo(() => {
     if (!form?.scores) return null;
     const all = form.scores.every((s) => s.managerScore != null && s.managerScore !== "");
-    // 五项未齐时不回落服务端旧总分，避免拖动时「滞后感」
+    // 七项未齐时不回落服务端旧总分，避免拖动时「滞后感」
     if (!all) return null;
     let sum = 0;
     for (const s of form.scores) {
@@ -196,12 +196,11 @@ export default function PublicPerformanceEval() {
       return;
     }
 
-    // 自评：目标·成果·发展提交时必填（草稿不校验）
+    // 自评：不足及发展提交时必填（草稿不校验）
     if (role === "self") {
       const summaryChecks = [
-        { key: "achievements", label: "本期主要成果" },
+        { key: "areasForImprovement", label: "不足及待提升部分" },
         { key: "developmentPlan", label: "改进与发展计划" },
-        { key: "nextGoals", label: "下一周期目标" },
       ];
       for (const f of summaryChecks) {
         if (!String(form[f.key] || "").trim()) {
@@ -445,12 +444,23 @@ export default function PublicPerformanceEval() {
                 </tr>
               </thead>
               <tbody>
-                {(form.scores || []).map((s, idx) => (
+                {(form.scores || []).map((s, idx) => {
+                  const showDimTitle = !s.group || idx === 0 || form.scores[idx - 1]?.group !== s.group;
+                  return (
                   <tr key={s.key} className="border-b border-[#F4F7FE] align-top">
                     <td className="py-3 text-[#A0AEC0]">{idx + 1}</td>
                     <td className="py-3">
-                      <div className="font-bold text-navy-700">{s.name}</div>
-                      <div className="text-[10px] text-[#707EAE] mt-0.5">{s.nameEn}</div>
+                      {showDimTitle ? (
+                        <>
+                          <div className="font-bold text-navy-700">{s.name}</div>
+                          <div className="text-[10px] text-[#707EAE] mt-0.5">{s.nameEn}</div>
+                        </>
+                      ) : (
+                        <div className="text-[10px] text-[#A0AEC0]">↳ 同上 / same dimension</div>
+                      )}
+                      {s.subtitle && (
+                        <div className="text-[11px] font-semibold text-brand mt-1">{s.subtitle}</div>
+                      )}
                       <div className="text-[10px] text-[#A0AEC0] mt-1">{s.observation}</div>
                     </td>
                     <td className="py-3 font-mono">{s.weight}</td>
@@ -479,7 +489,8 @@ export default function PublicPerformanceEval() {
                       />
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -509,17 +520,17 @@ export default function PublicPerformanceEval() {
             </h2>
             <p className="text-[11px] text-[#A0AEC0] mt-1">
               {role === "self"
-                ? "由员工自评填写；提交时三项均必填，保存草稿不校验。"
+                ? "由员工自评填写；提交时两项均必填，保存草稿不校验。"
                 : "由员工自评填写；主管只读，不可修改。"}
             </p>
           </div>
           <TextArea
-            label="本期主要成果 / Key achievements"
-            value={form.achievements || ""}
+            label="不足及待提升部分 / Areas for Improvement"
+            value={form.areasForImprovement || ""}
             disabled={readonly || role !== "self"}
             required={role === "self"}
             maxLength={500}
-            onChange={(v) => patchForm((p) => ({ ...p, achievements: v }))}
+            onChange={(v) => patchForm((p) => ({ ...p, areasForImprovement: v }))}
           />
           <TextArea
             label="改进与发展计划 / Improvement & development"
@@ -529,63 +540,12 @@ export default function PublicPerformanceEval() {
             maxLength={500}
             onChange={(v) => patchForm((p) => ({ ...p, developmentPlan: v }))}
           />
-          <TextArea
-            label="下一周期目标 / Next-period goals"
-            value={form.nextGoals || ""}
-            disabled={readonly || role !== "self"}
-            required={role === "self"}
-            maxLength={500}
-            onChange={(v) => patchForm((p) => ({ ...p, nextGoals: v }))}
-          />
-        </Card>
-
-        <Card className="p-5 space-y-4">
-          <h2 className="text-sm font-bold text-navy-700">
-            四、结果应用 / Use of Results
-          </h2>
-          <p className="text-xs text-[#707EAE] whitespace-pre-line leading-relaxed">
-            {meta?.useOfResultsBlurb}
-          </p>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-left text-[#A0AEC0] border-b border-[#E9ECEF]">
-                  <th className="py-2 pr-2">等级</th>
-                  <th className="py-2 pr-2">分数</th>
-                  <th className="py-2">应用</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(meta?.ratingApplication || []).map((row) => (
-                  <tr key={row.rating} className="border-b border-[#F4F7FE]">
-                    <td className="py-2 pr-2 font-bold text-navy-700">{row.rating}</td>
-                    <td className="py-2 pr-2 text-[#707EAE]">{row.range}</td>
-                    <td className="py-2 text-[#707EAE]">{row.application}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="text-xs text-[#707EAE]">
-            是否触发 PIP / PIP triggered:{" "}
-            <b className={
-              (livePip === true || (livePip == null && form.pipTriggered === true))
-                ? "text-amber-700"
-                : "text-navy-700"
-            }>
-              {(livePip === true || (livePip == null && form.pipTriggered === true))
-                ? "是 Yes"
-                : livePip === false || form.pipTriggered === false
-                  ? "否 No"
-                  : "—（主管五项评分齐全后自动判定）"}
-            </b>
-          </div>
         </Card>
 
         <Card id="perf-signature-section" className="p-5 space-y-4">
           <div>
             <h2 className="text-sm font-bold text-navy-700">
-              五、确认与签字 / Acknowledgement & Signatures
+              四、确认与签字 / Acknowledgement & Signatures
               {meta?.canSubmit && <RequiredMark />}
             </h2>
             <p className="text-[11px] text-[#A0AEC0] mt-1 whitespace-pre-line leading-relaxed">
@@ -739,9 +699,8 @@ function buildPatch(form, role) {
     lineManager: form.lineManager,
     ...(role === "self"
       ? {
-          achievements: form.achievements,
+          areasForImprovement: form.areasForImprovement,
           developmentPlan: form.developmentPlan,
-          nextGoals: form.nextGoals,
           employeeName: form.employeeName,
           employeeNo: form.employeeNo,
           position: form.position,

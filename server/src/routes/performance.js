@@ -8,7 +8,6 @@ import {
   SCORE_DIMENSIONS,
   SCORING_RUBRIC,
   RATING_APPLICATION,
-  USE_OF_RESULTS_BLURB,
   ACKNOWLEDGEMENT_BLURB,
   INFO_FIELDS,
   SUMMARY_FIELDS,
@@ -153,9 +152,8 @@ function adminShape(ev) {
     reviewPeriod: ev.reviewPeriod,
     evalDate: ev.evalDate,
     scores: ev.scores,
-    achievements: ev.achievements,
+    areasForImprovement: ev.areasForImprovement,
     developmentPlan: ev.developmentPlan,
-    nextGoals: ev.nextGoals,
     selfTotal: ev.selfTotal,
     managerTotal: ev.managerTotal,
     rating: ev.rating,
@@ -211,6 +209,8 @@ async function publicShape(ev, role, r2 = null) {
       key: dim.key,
       name: dim.name,
       nameEn: dim.nameEn,
+      group: dim.group || null,
+      subtitle: dim.subtitle || null,
       weight: item.weight ?? dim.weight,
       observation: dim.observation,
       selfScore: item.selfScore ?? null,
@@ -248,9 +248,8 @@ async function publicShape(ev, role, r2 = null) {
       reviewPeriod: ev.reviewPeriod,
       evalDate: ev.evalDate,
       scores: scoresOut,
-      achievements: ev.achievements,
+      areasForImprovement: ev.areasForImprovement,
       developmentPlan: ev.developmentPlan,
-      nextGoals: ev.nextGoals,
       selfTotal: ev.selfTotal,
       managerTotal: ev.managerTotal,
       rating: ev.rating,
@@ -276,7 +275,6 @@ async function publicShape(ev, role, r2 = null) {
       submittedAt: ev.submittedAt,
       scoringRubric: SCORING_RUBRIC,
       ratingApplication: RATING_APPLICATION,
-      useOfResultsBlurb: USE_OF_RESULTS_BLURB,
       acknowledgementBlurb: ACKNOWLEDGEMENT_BLURB,
       infoFields: INFO_FIELDS,
       summaryFields: SUMMARY_FIELDS,
@@ -656,9 +654,8 @@ export default async function performanceRoutes(app) {
           reviewPeriod: { type: "string" },
           evalDate: { type: "string" },
           scores: { type: "array" },
-          achievements: { type: "string" },
+          areasForImprovement: { type: "string" },
           developmentPlan: { type: "string" },
-          nextGoals: { type: "string" },
           duration: { type: "string" },
           regenerateSelfToken: { type: "boolean" },
           regenerateManagerToken: { type: "boolean" },
@@ -730,10 +727,10 @@ export default async function performanceRoutes(app) {
     }
 
     const data = {};
-    for (const k of ["employeeName", "employeeNo", "position", "department", "level", "lineManager", "reviewPeriod", "achievements", "developmentPlan", "nextGoals"]) {
+    for (const k of ["employeeName", "employeeNo", "position", "department", "level", "lineManager", "reviewPeriod", "areasForImprovement", "developmentPlan"]) {
       if (k in body) {
         if (body[k] == null) data[k] = null;
-        else if (["achievements", "developmentPlan", "nextGoals"].includes(k)) {
+        else if (["areasForImprovement", "developmentPlan"].includes(k)) {
           data[k] = String(body[k]).slice(0, 500);
         } else {
           data[k] = String(body[k]);
@@ -1063,9 +1060,8 @@ export default async function performanceRoutes(app) {
         type: "object",
         properties: {
           scores: { type: "array" },
-          achievements: { type: "string" },
+          areasForImprovement: { type: "string" },
           developmentPlan: { type: "string" },
-          nextGoals: { type: "string" },
           lineManager: { type: "string" },
           employeeName: { type: "string" },
           employeeNo: { type: "string" },
@@ -1116,7 +1112,7 @@ export default async function performanceRoutes(app) {
     }
     // 目标·成果·发展：仅自评可写；主管只读
     if (role === "self") {
-      for (const k of ["achievements", "developmentPlan", "nextGoals"]) {
+      for (const k of ["areasForImprovement", "developmentPlan"]) {
         if (k in body) data[k] = body[k] == null ? null : String(body[k]).slice(0, 500);
       }
       for (const k of ["employeeName", "employeeNo", "position", "department", "level", "reviewPeriod"]) {
@@ -1208,9 +1204,8 @@ export default async function performanceRoutes(app) {
       }
       // 目标·成果·发展：提交时必填（草稿保存不校验）
       const summaryChecks = [
-        { key: "achievements", label: "本期主要成果" },
+        { key: "areasForImprovement", label: "不足及待提升部分" },
         { key: "developmentPlan", label: "改进与发展计划" },
-        { key: "nextGoals", label: "下一周期目标" },
       ];
       for (const f of summaryChecks) {
         if (!String(ev[f.key] || "").trim()) {

@@ -16,13 +16,6 @@ const STATUS_LABEL = {
   revoked: { label: "已撤销", tone: "bg-red-100 text-red-700" },
 };
 
-const EXPORT_LANGS = [
-  { value: "zh", label: "中文" },
-  { value: "zh-en", label: "中英双语" },
-  { value: "zh-es", label: "中西双语" },
-  { value: "en", label: "英文" },
-];
-
 function StatusChip({ status }) {
   const cfg = STATUS_LABEL[status] || { label: status || "—", tone: "bg-gray-100 text-gray-600" };
   return (
@@ -63,7 +56,6 @@ export default function Performance() {
   const [shareTarget, setShareTarget] = useState(null); // { employee, evaluation }
   const [viewTarget, setViewTarget] = useState(null); // { employee, evaluationId }
   const [selected, setSelected] = useState(() => new Set());
-  const [batchLang, setBatchLang] = useState("zh-en");
   const [embedHrBatch, setEmbedHrBatch] = useState(false);
   const [hasHrStamp, setHasHrStamp] = useState(false);
   const [batchBusy, setBatchBusy] = useState(false);
@@ -131,7 +123,7 @@ export default function Performance() {
         const emp = items.find((e) => e.latestEvaluation?.id === id);
         try {
           const res = await resources.performance.exportEvaluation(id, {
-            lang: batchLang,
+            lang: "zh-en",
             embedHrSignature: embedHrBatch ? "1" : undefined,
           });
           const blob = new Blob([res.data], {
@@ -139,7 +131,7 @@ export default function Performance() {
           });
           const a = document.createElement("a");
           a.href = URL.createObjectURL(blob);
-          a.download = `绩效评价_${emp?.name || "员工"}_${batchLang}.xlsx`;
+          a.download = `属地人员月度绩效评价表_${emp?.name || "员工"}.xlsx`;
           a.click();
           URL.revokeObjectURL(a.href);
           ok += 1;
@@ -186,24 +178,8 @@ export default function Performance() {
             批量导出
           </div>
           <p className="text-[11px] text-[#707EAE]">
-            勾选列表中「已完成」的评价，可连续下载多份 Excel
+            勾选列表中「已完成」的评价，可连续下载多份中英双语 Excel
           </p>
-          <div className="flex flex-wrap gap-2">
-            {EXPORT_LANGS.map((l) => (
-              <button
-                key={l.value}
-                type="button"
-                onClick={() => setBatchLang(l.value)}
-                className={`px-3 py-1 rounded-full text-xs font-bold transition ${
-                  batchLang === l.value
-                    ? "bg-brand-gradient text-white"
-                    : "bg-lightPrimary text-[#707EAE]"
-                }`}
-              >
-                {l.label}
-              </button>
-            ))}
-          </div>
           <label className={`flex items-center gap-2 text-xs ${hasHrStamp ? "text-navy-700" : "text-[#A0AEC0]"}`}>
             <input
               type="checkbox"
