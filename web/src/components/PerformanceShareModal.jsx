@@ -86,7 +86,7 @@ function LinkPanel({
   const used = editCount || 0;
   const remaining = unlimited ? null : Math.max(0, maxEdits - used);
   const exhausted = !unlimited && used >= maxEdits;
-  const [setKeyOpen, setSetKeyOpen] = useState(false);
+  const [setMode, setSetMode] = useState(false);
   const [setKeyValue, setSetKeyValue] = useState("");
 
   const EDIT_PRESETS = [
@@ -95,6 +95,18 @@ function LinkPanel({
     { value: 5, label: "5 次" },
     { value: 10, label: "10 次" },
   ];
+
+  const exitSetMode = () => {
+    setSetMode(false);
+    setSetKeyValue("");
+  };
+
+  const confirmSetKey = async () => {
+    const next = setKeyValue.trim();
+    if (!next) return;
+    await onSetKey?.(next);
+    exitSetMode();
+  };
 
   return (
     <div
@@ -195,22 +207,57 @@ function LinkPanel({
             </code>
 
             <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2.5 space-y-2">
-              <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-800">
-                <I name="key-round" size={13} />
-                访问密钥
+              <div className="flex items-center gap-1.5 h-9 text-[11px] font-bold text-amber-800">
+                <I name="key-round" size={13} className="shrink-0" />
+                <span className="shrink-0">访问密钥:</span>
+                {setMode ? (
+                  <>
+                    <Input
+                      containerClassName="flex-1 min-w-0"
+                      className="!h-9 text-xs font-mono w-full"
+                      placeholder="6–10 位，含大小写+数字"
+                      value={setKeyValue}
+                      autoFocus
+                      onChange={(e) => setSetKeyValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") {
+                          e.preventDefault();
+                          exitSetMode();
+                        } else if (e.key === "Enter") {
+                          e.preventDefault();
+                          confirmSetKey();
+                        }
+                      }}
+                    />
+                    <Button size="sm" disabled={busy || !setKeyValue.trim()} onClick={confirmSetKey}>
+                      确认
+                    </Button>
+                  </>
+                ) : accessKey ? (
+                  <code className="inline-flex items-center h-9 font-mono text-sm font-bold tracking-wider text-navy-700 bg-white px-2 rounded border border-amber-100">
+                    {accessKey}
+                  </code>
+                ) : (
+                  <span className="font-normal text-amber-800/80 truncate min-w-0">
+                    明文仅在生成/刷新时显示一次
+                  </span>
+                )}
               </div>
-              {accessKey ? (
-                <code className="inline-block font-mono text-sm font-bold tracking-wider text-navy-700 bg-white px-2 py-1 rounded border border-amber-100">
-                  {accessKey}
-                </code>
-              ) : (
-                <p className="text-[11px] text-amber-800/80">
-                  明文仅在生成/刷新时显示一次。可刷新随机密钥或手动设置。
-                </p>
-              )}
-              <p className="text-[10px] text-amber-700/70">请立即复制发给对方；关闭后无法再查看明文。</p>
+              <p className="text-[10px] text-amber-700/70 truncate">
+                {accessKey
+                  ? "请立即复制发给对方；关闭后无法再查看明文。"
+                  : "可刷新随机密钥或手动设置。关闭后无法再查看明文。"}
+              </p>
               <div className="flex flex-wrap items-center gap-1.5">
-                <Button size="sm" variant="ghost" disabled={busy || invalid} onClick={onRefreshKey}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={busy || invalid}
+                  onClick={() => {
+                    if (setMode) exitSetMode();
+                    onRefreshKey?.();
+                  }}
+                >
                   <I name="refresh-cw" size={13} /> 刷新随机密钥
                 </Button>
                 <Button
@@ -218,8 +265,12 @@ function LinkPanel({
                   variant="ghost"
                   disabled={busy || invalid}
                   onClick={() => {
+                    if (setMode) {
+                      exitSetMode();
+                      return;
+                    }
                     setSetKeyValue("");
-                    setSetKeyOpen((v) => !v);
+                    setSetMode(true);
                   }}
                 >
                   <I name="pencil" size={13} /> 设置密钥
@@ -243,26 +294,6 @@ function LinkPanel({
                   {invalid ? "链接已失效" : "复制链接密钥"}
                 </Button>
               </div>
-              {setKeyOpen && (
-                <div className="flex flex-wrap gap-2 items-center pt-1">
-                  <Input
-                    className="!h-9 text-xs font-mono flex-1 min-w-[140px]"
-                    placeholder="6–10 位，含大小写+数字"
-                    value={setKeyValue}
-                    onChange={(e) => setSetKeyValue(e.target.value)}
-                  />
-                  <Button
-                    size="sm"
-                    disabled={busy || !setKeyValue.trim()}
-                    onClick={async () => {
-                      await onSetKey?.(setKeyValue.trim());
-                      setSetKeyOpen(false);
-                    }}
-                  >
-                    确认
-                  </Button>
-                </div>
-              )}
             </div>
           </div>
         </div>

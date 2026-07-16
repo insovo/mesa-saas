@@ -72,6 +72,15 @@
       "backend": 3061,
       "frontend": 5233,
       "since": "2026-07-16"
+    },
+    {
+      "slot": 7,
+      "name": "perf-key-inline",
+      "path": ".worktrees/fix/perf-key-inline",
+      "branch": "fix/perf-key-inline",
+      "backend": 3071,
+      "frontend": 5243,
+      "since": "2026-07-16"
     }
   ]
 }
