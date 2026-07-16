@@ -242,9 +242,19 @@ export default function PublicPerformanceEval() {
               size={64}
               loading={displayTotal == null}
             />
-            <Button size="sm" variant="ghost" onClick={() => setRubricOpen(true)}>
-              <I name="book-open" size={14} /> 评分标准
-            </Button>
+            <div className="flex flex-col items-stretch gap-1.5">
+              <Button size="sm" variant="ghost" onClick={() => setRubricOpen(true)}>
+                <I name="book-open" size={14} /> 评分标准
+              </Button>
+              <div className="text-xs text-[#707EAE] text-center tabular-nums">
+                Rating:{" "}
+                <b className="text-navy-700">
+                  {ratingLetterForTotal(displayTotal)
+                    ?? (readonly ? ratingLetterFromText(form.rating) : null)
+                    ?? "—"}
+                </b>
+              </div>
+            </div>
           </div>
         </div>
       </header>
@@ -510,6 +520,18 @@ function ratingForTotal(total) {
   if (t >= 60) return "C 胜任/Competent";
   if (t >= 40) return "D 待改进/Needs improvement";
   return "E 不胜任/Unsatisfactory";
+}
+
+/** 顶部 sticky 只展示字母，与评分球总分实时联动 */
+function ratingLetterForTotal(total) {
+  const full = ratingForTotal(total);
+  return full ? full.charAt(0) : null;
+}
+
+function ratingLetterFromText(rating) {
+  if (!rating || typeof rating !== "string") return null;
+  const m = rating.trim().match(/^[ABCDE]/i);
+  return m ? m[0].toUpperCase() : null;
 }
 
 function pipTriggeredForTotal(total) {
