@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { QRCodeSVG } from "qrcode.react";
 import { resources } from "../lib/api.js";
 import { Modal, Button, Input, I, toast, RequiredMark } from "./Primitives.jsx";
-import { blobErrorMessage } from "./HrSignatureManager.jsx";
+import HrSignatureManager, { blobErrorMessage } from "./HrSignatureManager.jsx";
 
 const DURATIONS = [
   { value: "7d", label: "7 天" },
@@ -160,26 +160,15 @@ function LinkPanel({
           </span>
         </div>
       )}
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <div className={`text-sm font-bold ${invalid ? "text-rose-800" : "text-navy-700"}`}>{title}</div>
-          <div className="text-[11px] text-[#707EAE] mt-0.5">{hint}</div>
-          {invalid && invalidReason && (
-            <div className="text-[11px] text-rose-600 font-medium mt-1 flex items-center gap-1">
-              <I name="alert-triangle" size={12} />
-              {invalidReason}
-            </div>
-          )}
-        </div>
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={busy || !token || invalid}
-          onClick={onRegen}
-          title={invalid ? "请先恢复有效期后再重生成" : "重新生成链接（同时重置已用次数）"}
-        >
-          <I name="refresh-cw" size={14} /> 重生成
-        </Button>
+      <div>
+        <div className={`text-sm font-bold ${invalid ? "text-rose-800" : "text-navy-700"}`}>{title}</div>
+        <div className="text-[11px] text-[#707EAE] mt-0.5">{hint}</div>
+        {invalid && invalidReason && (
+          <div className="text-[11px] text-rose-600 font-medium mt-1 flex items-center gap-1">
+            <I name="alert-triangle" size={12} />
+            {invalidReason}
+          </div>
+        )}
       </div>
 
       {onMaxEditsChange && (
@@ -300,6 +289,16 @@ function LinkPanel({
                     </button>
                   </>
                 )}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="ml-auto shrink-0"
+                  disabled={busy || !token || invalid}
+                  onClick={onRegen}
+                  title={invalid ? "请先恢复有效期后再重生成" : "重新生成链接（同时重置已用次数）"}
+                >
+                  <I name="refresh-cw" size={14} /> 重新生成链接
+                </Button>
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
                 <Button
@@ -381,6 +380,7 @@ export default function PerformanceShareModal({
   const [busy, setBusy] = useState(false);
   const [embedHr, setEmbedHr] = useState(false);
   const [hasHrStamp, setHasHrStamp] = useState(false);
+  const [hrSealOpen, setHrSealOpen] = useState(false);
   const [selfAccessKey, setSelfAccessKey] = useState(null);
   const [managerAccessKey, setManagerAccessKey] = useState(null);
   const ev = evaluation;
@@ -582,6 +582,7 @@ export default function PerformanceShareModal({
   }
 
   return (
+    <>
     <Modal open={open} onClose={onClose} maxWidth="max-w-2xl">
       <div className="p-6 space-y-5">
         <div className="flex items-start justify-between gap-3">
@@ -707,21 +708,26 @@ export default function PerformanceShareModal({
 
             <div className="rounded-xl border border-[#E9ECEF] p-4 space-y-3">
               <div className="text-sm font-bold text-navy-700">导出 Excel（中英双语）</div>
-              <label className={`flex items-center gap-2 text-xs ${hasHrStamp ? "text-navy-700" : "text-[#A0AEC0]"}`}>
-                <input
-                  type="checkbox"
-                  checked={embedHr}
-                  disabled={!hasHrStamp || busy}
-                  onChange={(e) => setEmbedHr(e.target.checked)}
-                  className="rounded border-[#E9ECEF] text-brand focus:ring-brand"
-                />
-                嵌入 HR 签名
-                {!hasHrStamp && (
-                  <span className="text-[10px] text-[#A0AEC0]">
-                    （请先在列表页「HR电子章」上传）
-                  </span>
-                )}
-              </label>
+              <div className="flex items-center justify-between gap-2">
+                <label className={`flex items-center gap-2 text-xs min-w-0 ${hasHrStamp ? "text-navy-700" : "text-[#A0AEC0]"}`}>
+                  <input
+                    type="checkbox"
+                    checked={embedHr}
+                    disabled={!hasHrStamp || busy}
+                    onChange={(e) => setEmbedHr(e.target.checked)}
+                    className="rounded border-[#E9ECEF] text-brand focus:ring-brand"
+                  />
+                  嵌入 HR 签名
+                  {!hasHrStamp && (
+                    <span className="text-[10px] text-[#A0AEC0]">
+                      （请先点「HR电子章」上传）
+                    </span>
+                  )}
+                </label>
+                <Button size="sm" variant="ghost" className="shrink-0" onClick={() => setHrSealOpen(true)}>
+                  <I name="file-signature" size={14} /> HR电子章
+                </Button>
+              </div>
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" disabled={busy} onClick={onExport}>
                   <I name="download" size={14} /> 下载 Excel
@@ -731,29 +737,50 @@ export default function PerformanceShareModal({
                     <I name="ban" size={14} /> 撤销评价
                   </Button>
                 )}
+                {onNewEvaluation && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={busy}
+                    onClick={() => {
+                      onClose();
+                      onNewEvaluation();
+                    }}
+                  >
+                    <I name="clipboard-plus" size={14} /> 发起新周期评价
+                  </Button>
+                )}
               </div>
             </div>
-
-            {onNewEvaluation && (
-              <div className="flex justify-center pt-1 border-t border-[#F4F7FE]">
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => {
-                    onClose();
-                    onNewEvaluation();
-                  }}
-                  className="text-xs text-[#707EAE] hover:text-brand font-medium inline-flex items-center gap-1 py-2"
-                >
-                  <I name="clipboard-plus" size={13} />
-                  发起新周期评价
-                </button>
-              </div>
-            )}
           </>
         )}
       </div>
     </Modal>
+    <Modal open={hrSealOpen} onClose={() => setHrSealOpen(false)} maxWidth="max-w-md">
+      <div className="p-6 space-y-4">
+        <div className="flex items-start justify-between gap-3">
+          <h3 className="text-lg font-bold text-navy-700 flex items-center gap-2">
+            <I name="file-signature" size={20} className="text-brand" />
+            HR 电子章管理
+          </h3>
+          <button
+            type="button"
+            onClick={() => setHrSealOpen(false)}
+            className="text-[#A0AEC0] hover:text-navy-700 shrink-0"
+          >
+            <I name="x" size={20} />
+          </button>
+        </div>
+        <HrSignatureManager
+          key={hrSealOpen ? "hr-seal-open" : "hr-seal-closed"}
+          onChange={(d) => {
+            setHasHrStamp(!!d?.hasSignature);
+            if (!d?.hasSignature) setEmbedHr(false);
+          }}
+        />
+      </div>
+    </Modal>
+    </>
   );
 }
 
