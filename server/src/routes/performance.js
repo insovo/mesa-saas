@@ -40,7 +40,8 @@ import {
 import {
   generateAccessKey,
   validateAccessKeyFormat,
-  hashAccessKey,
+  sealAccessKey,
+  decryptAccessKey,
   compareAccessKey,
   readAccessKeyFromRequest,
   ACCESS_KEY_MAX_FAILS,
@@ -340,12 +341,14 @@ function accessKeyFields(role) {
   if (role === "self") {
     return {
       hash: "selfAccessKeyHash",
+      enc: "selfAccessKeyEnc",
       fail: "selfAccessKeyFailCount",
       lock: "selfAccessKeyLockedUntil",
     };
   }
   return {
     hash: "managerAccessKeyHash",
+    enc: "managerAccessKeyEnc",
     fail: "managerAccessKeyFailCount",
     lock: "managerAccessKeyLockedUntil",
   };
@@ -681,9 +684,9 @@ export default async function performanceRoutes(app) {
     const evalDate = req.body.evalDate ? new Date(req.body.evalDate) : new Date();
     const selfAccessKey = generateAccessKey();
     const managerAccessKey = generateAccessKey();
-    const [selfAccessKeyHash, managerAccessKeyHash] = await Promise.all([
-      hashAccessKey(selfAccessKey),
-      hashAccessKey(managerAccessKey),
+    const [selfSealed, managerSealed] = await Promise.all([
+      sealAccessKey(selfAccessKey),
+      sealAccessKey(managerAccessKey),
     ]);
     const created = await app.prisma.performanceEvaluation.create({
       data: {
@@ -691,8 +694,10 @@ export default async function performanceRoutes(app) {
         candidateId: emp.candidateId || null,
         selfToken: tokenGen(),
         managerToken: tokenGen(),
-        selfAccessKeyHash,
-        managerAccessKeyHash,
+        selfAccessKeyHash: selfSealed.hash,
+        managerAccessKeyHash: managerSealed.hash,
+        selfAccessKeyEnc: selfSealed.enc,
+        managerAccessKeyEnc: managerSealed.enc,
         status: "draft",
         expiresAt,
         employeeName: emp.name,
@@ -930,12 +935,12 @@ export default async function performanceRoutes(app) {
     }
 
     let sharedPlain = null;
-    let sharedHash = null;
+    let sharedSealed = null;
     if (mode === "set") {
       const v = validateAccessKeyFormat(req.body.accessKey);
       if (!v.ok) return reply.code(400).send({ error: "invalid_access_key", message: v.message });
       sharedPlain = v.key;
-      sharedHash = await hashAccessKey(sharedPlain);
+      sharedSealed = await sealAccessKey(sharedPlain);
     }
 
     const where = {
@@ -967,9 +972,17 @@ export default async function performanceRoutes(app) {
       const item = { evaluationId: row.id, employeeName: row.employeeName };
       for (const role of targetSet) {
         const f = accessKeyFields(role);
-        const plain = mode === "set" ? sharedPlain : generateAccessKey();
-        const hash = mode === "set" ? sharedHash : await hashAccessKey(plain);
-        data[f.hash] = hash;
+        let plain;
+        let sealed;
+        if (mode === "set") {
+          plain = sharedPlain;
+          sealed = sharedSealed;
+        } else {
+          plain = generateAccessKey();
+          sealed = await sealAccessKey(plain);
+        }
+        data[f.hash] = sealed.hash;
+        data[f.enc] = sealed.enc;
         data[f.fail] = 0;
         data[f.lock] = null;
         if (role === "self") item.selfAccessKey = plain;
@@ -982,7 +995,7 @@ export default async function performanceRoutes(app) {
     return { mode, targets: targetSet, count: items.length, items };
   });
 
-  // 旧评价补齐缺失密钥（打开分享 Modal 时调用）；仅返回新生成的明文
+  // 打开分享 Modal：缺密钥则生成 hash+enc；已有 enc 则解密回传明文（列表 API 不返回明文）
   admin.post("/performance/evaluations/:id/access-keys/ensure", async (req, reply) => {
     const access = await assertPage(req, reply, "performance");
     if (!access) return;
@@ -1001,22 +1014,31 @@ export default async function performanceRoutes(app) {
 
     const data = {};
     const out = { evaluationId: ev.id, selfAccessKey: null, managerAccessKey: null, generated: [] };
-    if (!ev.selfAccessKeyHash) {
-      const plain = generateAccessKey();
-      data.selfAccessKeyHash = await hashAccessKey(plain);
-      data.selfAccessKeyFailCount = 0;
-      data.selfAccessKeyLockedUntil = null;
-      out.selfAccessKey = plain;
-      out.generated.push("self");
+
+    async function ensureRole(role) {
+      const f = accessKeyFields(role);
+      const hash = ev[f.hash];
+      const enc = ev[f.enc];
+      if (!hash) {
+        const plain = generateAccessKey();
+        const sealed = await sealAccessKey(plain);
+        data[f.hash] = sealed.hash;
+        data[f.enc] = sealed.enc;
+        data[f.fail] = 0;
+        data[f.lock] = null;
+        if (role === "self") out.selfAccessKey = plain;
+        else out.managerAccessKey = plain;
+        out.generated.push(role);
+        return;
+      }
+      // hash 已有：优先解密 enc；旧行 enc=null 时明文无法恢复，前端提示刷新一次
+      const plain = decryptAccessKey(enc);
+      if (role === "self") out.selfAccessKey = plain;
+      else out.managerAccessKey = plain;
     }
-    if (!ev.managerAccessKeyHash) {
-      const plain = generateAccessKey();
-      data.managerAccessKeyHash = await hashAccessKey(plain);
-      data.managerAccessKeyFailCount = 0;
-      data.managerAccessKeyLockedUntil = null;
-      out.managerAccessKey = plain;
-      out.generated.push("manager");
-    }
+
+    await ensureRole("self");
+    await ensureRole("manager");
 
     let updated = ev;
     if (Object.keys(data).length) {
