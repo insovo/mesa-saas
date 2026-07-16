@@ -15,13 +15,38 @@ function publicUrl(token) {
   return `${window.location.origin}/performance-eval/${token}`;
 }
 
-/** 链接 + 密钥 + 中英保密提示，供一键复制发给对方 */
-function buildLinkKeyClipboardText(url, accessKey) {
+/**
+ * 链接 + 密钥 + 中英保密提示，供一键复制发给对方。
+ * @param {"self"|"manager"} role
+ * employeeNo 缺失时写入字面量 "null"
+ */
+function buildLinkKeyClipboardText({ role, url, accessKey, employeeName, employeeNo }) {
+  const name = employeeName || "";
+  const no = employeeNo == null || employeeNo === "" ? "null" : String(employeeNo);
+  const privacyZh = "涉及个人绩效，请妥善保管个人链接和密钥。";
+  const privacyEn =
+    "This link contains personal performance data. Please keep the URL and access key confidential.";
+  if (role === "manager") {
+    return [
+      "主管评价 / Manager Evaluation",
+      `姓名/Name: ${name}`,
+      `工号/Employee ID: ${no}`,
+      privacyZh,
+      privacyEn,
+      "自评/评价链接:",
+      url,
+      `访问密钥: ${accessKey}`,
+    ].join("\n");
+  }
   return [
+    "绩效自评 / Self-assessment",
+    `姓名/Name: ${name}`,
+    `工号/Employee ID: ${no}`,
+    privacyZh,
+    privacyEn,
+    "自评链接:",
     url,
-    `访问密钥 / Access Key: ${accessKey}`,
-    "涉及个人绩效，请妥善保管个人链接和密钥。",
-    "This link contains personal performance data. Please keep the URL and access key confidential.",
+    `访问密钥: ${accessKey}`,
   ].join("\n");
 }
 
@@ -69,8 +94,11 @@ function ValidityChip({ validity }) {
 function LinkPanel({
   title,
   hint,
+  role,
   token,
   accessKey,
+  employeeName,
+  employeeNo,
   onRegen,
   onRefreshKey,
   onSetKey,
@@ -311,7 +339,15 @@ function LinkPanel({
                       return;
                     }
                     navigator.clipboard
-                      .writeText(buildLinkKeyClipboardText(url, accessKey))
+                      .writeText(
+                        buildLinkKeyClipboardText({
+                          role,
+                          url,
+                          accessKey,
+                          employeeName,
+                          employeeNo,
+                        }),
+                      )
                       .then(() => toast("链接与密钥已复制", "success"));
                   }}
                 >
@@ -349,6 +385,8 @@ export default function PerformanceShareModal({
   const [managerAccessKey, setManagerAccessKey] = useState(null);
   const ev = evaluation;
   const validity = getLinkValidity(ev);
+  const employeeName = employee?.name || ev?.employeeName || "";
+  const employeeNo = ev?.employeeNo || employee?.externalId || null;
 
   // 有效期 UI 与密钥 state 拆开：改 expiresAt（恢复/延长）时不要把已持有的明文刷掉
   useEffect(() => {
@@ -621,8 +659,11 @@ export default function PerformanceShareModal({
             <LinkPanel
               title="自评链接 / Self-assessment"
               hint="发给被评价员工填写自评分数（E 列）"
+              role="self"
               token={ev.selfToken}
               accessKey={selfAccessKey}
+              employeeName={employeeName}
+              employeeNo={employeeNo}
               busy={busy}
               invalid={validity.invalid}
               invalidReason={
@@ -642,8 +683,11 @@ export default function PerformanceShareModal({
             <LinkPanel
               title="主管评价链接 / Manager"
               hint="发给直属主管填写主管评分（F 列）；主管提交后整单锁定"
+              role="manager"
               token={ev.managerToken}
               accessKey={managerAccessKey}
+              employeeName={employeeName}
+              employeeNo={employeeNo}
               busy={busy}
               invalid={validity.invalid}
               invalidReason={
