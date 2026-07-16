@@ -117,6 +117,33 @@
       "backend": 3111,
       "frontend": 5283,
       "since": "2026-07-16"
+    },
+    {
+      "slot": 12,
+      "name": "perf-table-filters",
+      "path": ".worktrees/feature/perf-table-filters",
+      "branch": "feature/perf-table-filters",
+      "backend": 3121,
+      "frontend": 5293,
+      "since": "2026-07-16"
+    },
+    {
+      "slot": 13,
+      "name": "hr-seal-btn-row",
+      "path": ".worktrees/fix/hr-seal-btn-row",
+      "branch": "fix/hr-seal-btn-row",
+      "backend": 3131,
+      "frontend": 5303,
+      "since": "2026-07-16"
+    },
+    {
+      "slot": 14,
+      "name": "perf-key-persist",
+      "path": ".worktrees/feature/perf-key-persist",
+      "branch": "feature/perf-key-persist",
+      "backend": 3141,
+      "frontend": 5313,
+      "since": "2026-07-16"
     }
   ]
 }

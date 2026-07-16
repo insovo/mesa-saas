@@ -379,9 +379,6 @@ export default function Performance() {
           <Button size="sm" variant="ghost" onClick={() => load()}>
             <I name="refresh-cw" size={14} /> 刷新
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => setHrSealOpen(true)}>
-            <I name="file-signature" size={14} /> HR电子章
-          </Button>
         </div>
         <Button size="sm" onClick={() => setPersonOpen(true)}>
           <I name="user-plus" size={14} /> 新建人员
@@ -397,19 +394,24 @@ export default function Performance() {
           <p className="text-[11px] text-[#707EAE]">
             勾选列表中「已完成」的评价，可连续下载多份中英双语 Excel
           </p>
-          <label className={`flex items-center gap-2 text-xs ${hasHrStamp ? "text-navy-700" : "text-[#A0AEC0]"}`}>
-            <input
-              type="checkbox"
-              checked={embedHrBatch}
-              disabled={!hasHrStamp || batchBusy}
-              onChange={(e) => setEmbedHrBatch(e.target.checked)}
-              className="rounded border-[#E9ECEF] text-brand focus:ring-brand"
-            />
-            嵌入 HR 签名
-            {!hasHrStamp && (
-              <span className="text-[10px]">（请先点「HR电子章」上传）</span>
-            )}
-          </label>
+          <div className="flex items-center justify-between gap-2">
+            <label className={`flex items-center gap-2 text-xs min-w-0 ${hasHrStamp ? "text-navy-700" : "text-[#A0AEC0]"}`}>
+              <input
+                type="checkbox"
+                checked={embedHrBatch}
+                disabled={!hasHrStamp || batchBusy}
+                onChange={(e) => setEmbedHrBatch(e.target.checked)}
+                className="rounded border-[#E9ECEF] text-brand focus:ring-brand"
+              />
+              嵌入 HR 签名
+              {!hasHrStamp && (
+                <span className="text-[10px]">（请先点「HR电子章」上传）</span>
+              )}
+            </label>
+            <Button size="sm" variant="ghost" className="shrink-0" onClick={() => setHrSealOpen(true)}>
+              <I name="file-signature" size={14} /> HR电子章
+            </Button>
+          </div>
           <Button
             size="sm"
             disabled={batchBusy || selected.size === 0}
