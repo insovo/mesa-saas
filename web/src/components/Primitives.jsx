@@ -512,12 +512,13 @@ export function ToastHost() {
     return () => toastListeners.delete(cb);
   }, []);
   const dismiss = (id) => setItems((prev) => prev.filter((x) => x.id !== id));
-  return (
-    <div className="fixed bottom-6 right-6 z-[100] flex flex-col gap-2 max-w-md">
+  // Portal 到 body + z-[200]：高于 Modal(z-[100]) / 下拉(z-[120])，避免分享等弹窗打开时右下角 toast 被遮挡
+  return createPortal(
+    <div className="fixed bottom-4 right-4 z-[200] flex flex-col gap-2 max-w-md pointer-events-none">
       {items.map((t) => (
         <div
           key={t.id}
-          className={`px-4 py-3 rounded-xl shadow-glow-lg text-sm font-medium flex items-start gap-3 animate-slide-in-right
+          className={`pointer-events-auto px-4 py-3 rounded-xl shadow-glow-lg text-sm font-medium flex items-start gap-3 animate-slide-in-right
             ${t.type === "error" ? "bg-gradient-to-br from-rose-500 to-red-600 text-white max-w-md" :
               t.type === "success" ? "bg-gradient-to-br from-emerald-500 to-green-600 text-white max-w-sm" :
               "bg-gradient-to-br from-navy-700 to-navy-800 text-white max-w-sm"}`}
@@ -535,6 +536,7 @@ export function ToastHost() {
           )}
         </div>
       ))}
-    </div>
+    </div>,
+    document.body,
   );
 }

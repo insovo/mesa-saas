@@ -197,7 +197,8 @@ function LinkPanel({
           </div>
           <div className="flex-1 w-full min-w-0 flex flex-col justify-between gap-2">
             <code
-              className={`block text-[11px] break-all rounded-lg px-3 py-2 ${
+              title={url}
+              className={`block text-[11px] truncate rounded-lg px-3 py-2 ${
                 invalid
                   ? "bg-rose-100/60 text-rose-800 line-through decoration-rose-400"
                   : "bg-lightPrimary text-navy-700"
