@@ -295,7 +295,11 @@ function LinkPanel({
                   className="ml-auto shrink-0"
                   disabled={busy || !token || invalid}
                   onClick={onRegen}
-                  title={invalid ? "请先恢复有效期后再重生成" : "重新生成链接（同时重置已用次数）"}
+                  title={
+                    invalid
+                      ? "请先恢复有效期后再重生成"
+                      : "重新生成链接（重置已用次数，不更换访问密钥）"
+                  }
                 >
                   <I name="refresh-cw" size={14} /> 重新生成链接
                 </Button>
@@ -520,6 +524,24 @@ export default function PerformanceShareModal({
     }
   }
 
+  async function regenerateRoleToken(role) {
+    if (!ev?.id) return;
+    setBusy(true);
+    try {
+      const flag = role === "self" ? "regenerateSelfToken" : "regenerateManagerToken";
+      const { evaluation: updated } = await resources.performance.updateEvaluation(ev.id, {
+        [flag]: true,
+      });
+      // 公网 token 与访问密钥是独立凭证；忽略响应中的任何密钥字段并保留当前明文 state。
+      onUpdated?.(updated);
+      toast("链接已重新生成，访问密钥保持不变", "success");
+    } catch (err) {
+      toast(err.response?.data?.message || err.message, "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function renewAndRegen() {
     if (!ev?.id) return;
     setBusy(true);
@@ -677,7 +699,7 @@ export default function PerformanceShareModal({
               maxEdits={ev.selfMaxEdits}
               editCount={ev.selfEditCount}
               onMaxEditsChange={(v) => patch({ selfMaxEdits: v })}
-              onRegen={() => patch({ regenerateSelfToken: true })}
+              onRegen={() => regenerateRoleToken("self")}
               onRefreshKey={() => refreshRoleKey("self")}
               onSetKey={(k) => setRoleKey("self", k)}
             />
@@ -701,7 +723,7 @@ export default function PerformanceShareModal({
               maxEdits={ev.managerMaxEdits}
               editCount={ev.managerEditCount}
               onMaxEditsChange={(v) => patch({ managerMaxEdits: v })}
-              onRegen={() => patch({ regenerateManagerToken: true })}
+              onRegen={() => regenerateRoleToken("manager")}
               onRefreshKey={() => refreshRoleKey("manager")}
               onSetKey={(k) => setRoleKey("manager", k)}
             />
