@@ -133,7 +133,11 @@ async function embedSignature(wb, ws, role, pngBuffer, signedAt) {
   const dateCell = SIGNATURE_DATE_CELLS[role];
   const formatted = formatDate(signedAt);
   if (dateCell && formatted) {
-    setCell(ws, dateCell, formatted);
+    const cell = ws.getCell(dateCell);
+    const prev = cell.value;
+    const label = typeof prev === "string" && prev.trim() ? prev.trim().replace(/\s*$/, "") : "日期 Date:";
+    // 合并格已有「日期 Date:」标签，追加签署日，避免盖掉文案
+    cell.value = sanitizeForExcel(`${label} ${formatted}`);
   }
 }
 
