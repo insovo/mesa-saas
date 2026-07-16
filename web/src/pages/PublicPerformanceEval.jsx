@@ -97,6 +97,7 @@ export default function PublicPerformanceEval() {
 
   // 与后端 ratingFor / pipTriggeredFor 镜像 — 跟主管加权总分实时联动
   const liveRating = useMemo(() => ratingForTotal(liveManagerTotal), [liveManagerTotal]);
+  const liveSelfRatingLetter = useMemo(() => ratingLetterForTotal(liveSelfTotal), [liveSelfTotal]);
   const livePip = useMemo(() => pipTriggeredForTotal(liveManagerTotal), [liveManagerTotal]);
 
   function patchForm(updater) {
@@ -284,7 +285,9 @@ export default function PublicPerformanceEval() {
                   size={56}
                   loading={liveSelfTotal == null}
                 />
-                <span className="text-[10px] font-medium text-[#707EAE] leading-none">自评</span>
+                <span className="text-[10px] font-bold text-navy-700 leading-none tabular-nums">
+                  {liveSelfRatingLetter ?? "—"}
+                </span>
               </div>
               <div className="flex flex-col items-center gap-0.5">
                 <LiquidLoader
@@ -418,7 +421,11 @@ export default function PublicPerformanceEval() {
             </table>
           </div>
           <div className="flex flex-wrap gap-4 text-xs text-[#707EAE]">
-            <span>自评参考总分 Self: <b className="text-navy-700">{liveSelfTotal ?? "—"}</b></span>
+            <span>
+              自评参考总分 Self: <b className="text-navy-700">{liveSelfTotal ?? "—"}</b>
+              {" · "}
+              Rating: <b className="text-navy-700">{liveSelfRatingLetter ?? "—"}</b>
+            </span>
             <span>主管加权总分 Manager: <b className="text-navy-700">{liveManagerTotal ?? "—"}</b></span>
             <span>
               等级 Rating:{" "}
