@@ -400,12 +400,18 @@ export default function PerformanceShareModal({
       try {
         const data = await resources.performance.ensureAccessKeys(ev.id);
         if (cancelled) return;
-        // 先写入明文再 onUpdated，避免父级重渲染抢在 setState 前把 UI 刷成无密钥
+        // ensure 会解密 enc 回传明文；旧 hash-only 行仍为 null，需用户刷新一次
         if (data.selfAccessKey) setSelfAccessKey(data.selfAccessKey);
         if (data.managerAccessKey) setManagerAccessKey(data.managerAccessKey);
         if (data.evaluation) onUpdated?.(data.evaluation);
         if (data.generated?.length) {
           toast("已自动生成访问密钥，请立即复制", "success");
+        } else if (
+          (data.evaluation?.hasSelfAccessKey && !data.selfAccessKey) ||
+          (data.evaluation?.hasManagerAccessKey && !data.managerAccessKey)
+        ) {
+          // 旧数据仅有 hash、无 enc：提示一次性刷新以写入可回显密文
+          toast("部分密钥为旧格式，请点「刷新随机密钥」一次以便下次可回显", "info");
         }
       } catch {
         ensuredIdRef.current = null;

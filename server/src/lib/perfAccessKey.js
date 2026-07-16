@@ -1,6 +1,7 @@
-// 绩效评价公开链接访问密钥 — 生成 / 校验 / bcrypt 存 hash
+// 绩效评价公开链接访问密钥 — 生成 / 校验 / bcrypt hash + AES-GCM enc（admin 回显）
 import { randomInt } from "node:crypto";
 import bcrypt from "bcryptjs";
+import { encrypt, decrypt } from "./secrets.js";
 
 export const ACCESS_KEY_HEADER = "x-perf-access-key";
 export const ACCESS_KEY_MIN_LEN = 6;
@@ -56,6 +57,29 @@ export async function hashAccessKey(plain) {
 export async function compareAccessKey(plain, hash) {
   if (!plain || !hash) return false;
   return bcrypt.compare(plain, hash);
+}
+
+/** 与 SystemSetting 相同：AES-256-GCM(HKDF(JWT_SECRET, mesa.settings.v1)) */
+export function encryptAccessKey(plain) {
+  if (!plain) return null;
+  return encrypt(plain);
+}
+
+export function decryptAccessKey(encoded) {
+  if (!encoded) return null;
+  try {
+    const plain = decrypt(encoded);
+    return plain || null;
+  } catch {
+    return null;
+  }
+}
+
+/** 写入 DB 用：bcrypt hash + AES enc 成对生成 */
+export async function sealAccessKey(plain) {
+  const hash = await hashAccessKey(plain);
+  const enc = encryptAccessKey(plain);
+  return { hash, enc };
 }
 
 export function readAccessKeyFromRequest(req) {
