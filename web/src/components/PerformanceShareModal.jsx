@@ -777,25 +777,17 @@ export function CreatePerformanceEvalModal({ open, onClose, employee, onCreated 
           </div>
 
           {periodUnit !== "custom" ? (
-            <div className="flex flex-wrap gap-2 mb-2 max-h-28 overflow-y-auto">
+            <select
+              value={reviewPeriod}
+              onChange={(e) => setReviewPeriod(e.target.value)}
+              className="mt-0 flex h-12 w-full items-center rounded-xl border border-gray-200 bg-white/40 px-3 text-sm text-navy-700 outline-none transition-all duration-200 focus:border-brand focus:bg-white focus:ring-4 focus:ring-brand/10"
+            >
               {presets.map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setReviewPeriod(p)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition ${
-                    reviewPeriod === p
-                      ? "border-brand bg-brand/5 text-brand"
-                      : "border-[#E9ECEF] text-[#707EAE] hover:border-brand/40 hover:text-navy-700"
-                  }`}
-                >
-                  {p}
-                  {p === currentDefault && (
-                    <span className="ml-1 text-[9px] font-normal text-[#A0AEC0]">当前</span>
-                  )}
-                </button>
+                <option key={p} value={p}>
+                  {p === currentDefault ? `${p}（当前）` : p}
+                </option>
               ))}
-            </div>
+            </select>
           ) : (
             <Input
               value={reviewPeriod}
