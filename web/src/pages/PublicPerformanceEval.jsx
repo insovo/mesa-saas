@@ -7,6 +7,7 @@ import { api } from "../lib/api.js";
 import {
   Card, Button, Input, I, toast, LoadingBlock, ToastHost, LiquidLoader, RequiredMark,
 } from "../components/Primitives.jsx";
+import { gsap, D, E, ensureMotionPref } from "../anim/gsap.js";
 
 export default function PublicPerformanceEval() {
   const { token } = useParams();
@@ -297,14 +298,14 @@ export default function PublicPerformanceEval() {
             </span>
           </h2>
           <div className="overflow-x-auto">
-            <table className="w-full text-xs min-w-[720px]">
+            <table className="w-full text-xs min-w-[880px]">
               <thead>
                 <tr className="text-left text-[#A0AEC0] border-b border-[#E9ECEF]">
                   <th className="py-2 pr-2 w-8">No.</th>
                   <th className="py-2 pr-2">评价维度 / Dimension</th>
                   <th className="py-2 pr-2 w-14">权重%</th>
-                  <th className="py-2 pr-2 w-24">自评 Self {role === "self" && <RequiredMark />}</th>
-                  <th className="py-2 pr-2 w-24">主管 Manager {role === "manager" && <RequiredMark />}</th>
+                  <th className="py-2 pr-3 w-[168px]">自评 Self {role === "self" && <RequiredMark />}</th>
+                  <th className="py-2 pr-3 w-[168px]">主管 Manager {role === "manager" && <RequiredMark />}</th>
                   <th className="py-2">证据与说明 / Evidence</th>
                 </tr>
               </thead>
@@ -318,15 +319,15 @@ export default function PublicPerformanceEval() {
                       <div className="text-[10px] text-[#A0AEC0] mt-1">{s.observation}</div>
                     </td>
                     <td className="py-3 font-mono">{s.weight}</td>
-                    <td className="py-3">
-                      <ScoreInput
+                    <td className="py-3 pr-3">
+                      <ScoreSlider
                         value={s.selfScore}
                         disabled={readonly || role !== "self"}
                         onChange={(v) => setScore(s.key, "selfScore", v)}
                       />
                     </td>
-                    <td className="py-3">
-                      <ScoreInput
+                    <td className="py-3 pr-3">
+                      <ScoreSlider
                         value={s.managerScore}
                         disabled={readonly || role !== "manager"}
                         onChange={(v) => setScore(s.key, "managerScore", v)}
@@ -486,18 +487,126 @@ function Field({ label, value, onChange, readOnly }) {
   );
 }
 
-function ScoreInput({ value, onChange, disabled }) {
+/**
+ * 1–100 拖动评分条（Claude/Codex 倍率条风格）
+ * 仅 UI；写入仍为整数分，Excel 导出字段不变。
+ */
+function ScoreSlider({ value, onChange, disabled }) {
+  const numRef = useRef(null);
+  const thumbGlowRef = useRef(null);
+  const [dragging, setDragging] = useState(false);
+  const n = value == null || value === "" ? null : Number(value);
+  const score = n != null && Number.isFinite(n) ? Math.min(100, Math.max(1, Math.round(n))) : null;
+  const pct = score == null ? 0 : score;
+
+  useEffect(() => {
+    ensureMotionPref();
+  }, []);
+
+  useEffect(() => {
+    if (score == null || !numRef.current) return;
+    gsap.fromTo(
+      numRef.current,
+      { scale: 1.22, y: -3 },
+      { scale: 1, y: 0, duration: D.fast, ease: E.out, overwrite: "auto" },
+    );
+    if (thumbGlowRef.current) {
+      gsap.fromTo(
+        thumbGlowRef.current,
+        { scale: 1.35, opacity: 0.55 },
+        { scale: 1, opacity: 0, duration: 0.35, ease: E.out, overwrite: "auto" },
+      );
+    }
+  }, [score]);
+
+  function handleChange(raw) {
+    const v = Math.min(100, Math.max(1, Math.round(Number(raw))));
+    if (!Number.isFinite(v)) return;
+    onChange(v);
+  }
+
   return (
-    <input
-      type="number"
-      min={1}
-      max={100}
-      step={1}
-      disabled={disabled}
-      value={value ?? ""}
-      onChange={(e) => onChange(e.target.value)}
-      className="w-20 rounded-xl border border-[#E9ECEF] px-2 py-1.5 text-sm outline-none focus:border-brand disabled:bg-gray-50"
-    />
+    <div
+      className={`w-[148px] select-none ${disabled ? "opacity-45 pointer-events-none" : ""}`}
+    >
+      <div className="flex items-end justify-between mb-1.5 min-h-[22px]">
+        <span
+          ref={numRef}
+          className={`text-lg font-bold tabular-nums leading-none tracking-tight ${
+            score == null ? "text-[#A0AEC0]" : "text-brand"
+          }`}
+        >
+          {score ?? "—"}
+        </span>
+        <span className="text-[10px] text-[#A0AEC0] pb-0.5">/100</span>
+      </div>
+
+      <div className="relative h-9 flex items-center">
+        {/* 轨道 */}
+        <div className="absolute inset-x-0 h-2.5 rounded-full bg-[#E9ECEF] overflow-hidden shadow-inner">
+          <div
+            className="h-full rounded-full bg-brand-gradient origin-left"
+            style={{
+              width: `${pct}%`,
+              transition: dragging ? "none" : "width 120ms ease-out",
+            }}
+          />
+        </div>
+
+        {/* 拖动时拇指光晕 */}
+        {score != null && (
+          <div
+            ref={thumbGlowRef}
+            aria-hidden
+            className="pointer-events-none absolute top-1/2 -translate-y-1/2 -translate-x-1/2 h-5 w-5 rounded-full bg-brand/30"
+            style={{ left: `${pct}%` }}
+          />
+        )}
+
+        {/* 拖动气泡 */}
+        {dragging && score != null && (
+          <div
+            className="pointer-events-none absolute -top-7 -translate-x-1/2 z-20"
+            style={{ left: `${pct}%` }}
+          >
+            <div className="px-2 py-0.5 rounded-md bg-navy-700 text-white text-[11px] font-bold tabular-nums shadow-card whitespace-nowrap">
+              {score}
+            </div>
+          </div>
+        )}
+
+        <input
+          type="range"
+          min={1}
+          max={100}
+          step={1}
+          disabled={disabled}
+          value={score ?? 1}
+          aria-valuemin={1}
+          aria-valuemax={100}
+          aria-valuenow={score ?? undefined}
+          aria-valuetext={score == null ? "未评分" : String(score)}
+          onPointerDown={() => setDragging(true)}
+          onPointerUp={() => setDragging(false)}
+          onPointerCancel={() => setDragging(false)}
+          onChange={(e) => handleChange(e.target.value)}
+          className={[
+            "relative z-10 w-full h-9 appearance-none bg-transparent cursor-pointer",
+            "[&::-webkit-slider-runnable-track]:h-2.5 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-transparent",
+            "[&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4",
+            "[&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white",
+            "[&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-brand",
+            "[&::-webkit-slider-thumb]:shadow-[0_2px_8px_rgba(66,42,251,0.35)]",
+            "[&::-webkit-slider-thumb]:mt-[-3px] [&::-webkit-slider-thumb]:transition-transform",
+            "active:[&::-webkit-slider-thumb]:scale-125",
+            "[&::-moz-range-track]:h-2.5 [&::-moz-range-track]:rounded-full [&::-moz-range-track]:bg-transparent",
+            "[&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full",
+            "[&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-brand",
+            "[&::-moz-range-thumb]:shadow-[0_2px_8px_rgba(66,42,251,0.35)]",
+          ].join(" ")}
+        />
+      </div>
+    </div>
   );
 }
 
