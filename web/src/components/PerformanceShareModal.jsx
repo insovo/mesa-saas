@@ -214,6 +214,7 @@ export default function PerformanceShareModal({
   employee,
   evaluation,
   onUpdated,
+  onNewEvaluation,
 }) {
   const [duration, setDuration] = useState("30d");
   const [busy, setBusy] = useState(false);
@@ -467,6 +468,23 @@ export default function PerformanceShareModal({
                 )}
               </div>
             </div>
+
+            {onNewEvaluation && (
+              <div className="flex justify-center pt-1 border-t border-[#F4F7FE]">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    onClose();
+                    onNewEvaluation();
+                  }}
+                  className="text-xs text-[#707EAE] hover:text-brand font-medium inline-flex items-center gap-1 py-2"
+                >
+                  <I name="clipboard-plus" size={13} />
+                  发起新周期评价
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>
