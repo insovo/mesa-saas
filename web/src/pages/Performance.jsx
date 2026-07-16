@@ -58,6 +58,7 @@ export default function Performance() {
   const [selected, setSelected] = useState(() => new Set());
   const [embedHrBatch, setEmbedHrBatch] = useState(false);
   const [hasHrStamp, setHasHrStamp] = useState(false);
+  const [hrSealOpen, setHrSealOpen] = useState(false);
   const [batchBusy, setBatchBusy] = useState(false);
   const [keyTargets, setKeyTargets] = useState(() => ["self", "manager"]);
   const [setKeyValue, setSetKeyValue] = useState("");
@@ -80,8 +81,19 @@ export default function Performance() {
     }
   }
 
+  async function refreshHrStamp() {
+    try {
+      const data = await resources.performance.getHrSignature();
+      setHasHrStamp(!!data?.hasSignature);
+      if (!data?.hasSignature) setEmbedHrBatch(false);
+    } catch {
+      /* 列表页可继续用；嵌入勾选保持禁用 */
+    }
+  }
+
   useEffect(() => {
     load();
+    refreshHrStamp();
     // eslint-disable-next-line
   }, []);
 
@@ -220,14 +232,16 @@ export default function Performance() {
           <Button size="sm" variant="ghost" onClick={() => load()}>
             <I name="refresh-cw" size={14} /> 刷新
           </Button>
+          <Button size="sm" variant="ghost" onClick={() => setHrSealOpen(true)}>
+            <I name="file-signature" size={14} /> HR电子章
+          </Button>
         </div>
         <Button size="sm" onClick={() => setPersonOpen(true)}>
           <I name="user-plus" size={14} /> 新建人员
         </Button>
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <HrSignatureManager onChange={(d) => setHasHrStamp(!!d?.hasSignature)} />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card className="p-4 space-y-3">
           <div className="text-sm font-bold text-navy-700 flex items-center gap-1.5">
             <I name="download" size={16} className="text-brand" />
@@ -245,7 +259,9 @@ export default function Performance() {
               className="rounded border-[#E9ECEF] text-brand focus:ring-brand"
             />
             嵌入 HR 签名
-            {!hasHrStamp && <span className="text-[10px]">（请先上传电子章）</span>}
+            {!hasHrStamp && (
+              <span className="text-[10px]">（请先点「HR电子章」上传）</span>
+            )}
           </label>
           <Button
             size="sm"
@@ -488,6 +504,30 @@ export default function Performance() {
           if (shareTarget?.employee) setEvalTarget(shareTarget.employee);
         }}
       />
+      <Modal open={hrSealOpen} onClose={() => setHrSealOpen(false)} maxWidth="max-w-md">
+        <div className="p-6 space-y-4">
+          <div className="flex items-start justify-between gap-3">
+            <h3 className="text-lg font-bold text-navy-700 flex items-center gap-2">
+              <I name="file-signature" size={20} className="text-brand" />
+              HR 电子章管理
+            </h3>
+            <button
+              type="button"
+              onClick={() => setHrSealOpen(false)}
+              className="text-[#A0AEC0] hover:text-navy-700 shrink-0"
+            >
+              <I name="x" size={20} />
+            </button>
+          </div>
+          <HrSignatureManager
+            key={hrSealOpen ? "hr-seal-open" : "hr-seal-closed"}
+            onChange={(d) => {
+              setHasHrStamp(!!d?.hasSignature);
+              if (!d?.hasSignature) setEmbedHrBatch(false);
+            }}
+          />
+        </div>
+      </Modal>
       <Modal open={keyResultOpen} onClose={() => setKeyResultOpen(false)} maxWidth="max-w-2xl">
         <div className="p-6 space-y-4">
           <div>
