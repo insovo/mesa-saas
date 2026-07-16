@@ -128,7 +128,7 @@ function mergeScores(existing, patch, role) {
       }
     }
     if ("evidence" in p && (role === "self" || role === "manager" || role === "admin")) {
-      cur.evidence = p.evidence == null ? "" : String(p.evidence).slice(0, 2000);
+      cur.evidence = p.evidence == null ? "" : String(p.evidence).slice(0, 200);
     }
   }
   return SCORE_DIMENSIONS.map((d) => byKey.get(d.key));
