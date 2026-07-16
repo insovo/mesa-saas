@@ -18,6 +18,39 @@ const STATUS_LABEL = {
   revoked: { label: "已撤销", tone: "bg-red-100 text-red-700" },
 };
 
+/**
+ * 「最近评价」表头状态筛选项 — 与行内 StatusChip /「尚未发起」文案对齐。
+ * multi-select 时 OR；与评价周期 AND。
+ */
+const EVAL_STATUS_FILTERS = [
+  {
+    key: "completed",
+    label: "已完成",
+    match: (ev) => ev?.status === "submitted",
+  },
+  {
+    key: "incomplete",
+    label: "未完成",
+    // 已发起但未提交：草稿 / 已自评（不含已撤销）
+    match: (ev) => !!ev && (ev.status === "draft" || ev.status === "self_done"),
+  },
+  {
+    key: "draft",
+    label: "草稿",
+    match: (ev) => ev?.status === "draft",
+  },
+  {
+    key: "started",
+    label: "已发起",
+    match: (ev) => !!ev,
+  },
+  {
+    key: "not_started",
+    label: "未发起",
+    match: (ev) => !ev,
+  },
+];
+
 function StatusChip({ status }) {
   const cfg = STATUS_LABEL[status] || { label: status || "—", tone: "bg-gray-100 text-gray-600" };
   return (
@@ -63,7 +96,7 @@ function HeaderFilter({ label, active, open, onToggle, children }) {
       </button>
       {open && (
         <div
-          className="absolute left-0 top-full z-30 mt-1 min-w-[160px] max-h-64 overflow-y-auto rounded-xl border border-[#E9ECEF] bg-white py-1 shadow-card"
+          className="absolute left-0 top-full z-30 mt-1 min-w-[180px] max-h-72 overflow-y-auto rounded-xl border border-[#E9ECEF] bg-white py-1 shadow-card"
           role="listbox"
         >
           {children}
@@ -142,7 +175,9 @@ export default function Performance() {
   const [filterJob, setFilterJob] = useState("");
   const [filterDept, setFilterDept] = useState("");
   const [filterStage, setFilterStage] = useState("");
-  const [openFilter, setOpenFilter] = useState(null); // "jobDept" | "stage" | null
+  const [filterEvalPeriods, setFilterEvalPeriods] = useState([]); // multi reviewPeriod
+  const [filterEvalStatuses, setFilterEvalStatuses] = useState([]); // multi EVAL_STATUS_FILTERS.key
+  const [openFilter, setOpenFilter] = useState(null); // "jobDept" | "stage" | "latestEval" | null
 
   async function load(search = q) {
     setLoading(true);
@@ -199,14 +234,49 @@ export default function Performance() {
     return [...HIRE_STAGES, ...extra];
   }, [items]);
 
+  const evalPeriodOptions = useMemo(() => {
+    const periods = new Set();
+    for (const e of items) {
+      const p = e.latestEvaluation?.reviewPeriod;
+      if (p) periods.add(p);
+    }
+    return Array.from(periods).sort((a, b) => b.localeCompare(a, "zh"));
+  }, [items]);
+
   const filtered = useMemo(() => {
     return items.filter((e) => {
       if (filterJob && e.appliedFor !== filterJob) return false;
       if (filterDept && e.dept !== filterDept) return false;
       if (filterStage && e.stage !== filterStage) return false;
+
+      const latest = e.latestEvaluation;
+      if (filterEvalPeriods.length > 0) {
+        if (!latest?.reviewPeriod || !filterEvalPeriods.includes(latest.reviewPeriod)) {
+          return false;
+        }
+      }
+      if (filterEvalStatuses.length > 0) {
+        const hit = filterEvalStatuses.some((key) => {
+          const rule = EVAL_STATUS_FILTERS.find((f) => f.key === key);
+          return rule ? rule.match(latest) : false;
+        });
+        if (!hit) return false;
+      }
       return true;
     });
-  }, [items, filterJob, filterDept, filterStage]);
+  }, [items, filterJob, filterDept, filterStage, filterEvalPeriods, filterEvalStatuses]);
+
+  function toggleEvalPeriod(period) {
+    setFilterEvalPeriods((prev) =>
+      prev.includes(period) ? prev.filter((p) => p !== period) : [...prev, period],
+    );
+  }
+
+  function toggleEvalStatus(key) {
+    setFilterEvalStatuses((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
+    );
+  }
 
   const keyableIds = useMemo(() => {
     return filtered
@@ -653,7 +723,49 @@ export default function Performance() {
                       ))}
                     </HeaderFilter>
                   </th>
-                  <th className="px-4 py-3 font-bold">最近评价</th>
+                  <th className="px-4 py-3">
+                    <HeaderFilter
+                      label="最近评价"
+                      active={filterEvalPeriods.length > 0 || filterEvalStatuses.length > 0}
+                      open={openFilter === "latestEval"}
+                      onToggle={(next) => setOpenFilter(next ? "latestEval" : null)}
+                    >
+                      <FilterOption
+                        selected={filterEvalPeriods.length === 0 && filterEvalStatuses.length === 0}
+                        onClick={() => {
+                          setFilterEvalPeriods([]);
+                          setFilterEvalStatuses([]);
+                          setOpenFilter(null);
+                        }}
+                      >
+                        全部
+                      </FilterOption>
+                      <FilterSectionLabel>评价周期</FilterSectionLabel>
+                      {evalPeriodOptions.length === 0 ? (
+                        <div className="px-3 py-1.5 text-xs text-[#A0AEC0]">暂无周期</div>
+                      ) : (
+                        evalPeriodOptions.map((period) => (
+                          <FilterOption
+                            key={`period:${period}`}
+                            selected={filterEvalPeriods.includes(period)}
+                            onClick={() => toggleEvalPeriod(period)}
+                          >
+                            {period}
+                          </FilterOption>
+                        ))
+                      )}
+                      <FilterSectionLabel>状态</FilterSectionLabel>
+                      {EVAL_STATUS_FILTERS.map((f) => (
+                        <FilterOption
+                          key={`eval-status:${f.key}`}
+                          selected={filterEvalStatuses.includes(f.key)}
+                          onClick={() => toggleEvalStatus(f.key)}
+                        >
+                          {f.label}
+                        </FilterOption>
+                      ))}
+                    </HeaderFilter>
+                  </th>
                   <th className="px-4 py-3 font-bold text-right">操作</th>
                 </tr>
               </thead>
@@ -664,7 +776,7 @@ export default function Performance() {
                       <Empty
                         icon="filter"
                         title="没有匹配筛选条件的人"
-                        desc="试试清除表头「岗位 / 部门」或「阶段」筛选，或调整搜索关键词。"
+                        desc="试试清除表头「岗位 / 部门」「阶段」或「最近评价」筛选，或调整搜索关键词。"
                       />
                     </td>
                   </tr>
