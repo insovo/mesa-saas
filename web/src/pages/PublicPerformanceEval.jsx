@@ -265,7 +265,7 @@ export default function PublicPerformanceEval() {
             <Field
               label="直属主管 / Line Manager"
               value={form.lineManager || ""}
-              readOnly={readonly || role !== "manager"}
+              readOnly={readonly}
               onChange={(v) => patchForm((p) => ({ ...p, lineManager: v }))}
             />
             <Field
@@ -457,6 +457,7 @@ function buildPatch(form, role) {
       managerScore: s.managerScore,
       evidence: s.evidence,
     })),
+    lineManager: form.lineManager,
     ...(role === "self"
       ? {
           achievements: form.achievements,
@@ -468,7 +469,6 @@ function buildPatch(form, role) {
           level: form.level,
         }
       : {}),
-    ...(role === "manager" ? { lineManager: form.lineManager } : {}),
   };
 }
 
