@@ -211,6 +211,32 @@ export const RATING_APPLICATION = [
   { rating: "E", range: "<40", application: "PIP+密切跟进 / PIP + close follow-up" },
 ];
 
+/** 对齐模板 A28 — 四、结果应用说明 */
+export const USE_OF_RESULTS_BLURB =
+  "C及以上：发展、晋升参考与变动薪酬（按适用集体协议）。  D/E：启动绩效改进计划（PIP，60–90天），提供支持并留痕；结果不自动导致解雇，合同终止须依西班牙法律单独程序。\n" +
+  "C or above: development, promotion input and variable pay (per the applicable collective agreement).  D/E: a Performance Improvement Plan (PIP, 60–90 days) is launched, with support and documentation; results do not imply automatic dismissal — any termination follows a separate procedure under Spanish law.";
+
+/** 对齐模板 A32 — 五、确认与签字免责声明 */
+export const ACKNOWLEDGEMENT_BLURB =
+  "员工有权阅读评价、提出书面意见并申诉（见制度文件）。签字表示已知悉，不代表必然同意评价内容。\n" +
+  "The employee has the right to read the evaluation, submit written comments and appeal (see the policy document). Signing acknowledges receipt, not necessarily agreement with the content.";
+
+/** 签字图在 Excel 中的锚点（0-based，行 33 = Excel 第 34 行） */
+export const SIGNATURE_IMAGE_ANCHORS = {
+  self: { tl: { col: 0, row: 33 }, br: { col: 3, row: 34 } }, // A34:C34
+  manager: { tl: { col: 3, row: 33 }, br: { col: 6, row: 34 } }, // D34:F34
+  hr: { tl: { col: 6, row: 33 }, br: { col: 8, row: 34 } }, // G34:H34
+};
+
+export const SIGNATURE_DATE_CELLS = {
+  self: "B35",
+  manager: "E35",
+  hr: "H35",
+};
+
+export const PERF_SIGNATURE_PREFIX = "performance-signatures/";
+export const PERF_SIGNATURE_MAX_BYTES = 1 * 1024 * 1024;
+
 /** 加权单项: ROUND(weight * score / 100, 1) — 镜像 Excel G11 公式 */
 export function weightedItem(weight, score) {
   if (score == null || score === "" || Number.isNaN(Number(score))) return null;

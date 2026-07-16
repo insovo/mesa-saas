@@ -7,6 +7,7 @@ import { api } from "../lib/api.js";
 import {
   Card, Button, Input, I, toast, LoadingBlock, ToastHost, LiquidLoader, RequiredMark,
 } from "../components/Primitives.jsx";
+import SignaturePad from "../components/SignaturePad.jsx";
 import { gsap, D, E, ensureMotionPref } from "../anim/gsap.js";
 
 export default function PublicPerformanceEval() {
@@ -17,6 +18,7 @@ export default function PublicPerformanceEval() {
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [signing, setSigning] = useState(false);
   const [rubricOpen, setRubricOpen] = useState(false);
   const dirtyRef = useRef(false);
   const formRef = useRef(null);
@@ -128,6 +130,33 @@ export default function PublicPerformanceEval() {
     }
   }
 
+  async function uploadSignature(blob) {
+    if (!blob || !meta?.canSign) return;
+    setSigning(true);
+    try {
+      const { data: presign } = await api.post(
+        `/public/performance-eval/${token}/signature/presigned-url`,
+        { contentType: "image/png", expectedSize: blob.size }
+      );
+      const putRes = await fetch(presign.uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": "image/png" },
+        body: blob,
+      });
+      if (!putRes.ok) throw new Error(`上传失败 (${putRes.status})`);
+      const { data } = await api.put(`/public/performance-eval/${token}/signature`, {
+        key: presign.key,
+      });
+      setForm(data.evaluation);
+      setMeta(data.meta);
+      toast("签名已保存", "success");
+    } catch (err) {
+      toast(err.response?.data?.message || err.message || "签名保存失败", "error");
+    } finally {
+      setSigning(false);
+    }
+  }
+
   async function onSubmit() {
     // 次数用尽时字段只读，但仍允许提交已填内容
     if (!form || (!meta?.canSubmit && readonly)) return;
@@ -149,6 +178,13 @@ export default function PublicPerformanceEval() {
       }
     }
 
+    const sigKey = role === "self" ? "self" : "manager";
+    if (!meta?.signatures?.[sigKey]?.signed) {
+      toast(role === "self" ? "请先完成员工签字后再提交" : "请先完成主管签字后再提交", "error");
+      document.getElementById("perf-signature-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+
     try {
       setSubmitting(true);
       if (!readonly) {
@@ -161,6 +197,10 @@ export default function PublicPerformanceEval() {
       dirtyRef.current = false;
       toast(role === "manager" ? "主管评价已提交，整单已锁定" : "自评已提交", "success");
     } catch (err) {
+      const code = err.response?.data?.error;
+      if (code === "signature_required") {
+        document.getElementById("perf-signature-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
       toast(err.response?.data?.message || err.message, "error");
     } finally {
       setSubmitting(false);
@@ -411,6 +451,86 @@ export default function PublicPerformanceEval() {
             onChange={(v) => patchForm((p) => ({ ...p, nextGoals: v }))}
           />
         </Card>
+
+        <Card className="p-5 space-y-4">
+          <h2 className="text-sm font-bold text-navy-700">
+            四、结果应用 / Use of Results
+          </h2>
+          <p className="text-xs text-[#707EAE] whitespace-pre-line leading-relaxed">
+            {meta?.useOfResultsBlurb}
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-[#A0AEC0] border-b border-[#E9ECEF]">
+                  <th className="py-2 pr-2">等级</th>
+                  <th className="py-2 pr-2">分数</th>
+                  <th className="py-2">应用</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(meta?.ratingApplication || []).map((row) => (
+                  <tr key={row.rating} className="border-b border-[#F4F7FE]">
+                    <td className="py-2 pr-2 font-bold text-navy-700">{row.rating}</td>
+                    <td className="py-2 pr-2 text-[#707EAE]">{row.range}</td>
+                    <td className="py-2 text-[#707EAE]">{row.application}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="text-xs text-[#707EAE]">
+            是否触发 PIP / PIP triggered:{" "}
+            <b className={
+              (livePip === true || (livePip == null && form.pipTriggered === true))
+                ? "text-amber-700"
+                : "text-navy-700"
+            }>
+              {(livePip === true || (livePip == null && form.pipTriggered === true))
+                ? "是 Yes"
+                : livePip === false || form.pipTriggered === false
+                  ? "否 No"
+                  : "—（主管五项评分齐全后自动判定）"}
+            </b>
+          </div>
+        </Card>
+
+        <Card id="perf-signature-section" className="p-5 space-y-4">
+          <div>
+            <h2 className="text-sm font-bold text-navy-700">
+              五、确认与签字 / Acknowledgement & Signatures
+              {meta?.canSubmit && <RequiredMark />}
+            </h2>
+            <p className="text-[11px] text-[#A0AEC0] mt-1 whitespace-pre-line leading-relaxed">
+              {meta?.acknowledgementBlurb}
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <SignatureSlot
+              title="员工签字 / Employee"
+              required={role === "self" && meta?.canSubmit}
+              sig={meta?.signatures?.self}
+              canEdit={role === "self" && meta?.canSign}
+              busy={signing}
+              onConfirm={uploadSignature}
+            />
+            <SignatureSlot
+              title="直属主管 / Line Manager"
+              required={role === "manager" && meta?.canSubmit}
+              sig={meta?.signatures?.manager}
+              canEdit={role === "manager" && meta?.canSign}
+              busy={signing}
+              onConfirm={uploadSignature}
+            />
+            <div className="space-y-2">
+              <div className="text-xs font-bold text-navy-700">人力资源 / HR</div>
+              <div className="rounded-xl border border-dashed border-[#E9ECEF] bg-gray-50 p-4 text-center text-xs text-[#A0AEC0] min-h-[120px] flex flex-col items-center justify-center gap-1">
+                <I name="file-signature" size={18} className="text-[#A0AEC0]" />
+                <span>{meta?.signatures?.hr?.note || "由管理员导出时嵌入电子章"}</span>
+              </div>
+            </div>
+          </div>
+        </Card>
       </main>
 
       <footer className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t border-[#E9ECEF] z-20">
@@ -465,6 +585,25 @@ export default function PublicPerformanceEval() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function SignatureSlot({ title, required, sig, canEdit, busy, onConfirm }) {
+  return (
+    <div className="space-y-2">
+      <div className="text-xs font-bold text-navy-700">
+        {title}
+        {required && <RequiredMark />}
+      </div>
+      <SignaturePad
+        label={title}
+        existingUrl={sig?.url || null}
+        existingSignedAt={sig?.signedAt || null}
+        disabled={!canEdit}
+        busy={busy}
+        onConfirm={onConfirm}
+      />
     </div>
   );
 }
