@@ -5,6 +5,7 @@ import { HIRE_STAGES } from "../lib/constants.js";
 import { Card, Button, I, Empty, LoadingBlock, Avatar, toast, StagePill, Modal, Input } from "../components/Primitives.jsx";
 import PerformanceShareModal, {
   CreatePerformanceEvalModal,
+  BulkCreatePerformanceEvalModal,
   CreatePerformancePersonModal,
   PerformanceEvalViewModal,
 } from "../components/PerformanceShareModal.jsx";
@@ -137,6 +138,7 @@ export default function Performance() {
   const [keyResultOpen, setKeyResultOpen] = useState(false);
   const [keyResultItems, setKeyResultItems] = useState([]);
   const [keyResultMode, setKeyResultMode] = useState("generate");
+  const [bulkCreateOpen, setBulkCreateOpen] = useState(false);
   const [filterJob, setFilterJob] = useState("");
   const [filterDept, setFilterDept] = useState("");
   const [filterStage, setFilterStage] = useState("");
@@ -220,6 +222,30 @@ export default function Performance() {
 
   const allKeyableSelected =
     keyableIds.length > 0 && keyableIds.every((id) => selected.has(id));
+
+  const bothKeyTargets =
+    keyTargets.includes("self") && keyTargets.includes("manager");
+
+  const selectedEmployees = useMemo(() => {
+    const byId = new Map();
+    for (const evalId of selected) {
+      const emp = items.find((e) => e.latestEvaluation?.id === evalId);
+      if (emp) byId.set(emp.id, emp);
+    }
+    return [...byId.values()];
+  }, [selected, items]);
+
+  const bulkCreateInitialPeriod = useMemo(() => {
+    const periods = selectedEmployees
+      .map((e) => e.latestEvaluation?.reviewPeriod)
+      .filter(Boolean);
+    if (periods.length === 0) return "";
+    const first = periods[0];
+    return periods.every((p) => p === first) ? first : "";
+  }, [selectedEmployees]);
+
+  const canBulkCreate =
+    selectedEmployees.length > 0 && bothKeyTargets && !batchBusy;
 
   function toggleOne(evalId) {
     setSelected((prev) => {
@@ -495,6 +521,21 @@ export default function Performance() {
             <Button size="sm" variant="ghost" disabled={batchBusy || selected.size === 0} onClick={exportAccessKeys}>
               <I name="download" size={14} /> 批量导出密钥
             </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={!canBulkCreate}
+              title={
+                !bothKeyTargets
+                  ? "需同时勾选「自评」与「主管」"
+                  : selectedEmployees.length === 0
+                    ? "请先勾选评价记录"
+                    : `为 ${selectedEmployees.length} 人发起新周期`
+              }
+              onClick={() => setBulkCreateOpen(true)}
+            >
+              <I name="clipboard-check" size={14} /> 批量发起评价
+            </Button>
           </div>
         </Card>
       </div>
@@ -759,6 +800,26 @@ export default function Performance() {
           load();
         }}
       />
+      <BulkCreatePerformanceEvalModal
+        open={bulkCreateOpen}
+        employees={selectedEmployees}
+        initialPeriod={bulkCreateInitialPeriod}
+        onClose={() => setBulkCreateOpen(false)}
+        onCreated={(data) => {
+          const items = (data?.items || []).map((it) => ({
+            evaluationId: it.evaluation?.id,
+            employeeName: it.employeeName,
+            selfAccessKey: it.selfAccessKey,
+            managerAccessKey: it.managerAccessKey,
+          }));
+          if (items.length) {
+            setKeyResultMode("create");
+            setKeyResultItems(items);
+            setKeyResultOpen(true);
+          }
+          load();
+        }}
+      />
       <PerformanceEvalViewModal
         open={!!viewTarget}
         employee={viewTarget?.employee}
@@ -810,7 +871,11 @@ export default function Performance() {
         <div className="p-6 space-y-4">
           <div>
             <h3 className="text-lg font-bold text-navy-700">
-              {keyResultMode === "generate" ? "随机密钥已生成" : "统一密钥已设置"}
+              {keyResultMode === "generate"
+                ? "随机密钥已生成"
+                : keyResultMode === "create"
+                  ? "新周期评价已创建"
+                  : "统一密钥已设置"}
             </h3>
             <p className="text-xs text-amber-700 mt-1">
               明文仅此展示一次，请立即复制发给对方；关闭后无法再查看。

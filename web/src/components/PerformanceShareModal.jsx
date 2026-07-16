@@ -1013,6 +1013,91 @@ export function PerformanceEvalViewModal({ open, onClose, employee, evaluationId
   );
 }
 
+const EDIT_PRESETS = [
+  { value: null, label: "不限" },
+  { value: 3, label: "3 次" },
+  { value: 5, label: "5 次" },
+  { value: 10, label: "10 次" },
+];
+
+function MaxEditChips({ value, onChange, label }) {
+  return (
+    <div>
+      <div className="text-[11px] font-bold text-[#707EAE] mb-1.5">{label}</div>
+      <div className="flex flex-wrap gap-1.5">
+        {EDIT_PRESETS.map((p) => {
+          const active = (p.value == null && value == null) || p.value === value;
+          return (
+            <button
+              key={String(p.value)}
+              type="button"
+              onClick={() => onChange(p.value)}
+              className={`px-2.5 py-1 rounded-full text-[10px] font-bold transition ${
+                active
+                  ? "bg-brand-gradient text-white"
+                  : "bg-lightPrimary text-[#707EAE] hover:text-navy-700"
+              }`}
+            >
+              {p.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function PeriodFields({ periodUnit, reviewPeriod, onSwitchUnit, onChangePeriod }) {
+  const presets = periodOptionsForUnit(periodUnit);
+  const currentDefault = defaultPeriodForUnit(periodUnit === "custom" ? "quarter" : periodUnit);
+  return (
+    <div>
+      <div className="text-xs font-bold text-navy-700 mb-2">
+        评价周期 / Review Period <RequiredMark />
+      </div>
+      <div className="flex flex-wrap gap-2 mb-3">
+        {PERIOD_UNITS.map((u) => (
+          <button
+            key={u.value}
+            type="button"
+            onClick={() => onSwitchUnit(u.value)}
+            className={`px-3 py-1 rounded-full text-xs font-bold transition ${
+              periodUnit === u.value
+                ? "bg-brand-gradient text-white"
+                : "bg-lightPrimary text-[#707EAE] hover:text-navy-700"
+            }`}
+          >
+            {u.label}
+          </button>
+        ))}
+      </div>
+
+      {periodUnit !== "custom" ? (
+        <select
+          value={reviewPeriod}
+          onChange={(e) => onChangePeriod(e.target.value)}
+          className="mt-0 flex h-12 w-full items-center rounded-xl border border-gray-200 bg-white/40 px-3 text-sm text-navy-700 outline-none transition-all duration-200 focus:border-brand focus:bg-white focus:ring-4 focus:ring-brand/10"
+        >
+          {presets.map((p) => (
+            <option key={p} value={p}>
+              {p === currentDefault ? `${p}（当前）` : p}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <Input
+          value={reviewPeriod}
+          onChange={(e) => onChangePeriod(e.target.value)}
+          placeholder="例如 2026Q2 / 2026H1 / 2026 全年"
+        />
+      )}
+      <p className="text-[11px] text-[#A0AEC0] mt-1">
+        默认按当前季度自动匹配；可切换半年 / 年度，或自定义文案。
+      </p>
+    </div>
+  );
+}
+
 /** 发起评价表单 */
 export function CreatePerformanceEvalModal({ open, onClose, employee, onCreated }) {
   const [periodUnit, setPeriodUnit] = useState("quarter");
@@ -1064,92 +1149,18 @@ export function CreatePerformanceEvalModal({ open, onClose, employee, onCreated 
     }
   }
 
-  const presets = periodOptionsForUnit(periodUnit);
-  const currentDefault = defaultPeriodForUnit(periodUnit === "custom" ? "quarter" : periodUnit);
-  const EDIT_PRESETS = [
-    { value: null, label: "不限" },
-    { value: 3, label: "3 次" },
-    { value: 5, label: "5 次" },
-    { value: 10, label: "10 次" },
-  ];
-
-  function MaxEditChips({ value, onChange, label }) {
-    return (
-      <div>
-        <div className="text-[11px] font-bold text-[#707EAE] mb-1.5">{label}</div>
-        <div className="flex flex-wrap gap-1.5">
-          {EDIT_PRESETS.map((p) => {
-            const active = (p.value == null && value == null) || p.value === value;
-            return (
-              <button
-                key={String(p.value)}
-                type="button"
-                onClick={() => onChange(p.value)}
-                className={`px-2.5 py-1 rounded-full text-[10px] font-bold transition ${
-                  active
-                    ? "bg-brand-gradient text-white"
-                    : "bg-lightPrimary text-[#707EAE] hover:text-navy-700"
-                }`}
-              >
-                {p.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    );
-  }
-
   return (
     <Modal open={open} onClose={onClose} maxWidth="max-w-md">
       <div className="p-6 space-y-4">
         <h3 className="text-lg font-bold text-navy-700">发起绩效评价</h3>
         <p className="text-xs text-[#707EAE]">{employee?.name}</p>
 
-        <div>
-          <div className="text-xs font-bold text-navy-700 mb-2">
-            评价周期 / Review Period <RequiredMark />
-          </div>
-          <div className="flex flex-wrap gap-2 mb-3">
-            {PERIOD_UNITS.map((u) => (
-              <button
-                key={u.value}
-                type="button"
-                onClick={() => switchUnit(u.value)}
-                className={`px-3 py-1 rounded-full text-xs font-bold transition ${
-                  periodUnit === u.value
-                    ? "bg-brand-gradient text-white"
-                    : "bg-lightPrimary text-[#707EAE] hover:text-navy-700"
-                }`}
-              >
-                {u.label}
-              </button>
-            ))}
-          </div>
-
-          {periodUnit !== "custom" ? (
-            <select
-              value={reviewPeriod}
-              onChange={(e) => setReviewPeriod(e.target.value)}
-              className="mt-0 flex h-12 w-full items-center rounded-xl border border-gray-200 bg-white/40 px-3 text-sm text-navy-700 outline-none transition-all duration-200 focus:border-brand focus:bg-white focus:ring-4 focus:ring-brand/10"
-            >
-              {presets.map((p) => (
-                <option key={p} value={p}>
-                  {p === currentDefault ? `${p}（当前）` : p}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <Input
-              value={reviewPeriod}
-              onChange={(e) => setReviewPeriod(e.target.value)}
-              placeholder="例如 2026Q2 / 2026H1 / 2026 全年"
-            />
-          )}
-          <p className="text-[11px] text-[#A0AEC0] mt-1">
-            默认按当前季度自动匹配；可切换半年 / 年度，或自定义文案。
-          </p>
-        </div>
+        <PeriodFields
+          periodUnit={periodUnit}
+          reviewPeriod={reviewPeriod}
+          onSwitchUnit={switchUnit}
+          onChangePeriod={setReviewPeriod}
+        />
 
         <label className="block text-xs font-bold text-navy-700">
           直属主管 / Line Manager
@@ -1189,6 +1200,113 @@ export function CreatePerformanceEvalModal({ open, onClose, employee, onCreated 
           <Button variant="ghost" onClick={onClose}>取消</Button>
           <Button disabled={busy} onClick={onSubmit}>
             {busy ? "创建中…" : "创建并生成链接"}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/** 批量发起新周期评价（共用周期 / 有效期 / 修改次数；主管取各员工档案） */
+export function BulkCreatePerformanceEvalModal({
+  open,
+  onClose,
+  employees = [],
+  initialPeriod,
+  onCreated,
+}) {
+  const [periodUnit, setPeriodUnit] = useState("quarter");
+  const [reviewPeriod, setReviewPeriod] = useState("");
+  const [duration, setDuration] = useState("30d");
+  const [selfMaxEdits, setSelfMaxEdits] = useState(null);
+  const [managerMaxEdits, setManagerMaxEdits] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const seed = (initialPeriod || "").trim() || defaultPeriodForUnit("quarter");
+    const looksCustom = !/^\d{4}(Q[1-4]|H[12])?$/.test(seed) && !/^\d{4}$/.test(seed);
+    setPeriodUnit(looksCustom ? "custom" : seed.includes("H") ? "half" : seed.length === 4 ? "year" : "quarter");
+    setReviewPeriod(seed);
+    setDuration("30d");
+    setSelfMaxEdits(null);
+    setManagerMaxEdits(null);
+  }, [open, initialPeriod]);
+
+  function switchUnit(unit) {
+    setPeriodUnit(unit);
+    if (unit === "custom") {
+      if (!reviewPeriod.trim()) setReviewPeriod(defaultPeriodForUnit("quarter"));
+      return;
+    }
+    setReviewPeriod(defaultPeriodForUnit(unit));
+  }
+
+  async function onSubmit() {
+    if (!employees.length) return toast("请先勾选员工", "error");
+    if (!reviewPeriod.trim()) return toast("请填写评价周期", "error");
+    setBusy(true);
+    try {
+      const data = await resources.performance.bulkCreateEvaluations({
+        employeeIds: employees.map((e) => e.id),
+        reviewPeriod: reviewPeriod.trim(),
+        duration,
+        selfMaxEdits,
+        managerMaxEdits,
+      });
+      toast(`已为 ${data.count} 人发起新周期评价`, "success");
+      onCreated?.(data);
+      onClose();
+    } catch (err) {
+      toast(err.response?.data?.message || err.message, "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} maxWidth="max-w-md">
+      <div className="p-6 space-y-4">
+        <h3 className="text-lg font-bold text-navy-700">批量发起评价</h3>
+        <p className="text-xs text-[#707EAE]">
+          将为选中的 {employees.length} 人创建新周期评价；直属主管沿用各员工档案，链接默认 30 天有效。
+        </p>
+
+        <PeriodFields
+          periodUnit={periodUnit}
+          reviewPeriod={reviewPeriod}
+          onSwitchUnit={switchUnit}
+          onChangePeriod={setReviewPeriod}
+        />
+
+        <div className="rounded-xl border border-[#E9ECEF] p-3 space-y-3">
+          <div className="text-xs font-bold text-navy-700">可修改次数</div>
+          <MaxEditChips label="自评链接" value={selfMaxEdits} onChange={setSelfMaxEdits} />
+          <MaxEditChips label="主管评价链接" value={managerMaxEdits} onChange={setManagerMaxEdits} />
+          <p className="text-[10px] text-[#A0AEC0]">自动保存不占次数；「保存草稿 / 提交」会计入。</p>
+        </div>
+
+        <div>
+          <div className="text-xs font-bold text-navy-700 mb-2">链接有效期</div>
+          <div className="flex flex-wrap gap-2">
+            {DURATIONS.map((d) => (
+              <button
+                key={d.value}
+                type="button"
+                onClick={() => setDuration(d.value)}
+                className={`px-3 py-1 rounded-full text-xs font-bold ${
+                  duration === d.value ? "bg-brand-gradient text-white" : "bg-lightPrimary text-[#707EAE]"
+                }`}
+              >
+                {d.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="ghost" onClick={onClose}>取消</Button>
+          <Button disabled={busy || employees.length === 0} onClick={onSubmit}>
+            {busy ? "创建中…" : `为 ${employees.length} 人创建`}
           </Button>
         </div>
       </div>
