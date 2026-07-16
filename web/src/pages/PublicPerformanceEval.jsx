@@ -126,6 +126,23 @@ export default function PublicPerformanceEval() {
     // 次数用尽时字段只读，但仍允许提交已填内容
     if (!form || (!meta?.canSubmit && readonly)) return;
     if (!meta?.canSubmit) return;
+
+    // 自评：目标·成果·发展提交时必填（草稿不校验）
+    if (role === "self") {
+      const summaryChecks = [
+        { key: "achievements", label: "本期主要成果" },
+        { key: "developmentPlan", label: "改进与发展计划" },
+        { key: "nextGoals", label: "下一周期目标" },
+      ];
+      for (const f of summaryChecks) {
+        if (!String(form[f.key] || "").trim()) {
+          toast(`请填写「${f.label}」后再提交`, "error");
+          document.getElementById("perf-summary-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+          return;
+        }
+      }
+    }
+
     try {
       setSubmitting(true);
       if (!readonly) {
@@ -340,26 +357,36 @@ export default function PublicPerformanceEval() {
           </div>
         </Card>
 
-        <Card className="p-5 space-y-4">
-          <h2 className="text-sm font-bold text-navy-700">
-            三、目标·成果·发展 / Goals, Achievements & Development
-          </h2>
+        <Card id="perf-summary-section" className="p-5 space-y-4">
+          <div>
+            <h2 className="text-sm font-bold text-navy-700">
+              三、目标·成果·发展 / Goals, Achievements & Development
+            </h2>
+            <p className="text-[11px] text-[#A0AEC0] mt-1">
+              {role === "self"
+                ? "由员工自评填写；提交时三项均必填，保存草稿不校验。"
+                : "由员工自评填写；主管只读，不可修改。"}
+            </p>
+          </div>
           <TextArea
             label="本期主要成果 / Key achievements"
             value={form.achievements || ""}
-            disabled={readonly}
+            disabled={readonly || role !== "self"}
+            required={role === "self"}
             onChange={(v) => patchForm((p) => ({ ...p, achievements: v }))}
           />
           <TextArea
             label="改进与发展计划 / Improvement & development"
             value={form.developmentPlan || ""}
-            disabled={readonly}
+            disabled={readonly || role !== "self"}
+            required={role === "self"}
             onChange={(v) => patchForm((p) => ({ ...p, developmentPlan: v }))}
           />
           <TextArea
             label="下一周期目标 / Next-period goals"
             value={form.nextGoals || ""}
-            disabled={readonly}
+            disabled={readonly || role !== "self"}
+            required={role === "self"}
             onChange={(v) => patchForm((p) => ({ ...p, nextGoals: v }))}
           />
         </Card>
@@ -430,11 +457,11 @@ function buildPatch(form, role) {
       managerScore: s.managerScore,
       evidence: s.evidence,
     })),
-    achievements: form.achievements,
-    developmentPlan: form.developmentPlan,
-    nextGoals: form.nextGoals,
     ...(role === "self"
       ? {
+          achievements: form.achievements,
+          developmentPlan: form.developmentPlan,
+          nextGoals: form.nextGoals,
           employeeNo: form.employeeNo,
           position: form.position,
           department: form.department,
@@ -474,10 +501,11 @@ function ScoreInput({ value, onChange, disabled }) {
   );
 }
 
-function TextArea({ label, value, onChange, disabled }) {
+function TextArea({ label, value, onChange, disabled, required = false }) {
   return (
     <label className="block text-[11px] font-bold text-[#707EAE]">
       {label}
+      {required && <RequiredMark />}
       <textarea
         rows={3}
         disabled={disabled}

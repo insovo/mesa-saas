@@ -819,12 +819,11 @@ export default async function performanceRoutes(app) {
       data.scores = mergeScores(ev.scores, body.scores, role);
       Object.assign(data, recomputeDerived(data.scores));
     }
-    // 双方都可写摘要（模板上共用区域）
-    for (const k of ["achievements", "developmentPlan", "nextGoals"]) {
-      if (k in body) data[k] = body[k] == null ? null : String(body[k]).slice(0, 4000);
-    }
-    // 信息区：自评可补工号等，主管可改 lineManager
+    // 目标·成果·发展：仅自评可写；主管只读
     if (role === "self") {
+      for (const k of ["achievements", "developmentPlan", "nextGoals"]) {
+        if (k in body) data[k] = body[k] == null ? null : String(body[k]).slice(0, 4000);
+      }
       for (const k of ["employeeNo", "position", "department", "level"]) {
         if (k in body) data[k] = body[k] == null ? null : String(body[k]).slice(0, 120);
       }
@@ -872,6 +871,21 @@ export default async function performanceRoutes(app) {
             error: "validation_failed",
             message: `请完成全部自评分数（缺：${dim.name}）`,
             field: dim.key,
+          });
+        }
+      }
+      // 目标·成果·发展：提交时必填（草稿保存不校验）
+      const summaryChecks = [
+        { key: "achievements", label: "本期主要成果" },
+        { key: "developmentPlan", label: "改进与发展计划" },
+        { key: "nextGoals", label: "下一周期目标" },
+      ];
+      for (const f of summaryChecks) {
+        if (!String(ev[f.key] || "").trim()) {
+          return reply.code(422).send({
+            error: "validation_failed",
+            message: `请填写「${f.label}」后再提交`,
+            field: f.key,
           });
         }
       }
