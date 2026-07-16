@@ -81,6 +81,42 @@
       "backend": 3071,
       "frontend": 5243,
       "since": "2026-07-16"
+    },
+    {
+      "slot": 8,
+      "name": "toast-zindex",
+      "path": ".worktrees/fix/toast-zindex",
+      "branch": "fix/toast-zindex",
+      "backend": 3081,
+      "frontend": 5253,
+      "since": "2026-07-16"
+    },
+    {
+      "slot": 9,
+      "name": "perf-key-eye",
+      "path": ".worktrees/fix/perf-key-eye",
+      "branch": "fix/perf-key-eye",
+      "backend": 3091,
+      "frontend": 5263,
+      "since": "2026-07-16"
+    },
+    {
+      "slot": 10,
+      "name": "hr-seal-modal",
+      "path": ".worktrees/feature/hr-seal-modal",
+      "branch": "feature/hr-seal-modal",
+      "backend": 3101,
+      "frontend": 5273,
+      "since": "2026-07-16"
+    },
+    {
+      "slot": 11,
+      "name": "perf-key-eye-fix",
+      "path": ".worktrees/fix/perf-key-eye-fix",
+      "branch": "fix/perf-key-eye-fix",
+      "backend": 3111,
+      "frontend": 5283,
+      "since": "2026-07-16"
     }
   ]
 }

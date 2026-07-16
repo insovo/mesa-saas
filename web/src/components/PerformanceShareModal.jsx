@@ -252,16 +252,21 @@ function LinkPanel({
                     </code>
                     <button
                       type="button"
-                      disabled={!accessKey}
-                      onClick={() => setKeyVisible((v) => !v)}
+                      onClick={() => {
+                        if (!accessKey) {
+                          toast("当前无密钥明文，请先刷新随机密钥或设置密钥", "error");
+                          return;
+                        }
+                        setKeyVisible((v) => !v);
+                      }}
                       title={
                         !accessKey
-                          ? "明文仅在生成/刷新后可用"
+                          ? "当前无密钥明文，请先刷新或设置"
                           : keyVisible
                             ? "隐藏密钥"
                             : "显示密钥"
                       }
-                      className="inline-flex items-center justify-center h-9 w-9 shrink-0 rounded-lg border border-amber-100 bg-white text-amber-800 hover:bg-amber-50 disabled:opacity-40 disabled:pointer-events-none transition"
+                      className="inline-flex items-center justify-center h-9 w-9 shrink-0 rounded-lg border border-amber-100 bg-white text-amber-800 hover:bg-amber-50 transition"
                     >
                       <I name={keyVisible ? "eye-off" : "eye"} size={14} />
                     </button>
@@ -345,14 +350,23 @@ export default function PerformanceShareModal({
   const ev = evaluation;
   const validity = getLinkValidity(ev);
 
+  // 有效期 UI 与密钥 state 拆开：改 expiresAt（恢复/延长）时不要把已持有的明文刷掉
   useEffect(() => {
     if (!open) return;
     if (!ev?.expiresAt) setDuration("forever");
     else setDuration("30d");
     setEmbedHr(false);
+  }, [open, ev?.id, ev?.expiresAt]);
+
+  useEffect(() => {
+    if (!open) {
+      setSelfAccessKey(null);
+      setManagerAccessKey(null);
+      return;
+    }
     setSelfAccessKey(initialAccessKeys?.selfAccessKey || null);
     setManagerAccessKey(initialAccessKeys?.managerAccessKey || null);
-  }, [open, ev?.id, ev?.expiresAt, initialAccessKeys?.selfAccessKey, initialAccessKeys?.managerAccessKey]);
+  }, [open, ev?.id, initialAccessKeys?.selfAccessKey, initialAccessKeys?.managerAccessKey]);
 
   // 旧评价补齐缺失密钥（每个评价打开 Modal 只跑一次）
   const ensuredIdRef = useRef(null);
@@ -365,9 +379,10 @@ export default function PerformanceShareModal({
       try {
         const data = await resources.performance.ensureAccessKeys(ev.id);
         if (cancelled) return;
-        if (data.evaluation) onUpdated?.(data.evaluation);
+        // 先写入明文再 onUpdated，避免父级重渲染抢在 setState 前把 UI 刷成无密钥
         if (data.selfAccessKey) setSelfAccessKey(data.selfAccessKey);
         if (data.managerAccessKey) setManagerAccessKey(data.managerAccessKey);
+        if (data.evaluation) onUpdated?.(data.evaluation);
         if (data.generated?.length) {
           toast("已自动生成访问密钥，请立即复制", "success");
         }
