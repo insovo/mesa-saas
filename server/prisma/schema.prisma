@@ -40,6 +40,9 @@ model User {
   totpSecret        String?   @map("totp_secret") // base32,启用后才有
   totpEnabledAt     DateTime? @map("totp_enabled_at")
   totpRecoveryCodes String[]  @default([]) @map("totp_recovery_codes") // 备份码 bcrypt 哈希数组(10 个,用一个移除一个)
+  // 绩效导出 HR 电子章（R2 key，PNG）
+  hrSignatureKey       String?   @map("hr_signature_key")
+  hrSignatureUpdatedAt DateTime? @map("hr_signature_updated_at")
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
 
@@ -675,6 +678,12 @@ model PerformanceEvaluation {
 
   selfSubmittedAt    DateTime? @map("self_submitted_at")
   managerSubmittedAt DateTime? @map("manager_submitted_at")
+
+  // 确认与签字 — R2 PNG key；提交前必填对应角色
+  selfSignatureKey       String?   @map("self_signature_key")
+  selfSignedAt           DateTime? @map("self_signed_at")
+  managerSignatureKey    String?   @map("manager_signature_key")
+  managerSignedAt        DateTime? @map("manager_signed_at")
 
   templateVersion  String  @default("v1") @map("template_version")
   templateFileHash String? @map("template_file_hash")

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { resources } from "../lib/api.js";
 import { Card, Button, I, Empty, LoadingBlock, Avatar, toast, StagePill } from "../components/Primitives.jsx";
@@ -7,6 +7,7 @@ import PerformanceShareModal, {
   CreatePerformancePersonModal,
   PerformanceEvalViewModal,
 } from "../components/PerformanceShareModal.jsx";
+import HrSignatureManager, { blobErrorMessage } from "../components/HrSignatureManager.jsx";
 
 const STATUS_LABEL = {
   draft: { label: "草稿", tone: "bg-gray-100 text-gray-700" },
@@ -14,6 +15,13 @@ const STATUS_LABEL = {
   submitted: { label: "已完成", tone: "bg-green-100 text-green-700" },
   revoked: { label: "已撤销", tone: "bg-red-100 text-red-700" },
 };
+
+const EXPORT_LANGS = [
+  { value: "zh", label: "中文" },
+  { value: "zh-en", label: "中英双语" },
+  { value: "zh-es", label: "中西双语" },
+  { value: "en", label: "英文" },
+];
 
 function StatusChip({ status }) {
   const cfg = STATUS_LABEL[status] || { label: status || "—", tone: "bg-gray-100 text-gray-600" };
@@ -44,6 +52,11 @@ export default function Performance() {
   const [evalTarget, setEvalTarget] = useState(null);
   const [shareTarget, setShareTarget] = useState(null); // { employee, evaluation }
   const [viewTarget, setViewTarget] = useState(null); // { employee, evaluationId }
+  const [selected, setSelected] = useState(() => new Set());
+  const [batchLang, setBatchLang] = useState("zh-en");
+  const [embedHrBatch, setEmbedHrBatch] = useState(false);
+  const [hasHrStamp, setHasHrStamp] = useState(false);
+  const [batchBusy, setBatchBusy] = useState(false);
 
   async function load(search = q) {
     setLoading(true);
@@ -52,6 +65,7 @@ export default function Performance() {
       if (search.trim()) params.q = search.trim();
       const { items: list } = await resources.performance.listPeople(params);
       setItems(list || []);
+      setSelected(new Set());
     } catch (e) {
       toast(e.response?.data?.message || e.message, "error");
     } finally {
@@ -63,6 +77,73 @@ export default function Performance() {
     load();
     // eslint-disable-next-line
   }, []);
+
+  const exportableIds = useMemo(() => {
+    return items
+      .filter((emp) => emp.latestEvaluation?.status === "submitted")
+      .map((emp) => emp.latestEvaluation.id);
+  }, [items]);
+
+  const allExportableSelected =
+    exportableIds.length > 0 && exportableIds.every((id) => selected.has(id));
+
+  function toggleOne(evalId) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(evalId)) next.delete(evalId);
+      else next.add(evalId);
+      return next;
+    });
+  }
+
+  function toggleAllExportable() {
+    if (allExportableSelected) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(exportableIds));
+    }
+  }
+
+  async function batchExport() {
+    const ids = [...selected];
+    if (ids.length === 0) {
+      toast("请先勾选已完成的评价", "error");
+      return;
+    }
+    if (embedHrBatch && !hasHrStamp) {
+      toast("请先上传 HR 电子章", "error");
+      return;
+    }
+    setBatchBusy(true);
+    let ok = 0;
+    try {
+      for (const id of ids) {
+        const emp = items.find((e) => e.latestEvaluation?.id === id);
+        try {
+          const res = await resources.performance.exportEvaluation(id, {
+            lang: batchLang,
+            embedHrSignature: embedHrBatch ? "1" : undefined,
+          });
+          const blob = new Blob([res.data], {
+            type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          });
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = `绩效评价_${emp?.name || "员工"}_${batchLang}.xlsx`;
+          a.click();
+          URL.revokeObjectURL(a.href);
+          ok += 1;
+          // 连续下载间隔，避免浏览器吞掉
+          await new Promise((r) => setTimeout(r, 350));
+        } catch (err) {
+          toast(`${emp?.name || id}: ${await blobErrorMessage(err)}`, "error");
+        }
+      }
+      if (ok > 0) toast(`已开始下载 ${ok} 份`, "success");
+    } finally {
+      setBatchBusy(false);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -87,6 +168,54 @@ export default function Performance() {
         </Button>
       </Card>
 
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <HrSignatureManager onChange={(d) => setHasHrStamp(!!d?.hasSignature)} />
+        <Card className="p-4 space-y-3">
+          <div className="text-sm font-bold text-navy-700 flex items-center gap-1.5">
+            <I name="download" size={16} className="text-brand" />
+            批量导出
+          </div>
+          <p className="text-[11px] text-[#707EAE]">
+            勾选列表中「已完成」的评价，可连续下载多份 Excel
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {EXPORT_LANGS.map((l) => (
+              <button
+                key={l.value}
+                type="button"
+                onClick={() => setBatchLang(l.value)}
+                className={`px-3 py-1 rounded-full text-xs font-bold transition ${
+                  batchLang === l.value
+                    ? "bg-brand-gradient text-white"
+                    : "bg-lightPrimary text-[#707EAE]"
+                }`}
+              >
+                {l.label}
+              </button>
+            ))}
+          </div>
+          <label className={`flex items-center gap-2 text-xs ${hasHrStamp ? "text-navy-700" : "text-[#A0AEC0]"}`}>
+            <input
+              type="checkbox"
+              checked={embedHrBatch}
+              disabled={!hasHrStamp || batchBusy}
+              onChange={(e) => setEmbedHrBatch(e.target.checked)}
+              className="rounded border-[#E9ECEF] text-brand focus:ring-brand"
+            />
+            嵌入 HR 签名
+            {!hasHrStamp && <span className="text-[10px]">（请先上传电子章）</span>}
+          </label>
+          <Button
+            size="sm"
+            disabled={batchBusy || selected.size === 0}
+            onClick={batchExport}
+          >
+            <I name="download" size={14} />
+            {batchBusy ? "导出中…" : `下载选中 (${selected.size})`}
+          </Button>
+        </Card>
+      </div>
+
       <Card className="p-0 overflow-hidden">
         {loading ? (
           <LoadingBlock height="h-48" label="加载中…" />
@@ -103,6 +232,16 @@ export default function Performance() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-[11px] uppercase tracking-wide text-[#A0AEC0] border-b border-[#E9ECEF] bg-lightPrimary/40">
+                  <th className="px-3 py-3 w-10">
+                    <input
+                      type="checkbox"
+                      checked={allExportableSelected}
+                      disabled={exportableIds.length === 0}
+                      onChange={toggleAllExportable}
+                      title="全选已完成"
+                      className="rounded border-[#E9ECEF] text-brand focus:ring-brand"
+                    />
+                  </th>
                   <th className="px-4 py-3 font-bold">员工</th>
                   <th className="px-4 py-3 font-bold">岗位 / 部门</th>
                   <th className="px-4 py-3 font-bold">阶段</th>
@@ -114,8 +253,18 @@ export default function Performance() {
                 {items.map((emp) => {
                   const latest = emp.latestEvaluation;
                   const viewable = canViewEval(latest);
+                  const canExport = latest?.status === "submitted";
                   return (
                     <tr key={emp.id} className="border-b border-[#F4F7FE] hover:bg-lightPrimary/30">
+                      <td className="px-3 py-3">
+                        <input
+                          type="checkbox"
+                          disabled={!canExport}
+                          checked={canExport && selected.has(latest.id)}
+                          onChange={() => canExport && toggleOne(latest.id)}
+                          className="rounded border-[#E9ECEF] text-brand focus:ring-brand disabled:opacity-30"
+                        />
+                      </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           <Avatar name={emp.name} src={emp.avatar} size={36} />

@@ -51,6 +51,15 @@ export default fp(async (app) => {
       const cmd = new DeleteObjectCommand({ Bucket: process.env.R2_BUCKET, Key: key });
       return client.send(cmd);
     },
+
+    /** 服务端读取对象为 Buffer（导出嵌入签名等） */
+    async getObjectBuffer(key) {
+      const cmd = new GetObjectCommand({ Bucket: process.env.R2_BUCKET, Key: key });
+      const obj = await client.send(cmd);
+      const chunks = [];
+      for await (const chunk of obj.Body) chunks.push(chunk);
+      return Buffer.concat(chunks.map((c) => (Buffer.isBuffer(c) ? c : Buffer.from(c))));
+    },
   });
 
   app.log.info({ bucket: process.env.R2_BUCKET }, "r2 plugin ready");

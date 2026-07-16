@@ -3,11 +3,13 @@
 // /api/performance/evaluations/:id      — 详情 / patch / revoke / export
 // /api/public/performance-eval/:token   — 公开: 读 / 草稿 / 提交
 
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import {
   SCORE_DIMENSIONS,
   SCORING_RUBRIC,
   RATING_APPLICATION,
+  USE_OF_RESULTS_BLURB,
+  ACKNOWLEDGEMENT_BLURB,
   INFO_FIELDS,
   SUMMARY_FIELDS,
   TEMPLATE_VERSION,
@@ -22,6 +24,8 @@ import {
   PERF_SOURCE,
   HIRED_STAGES,
   AUTHORITATIVE_LANG,
+  PERF_SIGNATURE_PREFIX,
+  PERF_SIGNATURE_MAX_BYTES,
 } from "../lib/performanceEvalTemplate.js";
 import {
   renderPerformanceToXlsx,
@@ -34,6 +38,33 @@ import {
 import {
   candidateToEmployeeData,
 } from "../lib/candidateToEmployee.js";
+
+function monthBucket() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function isPerfSignatureKey(key) {
+  return typeof key === "string" && key.startsWith(PERF_SIGNATURE_PREFIX) && key.endsWith(".png");
+}
+
+async function loadSignaturePng(r2, key) {
+  if (!r2 || !key || !isPerfSignatureKey(key)) return null;
+  try {
+    return await r2.getObjectBuffer(key);
+  } catch {
+    return null;
+  }
+}
+
+async function signedUrlForKey(r2, key) {
+  if (!r2 || !key || !isPerfSignatureKey(key)) return null;
+  try {
+    return await r2.presignGet({ key, expiresIn: 600 });
+  } catch {
+    return null;
+  }
+}
 
 function tokenGen() {
   return randomBytes(24).toString("base64url");
@@ -141,6 +172,10 @@ function adminShape(ev) {
     managerMaxEdits: ev.managerMaxEdits ?? null,
     selfEditCount: ev.selfEditCount ?? 0,
     managerEditCount: ev.managerEditCount ?? 0,
+    selfSignedAt: ev.selfSignedAt ?? null,
+    managerSignedAt: ev.managerSignedAt ?? null,
+    hasSelfSignature: !!ev.selfSignatureKey,
+    hasManagerSignature: !!ev.managerSignatureKey,
     createdAt: ev.createdAt,
     updatedAt: ev.updatedAt,
   };
@@ -168,7 +203,7 @@ function roleEditState(ev, role) {
   return { maxEdits: max ?? null, editCount: used, remaining, exhausted, unlimited };
 }
 
-function publicShape(ev, role) {
+async function publicShape(ev, role, r2 = null) {
   const scoresMap = new Map((ev.scores || []).map((s) => [s.key, s]));
   const scoresOut = SCORE_DIMENSIONS.map((dim) => {
     const item = scoresMap.get(dim.key) || {};
@@ -193,6 +228,14 @@ function publicShape(ev, role) {
   const edits = roleEditState(ev, role);
   // 次数用尽 → 草稿不可再改，但仍可提交（若尚未提交）
   const readonly = locked || roleDone || edits.exhausted;
+  const canSubmit = !locked && !roleDone;
+  // 可提交期间允许签名（即使编辑次数用尽）
+  const canSign = canSubmit;
+
+  const [selfUrl, managerUrl] = await Promise.all([
+    signedUrlForKey(r2, ev.selfSignatureKey),
+    signedUrlForKey(r2, ev.managerSignatureKey),
+  ]);
 
   return {
     evaluation: {
@@ -213,25 +256,46 @@ function publicShape(ev, role) {
       rating: ev.rating,
       pipTriggered: ev.pipTriggered,
       status: ev.status,
+      selfSignedAt: ev.selfSignedAt,
+      managerSignedAt: ev.managerSignedAt,
     },
     meta: {
       role,
       expiresAt: ev.expiresAt,
       templateVersion: ev.templateVersion,
       readonly,
+      canSign,
       editsExhausted: edits.exhausted,
       maxEdits: edits.maxEdits,
       editCount: edits.editCount,
       editsRemaining: edits.remaining,
-      canSubmit: !locked && !roleDone,
+      canSubmit,
       canExport: ev.status === "submitted",
       selfSubmittedAt: ev.selfSubmittedAt,
       managerSubmittedAt: ev.managerSubmittedAt,
       submittedAt: ev.submittedAt,
       scoringRubric: SCORING_RUBRIC,
       ratingApplication: RATING_APPLICATION,
+      useOfResultsBlurb: USE_OF_RESULTS_BLURB,
+      acknowledgementBlurb: ACKNOWLEDGEMENT_BLURB,
       infoFields: INFO_FIELDS,
       summaryFields: SUMMARY_FIELDS,
+      signatures: {
+        self: {
+          signed: !!ev.selfSignatureKey,
+          signedAt: ev.selfSignedAt,
+          url: selfUrl,
+        },
+        manager: {
+          signed: !!ev.managerSignatureKey,
+          signedAt: ev.managerSignedAt,
+          url: managerUrl,
+        },
+        hr: {
+          signed: false,
+          note: "由管理员导出时嵌入电子章",
+        },
+      },
     },
   };
 }
@@ -720,6 +784,7 @@ export default async function performanceRoutes(app) {
         type: "object",
         properties: {
           lang: { type: "string" },
+          embedHrSignature: { type: ["boolean", "string"] },
         },
       },
     },
@@ -732,8 +797,39 @@ export default async function performanceRoutes(app) {
     if (!ev) return reply.code(404).send({ error: "not_found" });
 
     const lang = EXPORT_LANGS.includes(req.query.lang) ? req.query.lang : AUTHORITATIVE_LANG;
+    const embedHr = req.query.embedHrSignature === true
+      || req.query.embedHrSignature === "1"
+      || req.query.embedHrSignature === "true";
+
     try {
-      const { buffer, filename } = await renderPerformanceToXlsx(ev, lang);
+      const images = {
+        selfPng: await loadSignaturePng(app.r2, ev.selfSignatureKey),
+        managerPng: await loadSignaturePng(app.r2, ev.managerSignatureKey),
+        hrPng: null,
+        hrSignedAt: null,
+      };
+      if (embedHr) {
+        const me = await app.prisma.user.findUnique({
+          where: { id: access.userId },
+          select: { hrSignatureKey: true, hrSignatureUpdatedAt: true },
+        });
+        if (!me?.hrSignatureKey) {
+          return reply.code(422).send({
+            error: "hr_signature_missing",
+            message: "请先上传 HR 电子章后再勾选嵌入",
+          });
+        }
+        images.hrPng = await loadSignaturePng(app.r2, me.hrSignatureKey);
+        images.hrSignedAt = me.hrSignatureUpdatedAt || new Date();
+        if (!images.hrPng) {
+          return reply.code(422).send({
+            error: "hr_signature_missing",
+            message: "HR 电子章文件不可用，请重新上传",
+          });
+        }
+      }
+
+      const { buffer, filename } = await renderPerformanceToXlsx(ev, lang, images);
       await app.prisma.performanceEvaluation.update({
         where: { id: ev.id },
         data: { exportedAt: new Date(), exportedCount: { increment: 1 } },
@@ -745,6 +841,103 @@ export default async function performanceRoutes(app) {
       req.log.error({ err }, "performance export failed");
       return reply.code(500).send({ error: "export_failed", message: err.message });
     }
+  });
+
+  // HR 电子章 — 挂在当前登录用户
+  admin.get("/performance/hr-signature", async (req, reply) => {
+    const access = await assertPage(req, reply, "performance");
+    if (!access) return;
+    const me = await app.prisma.user.findUnique({
+      where: { id: access.userId },
+      select: { hrSignatureKey: true, hrSignatureUpdatedAt: true },
+    });
+    const url = await signedUrlForKey(app.r2, me?.hrSignatureKey);
+    return {
+      hasSignature: !!me?.hrSignatureKey,
+      updatedAt: me?.hrSignatureUpdatedAt || null,
+      url,
+    };
+  });
+
+  admin.post("/performance/hr-signature/presigned-url", {
+    schema: {
+      body: {
+        type: "object",
+        properties: {
+          contentType: { type: "string" },
+          expectedSize: { type: "integer", minimum: 1, maximum: PERF_SIGNATURE_MAX_BYTES },
+        },
+        additionalProperties: false,
+      },
+    },
+  }, async (req, reply) => {
+    const access = await assertPage(req, reply, "performance");
+    if (!access) return;
+    if (!app.r2) return reply.code(503).send({ error: "r2_not_configured", message: "R2 未配置" });
+    const contentType = req.body?.contentType || "image/png";
+    if (contentType !== "image/png") {
+      return reply.code(400).send({ error: "unsupported_type", message: "签名仅支持 PNG" });
+    }
+    const key = `${PERF_SIGNATURE_PREFIX}hr/${monthBucket()}/${randomUUID()}.png`;
+    const uploadUrl = await app.r2.presignPut({
+      key,
+      contentType: "image/png",
+      expiresIn: 900,
+    });
+    return { uploadUrl, key, expiresIn: 900 };
+  });
+
+  admin.put("/performance/hr-signature", {
+    schema: {
+      body: {
+        type: "object",
+        required: ["key"],
+        properties: { key: { type: "string", maxLength: 500 } },
+        additionalProperties: false,
+      },
+    },
+  }, async (req, reply) => {
+    const access = await assertPage(req, reply, "performance");
+    if (!access) return;
+    const key = req.body.key;
+    if (!isPerfSignatureKey(key) || !key.includes("/hr/")) {
+      return reply.code(400).send({ error: "invalid_key", message: "非法签名 key" });
+    }
+    const me = await app.prisma.user.findUnique({
+      where: { id: access.userId },
+      select: { hrSignatureKey: true },
+    });
+    const updated = await app.prisma.user.update({
+      where: { id: access.userId },
+      data: { hrSignatureKey: key, hrSignatureUpdatedAt: new Date() },
+      select: { hrSignatureKey: true, hrSignatureUpdatedAt: true },
+    });
+    if (me?.hrSignatureKey && me.hrSignatureKey !== key && app.r2) {
+      try { await app.r2.deleteObject(me.hrSignatureKey); } catch { /* ignore */ }
+    }
+    const url = await signedUrlForKey(app.r2, updated.hrSignatureKey);
+    return {
+      hasSignature: true,
+      updatedAt: updated.hrSignatureUpdatedAt,
+      url,
+    };
+  });
+
+  admin.delete("/performance/hr-signature", async (req, reply) => {
+    const access = await assertPage(req, reply, "performance");
+    if (!access) return;
+    const me = await app.prisma.user.findUnique({
+      where: { id: access.userId },
+      select: { hrSignatureKey: true },
+    });
+    await app.prisma.user.update({
+      where: { id: access.userId },
+      data: { hrSignatureKey: null, hrSignatureUpdatedAt: null },
+    });
+    if (me?.hrSignatureKey && app.r2) {
+      try { await app.r2.deleteObject(me.hrSignatureKey); } catch { /* ignore */ }
+    }
+    return { hasSignature: false, url: null, updatedAt: null };
   });
 
   }); // end authenticated scope
@@ -762,7 +955,99 @@ export default async function performanceRoutes(app) {
       where: { id: found.ev.id },
       data: { viewCount: { increment: 1 }, lastViewedAt: new Date() },
     });
-    return publicShape(found.ev, found.role);
+    return publicShape(found.ev, found.role, app.r2);
+  });
+
+  app.post("/public/performance-eval/:token/signature/presigned-url", {
+    schema: {
+      body: {
+        type: "object",
+        properties: {
+          contentType: { type: "string" },
+          expectedSize: { type: "integer", minimum: 1, maximum: PERF_SIGNATURE_MAX_BYTES },
+        },
+        additionalProperties: false,
+      },
+    },
+  }, async (req, reply) => {
+    const found = await findByPublicToken(app.prisma, req.params.token);
+    if (!found) return reply.code(404).send({ error: "not_found" });
+    const { ev, role } = found;
+    try {
+      assertNotExpired(ev);
+    } catch (e) {
+      return reply.code(e.statusCode).send({ error: e.code, message: e.message });
+    }
+    if (ev.status === "submitted" || ev.status === "revoked") {
+      return reply.code(409).send({ error: "locked", message: "评价已锁定，不可再签" });
+    }
+    if (role === "self" && ev.selfSubmittedAt) {
+      return reply.code(409).send({ error: "locked", message: "自评已提交" });
+    }
+    if (role === "manager" && ev.managerSubmittedAt) {
+      return reply.code(409).send({ error: "locked", message: "主管评价已提交" });
+    }
+    if (!app.r2) return reply.code(503).send({ error: "r2_not_configured", message: "R2 未配置" });
+    const contentType = req.body?.contentType || "image/png";
+    if (contentType !== "image/png") {
+      return reply.code(400).send({ error: "unsupported_type", message: "签名仅支持 PNG" });
+    }
+    const key = `${PERF_SIGNATURE_PREFIX}${role}/${monthBucket()}/${randomUUID()}.png`;
+    const uploadUrl = await app.r2.presignPut({
+      key,
+      contentType: "image/png",
+      expiresIn: 900,
+    });
+    return { uploadUrl, key, expiresIn: 900 };
+  });
+
+  app.put("/public/performance-eval/:token/signature", {
+    schema: {
+      body: {
+        type: "object",
+        required: ["key"],
+        properties: { key: { type: "string", maxLength: 500 } },
+        additionalProperties: false,
+      },
+    },
+  }, async (req, reply) => {
+    const found = await findByPublicToken(app.prisma, req.params.token);
+    if (!found) return reply.code(404).send({ error: "not_found" });
+    const { ev, role } = found;
+    try {
+      assertNotExpired(ev);
+    } catch (e) {
+      return reply.code(e.statusCode).send({ error: e.code, message: e.message });
+    }
+    if (ev.status === "submitted" || ev.status === "revoked") {
+      return reply.code(409).send({ error: "locked", message: "评价已锁定，不可再签" });
+    }
+    if (role === "self" && ev.selfSubmittedAt) {
+      return reply.code(409).send({ error: "locked", message: "自评已提交" });
+    }
+    if (role === "manager" && ev.managerSubmittedAt) {
+      return reply.code(409).send({ error: "locked", message: "主管评价已提交" });
+    }
+
+    const key = req.body.key;
+    const roleSeg = `/${role}/`;
+    if (!isPerfSignatureKey(key) || !key.includes(roleSeg)) {
+      return reply.code(400).send({ error: "invalid_key", message: "非法签名 key" });
+    }
+
+    const data = role === "self"
+      ? { selfSignatureKey: key, selfSignedAt: new Date() }
+      : { managerSignatureKey: key, managerSignedAt: new Date() };
+    const prevKey = role === "self" ? ev.selfSignatureKey : ev.managerSignatureKey;
+
+    const updated = await app.prisma.performanceEvaluation.update({
+      where: { id: ev.id },
+      data,
+    });
+    if (prevKey && prevKey !== key && app.r2) {
+      try { await app.r2.deleteObject(prevKey); } catch { /* ignore */ }
+    }
+    return publicShape(updated, role, app.r2);
   });
 
   app.patch("/public/performance-eval/:token", {
@@ -833,7 +1118,7 @@ export default async function performanceRoutes(app) {
       data.lineManager = body.lineManager == null ? null : String(body.lineManager).slice(0, 100);
     }
 
-    if (Object.keys(data).length === 0) return publicShape(ev, role);
+    if (Object.keys(data).length === 0) return publicShape(ev, role, app.r2);
 
     // 30s 自动保存不占配额；手动保存草稿 / 提交前写入计数
     if (!isAutosave) {
@@ -845,7 +1130,7 @@ export default async function performanceRoutes(app) {
       where: { id: ev.id },
       data,
     });
-    return publicShape(updated, role);
+    return publicShape(updated, role, app.r2);
   });
 
   app.post("/public/performance-eval/:token/submit", async (req, reply) => {
@@ -865,6 +1150,13 @@ export default async function performanceRoutes(app) {
     const byKey = new Map(scores.map((s) => [s.key, s]));
 
     if (role === "self") {
+      if (!ev.selfSignatureKey) {
+        return reply.code(422).send({
+          error: "signature_required",
+          message: "请先完成员工签字后再提交",
+          field: "signature",
+        });
+      }
       for (const dim of SCORE_DIMENSIONS) {
         const sc = byKey.get(dim.key)?.selfScore;
         if (!isValidPerfScore(sc)) {
@@ -900,10 +1192,17 @@ export default async function performanceRoutes(app) {
           ...derived,
         },
       });
-      return publicShape(updated, role);
+      return publicShape(updated, role, app.r2);
     }
 
     // manager
+    if (!ev.managerSignatureKey) {
+      return reply.code(422).send({
+        error: "signature_required",
+        message: "请先完成主管签字后再提交",
+        field: "signature",
+      });
+    }
     for (const dim of SCORE_DIMENSIONS) {
       const sc = byKey.get(dim.key)?.managerScore;
       if (!isValidPerfScore(sc)) {
@@ -924,7 +1223,7 @@ export default async function performanceRoutes(app) {
         ...derived,
       },
     });
-    return publicShape(updated, role);
+    return publicShape(updated, role, app.r2);
   });
 
   app.get("/public/performance-eval/:token/export.xlsx", {
@@ -942,7 +1241,11 @@ export default async function performanceRoutes(app) {
       return reply.code(409).send({ error: "not_submitted", message: "评价提交后才能导出" });
     }
     const lang = EXPORT_LANGS.includes(req.query.lang) ? req.query.lang : AUTHORITATIVE_LANG;
-    const { buffer, filename } = await renderPerformanceToXlsx(ev, lang);
+    const images = {
+      selfPng: await loadSignaturePng(app.r2, ev.selfSignatureKey),
+      managerPng: await loadSignaturePng(app.r2, ev.managerSignatureKey),
+    };
+    const { buffer, filename } = await renderPerformanceToXlsx(ev, lang, images);
     reply.header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     reply.header("Content-Disposition", attachmentHeaderForFilename(filename));
     return reply.send(buffer);

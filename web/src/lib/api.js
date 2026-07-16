@@ -146,6 +146,12 @@ export const resources = {
     getEvaluation: (id) => api.get(`/performance/evaluations/${id}`).then((r) => r.data),
     updateEvaluation: (id, body) => api.patch(`/performance/evaluations/${id}`, body).then((r) => r.data),
     revokeEvaluation: (id) => api.post(`/performance/evaluations/${id}/revoke`).then((r) => r.data),
+    getHrSignature: () => api.get("/performance/hr-signature").then((r) => r.data),
+    hrSignaturePresign: (body) => api.post("/performance/hr-signature/presigned-url", body).then((r) => r.data),
+    saveHrSignature: (body) => api.put("/performance/hr-signature", body).then((r) => r.data),
+    clearHrSignature: () => api.delete("/performance/hr-signature").then((r) => r.data),
+    exportEvaluation: (id, params) =>
+      api.get(`/performance/evaluations/${id}/export.xlsx`, { params, responseType: "blob" }),
   },
   // 飞书 bot 自动分享设置(全局策略 + 单人偏好)
   feishuConfig: {

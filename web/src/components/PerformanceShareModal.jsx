@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { QRCodeSVG } from "qrcode.react";
-import { resources, api } from "../lib/api.js";
+import { resources } from "../lib/api.js";
 import { Modal, Button, Input, I, toast, RequiredMark } from "./Primitives.jsx";
+import HrSignatureManager, { blobErrorMessage } from "./HrSignatureManager.jsx";
 
 const DURATIONS = [
   { value: "7d", label: "7 天" },
@@ -217,6 +218,8 @@ export default function PerformanceShareModal({
   const [duration, setDuration] = useState("30d");
   const [busy, setBusy] = useState(false);
   const [exportLang, setExportLang] = useState("zh-en");
+  const [embedHr, setEmbedHr] = useState(false);
+  const [hasHrStamp, setHasHrStamp] = useState(false);
   const ev = evaluation;
   const validity = getLinkValidity(ev);
 
@@ -225,6 +228,7 @@ export default function PerformanceShareModal({
     // 打开时尽量反映当前链接状态（过期也默认提示选 30 天续期）
     if (!ev?.expiresAt) setDuration("forever");
     else setDuration("30d");
+    setEmbedHr(false);
   }, [open, ev?.id, ev?.expiresAt]);
 
   async function patch(body) {
@@ -261,11 +265,15 @@ export default function PerformanceShareModal({
 
   async function onExport() {
     if (!ev?.id) return;
+    if (embedHr && !hasHrStamp) {
+      toast("请先上传 HR 电子章", "error");
+      return;
+    }
     setBusy(true);
     try {
-      const res = await api.get(`/performance/evaluations/${ev.id}/export.xlsx`, {
-        params: { lang: exportLang },
-        responseType: "blob",
+      const res = await resources.performance.exportEvaluation(ev.id, {
+        lang: exportLang,
+        embedHrSignature: embedHr ? "1" : undefined,
       });
       const blob = new Blob([res.data], {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -277,7 +285,7 @@ export default function PerformanceShareModal({
       URL.revokeObjectURL(a.href);
       toast("已开始下载", "success");
     } catch (err) {
-      toast(err.response?.data?.message || err.message || "导出失败", "error");
+      toast(await blobErrorMessage(err), "error");
     } finally {
       setBusy(false);
     }
@@ -410,6 +418,15 @@ export default function PerformanceShareModal({
               onRegen={() => patch({ regenerateManagerToken: true })}
             />
 
+            <HrSignatureManager
+              compact
+              key={open ? `hr-${ev.id}` : "hr-closed"}
+              onChange={(d) => {
+                setHasHrStamp(!!d?.hasSignature);
+                if (!d?.hasSignature) setEmbedHr(false);
+              }}
+            />
+
             <div className="rounded-xl border border-[#E9ECEF] p-4 space-y-3">
               <div className="text-sm font-bold text-navy-700">导出 Excel</div>
               <div className="flex flex-wrap gap-2">
@@ -428,6 +445,17 @@ export default function PerformanceShareModal({
                   </button>
                 ))}
               </div>
+              <label className={`flex items-center gap-2 text-xs ${hasHrStamp ? "text-navy-700" : "text-[#A0AEC0]"}`}>
+                <input
+                  type="checkbox"
+                  checked={embedHr}
+                  disabled={!hasHrStamp || busy}
+                  onChange={(e) => setEmbedHr(e.target.checked)}
+                  className="rounded border-[#E9ECEF] text-brand focus:ring-brand"
+                />
+                嵌入 HR 签名
+                {!hasHrStamp && <span className="text-[10px] text-[#A0AEC0]">（请先上传电子章）</span>}
+              </label>
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" disabled={busy} onClick={onExport}>
                   <I name="download" size={14} /> 下载 {EXPORT_LANGS.find((x) => x.value === exportLang)?.label}
