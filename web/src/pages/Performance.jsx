@@ -283,6 +283,37 @@ export default function Performance() {
     }
   }
 
+  async function exportAccessKeys() {
+    const ids = [...selected];
+    if (ids.length === 0) {
+      toast("请先勾选评价记录", "error");
+      return;
+    }
+    setBatchBusy(true);
+    try {
+      const res = await resources.performance.exportAccessKeys({
+        evaluationIds: ids,
+        targets: keyTargets,
+        origin: window.location.origin,
+      });
+      const blob = new Blob([res.data], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const d = new Date();
+      const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `绩效访问密钥-${stamp}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast(`已导出 ${ids.length} 条密钥`, "success");
+    } catch (err) {
+      toast(await blobErrorMessage(err), "error");
+    } finally {
+      setBatchBusy(false);
+    }
+  }
+
   async function batchExport() {
     const ids = [...selected].filter((id) => exportableIds.includes(id));
     if (ids.length === 0) {
@@ -427,25 +458,25 @@ export default function Performance() {
             批量访问密钥
           </div>
           <p className="text-[11px] text-[#707EAE]">
-            勾选评价后：刷新则每人不同随机密钥；统一设置则勾选人共用同一密钥（适合主管评多人）。
+            勾选评价后：刷新则每人不同随机密钥；统一设置则勾选人共用同一密钥（适合主管评多人）；也可导出含链接与明文密钥的 Excel。
           </p>
-          <div className="flex flex-wrap gap-2 text-xs">
+          <div className="flex flex-wrap items-center gap-4 text-xs text-navy-700">
             {[
               { id: "self", label: "自评" },
               { id: "manager", label: "主管" },
             ].map((t) => (
-              <button
+              <label
                 key={t.id}
-                type="button"
-                onClick={() => toggleKeyTarget(t.id)}
-                className={`px-3 py-1 rounded-full font-bold transition ${
-                  keyTargets.includes(t.id)
-                    ? "bg-brand-gradient text-white"
-                    : "bg-lightPrimary text-[#707EAE]"
-                }`}
+                className="inline-flex items-center gap-2 cursor-pointer select-none font-bold"
               >
+                <input
+                  type="checkbox"
+                  checked={keyTargets.includes(t.id)}
+                  onChange={() => toggleKeyTarget(t.id)}
+                  className="h-4 w-4 rounded border-[#E9ECEF] text-brand focus:ring-brand"
+                />
                 {t.label}
-              </button>
+              </label>
             ))}
           </div>
           <Input
@@ -460,6 +491,9 @@ export default function Performance() {
             </Button>
             <Button size="sm" disabled={batchBusy || selected.size === 0} onClick={() => runBulkKeys("set")}>
               <I name="key-round" size={14} /> 设置统一密钥
+            </Button>
+            <Button size="sm" variant="ghost" disabled={batchBusy || selected.size === 0} onClick={exportAccessKeys}>
+              <I name="download" size={14} /> 批量导出密钥
             </Button>
           </div>
         </Card>

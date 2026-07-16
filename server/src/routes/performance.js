@@ -4,6 +4,7 @@
 // /api/public/performance-eval/:token   — 公开: 读 / 草稿 / 提交
 
 import { randomBytes, randomUUID } from "node:crypto";
+import ExcelJS from "exceljs";
 import {
   SCORE_DIMENSIONS,
   SCORING_RUBRIC,
@@ -25,6 +26,7 @@ import {
   AUTHORITATIVE_LANG,
   PERF_SIGNATURE_PREFIX,
   PERF_SIGNATURE_MAX_BYTES,
+  sanitizeForExcel,
 } from "../lib/performanceEvalTemplate.js";
 import {
   renderPerformanceToXlsx,
@@ -352,6 +354,80 @@ function accessKeyFields(role) {
     fail: "managerAccessKeyFailCount",
     lock: "managerAccessKeyLockedUntil",
   };
+}
+
+function normalizeAccessKeyTargets(targets) {
+  const set = [...new Set((Array.isArray(targets) ? targets : []).filter((t) => t === "self" || t === "manager"))];
+  return set;
+}
+
+function accessKeyExportHeaders(targets) {
+  const wantSelf = targets.includes("self");
+  const wantMgr = targets.includes("manager");
+  const base = ["工号", "姓名", "部门", "岗位", "职级", "直属主管", "评价周期"];
+  if (wantSelf && wantMgr) {
+    return [...base, "自评链接", "自评密钥", "主管链接", "主管密钥"];
+  }
+  if (wantSelf) return [...base, "自评链接", "密钥"];
+  return [...base, "主管链接", "密钥"];
+}
+
+function publicEvalUrl(origin, token) {
+  const base = String(origin || "").replace(/\/+$/, "") || "https://insovo.top";
+  return `${base}/performance-eval/${token}`;
+}
+
+function yyyymmdd(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}${m}${day}`;
+}
+
+async function renderAccessKeysXlsx(rows, targets, origin) {
+  const headers = accessKeyExportHeaders(targets);
+  const wantSelf = targets.includes("self");
+  const wantMgr = targets.includes("manager");
+
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("访问密钥");
+  ws.addRow(headers);
+  ws.getRow(1).font = { bold: true };
+
+  for (const row of rows) {
+    const empNo = row.employeeNo || row.employee?.externalId || "";
+    const cells = [
+      empNo,
+      row.employeeName || row.employee?.name || "",
+      row.department || "",
+      row.position || "",
+      row.level || "",
+      row.lineManager || "",
+      row.reviewPeriod || "",
+    ];
+    if (wantSelf) {
+      cells.push(publicEvalUrl(origin, row.selfToken));
+      cells.push(decryptAccessKey(row.selfAccessKeyEnc) || "");
+    }
+    if (wantMgr) {
+      cells.push(publicEvalUrl(origin, row.managerToken));
+      cells.push(decryptAccessKey(row.managerAccessKeyEnc) || "");
+    }
+    ws.addRow(cells.map((v) => sanitizeForExcel(v == null ? "" : String(v))));
+  }
+
+  for (let i = 1; i <= headers.length; i += 1) {
+    ws.getColumn(i).width = Math.min(48, Math.max(12, String(headers[i - 1]).length + 4));
+  }
+  if (wantSelf && wantMgr) {
+    ws.getColumn(8).width = 42;
+    ws.getColumn(10).width = 42;
+  } else {
+    ws.getColumn(8).width = 42;
+  }
+
+  const buffer = Buffer.from(await wb.xlsx.writeBuffer());
+  return { buffer, filename: `绩效访问密钥-${yyyymmdd()}.xlsx` };
 }
 
 /**
@@ -993,6 +1069,82 @@ export default async function performanceRoutes(app) {
     }
 
     return { mode, targets: targetSet, count: items.length, items };
+  });
+
+  // 批量导出访问密钥 xlsx（服务端解密 enc，列表 API 不返回明文）
+  admin.post("/performance/evaluations/access-keys/export.xlsx", {
+    schema: {
+      body: {
+        type: "object",
+        required: ["evaluationIds", "targets"],
+        properties: {
+          evaluationIds: { type: "array", items: { type: "string", format: "uuid" }, minItems: 1, maxItems: 200 },
+          targets: {
+            type: "array",
+            items: { type: "string", enum: ["self", "manager"] },
+            minItems: 1,
+            maxItems: 2,
+          },
+          origin: { type: "string", maxLength: 200 },
+        },
+      },
+    },
+  }, async (req, reply) => {
+    const access = await assertPage(req, reply, "performance");
+    if (!access) return;
+
+    const targetSet = normalizeAccessKeyTargets(req.body.targets);
+    if (!targetSet.length) {
+      return reply.code(400).send({ error: "invalid_targets", message: "请选择自评或主管" });
+    }
+
+    const evaluationIds = [...new Set(req.body.evaluationIds || [])];
+    const where = {
+      id: { in: evaluationIds },
+      deletedAt: null,
+      status: { not: "revoked" },
+    };
+    if (!access.isAdmin) {
+      const scopeWhere = await buildEmployeeScopeWhere(req);
+      where.employee = scopeWhere || undefined;
+    }
+
+    const rows = await app.prisma.performanceEvaluation.findMany({
+      where,
+      select: {
+        id: true,
+        employeeNo: true,
+        employeeName: true,
+        department: true,
+        position: true,
+        level: true,
+        lineManager: true,
+        reviewPeriod: true,
+        selfToken: true,
+        managerToken: true,
+        selfAccessKeyEnc: true,
+        managerAccessKeyEnc: true,
+        employee: { select: { name: true, externalId: true } },
+      },
+    });
+    if (rows.length === 0) {
+      return reply.code(404).send({ error: "not_found", message: "未找到可导出的评价" });
+    }
+
+    // 尽量按请求勾选顺序输出
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const ordered = evaluationIds.map((id) => byId.get(id)).filter(Boolean);
+
+    const origin = (req.body.origin || process.env.WEB_ORIGIN || "https://insovo.top").trim();
+    try {
+      const { buffer, filename } = await renderAccessKeysXlsx(ordered, targetSet, origin);
+      reply.header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      reply.header("Content-Disposition", attachmentHeaderForFilename(filename));
+      return reply.send(buffer);
+    } catch (err) {
+      req.log.error({ err }, "performance access-key export failed");
+      return reply.code(500).send({ error: "export_failed", message: err.message });
+    }
   });
 
   // 打开分享 Modal：缺密钥则生成 hash+enc；已有 enc 则解密回传明文（列表 API 不返回明文）
