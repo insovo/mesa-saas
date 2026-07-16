@@ -11,13 +11,6 @@ const DURATIONS = [
   { value: "forever", label: "永久" },
 ];
 
-const EXPORT_LANGS = [
-  { value: "zh", label: "中文" },
-  { value: "zh-en", label: "中英双语" },
-  { value: "zh-es", label: "中西双语" },
-  { value: "en", label: "英文" },
-];
-
 function publicUrl(token) {
   return `${window.location.origin}/performance-eval/${token}`;
 }
@@ -218,7 +211,6 @@ export default function PerformanceShareModal({
 }) {
   const [duration, setDuration] = useState("30d");
   const [busy, setBusy] = useState(false);
-  const [exportLang, setExportLang] = useState("zh-en");
   const [embedHr, setEmbedHr] = useState(false);
   const [hasHrStamp, setHasHrStamp] = useState(false);
   const ev = evaluation;
@@ -273,7 +265,7 @@ export default function PerformanceShareModal({
     setBusy(true);
     try {
       const res = await resources.performance.exportEvaluation(ev.id, {
-        lang: exportLang,
+        lang: "zh-en",
         embedHrSignature: embedHr ? "1" : undefined,
       });
       const blob = new Blob([res.data], {
@@ -281,7 +273,7 @@ export default function PerformanceShareModal({
       });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = `绩效评价_${employee?.name || "员工"}_${exportLang}.xlsx`;
+      a.download = `属地人员月度绩效评价表_${employee?.name || "员工"}.xlsx`;
       a.click();
       URL.revokeObjectURL(a.href);
       toast("已开始下载", "success");
@@ -429,23 +421,7 @@ export default function PerformanceShareModal({
             />
 
             <div className="rounded-xl border border-[#E9ECEF] p-4 space-y-3">
-              <div className="text-sm font-bold text-navy-700">导出 Excel</div>
-              <div className="flex flex-wrap gap-2">
-                {EXPORT_LANGS.map((l) => (
-                  <button
-                    key={l.value}
-                    type="button"
-                    onClick={() => setExportLang(l.value)}
-                    className={`px-3 py-1 rounded-full text-xs font-bold transition ${
-                      exportLang === l.value
-                        ? "bg-brand-gradient text-white"
-                        : "bg-lightPrimary text-[#707EAE]"
-                    }`}
-                  >
-                    {l.label}
-                  </button>
-                ))}
-              </div>
+              <div className="text-sm font-bold text-navy-700">导出 Excel（中英双语）</div>
               <label className={`flex items-center gap-2 text-xs ${hasHrStamp ? "text-navy-700" : "text-[#A0AEC0]"}`}>
                 <input
                   type="checkbox"
@@ -459,7 +435,7 @@ export default function PerformanceShareModal({
               </label>
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" disabled={busy} onClick={onExport}>
-                  <I name="download" size={14} /> 下载 {EXPORT_LANGS.find((x) => x.value === exportLang)?.label}
+                  <I name="download" size={14} /> 下载 Excel
                 </Button>
                 {ev.status !== "revoked" && (
                   <Button size="sm" variant="ghost" disabled={busy} onClick={onRevoke}>
@@ -493,11 +469,13 @@ export default function PerformanceShareModal({
 }
 
 const SCORE_DIM_LABELS = {
-  goals: "业绩与目标达成",
-  culture: "文化认同与沟通协作",
-  quality: "工作质量与专业能力",
+  goals_product: "业绩与目标达成 · 4P（产品）",
+  goals_adapt: "业绩与目标达成 · 4P（适应性验证）",
+  goals_reg: "业绩与目标达成 · 4P（法规认证）",
+  goals_localize: "业绩与目标达成 · 4P（地产化）",
+  culture: "文化认同与沟通协作 / 属地团队建设",
+  local_capability: "海外属地能力体系建设",
   compliance: "合规·安全·数据保护",
-  innovation: "创新与持续改进",
 };
 
 /** 评价周期单位：默认季度，自动落到当前 Q/H/年 */
@@ -665,24 +643,18 @@ export function PerformanceEvalViewModal({ open, onClose, employee, evaluationId
               )}
             </div>
 
-            {(ev.achievements || ev.developmentPlan || ev.nextGoals) && (
+            {(ev.areasForImprovement || ev.developmentPlan) && (
               <div className="space-y-3 text-xs">
-                {ev.achievements && (
+                {ev.areasForImprovement && (
                   <div>
-                    <div className="font-bold text-[#707EAE] mb-1">本期主要成果</div>
-                    <p className="text-navy-700 whitespace-pre-wrap">{ev.achievements}</p>
+                    <div className="font-bold text-[#707EAE] mb-1">不足及待提升部分</div>
+                    <p className="text-navy-700 whitespace-pre-wrap">{ev.areasForImprovement}</p>
                   </div>
                 )}
                 {ev.developmentPlan && (
                   <div>
                     <div className="font-bold text-[#707EAE] mb-1">改进与发展计划</div>
                     <p className="text-navy-700 whitespace-pre-wrap">{ev.developmentPlan}</p>
-                  </div>
-                )}
-                {ev.nextGoals && (
-                  <div>
-                    <div className="font-bold text-[#707EAE] mb-1">下一周期目标</div>
-                    <p className="text-navy-700 whitespace-pre-wrap">{ev.nextGoals}</p>
                   </div>
                 )}
               </div>

@@ -1,6 +1,6 @@
-// 绩效评价模板 v1 — 单源真理
-// 金样: server/assets/templates/performance-evaluation-*-v1.xlsx
-// 主表单元格映射与桌面「属地员工绩效评价表」一致。
+// 绩效评价模板 v2 — 单源真理
+// 金样: server/assets/templates/performance-evaluation-zh-en-v2.xlsx
+// 对齐桌面「属地人员月度绩效评价表」(修权重/公式后入库)
 
 import { readFileSync, existsSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -10,36 +10,25 @@ import { dirname, join } from "node:path";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TEMPLATES_DIR = join(__dirname, "..", "..", "assets", "templates");
 
-export const TEMPLATE_VERSION = "v1";
+export const TEMPLATE_VERSION = "v2";
 
-/** @typedef {'zh'|'zh-en'|'zh-es'|'en'} PerfLang */
+/** @typedef {'zh-en'} PerfLang */
 
-export const EXPORT_LANGS = Object.freeze(["zh", "zh-en", "zh-es", "en"]);
+export const EXPORT_LANGS = Object.freeze(["zh-en"]);
 
 export const TEMPLATE_FILES = Object.freeze({
-  zh: "performance-evaluation-zh-v1.xlsx",
-  "zh-en": "performance-evaluation-zh-en-v1.xlsx",
-  "zh-es": "performance-evaluation-zh-es-v1.xlsx",
-  en: "performance-evaluation-en-v1.xlsx",
+  "zh-en": "performance-evaluation-zh-en-v2.xlsx",
 });
 
-// 主 sheet 名称 — ExcelJS getWorksheet 用
 export const PRIMARY_SHEET_NAME = Object.freeze({
-  zh: "绩效评分表",
   "zh-en": "绩效评分表 Evaluation",
-  "zh-es": "绩效评分表 Evaluación",
-  en: "Evaluation",
 });
 
 // SHA-256 — 启动校验。有意更新模板时同步改这里。
 export const TEMPLATE_EXPECTED_HASHES = Object.freeze({
-  zh: "c0806899501732987a521f72cc036c9efd2dba87b0cb8c5fc55b5642c09a2606",
-  "zh-en": "d9ff5650c80f7c1592dda8c9fa24bc2cf35ee9a3c3bee1089e159388d8fa42af",
-  "zh-es": "7801a701e10116ac18733bdfc9300680703a6a7cdaac3044a2ad7030336f31c3",
-  en: "2b3622a5945fe0d27c3aa0a24274de6b504b8d7636300bb499c7cdb9a02c9622",
+  "zh-en": "54196a5fb78eba6a127edff8d1db762934d8e20cd7002460167ebfd1a1249ea8",
 });
 
-// 权威版本号以中英双语金样为准
 export const AUTHORITATIVE_LANG = "zh-en";
 
 const _cache = new Map(); // lang → { buffer, hash }
@@ -87,14 +76,18 @@ export function verifyPerformanceTemplatesOnBoot() {
   return results;
 }
 
-// ─── 5 评价维度 (行 11–15) ───────────────────────────────────────
+// ─── 7 评价行 (行 11–17) ───────────────────────────────────────
+// 前 4 行共用维度「业绩与目标达成」，C 列区分 4P 模块
 export const SCORE_DIMENSIONS = [
   {
-    key: "goals",
+    key: "goals_product",
+    group: "goals",
     name: "业绩与目标达成",
     nameEn: "Performance & goal achievement",
-    weight: 30,
-    observation: "关键任务/目标的完成度与结果（可参考部门KPI库）",
+    subtitle: "4P（产品）",
+    weight: 20,
+    observation:
+      "关键任务/目标的完成度与结果（可参考部门KPI库）研究院长制定 可从4P（产品）模块制定",
     row: 11,
     weightCell: "D11",
     selfScoreCell: "E11",
@@ -103,11 +96,14 @@ export const SCORE_DIMENSIONS = [
     evidenceCell: "H11",
   },
   {
-    key: "culture",
-    name: "文化认同与沟通协作",
-    nameEn: "Cultural alignment, communication & collaboration",
-    weight: 30,
-    observation: "企业文化认同、沟通协作、知识共享",
+    key: "goals_adapt",
+    group: "goals",
+    name: "业绩与目标达成",
+    nameEn: "Performance & goal achievement",
+    subtitle: "4P（适应性验证）",
+    weight: 20,
+    observation:
+      "关键任务/目标的完成度与结果（可参考部门KPI库）研究院长制定 可从4P（适应性验证）模块制定",
     row: 12,
     weightCell: "D12",
     selfScoreCell: "E12",
@@ -116,11 +112,14 @@ export const SCORE_DIMENSIONS = [
     evidenceCell: "H12",
   },
   {
-    key: "quality",
-    name: "工作质量与专业能力",
-    nameEn: "Work quality & professional competence",
+    key: "goals_reg",
+    group: "goals",
+    name: "业绩与目标达成",
+    nameEn: "Performance & goal achievement",
+    subtitle: "4P（法规认证）",
     weight: 20,
-    observation: "专业深度、方案质量、缺陷/返工率、技术文档",
+    observation:
+      "关键任务/目标的完成度与结果（可参考部门KPI库）研究院长制定 可从4P（法规认证）模块制定",
     row: 13,
     weightCell: "D13",
     selfScoreCell: "E13",
@@ -129,11 +128,14 @@ export const SCORE_DIMENSIONS = [
     evidenceCell: "H13",
   },
   {
-    key: "compliance",
-    name: "合规·安全·数据保护",
-    nameEn: "Compliance, safety & data protection",
-    weight: 10,
-    observation: "流程/法规遵从、功能与试验安全、GDPR与信息安全",
+    key: "goals_localize",
+    group: "goals",
+    name: "业绩与目标达成",
+    nameEn: "Performance & goal achievement",
+    subtitle: "4P（地产化）",
+    weight: 20,
+    observation:
+      "关键任务/目标的完成度与结果（可参考部门KPI库）研究院长制定 可从4P(地产化)模块制定",
     row: 14,
     weightCell: "D14",
     selfScoreCell: "E14",
@@ -142,11 +144,14 @@ export const SCORE_DIMENSIONS = [
     evidenceCell: "H14",
   },
   {
-    key: "innovation",
-    name: "创新与持续改进",
-    nameEn: "Innovation & continuous improvement",
+    key: "culture",
+    group: null,
+    name: "文化认同与沟通协作（员工）/属地团队建设（专业负责人）",
+    nameEn:
+      "Cultural alignment, communication (Employee) & collaboration / Local Team Development (Lead)",
+    subtitle: null,
     weight: 10,
-    observation: "改进提案、复用、效率提升、专利与方法沉淀",
+    observation: "企业文化认同、沟通协作、知识共享",
     row: 15,
     weightCell: "D15",
     selfScoreCell: "E15",
@@ -154,9 +159,41 @@ export const SCORE_DIMENSIONS = [
     weightedCell: "G15",
     evidenceCell: "H15",
   },
+  {
+    key: "local_capability",
+    group: null,
+    name: "海外属地能力体系建设",
+    nameEn: "Local Capability Development Framework",
+    subtitle: null,
+    weight: 5,
+    observation: "专业深度、方案质量、缺陷/返工率、技术文档",
+    row: 16,
+    weightCell: "D16",
+    selfScoreCell: "E16",
+    managerScoreCell: "F16",
+    weightedCell: "G16",
+    evidenceCell: "H16",
+  },
+  {
+    key: "compliance",
+    group: null,
+    name: "合规·安全·数据保护",
+    nameEn: "Compliance, safety & data protection",
+    subtitle: null,
+    weight: 5,
+    observation: "流程/法规遵从、功能与试验安全、GDPR与信息安全",
+    row: 17,
+    weightCell: "D17",
+    selfScoreCell: "E17",
+    managerScoreCell: "F17",
+    weightedCell: "G17",
+    evidenceCell: "H17",
+  },
 ];
 
-// 被评价人信息 → 黄底填写格（标签在 A/D 合并区，值在 C / G）
+export const REQUIRED_SCORE_COUNT = SCORE_DIMENSIONS.length;
+
+// 被评价人信息 → 填写格（标签在 A/D 合并区，值在 C / G）
 export const INFO_FIELDS = [
   { key: "employeeName", cell: "C5", label: "姓名 / Name", required: true },
   { key: "position", cell: "G5", label: "岗位 / Position", required: false },
@@ -169,12 +206,20 @@ export const INFO_FIELDS = [
 ];
 
 export const SUMMARY_FIELDS = [
-  { key: "achievements", cell: "C23", label: "本期主要成果 / Key achievements", maxLen: 2000 },
-  { key: "developmentPlan", cell: "C24", label: "改进与发展计划 / Improvement & development", maxLen: 2000 },
-  { key: "nextGoals", cell: "C25", label: "下一周期目标 / Next-period goals", maxLen: 2000 },
+  {
+    key: "areasForImprovement",
+    cell: "C24",
+    label: "不足及待提升部分 / Areas for Improvement",
+    maxLen: 2000,
+  },
+  {
+    key: "developmentPlan",
+    cell: "C25",
+    label: "改进与发展计划 / Improvement & development",
+    maxLen: 2000,
+  },
 ];
 
-// 公开页评分标准抽屉 (1–100 锚点,与 Criteria sheet 一致)
 export const SCORING_RUBRIC = [
   {
     range: "90–100",
@@ -211,42 +256,35 @@ export const RATING_APPLICATION = [
   { rating: "E", range: "<40", application: "PIP+密切跟进 / PIP + close follow-up" },
 ];
 
-/** 对齐模板 A28 — 四、结果应用说明 */
-export const USE_OF_RESULTS_BLURB =
-  "C及以上：发展、晋升参考与变动薪酬（按适用集体协议）。  D/E：启动绩效改进计划（PIP，60–90天），提供支持并留痕；结果不自动导致解雇，合同终止须依西班牙法律单独程序。\n" +
-  "C or above: development, promotion input and variable pay (per the applicable collective agreement).  D/E: a Performance Improvement Plan (PIP, 60–90 days) is launched, with support and documentation; results do not imply automatic dismissal — any termination follows a separate procedure under Spanish law.";
-
-/** 对齐模板 A32 — 五、确认与签字免责声明 */
+/** 对齐模板 A28 — 四、确认与签字免责声明 */
 export const ACKNOWLEDGEMENT_BLURB =
   "员工有权阅读评价、提出书面意见并申诉（见制度文件）。签字表示已知悉，不代表必然同意评价内容。\n" +
   "The employee has the right to read the evaluation, submit written comments and appeal (see the policy document). Signing acknowledges receipt, not necessarily agreement with the content.";
 
-/** 签字图在 Excel 中的锚点（0-based，行 33 = Excel 第 34 行） */
+/** 签字图锚点（0-based；Excel 第 30 行 = row 29） */
 export const SIGNATURE_IMAGE_ANCHORS = {
-  self: { tl: { col: 0, row: 33 }, br: { col: 3, row: 34 } }, // A34:C34
-  manager: { tl: { col: 3, row: 33 }, br: { col: 6, row: 34 } }, // D34:F34
-  hr: { tl: { col: 6, row: 33 }, br: { col: 8, row: 34 } }, // G34:H34
+  self: { tl: { col: 0, row: 29 }, br: { col: 3, row: 30 } }, // A30:C30
+  manager: { tl: { col: 3, row: 29 }, br: { col: 6, row: 30 } }, // D30:F30
+  hr: { tl: { col: 6, row: 29 }, br: { col: 8, row: 30 } }, // G30:H30
 };
 
 export const SIGNATURE_DATE_CELLS = {
-  // 合并区左上角含「日期 Date:」标签，写入时追加日期
-  self: "A35",
-  manager: "D35",
-  hr: "G35",
+  self: "A31",
+  manager: "D31",
+  hr: "G31",
 };
 
 export const PERF_SIGNATURE_PREFIX = "performance-signatures/";
 export const PERF_SIGNATURE_MAX_BYTES = 1 * 1024 * 1024;
 
-/** 加权单项: ROUND(weight * score / 100, 1) — 镜像 Excel G11 公式 */
+/** 加权单项: ROUND(weight * score / 100, 1) — 镜像 Excel G 列公式 */
 export function weightedItem(weight, score) {
   if (score == null || score === "" || Number.isNaN(Number(score))) return null;
   return Math.round(((Number(weight) * Number(score)) / 100) * 10) / 10;
 }
 
 /**
- * 主管加权总分 = SUM(weight_i * managerScore_i / 100)，需 5 项全填才返回（与 COUNT(F11:F15)<5 一致）
- * scores: [{ key, weight?, managerScore }]
+ * 主管加权总分 = SUM(weight_i * managerScore_i / 100)，需 7 项全填
  */
 export function computeManagerTotal(scores) {
   if (!Array.isArray(scores) || scores.length === 0) return null;
@@ -265,7 +303,7 @@ export function computeManagerTotal(scores) {
 }
 
 /**
- * 自评参考总分 = SUMPRODUCT(weights, selfScores)/100，需 5 项全填
+ * 自评参考总分 = SUMPRODUCT(weights, selfScores)/100，需 7 项全填
  */
 export function computeSelfTotal(scores) {
   if (!Array.isArray(scores) || scores.length === 0) return null;
@@ -281,7 +319,6 @@ export function computeSelfTotal(scores) {
   return Math.round(sum * 10) / 10;
 }
 
-/** 等级标签（中英双语，贴近 Excel G20） */
 export function ratingFor(total) {
   if (total == null) return null;
   if (total >= 90) return "A 优秀/Excellent";
@@ -310,7 +347,6 @@ export function isValidPerfScore(v) {
   if (v == null || v === "") return false;
   const n = Number(v);
   if (!Number.isFinite(n)) return false;
-  // 允许整数或一位小数，范围 1–100
   if (n < 1 || n > 100) return false;
   return true;
 }
@@ -331,10 +367,7 @@ export function safeFilename(s) {
 }
 
 export const LANG_LABELS = Object.freeze({
-  zh: "中文",
   "zh-en": "中英双语",
-  "zh-es": "中西双语",
-  en: "英文",
 });
 
 export const PERF_SOURCE = "绩效评价新建";

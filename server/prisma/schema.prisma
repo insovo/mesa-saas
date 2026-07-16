@@ -639,7 +639,7 @@ model InterviewEvaluation {
   @@map("interview_evaluations")
 }
 
-// 属地员工绩效评价 — 锚定 Employee；自评 / 主管双 token 公开填写；导出四语种 Excel
+// 属地员工绩效评价 — 锚定 Employee；自评 / 主管双 token 公开填写；导出中英双语 Excel
 model PerformanceEvaluation {
   id String @id @default(uuid()) @db.Uuid
 
@@ -667,9 +667,11 @@ model PerformanceEvaluation {
   // [{ key, weight, selfScore, managerScore, evidence }]
   scores Json @default("[]")
 
-  achievements    String? @db.Text
-  developmentPlan String? @map("development_plan") @db.Text
-  nextGoals       String? @map("next_goals") @db.Text
+  areasForImprovement String? @map("areas_for_improvement") @db.Text
+  developmentPlan     String? @map("development_plan") @db.Text
+  // 旧字段保留可空，v2 不再读写
+  achievements        String? @db.Text
+  nextGoals           String? @map("next_goals") @db.Text
 
   selfTotal     Float?   @map("self_total")
   managerTotal  Float?   @map("manager_total")
@@ -685,7 +687,7 @@ model PerformanceEvaluation {
   managerSignatureKey    String?   @map("manager_signature_key")
   managerSignedAt        DateTime? @map("manager_signed_at")
 
-  templateVersion  String  @default("v1") @map("template_version")
+  templateVersion  String  @default("v2") @map("template_version")
   templateFileHash String? @map("template_file_hash")
 
   createdBy     String?   @map("created_by") @db.Uuid
