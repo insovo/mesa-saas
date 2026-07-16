@@ -378,11 +378,19 @@ function accessKeyExportHeaders(targets) {
   const wantSelf = targets.includes("self");
   const wantMgr = targets.includes("manager");
   const base = ["工号", "姓名", "部门", "岗位", "职级", "直属主管", "评价周期"];
+  const contact = ["邮箱", "电话"];
   if (wantSelf && wantMgr) {
-    return [...base, "自评链接", "自评密钥", "主管链接", "主管密钥"];
+    return [...base, "自评链接", "自评密钥", "主管链接", "主管密钥", ...contact];
   }
-  if (wantSelf) return [...base, "自评链接", "密钥"];
-  return [...base, "主管链接", "密钥"];
+  if (wantSelf) return [...base, "自评链接", "密钥", ...contact];
+  return [...base, "主管链接", "密钥", ...contact];
+}
+
+/** 被评价人联系方式：优先 Employee，其次评价关联 Candidate；缺失为空串。 */
+function resolveEvaluateeContact(row) {
+  const email = row.employee?.email || row.candidate?.email || "";
+  const phone = row.employee?.phone || row.candidate?.phone || "";
+  return { email, phone };
 }
 
 function publicEvalUrl(origin, token) {
@@ -409,6 +417,7 @@ async function renderAccessKeysXlsx(rows, targets, origin) {
 
   for (const row of rows) {
     const empNo = row.employeeNo || row.employee?.externalId || "";
+    const { email, phone } = resolveEvaluateeContact(row);
     const cells = [
       empNo,
       row.employeeName || row.employee?.name || "",
@@ -426,6 +435,7 @@ async function renderAccessKeysXlsx(rows, targets, origin) {
       cells.push(publicEvalUrl(origin, row.managerToken));
       cells.push(decryptAccessKey(row.managerAccessKeyEnc) || "");
     }
+    cells.push(email, phone);
     ws.addRow(cells.map((v) => sanitizeForExcel(v == null ? "" : String(v))));
   }
 
@@ -438,6 +448,8 @@ async function renderAccessKeysXlsx(rows, targets, origin) {
   } else {
     ws.getColumn(8).width = 42;
   }
+  ws.getColumn(headers.length - 1).width = 28;
+  ws.getColumn(headers.length).width = 16;
 
   const buffer = Buffer.from(await wb.xlsx.writeBuffer());
   return { buffer, filename: `绩效访问密钥-${yyyymmdd()}.xlsx` };
@@ -1133,7 +1145,8 @@ export default async function performanceRoutes(app) {
         managerToken: true,
         selfAccessKeyEnc: true,
         managerAccessKeyEnc: true,
-        employee: { select: { name: true, externalId: true } },
+        employee: { select: { name: true, externalId: true, email: true, phone: true } },
+        candidate: { select: { email: true, phone: true } },
       },
     });
     if (rows.length === 0) {
