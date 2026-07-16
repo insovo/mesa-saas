@@ -248,7 +248,6 @@ export default function PublicPerformanceEval() {
     );
   }
 
-  const displayTotal = role === "self" ? liveSelfTotal : liveManagerTotal;
   const roleTitle = role === "self"
     ? "员工自评 / Employee Self-assessment"
     : "主管评价 / Manager Evaluation";
@@ -277,12 +276,26 @@ export default function PublicPerformanceEval() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <LiquidLoader
-              level={displayTotal != null ? Math.min(100, displayTotal) : 0}
-              label={displayTotal != null ? displayTotal : ""}
-              size={64}
-              loading={displayTotal == null}
-            />
+            <div className="flex items-center gap-2.5">
+              <div className="flex flex-col items-center gap-0.5">
+                <LiquidLoader
+                  level={liveSelfTotal != null ? Math.min(100, liveSelfTotal) : 0}
+                  label={liveSelfTotal != null ? liveSelfTotal : ""}
+                  size={56}
+                  loading={liveSelfTotal == null}
+                />
+                <span className="text-[10px] font-medium text-[#707EAE] leading-none">自评</span>
+              </div>
+              <div className="flex flex-col items-center gap-0.5">
+                <LiquidLoader
+                  level={liveManagerTotal != null ? Math.min(100, liveManagerTotal) : 0}
+                  label={liveManagerTotal != null ? liveManagerTotal : ""}
+                  size={56}
+                  loading={liveManagerTotal == null}
+                />
+                <span className="text-[10px] font-medium text-[#707EAE] leading-none">主管</span>
+              </div>
+            </div>
             <div className="flex flex-col items-stretch gap-1.5">
               <Button size="sm" variant="ghost" onClick={() => setRubricOpen(true)}>
                 <I name="book-open" size={14} /> 评分标准
@@ -290,7 +303,7 @@ export default function PublicPerformanceEval() {
               <div className="text-xs text-[#707EAE] text-center tabular-nums">
                 Rating:{" "}
                 <b className="text-navy-700">
-                  {ratingLetterForTotal(displayTotal)
+                  {ratingLetterForTotal(liveManagerTotal)
                     ?? (readonly ? ratingLetterFromText(form.rating) : null)
                     ?? "—"}
                 </b>
