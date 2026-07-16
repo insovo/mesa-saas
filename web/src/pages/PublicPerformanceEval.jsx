@@ -72,7 +72,8 @@ export default function PublicPerformanceEval() {
   const liveManagerTotal = useMemo(() => {
     if (!form?.scores) return null;
     const all = form.scores.every((s) => s.managerScore != null && s.managerScore !== "");
-    if (!all) return form.managerTotal ?? null;
+    // 五项未齐时不回落服务端旧总分，避免拖动时「滞后感」
+    if (!all) return null;
     let sum = 0;
     for (const s of form.scores) {
       sum += (Number(s.weight) * Number(s.managerScore)) / 100;
@@ -83,13 +84,17 @@ export default function PublicPerformanceEval() {
   const liveSelfTotal = useMemo(() => {
     if (!form?.scores) return null;
     const all = form.scores.every((s) => s.selfScore != null && s.selfScore !== "");
-    if (!all) return form.selfTotal ?? null;
+    if (!all) return null;
     let sum = 0;
     for (const s of form.scores) {
       sum += (Number(s.weight) * Number(s.selfScore)) / 100;
     }
     return Math.round(sum * 10) / 10;
   }, [form]);
+
+  // 与后端 ratingFor / pipTriggeredFor 镜像 — 跟主管加权总分实时联动
+  const liveRating = useMemo(() => ratingForTotal(liveManagerTotal), [liveManagerTotal]);
+  const livePip = useMemo(() => pipTriggeredForTotal(liveManagerTotal), [liveManagerTotal]);
 
   function patchForm(updater) {
     if (readonly) return;
@@ -351,8 +356,13 @@ export default function PublicPerformanceEval() {
           <div className="flex flex-wrap gap-4 text-xs text-[#707EAE]">
             <span>自评参考总分 Self: <b className="text-navy-700">{liveSelfTotal ?? "—"}</b></span>
             <span>主管加权总分 Manager: <b className="text-navy-700">{liveManagerTotal ?? "—"}</b></span>
-            {form.rating && <span>等级 Rating: <b className="text-navy-700">{form.rating}</b></span>}
-            {form.pipTriggered === true && (
+            <span>
+              等级 Rating:{" "}
+              <b className="text-navy-700">
+                {liveRating ?? (readonly ? form.rating || "—" : "—")}
+              </b>
+            </span>
+            {(livePip === true || (livePip == null && readonly && form.pipTriggered === true)) && (
               <span className="text-amber-700 font-bold">触发 PIP / PIP triggered</span>
             )}
           </div>
@@ -491,6 +501,22 @@ function Field({ label, value, onChange, readOnly }) {
  * 1–100 拖动评分条（Claude/Codex 倍率条风格）
  * 仅 UI；写入仍为整数分，Excel 导出字段不变。
  */
+/** 镜像 server ratingFor — 主管加权总分 → 等级文案 */
+function ratingForTotal(total) {
+  if (total == null || Number.isNaN(Number(total))) return null;
+  const t = Number(total);
+  if (t >= 90) return "A 优秀/Excellent";
+  if (t >= 80) return "B 良好/Good";
+  if (t >= 60) return "C 胜任/Competent";
+  if (t >= 40) return "D 待改进/Needs improvement";
+  return "E 不胜任/Unsatisfactory";
+}
+
+function pipTriggeredForTotal(total) {
+  if (total == null || Number.isNaN(Number(total))) return null;
+  return Number(total) < 60;
+}
+
 function ScoreSlider({ value, onChange, disabled }) {
   const numRef = useRef(null);
   const thumbGlowRef = useRef(null);
