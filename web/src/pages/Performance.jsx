@@ -44,6 +44,16 @@ function canViewEval(ev) {
   );
 }
 
+/** 无评价 → 发起；已有 → 分享/导出 */
+function openEvalExport(emp, { setEvalTarget, setShareTarget }) {
+  const latest = emp.latestEvaluation;
+  if (latest) {
+    setShareTarget({ employee: emp, evaluation: latest });
+  } else {
+    setEvalTarget(emp);
+  }
+}
+
 export default function Performance() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -333,27 +343,24 @@ export default function Performance() {
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-2 flex-wrap">
+                        <div className="flex items-center justify-end gap-2 flex-nowrap">
                           {viewable && (
                             <Button
                               size="sm"
                               variant="ghost"
+                              className="shrink-0"
                               onClick={() => setViewTarget({ employee: emp, evaluationId: latest.id })}
                             >
                               <I name="eye" size={14} /> 查看
                             </Button>
                           )}
-                          <Button size="sm" variant="ghost" onClick={() => setEvalTarget(emp)}>
-                            <I name="clipboard-plus" size={14} /> 发起评价
+                          <Button
+                            size="sm"
+                            className="shrink-0"
+                            onClick={() => openEvalExport(emp, { setEvalTarget, setShareTarget })}
+                          >
+                            <I name="clipboard-check" size={14} /> 评价/导出
                           </Button>
-                          {latest && (
-                            <Button
-                              size="sm"
-                              onClick={() => setShareTarget({ employee: emp, evaluation: latest })}
-                            >
-                              <I name="share-2" size={14} /> 分享 / 导出
-                            </Button>
-                          )}
                         </div>
                       </td>
                     </tr>
@@ -396,6 +403,9 @@ export default function Performance() {
         onUpdated={(ev) => {
           setShareTarget((s) => (s ? { ...s, evaluation: ev } : s));
           load();
+        }}
+        onNewEvaluation={() => {
+          if (shareTarget?.employee) setEvalTarget(shareTarget.employee);
         }}
       />
     </div>
