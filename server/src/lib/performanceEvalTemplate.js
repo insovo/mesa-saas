@@ -33,10 +33,10 @@ export const PRIMARY_SHEET_NAME = Object.freeze({
 
 // SHA-256 — 启动校验。有意更新模板时同步改这里。
 export const TEMPLATE_EXPECTED_HASHES = Object.freeze({
-  zh: "f963250909b692dc4eb59bdbe0a11304cfdfe84109c8f9a69756954c83c9a5f1",
-  "zh-en": "9a5299c705485a99abeb5f901ce65f6b8cda62092764dd652d957aef63ddd00c",
-  "zh-es": "eacb6ac60babb7944bc2fcc8e9071f635777125d8d75a610fb3f5fb4dd9cdded",
-  en: "2b6fd11ec170139587ade6ab69c4e082b7f427410bbc8225176a3a1c4431be6e",
+  zh: "c0806899501732987a521f72cc036c9efd2dba87b0cb8c5fc55b5642c09a2606",
+  "zh-en": "d9ff5650c80f7c1592dda8c9fa24bc2cf35ee9a3c3bee1089e159388d8fa42af",
+  "zh-es": "7801a701e10116ac18733bdfc9300680703a6a7cdaac3044a2ad7030336f31c3",
+  en: "2b3622a5945fe0d27c3aa0a24274de6b504b8d7636300bb499c7cdb9a02c9622",
 });
 
 // 权威版本号以中英双语金样为准
@@ -156,16 +156,16 @@ export const SCORE_DIMENSIONS = [
   },
 ];
 
-// 被评价人信息 → 单元格 (合并块左上角)
+// 被评价人信息 → 黄底填写格（标签在 A/D 合并区，值在 C / G）
 export const INFO_FIELDS = [
-  { key: "employeeName", cell: "B5", label: "姓名 / Name", required: true },
-  { key: "position", cell: "E5", label: "岗位 / Position", required: false },
-  { key: "employeeNo", cell: "B6", label: "工号 / ID", required: false },
-  { key: "lineManager", cell: "E6", label: "直属主管 / Line Manager", required: false },
-  { key: "department", cell: "B7", label: "部门 / Department", required: false },
-  { key: "level", cell: "E7", label: "职级 / Level", required: false },
-  { key: "reviewPeriod", cell: "B8", label: "评价周期 / Review Period", required: true },
-  { key: "evalDate", cell: "E8", label: "评价日期 / Date", required: false, type: "date" },
+  { key: "employeeName", cell: "C5", label: "姓名 / Name", required: true },
+  { key: "position", cell: "G5", label: "岗位 / Position", required: false },
+  { key: "employeeNo", cell: "C6", label: "工号 / ID", required: false },
+  { key: "lineManager", cell: "G6", label: "直属主管 / Line Manager", required: false },
+  { key: "department", cell: "C7", label: "部门 / Department", required: false },
+  { key: "level", cell: "G7", label: "职级 / Level", required: false },
+  { key: "reviewPeriod", cell: "C8", label: "评价周期 / Review Period", required: true },
+  { key: "evalDate", cell: "G8", label: "评价日期 / Date", required: false, type: "date" },
 ];
 
 export const SUMMARY_FIELDS = [
@@ -229,9 +229,10 @@ export const SIGNATURE_IMAGE_ANCHORS = {
 };
 
 export const SIGNATURE_DATE_CELLS = {
-  self: "B35",
-  manager: "E35",
-  hr: "H35",
+  // 合并区左上角含「日期 Date:」标签，写入时追加日期
+  self: "A35",
+  manager: "D35",
+  hr: "G35",
 };
 
 export const PERF_SIGNATURE_PREFIX = "performance-signatures/";
