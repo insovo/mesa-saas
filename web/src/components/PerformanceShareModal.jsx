@@ -727,26 +727,21 @@ export default function PerformanceShareModal({
 
             <div className="rounded-xl border border-[#E9ECEF] p-4 space-y-3">
               <div className="text-sm font-bold text-navy-700">导出 Excel（中英双语）</div>
-              <div className="flex items-center justify-between gap-2">
-                <label className={`flex items-center gap-2 text-xs min-w-0 ${hasHrStamp ? "text-navy-700" : "text-[#A0AEC0]"}`}>
-                  <input
-                    type="checkbox"
-                    checked={embedHr}
-                    disabled={!hasHrStamp || busy}
-                    onChange={(e) => setEmbedHr(e.target.checked)}
-                    className="rounded border-[#E9ECEF] text-brand focus:ring-brand"
-                  />
-                  嵌入 HR 签名
-                  {!hasHrStamp && (
-                    <span className="text-[10px] text-[#A0AEC0]">
-                      （请先点「HR电子章」上传）
-                    </span>
-                  )}
-                </label>
-                <Button size="sm" variant="ghost" className="shrink-0" onClick={() => setHrSealOpen(true)}>
-                  <I name="file-signature" size={14} /> HR电子章
-                </Button>
-              </div>
+              <label className={`flex items-center gap-2 text-xs ${hasHrStamp ? "text-navy-700" : "text-[#A0AEC0]"}`}>
+                <input
+                  type="checkbox"
+                  checked={embedHr}
+                  disabled={!hasHrStamp || busy}
+                  onChange={(e) => setEmbedHr(e.target.checked)}
+                  className="rounded border-[#E9ECEF] text-brand focus:ring-brand"
+                />
+                嵌入 HR 签名
+                {!hasHrStamp && (
+                  <span className="text-[10px] text-[#A0AEC0]">
+                    （请先点「HR电子章」上传）
+                  </span>
+                )}
+              </label>
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" disabled={busy} onClick={onExport}>
                   <I name="download" size={14} /> 下载 Excel
@@ -769,6 +764,9 @@ export default function PerformanceShareModal({
                     <I name="clipboard-plus" size={14} /> 发起新周期评价
                   </Button>
                 )}
+                <Button size="sm" variant="ghost" onClick={() => setHrSealOpen(true)}>
+                  <I name="file-signature" size={14} /> HR电子章
+                </Button>
               </div>
             </div>
           </>
