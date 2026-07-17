@@ -26,19 +26,21 @@ export default function Layout() {
     setMobileOpen(false);
   }, [location.pathname]);
 
-  // 候选人详情页 /candidates/<id>(列表页 /candidates 不算)
+  // 三列详情页:候选人 / 员工(现有人员·入职管理)
   const isCandidateDetail = /^\/candidates\/[^/]+/.test(location.pathname);
+  const isEmployeeDetail = /^\/(staff|newhire)\/[^/]+/.test(location.pathname);
+  const isDetailPage = isCandidateDetail || isEmployeeDetail;
   // collapsed 的实时镜像 — 让自动收起 effect 只依赖路由、不因 collapsed 变化重跑(否则在详情页手动展开会被立刻又收起)
   const collapsedRef = useRef(collapsed);
   collapsedRef.current = collapsed;
   // 标记「这次收起是自动触发的」,离开详情页时才据此恢复
   const autoCollapsedRef = useRef(false);
 
-  // 桌面端进候选人详情自动收起左侧导航(给三列详情腾空间),离开时恢复;
+  // 桌面端进三列详情页自动收起左侧导航(给详情腾空间),离开时恢复;
   // 用 setCollapsed(不走 toggleCollapsed)→ 不写 localStorage、不污染用户持久化偏好。
   // 移动端侧栏是抽屉(collapsed 不影响),此逻辑只在桌面产生视觉效果。
   useEffect(() => {
-    if (isCandidateDetail) {
+    if (isDetailPage) {
       if (!collapsedRef.current) {
         autoCollapsedRef.current = true;
         setCollapsed(true);
@@ -47,7 +49,7 @@ export default function Layout() {
       autoCollapsedRef.current = false;
       setCollapsed(false);
     }
-  }, [isCandidateDetail]);
+  }, [isDetailPage]);
 
   return (
     <div className="flex min-h-screen bg-lightPrimary">

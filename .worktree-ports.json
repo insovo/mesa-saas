@@ -243,6 +243,15 @@
       "backend": 3251,
       "frontend": 5423,
       "since": "2026-07-17"
+    },
+    {
+      "slot": 26,
+      "name": "staff-detail-responsive",
+      "path": ".worktrees/fix/staff-detail-responsive",
+      "branch": "fix/staff-detail-responsive",
+      "backend": 3261,
+      "frontend": 5433,
+      "since": "2026-07-17"
     }
   ]
 }
