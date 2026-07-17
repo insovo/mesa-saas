@@ -1,7 +1,7 @@
 ---
 title: "Overseas R&D · 系统日常运维与数据灾备恢复手册"
 author: "Overseas R&D 交付组"
-date: "2026-05-22"
+date: "2026-07-17"
 ---
 
 # 1. 日常巡检 SOP
@@ -348,11 +348,34 @@ docker compose logs --since 24h backend | grep "kimi" | wc -l
 2. Chrome 设置 → 隐私 → 站点设置 → 通知 → `insovo.top`
 3. 音效不响:Web Audio API 需用户交互后才能 play,首次进入页面无声正常(用户先点过任意按钮后才会有音)
 
-## 9.6 JWT_SECRET 与 AES SystemSetting 联动风险
+## 9.6 JWT_SECRET 与 AES 加密字段联动风险
 
-`SystemSetting` 中 `kimi.api_key` 用 AES-256-GCM 加密,密钥从 `JWT_SECRET` HKDF 派生。
-**轮换 JWT_SECRET 会让所有加密 setting 解不开** —— 必须按顺序:
-1. admin UI 看到当前 Kimi key(只 mask 显示)
-2. 通过 `/v1/models` 测试连通,确认 key 仍可用
-3. 改 `JWT_SECRET` 重启
-4. admin UI 重新粘贴明文 Kimi key,重新加密写 DB
+以下字段用 AES-256-GCM 加密,密钥从 `JWT_SECRET` HKDF 派生(`salt="mesa.settings.v1"`):
+
+| 数据 | 字段 |
+|------|------|
+| SystemSetting | `kimi.api_key` 等 `encrypted=true` 的 value |
+| 绩效访问密钥回显 | `PerformanceEvaluation.selfAccessKeyEnc` / `managerAccessKeyEnc` |
+
+**轮换 JWT_SECRET 会让上述密文全部解不开**,但:
+
+- 用户登录 JWT 全部失效(需重新登录)——预期行为
+- 绩效公开填表仍可用:**bcrypt hash 校验不依赖 JWT_SECRET**
+- Admin 无法再「眼睛查看 / 预览导出」旧明文,直到 bulk generate / set 新密钥
+
+推荐顺序:
+1. admin UI 确认当前 Kimi key 可用(或先备份明文到安全渠道)
+2. 若仍需保留旧绩效密钥明文副本:先跑「批量导出密钥」并妥善保管
+3. 改 `JWT_SECRET`, `docker compose up -d --force-recreate backend`
+4. admin UI 重新粘贴 Kimi key
+5. 绩效页对需要回显的记录执行「刷新随机密钥」或「设置统一密钥」
+
+## 9.7 绩效评价运维速查
+
+| 场景 | 动作 |
+|------|------|
+| 用户忘密钥 | Admin Share Modal → ensure / 刷新随机密钥 / 设置统一密钥 → 重新「复制链接密钥」 |
+| 密钥 Excel 泄露 | 对该批评价 `access-keys/bulk` generate 轮换;旧 Excel 作废 |
+| 模板改版 | 更新 `assets/templates/performance-evaluation-zh-en-v2.xlsx` + `TEMPLATE_EXPECTED_HASHES`;镜像须含 `COPY assets`(坑 #38) |
+| 导出要嵌入 HR 章 | 当前用户先上传电子章;导出勾选 `embedHrSignature` |
+| 撤销错发周期 | `POST /evaluations/:id/revoke` |

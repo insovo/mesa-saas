@@ -1,10 +1,6 @@
-# MESA Web (Stage ①)
+# MESA Web
 
-Vite + React 18 + Tailwind 生产前端骨架,对应 demo.md 阶段①「本地全栈闭环」。
-
-> ⚠️ 这是「**生产前端**」目录,与 `ui_kits/mesa-recruit/`(无构建 UI Kit demo)是**两套独立的代码**。
-> - `ui_kits/mesa-recruit/` 继续作为设计参考与点击通 demo,保持「无构建」(AGENTS.md §2)。
-> - `web/` 用 Vite 构建,承接 SaaS 演进路径,逐步把 UI Kit 里的组件移植过来。
+Vite + React 18 + Tailwind 生产前端。设计令牌见 `tailwind.config.js` / `src/index.css`。完整页面与权限见 `delivery-docs` 与 `CLAUDE.md`。
 
 ## 启动
 
@@ -17,22 +13,29 @@ npm run dev
 # → http://localhost:5173
 ```
 
-Vite dev server 默认配置 proxy:`/api/*` 自动转发到 `http://127.0.0.1:3001`(避开 CORS,生产由 Nginx location /api/ 接管,语义一致)。
+Vite 默认 proxy:`/api/*` → `http://127.0.0.1:3001`。多 worktree 用 `web/.env` 的 `VITE_DEV_PORT` / `VITE_API_PORT`。
 
-## 当前页面
+## 主要路由
 
 | Path | 功能 |
 |------|------|
-| `/login` | 邮箱密码登录,签发 JWT 存 localStorage |
-| `/candidates` | 候选人列表 / 搜索 / 新建 / 删除(端到端 CRUD 闭环) |
-| `/` 或其他 | 自动重定向到 `/candidates`(经 AuthGuard 检查) |
+| `/login` | 登录(记住账号 / MFA 等) |
+| `/dashboard` | 概览 |
+| `/candidates` `/candidates/:id` | 候选人列表 / V2 三列详情 |
+| `/upload` | 简历上传 V3 + 公开上传链接 |
+| `/jobs` `/departments` | 岗位 / 组织架构 |
+| `/staff` `/staff/:id` | 现有人员 · 详情三列响应式 |
+| `/newhire` `/newhire/:id` | 入职管理(共用 EmployeeDetail) |
+| `/interviews` | 面试安排 |
+| `/performance` | **员工绩效评价**管理 |
+| `/reports` | 数据报表 |
+| `/share-settings` `/users` `/audit` | 分享策略 / 用户权限 / 审计 |
+| `/share/:token` | 公开候选人简报(AuthGuard 外) |
+| `/upload/:token` | 公开上传(AuthGuard 外) |
+| `/interview-eval/:token` | 公开面试评价(AuthGuard 外) |
+| `/performance-eval/:token` | 公开绩效评价 + 访问密钥门禁(AuthGuard 外) |
 
-## 路由守卫(demo.md 1.1.3)
+## 认证
 
-`src/components/AuthGuard.jsx` 在每次进入受保护路由时检查 localStorage 里的 token;无 token 一律 `<Navigate to="/login" />` 并记下原路径,登录后跳回。
-
-## Axios 拦截器(demo.md 1.1.2)
-
-`src/lib/api.js`:
-- **请求拦截器**:有 token 时自动附 `Authorization: Bearer <token>`。
-- **响应拦截器**:`401` 自动 `clearAuth()` 并触发全局重定向到 `/login`(由 `App.jsx` 注册的 `setUnauthorizedHandler` 实现)。
+- `AuthGuard` + `RequirePermission`(pageKey)
+- Axios:`src/lib/api.js` — 401 清登录跳 `/login`;**绩效公开**的 `access_key_*` 401 **不**触发跳登录

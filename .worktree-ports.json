@@ -252,6 +252,15 @@
       "backend": 3261,
       "frontend": 5433,
       "since": "2026-07-17"
+    },
+    {
+      "slot": 27,
+      "name": "sync-performance-docs",
+      "path": ".worktrees/docs/sync-performance-docs",
+      "branch": "docs/sync-performance-docs",
+      "backend": 3271,
+      "frontend": 5443,
+      "since": "2026-07-17"
     }
   ]
 }

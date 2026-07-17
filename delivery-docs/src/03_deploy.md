@@ -1,7 +1,7 @@
 ---
 title: "Overseas R&D · 生产环境云端部署与 CI-CD 配置手册"
 author: "Overseas R&D 交付组"
-date: "2026-05-22"
+date: "2026-07-17"
 ---
 
 # 1. 前置准备
@@ -466,4 +466,15 @@ curl -X POST "https://insovo.top/api/system/settings/kimi.api_key/test" \
 | `mesa-backups` | 每日 pg_dump | VPS `~/.aws/credentials` 中 `[r2-backup]` profile |
 
 业务桶 CORS 限定 `https://insovo.top`。备份桶不需 CORS(server-to-server)。
+
+## 5.6 静态模板资源(面试评价 / 绩效评价)
+
+运行时读取 `server/assets/templates/`:
+
+| 文件 | 用途 |
+|------|------|
+| `interview-evaluation-v1.xlsx` | 面试评价导出金样 |
+| `performance-evaluation-zh-en-v2.xlsx` | 员工绩效评价 v2 中英双语金样 |
+
+Dockerfile runtime stage **必须** `COPY assets ./assets`(坑 #38)。更新金样后同步改对应 `TEMPLATE_EXPECTED_HASHES`,否则容器 boot fatal。
 
