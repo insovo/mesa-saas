@@ -1,6 +1,6 @@
 # 数据报表模块 · 完成度报告
 
-> 对照设计规划文档 `/Users/mysaria/Project/mesa/数据报表设计规划.md`
+> 对照设计规划文档 [`delivery-docs/dev-plans/数据报表设计规划.md`](../delivery-docs/dev-plans/数据报表设计规划.md)
 > 截止 PR #18 + M6 流失原因 schema(本文档)
 > 路径:`/reports` · https://insovo.top/reports
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# MESA Recruit · 数据库灾备恢复脚本(demo.md §5.3 + 交付文档 04 配套)
+# MESA Recruit · 数据库灾备恢复脚本(见 delivery-docs/src/04_ops.md §3)
 # 用法:
 #   ops/restore.sh r2://mesa-backups/postgres/2026/05/mesa-pg-20260522T0300Z.sql.gz
 #   ops/restore.sh /var/backups/mesa/mesa-pg-20260522T0300Z.sql.gz

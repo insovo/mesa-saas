@@ -2,7 +2,7 @@
 
 > AI 协作守则与项目级指令(对 **Claude Code / Codex CLI / Cursor** 共同生效)。
 > 用户的全局偏好(沟通语言、称呼、Priority Order 等)以 `~/.claude/CLAUDE.md` 为准,本文件不重复。
-> 完整架构 / API / 部署 / 运维手册在 [`delivery-docs/`](./delivery-docs) 的 4 份 .docx 里。
+> 完整架构 / API / 部署 / 运维手册见 [`delivery-docs/`](./delivery-docs)(`src/*.md` 源 + 正式 `.docx` 交付件,索引见根 [`README.md`](./README.md#交付文档索引))。
 
 ---
 
@@ -354,7 +354,7 @@ SystemSetting  独立 KV (kimi.api_key / kimi.model / kimi.prompt 等)
 | `ReviewVote` | reviewId/userId/value(+1/-1) | unique(reviewId,userId) 登录用户去重 |
 | `ShareLink` | token/candidateId/expiresAt/maxViews/viewCount + 可见性:**showContact**(默认 true,开=完整展示)/ **showResume**(默认 true,查看原始简历)/ **showAttachments**(默认 false)/ **showInterviewEval**(默认 true)/ **showInterviewEvalList**(默认 false)/ **showNotes**(默认 false,公开页展示内部备注;洞察不受控始终展示)+ **allowedModules**(快照 ∩ 创建者权限;空=全开;关评论=排除 candidate.reviews)| 公开访问凭证 + 可见性 toggle(详见 §11)。飞书 bot 自动分享按 `feishu.share_defaults`(全局)/ `feishu.share_defaults.u.<uid>`(单人)生效配置建链接 |
 | `UploadShareLink` | token/defaultJobId/defaultSource/note/expiresAt/maxUploads/uploadCount/createdBy | **V3** 公开上传镜像 — 招聘官生成 → 候选人本人 / 同事 / 猎头通过短链 `/upload/:token` 上传简历(详见 §11 末尾 11.5)。**飞书 Bot 永久链接**(2026-06-02):/upload 页「更多上传方式」卡片可一键创建永不过期·无上限链接(`duration:"forever"` + `maxUploads:null` + `defaultSource:"飞书自动入库"`),复制 token 填 VPS `.env` 的 `LARK_UPLOAD_TOKEN` 供 lark-ingest 长期使用;前端按 `expiresAt==null && maxUploads==null` 识别为飞书专用,与候选人临时链接(30d/200)分区展示 |
-| `InterviewEvaluation` | token/candidateId/interviewId?/jobId?/status/expiresAt + 候选人信息快照 9 字段 + scores(JSON 7 维度) + 纪要 4 段 + totalScore/recommendation + templateVersion/templateFileHash + createdBy/submittedAt/exportedAt/viewCount | **面试评价(2026-05-27)** — 招聘官生成 token → 面试官无登录通过 `/interview-eval/:token` 填表 → 提交后可导出与原 Excel 模板完全一致的 xlsx。状态机:link_sent → draft → submitted → revoked。模板 SHA-256 启动校验。详见 §13 与 `/Users/mysaria/Project/mesa/面试评价模块设计规划.md` |
+| `InterviewEvaluation` | token/candidateId/interviewId?/jobId?/status/expiresAt + 候选人信息快照 9 字段 + scores(JSON 7 维度) + 纪要 4 段 + totalScore/recommendation + templateVersion/templateFileHash + createdBy/submittedAt/exportedAt/viewCount | **面试评价(2026-05-27)** — 招聘官生成 token → 面试官无登录通过 `/interview-eval/:token` 填表 → 提交后可导出与原 Excel 模板完全一致的 xlsx。状态机:link_sent → draft → submitted → revoked。模板 SHA-256 启动校验。详见 §12.5 与 [`delivery-docs/dev-plans/面试评价模块设计规划.md`](./delivery-docs/dev-plans/面试评价模块设计规划.md) |
 | `PerformanceEvaluation` | employeeId · self/managerToken · accessKey hash/enc/fail/lock · scores(7) · areasForImprovement/developmentPlan · signatures · edit quotas · templateVersion=v2 | **员工绩效评价**(2026-07)· 公开 `/performance-eval/:token` + `X-Perf-Access-Key` · 详见 `delivery-docs/src/06_performance_evaluation.md` |
 | `SystemSetting` | key/value(AES-256-GCM)/encrypted/updatedBy | admin 系统配置(KIMI key/model/prompt) |
 
@@ -417,7 +417,7 @@ ShareLink 是「候选人简报对外」,UploadShareLink 是镜像反向 — 「
 
 ## 12.5 面试评价系统(V1, 2026-05-27)
 
-公开页 `/interview-eval/:token` **在 AuthGuard 外**, 不依赖 JWT。设计完整规划见 `面试评价模块设计规划.md`。
+公开页 `/interview-eval/:token` **在 AuthGuard 外**, 不依赖 JWT。设计规划见 [`delivery-docs/dev-plans/面试评价模块设计规划.md`](./delivery-docs/dev-plans/面试评价模块设计规划.md); as-built API 见 [`delivery-docs/src/02_api.md`](./delivery-docs/src/02_api.md) §17。
 
 | 能力 | 实现 |
 |------|------|

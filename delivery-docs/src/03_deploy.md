@@ -424,7 +424,7 @@ jq '.slots |= map(select(.name != "feature/upload"))' \
 - [ ] `curl https://<域名>/api/health` 返回 ok
 - [ ] `curl https://<域名>/login` 返回 200 + 含 `<div id="root">`
 - [ ] 浏览器访问能登录 + Dashboard 数据正常
-- [ ] crontab 已配置每日 03:00 备份(见交付文档 04)
+- [ ] systemd timer `mesa-backup.timer` 已启用(每日 03:00 UTC,见 [`04_ops.md`](./04_ops.md) §2.1)
 
 # 11. LLM(Kimi)配置(上线后追加)
 
