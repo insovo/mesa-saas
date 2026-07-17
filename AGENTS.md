@@ -2,6 +2,7 @@
 
 > AI 协作守则与项目级指令(对 **Codex / Codex CLI / Cursor** 共同生效)。
 > 用户的全局偏好(沟通语言、称呼、Priority Order 等)以 `~/.Codex/AGENTS.md` 为准,本文件不重复。
+> **子系统与数据模型以仓库根 `CLAUDE.md` 为更完整口径**;本文件保持 Codex 常用摘要,重大能力变更两侧同步。
 > 完整架构 / API / 部署 / 运维手册在 [`delivery-docs/`](./delivery-docs) 的 4 份 .docx 里。
 
 ---
@@ -10,7 +11,7 @@
 
 **MESA Recruit · 已上线 SaaS**:
 - 站点 **https://insovo.top** + 监控 **https://monitor.insovo.top**
-- 香港 VPS `114.134.188.7` (4 核 8G,Ubuntu 22.04) · Docker Compose 编排 5 容器
+- 香港 VPS `114.134.188.7` (4 核 8G,Ubuntu 22.04) · Docker Compose 编排 6 容器
 - 前后端 + 数据库 + 缓存 + 监控全栈生产化
 - GitHub Actions 自动 build → GHCR → SSH 滚动部署(1-2 分钟)
 - 每日 03:00 UTC `systemd timer` 自动 PG 全量备份 → Cloudflare R2
@@ -27,6 +28,7 @@
 | LiquidLoader | 候选人匹配度全站液体进度球(替换原 MatchRing)· 三档调色板(red ≤60 / blue 60-80 / violet >80)· 数字白色描边 · 波浪 + 气泡 + 高光 · loading=true 外圈呼吸光晕 |
 | 分享给招聘官 | ShareLink 公开链接,可设有效期(60s-30d/无限期)+ 访问次数上限(10/50/100/自定义/无限) |
 | 评价对话系统 | 1 级嵌套回复 + 多选批量回复 + 赞同/否决投票 + 投票名单 popover + 可见范围(public/internal/admin) + soft-delete + admin 审核删除/隐藏 + 实时通知(Notification+音效) |
+| **员工绩效评价** | `/performance` + `/performance-eval/:token` · 双链接 + 访问密钥 · v2 Excel · 详见 `delivery-docs/src/06_performance_evaluation.md` |
 
 ---
 
@@ -65,8 +67,8 @@ mesa/
 │   ├── backup.sh              # pg_dump → R2(由 systemd timer 每日跑)
 │   ├── restore.sh             # R2 → pg_restore(灾备恢复)
 │   └── runbook_cloudflare_vps.md  # 阶段④ 生产硬化 SOP(checkbox)
-├── delivery-docs/             # 4 份正式交付 .docx + src/ markdown 源
-├── docker-compose.yml         # 生产 5 容器编排
+├── delivery-docs/             # src/*.md 权威源(含 06 绩效) + 正式 .docx
+├── docker-compose.yml         # 生产 6 容器编排
 ├── docker-compose.dev.yml     # 本地开发 PG + Redis(仅 127.0.0.1)
 ├── .github/workflows/         # CI + Deploy 流水线
 ├── .env.example               # 生产环境变量模板(占位 __SET_BY_OPS__)
@@ -273,7 +275,7 @@ gh run watch  # 想盯过程的话
 
 ## 10. 数据模型清单(Prisma)
 
-11 张表,关系图如下:
+20 个 Prisma model(含 PerformanceEvaluation 等);关系简图:
 
 ```
 User ─owns──> Candidate ─has─> Note / Review / ShareLink / Employee
@@ -300,6 +302,7 @@ SystemSetting  独立 KV (kimi.api_key / kimi.model / kimi.prompt 等)
 | `Review` | candidateId/authorName/content/attachments json/parentId/referencedIds json/stance/upvotes/downvotes/visibility/hidden/deletedAt | 评价对话(详见 §12) |
 | `ReviewVote` | reviewId/userId/value(+1/-1) | unique(reviewId,userId) 登录用户去重 |
 | `ShareLink` | token/candidateId/expiresAt/maxViews/viewCount | 公开访问凭证(详见 §11) |
+| `PerformanceEvaluation` | 员工绩效评价(双 token + 访问密钥 + 签字 + v2 导出) | 见 `delivery-docs/src/06_performance_evaluation.md` |
 | `SystemSetting` | key/value(AES-256-GCM)/encrypted/updatedBy | admin 系统配置(KIMI key/model/prompt) |
 
 ## 11. ShareLink 分享系统

@@ -1,7 +1,7 @@
 ---
 title: "Overseas R&D · 系统架构与网络拓扑设计说明书"
 author: "Overseas R&D 交付组"
-date: "2026-05-22"
+date: "2026-07-17"
 ---
 
 # 1. 文档信息
@@ -9,7 +9,7 @@ date: "2026-05-22"
 | 项目 | 内容 |
 |------|------|
 | 文档名称 | 系统架构与网络拓扑设计说明书 |
-| 版本 | v1.0 |
+| 版本 | v1.1 |
 | 适用范围 | Overseas R&D 全栈 SaaS 应用 |
 | 部署形态 | 香港 D 型 VPS (4 核 8G,免备案) + Cloudflare 边缘网络 |
 | 配套文档 | 02 API 手册 · 03 部署手册 · 04 运维灾备手册 |
@@ -34,7 +34,7 @@ Overseas R&D 是面向 AI 原生招聘场景的 SaaS 产品,核心能力包括:
 | 数据库 | PostgreSQL 16 (alpine) | 业务核心数据 |
 | 缓存 / 队列 | Redis 7 (alpine) | 会话、限流、解析任务队列 |
 | 对象存储 | Cloudflare R2 | 简历附件 + 数据库备份 |
-| 容器编排 | Docker + docker compose v2 | 4 容器单机编排 |
+| 容器编排 | Docker + docker compose v2 | 6 服务单机编排(frontend/backend/postgres/redis/uptime-kuma/lark-ingest) |
 | CI/CD | GitHub Actions + GHCR | 自动构建镜像 + SSH 滚动部署 |
 
 # 4. 部署架构
@@ -92,6 +92,7 @@ Overseas R&D 是面向 AI 原生招聘场景的 SaaS 产品,核心能力包括:
 | `postgres` | `postgres:16-alpine` | 仅 `expose: 5432`(**严禁映射宿主**) | `mesa_pg_prod_data` |
 | `redis` | `redis:7-alpine` | 仅 `expose: 6379`(**严禁映射宿主**) | `mesa_redis_prod_data` |
 | `uptime-kuma` | `louislam/uptime-kuma:1` | 仅 `expose: 3001`(通过 nginx `monitor.insovo.top` 反代) | `mesa_uptime_data` |
+| `lark-ingest` | 自建(`tools/lark-ingest`) | **无端口**(出站长连接飞书)· 内网调 `backend:3001` | `mesa_lark_ingest_data` |
 
 ## 4.3 流量走向
 
@@ -106,36 +107,36 @@ Overseas R&D 是面向 AI 原生招聘场景的 SaaS 产品,核心能力包括:
 
 # 5. 数据模型
 
-当前共 **11 张表**,关系如下:
+当前 Prisma 共 **20** 个 model(业务核心表 + 权限/审计/验证码等辅助表)。关系简图:
 
 ```
-User ─owns──> Candidate ─has─> CandidateNote / Review / ShareLink / Employee
-                    │           ↑
-                    └──> Interview                     Job
-                                                       ↑
-                                       Department      │
-                                                       │
-                                Review ─votes─> ReviewVote ─by─> User
-                                Review ─replies─> Review (self, 1 level)
+User ─owns──> Candidate ─has─> CandidateNote / Review / ShareLink / Employee / InterviewEvaluation
+ │                │                                                      ↑
+ │                └──> Interview ─ Job ←── Department(自关联树)           │
+ │                         │                                             │
+ │                Review ─votes─> ReviewVote                              │
+ │                                                                   PerformanceEvaluation
+ │                                                                        ↑
+ └── hrSignature* ───────────────────────────────(可选嵌入导出)──────────┘
 
-SystemSetting (KV, admin only · AES-256-GCM 加密敏感 value)
+UploadShareLink · SystemSetting · AuditLog · UserAccessPolicy · …
 ```
 
 | 表 | 用途 |
 |----|------|
-| `User` | 系统账号(ADMIN/RECRUITER/VIEWER 三角色) |
-| `Candidate` | 候选人,简历事实字段(aiSummary/tags/基础信息/skills/experience/educationHistory markdown)+ JD 评估字段(risks/highlights/insights · jdMatch/matchedFor/againstFor/aiSuggestedTags)+ jobId 关联 JD |
-| `Job` | 岗位,`description` 字段给 LLM 二次评估用 |
-| `Department` | 部门(自关联树) |
-| `Employee` | 已入职员工(候选人 → 员工转化) |
-| `Interview` | 面试安排 |
-| `CandidateNote` | 内部备注(详情页时间线) |
-| `Review` | 评价对话(回复/投票/可见范围/审核删除) |
-| `ReviewVote` | 登录用户对评价的投票去重 |
-| `ShareLink` | 公开分享凭证(token/有效期/访问次数上限) |
-| `SystemSetting` | admin 配置(Kimi API Key 等,AES-256-GCM 加密) |
+| `User` | 系统账号 + 可选 `hrSignatureKey`(绩效 HR 电子章) |
+| `Candidate` | 候选人(简历事实 + JD 评估字段) |
+| `Job` / `Department` | 岗位 / 部门树 |
+| `Employee` | 入职员工(候选人转化 · 现有人员/入职管理/绩效人员池) |
+| `Interview` / `InterviewEvaluation` | 面试安排 / 面试评价 |
+| `PerformanceEvaluation` | **员工绩效评价**(双 token + 访问密钥 + 签字 + 导出) |
+| `CandidateNote` / `Review` / `ReviewVote` | 备注 / 评价对话 |
+| `ShareLink` / `UploadShareLink` | 公开分享 / 公开上传 |
+| `SystemSetting` | admin KV(Kimi key 等,AES-256-GCM) |
+| `UserAccessPolicy` 等 | 页面/模块权限与部门/岗位 scope |
+| `AuditLog` / `PasswordHistory` / `EmailVerificationCode` | 审计 · 密码历史 · 邮箱验证 |
 
-完整 schema 见 `server/prisma/schema.prisma`,字段级说明参考 CLAUDE.md §10。
+完整 schema 见 `server/prisma/schema.prisma`。绩效细节见 [`06_performance_evaluation.md`](./06_performance_evaluation.md)。
 
 # 5A. 新增子系统说明
 
@@ -201,22 +202,30 @@ SystemSetting (KV, admin only · AES-256-GCM 加密敏感 value)
 
 - 有效期:60s ~ 30d / 无限期
 - 访问次数上限:可选 10/50/100/自定义 1-9999/不限
-- 可见性 toggle(2026-05 加):
-  - `showContact` 默认 true → phone/email mask 后显示;false → 完全 null,前端渲染「分享方已隐藏联系方式」
-  - `showAttachments` 默认 false → 评价表单不显示附件 input,**后端 presigned-url 二道防线**也返回 403
-- 公开页不在 AuthGuard 内,**不含 Sidebar/Topbar**(防泄漏其他页面信息)
+- 可见性 toggle:
+  - `showContact` 默认 true → phone/email **完整展示**(招聘需真号);false → 不返回 + 简报联系方式行抹成「[已隐藏]」
+  - `showResume` / `showAttachments` / `showNotes` / 面试评价相关开关 · 洞察始终可见
+- 公开页不在 AuthGuard 内,**不含 Sidebar/Topbar**
 
 ## 5A.4 评价对话系统
 
-完整功能:
-- 写评价 / 1 级嵌套回复 / 多选批量回复(`referencedIds[]`)
-- 附件(image/file/link,单条 ≤30MB,R2 直传)
-- 赞同/否决投票 + 投票名单 popover
-- 可见范围(public/internal/admin)
-- 软删除审核(作者请求 → admin 批准)
-- admin 隐藏 / 取消隐藏
-- 实时新评价 Notification + Web Audio 音效(15s 轮询)
-- 排序:最新/最旧/最赞同/最否决
+完整功能:写评价 / 1 级嵌套回复 / 多选批量回复 · 附件 · 投票 · 可见范围 · 软删除审核 · Notification + 音效。
+
+## 5A.5 员工绩效评价(2026-07)
+
+管理页 `/performance` · 公开页 `/performance-eval/:token` · 权限 `pageKey=performance`。
+
+- 双角色链接(自评/主管)+ **访问密钥第二因子**(bcrypt + AES 回显 · 失败锁定)
+- 7 维评分 · 签字必填 · v2 中英双语 Excel · HR 电子章可选嵌入
+- 批量发起 / 密钥预览导出 · 详见 [`06_performance_evaluation.md`](./06_performance_evaluation.md) 与 API §18
+
+## 5A.6 飞书简历自动入库(第 6 容器)
+
+`lark-ingest` 长连接收文件 → 公开上传通道入库 → 交互卡片关联/新建 JD → 异步解析 → 自动 ShareLink。详见 [`05_feishu_resume_ingest.md`](./05_feishu_resume_ingest.md)(**已生产化**)。
+
+## 5A.7 现有人员详情布局
+
+`/staff/:id` 与 `/newhire/:id` 共用 `EmployeeDetail`:宽屏三列(左档案 · 中入职生涯 · 右时间轴),`xl` 以下上下堆叠;桌面进详情自动收起侧栏。
 
 # 6. 安全设计
 
@@ -227,8 +236,9 @@ SystemSetting (KV, admin only · AES-256-GCM 加密敏感 value)
 | 主机 | UFW 仅放行 80/443 + 自定义 SSH 端口,禁用 root 远程登录,SSH 仅密钥 |
 | 容器 | DB / Redis 端口不映射宿主,Docker Bridge 隔离,镜像非 root 用户 |
 | 应用 | JWT(HS256,7d 过期)、bcryptjs 哈希密码、Fastify schema 校验所有入参 |
+| 公开链 | ShareLink / Upload / 面试评价 / **绩效评价** 均用不可猜 token;绩效另加访问密钥 |
 | 凭证 | `.env` 严格不入 Git,生产 secrets 在 VPS 本地 / GitHub Actions Secrets |
-| 数据 | R2 备份桶独立 IAM,业务桶 CORS 限制到生产域名 |
+| 数据 | R2 备份桶独立 IAM,业务桶 CORS 限制到生产域名;绩效签字前缀 `performance-signatures/` |
 
 # 7. 容量规划(VPS 4C8G 参考)
 
@@ -243,7 +253,7 @@ SystemSetting (KV, admin only · AES-256-GCM 加密敏感 value)
 
 # 8. 备份与灾备
 
-- **每日 03:00 自动备份**:`ops/backup.sh` 通过 cron 触发,`pg_dump` → `gzip -9` → 上传 R2 备份桶
+- **每日 03:00 UTC 自动备份**:`ops/backup.sh` 由 **systemd timer** 触发(非 crontab),`pg_dump` → `gzip -9` → 上传 R2 备份桶
 - **备份键名规范**:`postgres/YYYY/MM/mesa-pg-YYYYMMDDTHHMMSSZ.sql.gz`
 - **本地保留**:7 天,远端按 R2 生命周期策略(如 90 天冷存储)
 - **恢复 SOP**:`ops/restore.sh r2://...sql.gz` 自动化恢复,见交付文档 04
@@ -262,13 +272,16 @@ SystemSetting (KV, admin only · AES-256-GCM 加密敏感 value)
 |------|------|------|
 | ① 本地全栈闭环 | ✅ 已上线 | server + web + dev compose,本地 vite + node 联调 |
 | ② R2 对象存储 | ✅ 已上线 | `mesa-resumes`(业务) + `mesa-backups`(备份)双桶,凭证最小权限隔离 |
-| ③ Docker + Nginx | ✅ 已上线 | 5 容器(含 Uptime Kuma 监控),Cloudflare Origin Cert 端到端 HTTPS |
+| ③ Docker + Nginx | ✅ 已上线 | **6** 服务(含 Uptime Kuma + lark-ingest),Cloudflare Origin Cert 端到端 HTTPS |
 | ④ Cloudflare + VPS 加固 | ✅ 已上线 | UFW 36724/80/443、SSH 禁 root + 禁密码、fail2ban、unattended-upgrades |
 | ⑤ CI/CD + 容灾 | ✅ 已上线 | GitHub Actions + GHCR + SSH 部署;systemd timer 每日 03:00 UTC 自动备份 R2 |
-| ⑥ 交付物打包 | ✅ 已交付 | 本套 4 份 .docx + ops/runbook + README + CLAUDE.md |
-| ⑦ LLM 解析 + JD 匹配 | ✅ 已上线(5A.1/5A.2) | Kimi 单 chat JSON 输出 · admin 在 UI 改 key/model/prompt · 二次评估 |
-| ⑧ 分享给招聘官 | ✅ 已上线(5A.3) | ShareLink token · 公开页 · 有效期 + 次数上限 |
-| ⑨ 评价对话系统 | ✅ 已上线(5A.4) | 11 表中 Review/ReviewVote 双表 · 浏览器通知 |
+| ⑥ 交付物打包 | ✅ 维护中 | Markdown 源 `delivery-docs/src/` · 正式 .docx 由源生成(见 README) |
+| ⑦ LLM 解析 + JD 匹配 | ✅ 已上线(5A.1/5A.2) | 方案 B 结构化 JSON + 确定性简报拼装 · JD 二次评估 |
+| ⑧ 分享给招聘官 | ✅ 已上线(5A.3) | ShareLink · 可见性 toggle · 飞书 Bot 分享策略 |
+| ⑨ 评价对话系统 | ✅ 已上线(5A.4) | Review/ReviewVote · 浏览器通知 |
+| ⑩ 面试评价 | ✅ 已上线 | InterviewEvaluation · 公开填表 · Excel 导出 |
+| ⑪ 员工绩效评价 | ✅ 已上线(5A.5) | 双链接 + 访问密钥 · v2 模板 · 批量密钥导出 |
+| ⑫ 飞书自动入库 | ✅ 已上线(5A.6) | 第 6 容器长连接 + 交互卡片 |
 
 # 11. 实际部署关键参数(已生效)
 
@@ -279,7 +292,7 @@ SystemSetting (KV, admin only · AES-256-GCM 加密敏感 value)
 | VPS | 114.134.188.7 · Ubuntu 22.04 LTS · 4C8G |
 | SSH 端口 | **36724**(VPS 厂商出厂默认,非 22) |
 | 部署用户 | `deploy`(`/etc/sudoers.d/90-deploy` 免密 sudo) |
-| 容器编排 | docker compose v2(5 服务) · 卷 `mesa_pg_prod_data` + `mesa_redis_prod_data` + `mesa_uptime_data` |
+| 容器编排 | docker compose v2(**6** 服务) · 卷 `mesa_pg_prod_data` + `mesa_redis_prod_data` + `mesa_uptime_data` + `mesa_lark_ingest_data` |
 | Cloudflare TLS | Origin Certificate(ECC, *.insovo.top, 15 年, 到期 2041-05-18) |
 | 备份触发 | systemd `mesa-backup.timer` · `OnCalendar=*-*-* 03:00:00` UTC |
 | 备份保留 | 本地 7 天 · R2 远端(可加 lifecycle 转 IA) |
