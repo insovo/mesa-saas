@@ -172,6 +172,7 @@ export default function Performance() {
   const [keyResultOpen, setKeyResultOpen] = useState(false);
   const [keyResultItems, setKeyResultItems] = useState([]);
   const [keyResultMode, setKeyResultMode] = useState("generate");
+  const [exportConfirmIds, setExportConfirmIds] = useState(() => new Set());
   const [bulkCreateOpen, setBulkCreateOpen] = useState(false);
   const [filterJob, setFilterJob] = useState("");
   const [filterDept, setFilterDept] = useState("");
@@ -380,10 +381,64 @@ export default function Performance() {
     }
   }
 
-  async function exportAccessKeys() {
+  async function openExportPreview() {
     const ids = [...selected];
     if (ids.length === 0) {
       toast("请先勾选评价记录", "error");
+      return;
+    }
+    if (keyTargets.length === 0) {
+      toast("请勾选自评或主管", "error");
+      return;
+    }
+    setBatchBusy(true);
+    try {
+      const data = await resources.performance.previewAccessKeys({
+        evaluationIds: ids,
+        targets: keyTargets,
+      });
+      const items = data.items || [];
+      setKeyResultMode("export");
+      setKeyResultItems(items);
+      setExportConfirmIds(new Set(items.map((it) => it.evaluationId)));
+      setKeyResultOpen(true);
+      const genCount = items.reduce((n, it) => n + (it.generated?.length || 0), 0);
+      toast(
+        genCount > 0
+          ? `已加载 ${items.length} 人预览（其中 ${genCount} 项密钥已自动生成）`
+          : `已加载 ${items.length} 人预览`,
+        "success"
+      );
+    } catch (err) {
+      toast(err.response?.data?.message || err.message, "error");
+    } finally {
+      setBatchBusy(false);
+    }
+  }
+
+  function toggleExportConfirm(id) {
+    setExportConfirmIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleExportConfirmAll() {
+    if (exportConfirmIds.size === keyResultItems.length) {
+      setExportConfirmIds(new Set());
+    } else {
+      setExportConfirmIds(new Set(keyResultItems.map((it) => it.evaluationId)));
+    }
+  }
+
+  async function confirmExportAccessKeys() {
+    const ids = keyResultItems
+      .map((it) => it.evaluationId)
+      .filter((id) => exportConfirmIds.has(id));
+    if (ids.length === 0) {
+      toast("请至少勾选一人再导出", "error");
       return;
     }
     setBatchBusy(true);
@@ -404,6 +459,7 @@ export default function Performance() {
       a.click();
       URL.revokeObjectURL(a.href);
       toast(`已导出 ${ids.length} 条密钥`, "success");
+      setKeyResultOpen(false);
     } catch (err) {
       toast(await blobErrorMessage(err), "error");
     } finally {
@@ -589,7 +645,7 @@ export default function Performance() {
             <Button size="sm" disabled={batchBusy || selected.size === 0} onClick={() => runBulkKeys("set")}>
               <I name="key-round" size={14} /> 设置统一密钥
             </Button>
-            <Button size="sm" variant="ghost" disabled={batchBusy || selected.size === 0} onClick={exportAccessKeys}>
+            <Button size="sm" variant="ghost" disabled={batchBusy || selected.size === 0} onClick={openExportPreview}>
               <I name="download" size={14} /> 批量导出密钥
             </Button>
             <Button
@@ -991,13 +1047,31 @@ export default function Performance() {
                 ? "随机密钥已生成"
                 : keyResultMode === "create"
                   ? "新周期评价已创建"
-                  : "统一密钥已设置"}
+                  : keyResultMode === "export"
+                    ? "导出前确认"
+                    : "统一密钥已设置"}
             </h3>
+            {keyResultMode === "export" && (
+              <p className="text-xs text-[#707EAE] mt-1">
+                默认全选，可取消部分人员；复制链接密钥后，点右下角导出二次确认名单。
+              </p>
+            )}
           </div>
           <div className="max-h-[50vh] overflow-auto rounded-xl border border-[#E9ECEF]">
             <table className="w-full text-xs">
               <thead>
                 <tr className="bg-lightPrimary/50 text-left text-[#707EAE]">
+                  {keyResultMode === "export" && (
+                    <th className="px-3 py-2 w-10">
+                      <input
+                        type="checkbox"
+                        checked={keyResultItems.length > 0 && exportConfirmIds.size === keyResultItems.length}
+                        onChange={toggleExportConfirmAll}
+                        className="h-4 w-4 rounded border-[#E9ECEF] text-brand focus:ring-brand"
+                        aria-label="全选"
+                      />
+                    </th>
+                  )}
                   <th className="px-3 py-2">员工</th>
                   <th className="px-3 py-2">自评密钥</th>
                   <th className="px-3 py-2">主管密钥</th>
@@ -1006,6 +1080,17 @@ export default function Performance() {
               <tbody>
                 {keyResultItems.map((it) => (
                   <tr key={it.evaluationId} className="border-t border-[#F4F7FE]">
+                    {keyResultMode === "export" && (
+                      <td className="px-3 py-2">
+                        <input
+                          type="checkbox"
+                          checked={exportConfirmIds.has(it.evaluationId)}
+                          onChange={() => toggleExportConfirm(it.evaluationId)}
+                          className="h-4 w-4 rounded border-[#E9ECEF] text-brand focus:ring-brand"
+                          aria-label={`选择 ${it.employeeName || ""}`}
+                        />
+                      </td>
+                    )}
                     <td className="px-3 py-2 font-bold text-navy-700">{it.employeeName}</td>
                     <td className="px-3 py-2 font-mono">
                       {it.selfAccessKey || "—"}
@@ -1048,8 +1133,17 @@ export default function Performance() {
               </tbody>
             </table>
           </div>
-          <div className="flex justify-end">
-            <Button size="sm" onClick={() => setKeyResultOpen(false)}>关闭</Button>
+          <div className="flex justify-end gap-2">
+            <Button size="sm" variant="ghost" onClick={() => setKeyResultOpen(false)}>关闭</Button>
+            {keyResultMode === "export" && (
+              <Button
+                size="sm"
+                disabled={batchBusy || exportConfirmIds.size === 0}
+                onClick={confirmExportAccessKeys}
+              >
+                <I name="download" size={14} /> 导出选中 ({exportConfirmIds.size})
+              </Button>
+            )}
           </div>
         </div>
       </Modal>
