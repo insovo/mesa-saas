@@ -3,7 +3,7 @@
 > AI 协作守则与项目级指令(对 **Codex / Codex CLI / Cursor** 共同生效)。
 > 用户的全局偏好(沟通语言、称呼、Priority Order 等)以 `~/.Codex/AGENTS.md` 为准,本文件不重复。
 > **子系统与数据模型以仓库根 `CLAUDE.md` 为更完整口径**;本文件保持 Codex 常用摘要,重大能力变更两侧同步。
-> 完整架构 / API / 部署 / 运维手册在 [`delivery-docs/`](./delivery-docs) 的 4 份 .docx 里。
+> 完整架构 / API / 部署 / 运维手册见 [`delivery-docs/`](./delivery-docs)(索引见根 [`README.md`](./README.md#交付文档索引))。
 
 ---
 
@@ -273,67 +273,9 @@ gh run watch  # 想盯过程的话
 
 ---
 
-## 10. 数据模型清单(Prisma)
+## 10–12 数据模型 / ShareLink / 评价系统
 
-20 个 Prisma model(含 PerformanceEvaluation 等);关系简图:
-
-```
-User ─owns──> Candidate ─has─> Note / Review / ShareLink / Employee
-                    │           ↑                          │
-                    └──> Interview                          └──> Job
-                                                                  ↑
-                                                    Department    │
-                                                                  │
-                              Review ─votes─> ReviewVote ─by─> User
-                              Review ─replies─> Review (self, 1 level)
-
-SystemSetting  独立 KV (kimi.api_key / kimi.model / kimi.prompt 等)
-```
-
-| 表 | 关键字段 | 备注 |
-|----|---------|------|
-| `User` | email/passwordHash/role/avatar/jobTitle | Role: ADMIN/RECRUITER/VIEWER |
-| `Candidate` | name/skills/tags/risks/highlights/aiSummary/jobId/jdMatch + **V2** documents/insights/aiSuggestedTags/matchedFor/againstFor/profileCompletion(derived)/languages | aiSummary = LLM 输出的 HR 简报纯文本;V2 字段由 `/api/resumes/match` 写入,profileCompletion 后端 read 时算(`lib/derived.js`)不存 DB |
-| `Job` | title/description/urgency/openings/_count + **V2** employment/salary/levelRange/yearsExpRange/educationRequirement/languageRequirement/publishedAt/deadline/responsibilities/requirements/nice/benefits | V2 字段供 JdDescModal + 岗位概览 OverviewTile 渲染;暂由 admin 手动填,无 LLM 产 |
-| `Department` | name/code/head/headcount/openHc/parentId | 自关联树 |
-| `Employee` | candidateId/jobId/stage/checklist json/probation json/events json/riskItems json | candidate → employee 转化 |
-| `Interview` | candidateId/jobId/round/mode/scheduledAt/status + **V2** category/link/managers(JSON)/interviewers(JSON) | managers/interviewers 是多人 JSON 数组,旧 interviewer single string 保留向后兼容 |
-| `CandidateNote` | candidateId/content/authorId/authorName | admin 内部备注 |
-| `Review` | candidateId/authorName/content/attachments json/parentId/referencedIds json/stance/upvotes/downvotes/visibility/hidden/deletedAt | 评价对话(详见 §12) |
-| `ReviewVote` | reviewId/userId/value(+1/-1) | unique(reviewId,userId) 登录用户去重 |
-| `ShareLink` | token/candidateId/expiresAt/maxViews/viewCount | 公开访问凭证(详见 §11) |
-| `PerformanceEvaluation` | 员工绩效评价(双 token + 访问密钥 + 签字 + v2 导出) | 见 `delivery-docs/src/06_performance_evaluation.md` |
-| `SystemSetting` | key/value(AES-256-GCM)/encrypted/updatedBy | admin 系统配置(KIMI key/model/prompt) |
-
-## 11. ShareLink 分享系统
-
-公开页 `/share/:token` **在 AuthGuard 外**, 不依赖 JWT。
-
-| 维度 | 设计 |
-|------|------|
-| Token 形式 | 24 字节 URL-safe random(`crypto.randomBytes(24).toString("base64url")`)= 32 字符 |
-| 有效期 | 默认 3 天 · 预设 1d/3d/7d/30d/forever · 自定义 60s-30d |
-| 访问次数限制 | 默认 null=不限 · 预设 10/50/100 · 自定义 1-9999 · 达上限返回 410 `share_quota_exceeded` |
-| 关系 | 1 个 candidate 同时只允许 1 个 active ShareLink(POST 会先删旧建新) |
-| 公开 API mask | `/api/public/share/:token` 返回的 phone/email 自动 mask(`138****5678` / `ab***@x.com`) |
-| 公开附件上传 | `/api/public/share/:token/presigned-url` 需 token 校验后才签发,key 限定 `reviews/public/` 前缀 |
-
-## 12. 评价对话系统
-
-**1 级嵌套 + 完整审议流**,详细见 [02 API 手册] 的 `/api/candidates/:id/reviews` 与 `/api/public/share/:token/reviews` 端点。
-
-| 能力 | 实现 |
-|------|------|
-| 提交评价 | 登录(auto authorName)+ 公开(必填 authorName) |
-| 附件 | image/file/link · 单条 ≤30MB(后端 422)· R2 直传(presigned) |
-| 回复 | 1 级嵌套(`parentId`),禁止 nested-of-nested |
-| 批量回复 | 多选 checkbox → 一条评价,`referencedIds[]` 记录所有被引用 |
-| 投票 | thumbs-up/down + count + 我的投票高亮 · 登录走 `ReviewVote unique(reviewId,userId)` · 公开走 localStorage + `prevValue` 算 delta |
-| 回复 stance | approve/reject/null · 头部 chip 显示 |
-| 排序 | 最新/最旧/最赞同/最否决(前端 sort) |
-| 可见范围 | public(默认)/internal(仅登录)/admin(仅 ADMIN)· 后端 `internalShape/publicShape` filter |
-| 删除流 | 作者请求 → admin 批准 = soft-delete · admin 可直接 soft-delete · admin hide/unhide |
-| 实时通知 | 详情页打开后 15s 轮询 · Notification API + Web Audio 双音(A5→E6)|
+**完整口径见 [`CLAUDE.md`](./CLAUDE.md) §10–§12** 与 [`delivery-docs/src/02_api.md`](./delivery-docs/src/02_api.md)。员工绩效 as-built 见 [`delivery-docs/src/06_performance_evaluation.md`](./delivery-docs/src/06_performance_evaluation.md)。
 
 ## 13. AI 代理协作差异
 

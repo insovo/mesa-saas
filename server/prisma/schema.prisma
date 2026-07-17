@@ -571,7 +571,7 @@ model PasswordHistory {
 
 // 面试评价 — 招聘官生成 token,面试官(无登录)通过公开链接填写
 // 提交后可导出与原 Excel 模板版式一致的 .xlsx 文件
-// 详见 /Users/mysaria/Project/mesa/面试评价模块设计规划.md
+// 详见 delivery-docs/dev-plans/面试评价模块设计规划.md · API §17 delivery-docs/src/02_api.md
 model InterviewEvaluation {
   id String @id @default(uuid()) @db.Uuid
 

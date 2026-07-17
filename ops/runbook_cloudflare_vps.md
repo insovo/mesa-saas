@@ -165,7 +165,7 @@ docker exec mesa-server node prisma/seed.js
 - [ ] 修改 VPS 上 `/opt/mesa/.env`,填入 R2 凭证,`docker compose up -d backend` 重启
 - [ ] 验证:浏览器登录 → 简历收件箱 → 上传一个 PDF,看 R2 桶里有新对象
 
-## 6. 备份与 crontab
+## 6. 备份与 systemd timer
 
 ```bash
 # 6.1 在 VPS 上为 backup.sh 配置 aws CLI
@@ -180,16 +180,16 @@ aws configure --profile r2-backup
 sudo /opt/mesa/ops/backup.sh
 # 应看到 [backup] uploaded ok
 
-# 6.3 装 cron job
-crontab -l > /tmp/cron.bak 2>/dev/null || true
-cat /opt/mesa/ops/crontab.example | sudo tee /var/spool/cron/crontabs/deploy
-sudo chown deploy:crontab /var/spool/cron/crontabs/deploy
-sudo chmod 600 /var/spool/cron/crontabs/deploy
-crontab -l   # 验证
+# 6.3 安装 systemd timer(不用 crontab — 见 delivery-docs/src/04_ops.md §2.1)
+# 在 /etc/systemd/system/ 创建 mesa-backup.service + mesa-backup.timer 后:
+sudo systemctl daemon-reload
+sudo systemctl enable --now mesa-backup.timer
+systemctl list-timers mesa-backup.timer   # 验证下次触发时间
 ```
 
 - [ ] `sudo /opt/mesa/ops/backup.sh` 成功,远端能看到对象
-- [ ] `crontab -l` 显示每日 03:00 备份 job
+- [ ] `systemctl is-enabled mesa-backup.timer` 为 enabled
+- [ ] `journalctl -u mesa-backup.service -n 20` 无持续失败
 
 ## 7. 上线 Checklist
 

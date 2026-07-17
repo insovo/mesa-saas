@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# MESA Recruit · 数据库容灾备份脚本(demo.md §5.3)
+# MESA Recruit · 数据库容灾备份脚本(见 delivery-docs/src/04_ops.md §2)
 # 流程:
 #   1) docker exec mesa-postgres pg_dump → /tmp/mesa-pg-YYYYMMDD-HHMM.sql
 #   2) gzip 高比例压缩
 #   3) 上传到 Cloudflare R2 的 备份桶(独立 bucket,凭证不写入业务桶)
 #   4) 本地保留近 7 天,远端按桶生命周期策略
-# 触发: 服务器 crontab,推荐 0 3 * * *(每日 03:00)
+# 触发: 生产由 systemd timer mesa-backup.timer 每日 03:00 UTC(见 04_ops.md §2.1)
 #
 # 依赖:
 #   - docker / docker compose(容器名 mesa-postgres)

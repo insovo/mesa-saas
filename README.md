@@ -100,6 +100,8 @@ mesa/
 | [`src/05_feishu_resume_ingest.md`](./delivery-docs/src/05_feishu_resume_ingest.md) | 飞书入库(**已生产化**) |
 | [`src/06_performance_evaluation.md`](./delivery-docs/src/06_performance_evaluation.md) | **员工绩效评价** as-built |
 
+设计规划稿(迭代前)见 [`delivery-docs/dev-plans/`](./delivery-docs/dev-plans/README.md)。
+
 重新生成 Word(需本机 `pandoc`):
 
 ```bash
