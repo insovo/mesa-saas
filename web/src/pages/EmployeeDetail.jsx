@@ -36,11 +36,12 @@ function eventTone(cat) {
   return { dot: "#422AFB", pillBg: "#E9E3FF", pillFg: "#2111A5" };
 }
 
-// 5 阶段 stepper
+// 5 阶段 stepper — 窄屏横向滚动，避免步骤被压成竖排
 function CareerStepper({ currentStage }) {
   const curIdx = STAGE_STEPS.indexOf(currentStage);
   return (
-    <div className="flex items-stretch gap-0">
+    <div className="overflow-x-auto -mx-1 px-1 pb-1">
+      <div className="flex items-stretch gap-0 min-w-[520px]">
       {STAGE_STEPS.map((s, i) => {
         const done = curIdx > i;
         const active = curIdx === i;
@@ -71,6 +72,7 @@ function CareerStepper({ currentStage }) {
           </div>
         );
       })}
+      </div>
     </div>
   );
 }
@@ -85,12 +87,12 @@ function ChecklistRow({ k, item, onMark }) {
         <I name={k.icon} size={14} />
       </div>
       <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap">
+          <div className="flex items-center gap-2 flex-wrap min-w-0">
             <span className="text-sm font-bold text-navy-700">{k.label}</span>
             <TaskStatusPill status={status} />
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             {done ? (
               <button
                 onClick={() => onMark?.(k.key, "待开始")}
@@ -264,10 +266,10 @@ export default function EmployeeDetail() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)_360px] gap-5 items-start">
+      <div className="flex flex-col xl:flex-row gap-4 xl:gap-5 items-start">
         {/* ===== 左列 ===== */}
-        <div className="space-y-4 lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto lg:pr-1 lg:-mr-1">
-          <Card className="p-5">
+        <aside className="w-full xl:w-[320px] 2xl:w-[340px] shrink-0 space-y-4 xl:sticky xl:top-4 xl:self-start xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto xl:pr-1 xl:-mr-1">
+          <Card className="p-4 sm:p-5">
             <div className="flex flex-col items-center text-center">
               <Avatar name={emp.name} animal={emp.animal} src={emp.avatar} size={88} />
               <h1 className="text-2xl font-bold text-navy-700 mt-3">{emp.name}</h1>
@@ -329,7 +331,7 @@ export default function EmployeeDetail() {
             )}
           </Card>
 
-          <Card className="p-5">
+          <Card className="p-4 sm:p-5">
             <div className="flex flex-col items-center">
               <LiquidLoader
                 size={110}
@@ -349,7 +351,7 @@ export default function EmployeeDetail() {
             </div>
           </Card>
 
-          <Card className="p-5">
+          <Card className="p-4 sm:p-5">
             <dl className="space-y-2.5 text-xs">
               {[
                 { label: "学历", val: emp.education ? `${emp.education}·${emp.school || ""}` : null },
@@ -374,12 +376,12 @@ export default function EmployeeDetail() {
               </>
             )}
           </Card>
-        </div>
+        </aside>
 
         {/* ===== 中列 ===== */}
-        <div className="space-y-5 min-w-0 lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto lg:pr-1 lg:-mr-1">
-          <Card className="p-6">
-            <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
+        <div className="flex-1 min-w-0 w-full space-y-4 sm:space-y-5 xl:sticky xl:top-4 xl:self-start xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto xl:pr-1 xl:-mr-1">
+          <Card className="p-4 sm:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
               <h3 className="title-card flex items-center gap-2">
                 <I name="route" size={18} className="text-brand" />
                 入职生涯
@@ -387,7 +389,7 @@ export default function EmployeeDetail() {
                   阶段 {Math.max(1, curStageIdx + 1)}/{STAGE_STEPS.length}
                 </span>
               </h3>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button variant="ghost" size="sm" icon={<I name="plus" size={12} />}>
                   新增记录
                 </Button>
@@ -401,15 +403,15 @@ export default function EmployeeDetail() {
             <CareerStepper currentStage={emp.stage} />
           </Card>
 
-          <Card className="p-6">
-            <div className="flex items-center justify-between flex-wrap gap-3 mb-2">
+          <Card className="p-4 sm:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-2">
               <h3 className="title-card">
                 {emp.stage || "入职准备"}清单
                 <span className="text-xs text-gray-700 font-normal ml-2">
                   {checklistDone}/{checklistTotal} 已完成
                 </span>
               </h3>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button
                   variant="ghost"
                   size="sm"
@@ -437,9 +439,9 @@ export default function EmployeeDetail() {
         </div>
 
         {/* ===== 右列 ===== */}
-        <div className="space-y-4 lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto lg:pr-1 lg:-mr-1">
-          <Card className="p-5">
-            <div className="flex items-center gap-1 mb-5 border-b border-gray-100">
+        <aside className="w-full xl:w-[360px] 2xl:w-[380px] shrink-0 space-y-4 xl:sticky xl:top-4 xl:self-start xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto xl:pr-1 xl:-mr-1">
+          <Card className="p-4 sm:p-5">
+            <div className="flex items-center gap-1 mb-5 border-b border-gray-100 overflow-x-auto">
               <button
                 onClick={() => setTab("timeline")}
                 className={`px-3 py-2 text-sm font-bold transition-colors ${
@@ -531,7 +533,7 @@ export default function EmployeeDetail() {
               </ul>
             )}
           </Card>
-        </div>
+        </aside>
       </div>
     </div>
   );
