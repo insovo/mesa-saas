@@ -1216,6 +1216,103 @@ export default async function performanceRoutes(app) {
     return { mode, targets: targetSet, count: items.length, items };
   });
 
+  // 批量导出前预览：解密已有 enc；缺 hash/enc 或无法解密时自动生成（不轮换可解密密钥）
+  admin.post("/performance/evaluations/access-keys/preview", {
+    schema: {
+      body: {
+        type: "object",
+        required: ["evaluationIds", "targets"],
+        properties: {
+          evaluationIds: { type: "array", items: { type: "string", format: "uuid" }, minItems: 1, maxItems: 100 },
+          targets: {
+            type: "array",
+            items: { type: "string", enum: ["self", "manager"] },
+            minItems: 1,
+            maxItems: 2,
+          },
+        },
+      },
+    },
+  }, async (req, reply) => {
+    const access = await assertPage(req, reply, "performance");
+    if (!access) return;
+
+    const targetSet = normalizeAccessKeyTargets(req.body.targets);
+    if (!targetSet.length) {
+      return reply.code(400).send({ error: "invalid_targets", message: "请选择自评或主管" });
+    }
+
+    const evaluationIds = [...new Set(req.body.evaluationIds || [])];
+    const where = {
+      id: { in: evaluationIds },
+      deletedAt: null,
+      status: { not: "revoked" },
+    };
+    if (!access.isAdmin) {
+      const scopeWhere = await buildEmployeeScopeWhere(req);
+      where.employee = scopeWhere || undefined;
+    }
+
+    const rows = await app.prisma.performanceEvaluation.findMany({
+      where,
+      select: {
+        id: true,
+        employeeName: true,
+        employeeNo: true,
+        selfToken: true,
+        managerToken: true,
+        selfAccessKeyHash: true,
+        managerAccessKeyHash: true,
+        selfAccessKeyEnc: true,
+        managerAccessKeyEnc: true,
+      },
+    });
+    if (rows.length === 0) {
+      return reply.code(404).send({ error: "not_found", message: "未找到可预览的评价" });
+    }
+
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const ordered = evaluationIds.map((id) => byId.get(id)).filter(Boolean);
+    const items = [];
+
+    for (const row of ordered) {
+      const data = {};
+      const item = {
+        evaluationId: row.id,
+        employeeName: row.employeeName,
+        employeeNo: row.employeeNo,
+        selfToken: row.selfToken,
+        managerToken: row.managerToken,
+      };
+      const generated = [];
+
+      for (const role of targetSet) {
+        const f = accessKeyFields(role);
+        const existingPlain = decryptAccessKey(row[f.enc]);
+        let plain = existingPlain;
+        if (!plain) {
+          plain = generateAccessKey();
+          const sealed = await sealAccessKey(plain);
+          data[f.hash] = sealed.hash;
+          data[f.enc] = sealed.enc;
+          data[f.fail] = 0;
+          data[f.lock] = null;
+          generated.push(role);
+        }
+        if (role === "self") item.selfAccessKey = plain;
+        else item.managerAccessKey = plain;
+      }
+
+      if (Object.keys(data).length) {
+        await app.prisma.performanceEvaluation.update({ where: { id: row.id }, data });
+      }
+      item.generated = generated;
+      items.push(item);
+    }
+
+    return { targets: targetSet, count: items.length, items };
+  });
+
   // 批量导出访问密钥 xlsx（服务端解密 enc，列表 API 不返回明文）
   admin.post("/performance/evaluations/access-keys/export.xlsx", {
     schema: {
