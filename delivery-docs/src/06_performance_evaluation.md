@@ -25,7 +25,7 @@ date: "2026-07-17"
 | 人员池 | `GET /performance/people` 列出可评人员;可惰性补齐「已入职」缺 Employee;支持页面内新建人员 |
 | 双角色公开链 | `selfToken` / `managerToken` 各一,路径 `/performance-eval/:token` |
 | 访问密钥第二因子 | 6–10 位 · bcrypt 校验 + AES 密文回显 · 失败锁定 |
-| 评分 | 7 维、1–100 分 · 加权 `ROUND(weight*score/100,1)` · 等级 A–E · D/E 触发 PIP 标记 |
+| 评分 | 7 维、1–100 分 · 加权 `ROUND(weight*score/100,1)` · 等级 A–E · D/E 触发 PIP 标记 · 公开页拖条 UI 与面试评价共用 Codex 填充气泡模式，见 [评分拖条与填充气泡交互规范](../dev-plans/评分拖条与填充气泡交互规范.md) |
 | 纪要 | `areasForImprovement` / `developmentPlan`(v2);旧字段 `achievements`/`nextGoals` 保留可空 |
 | 签字 | 自评/主管 PNG 手写签字必填方可提交;HR 电子章挂在当前 User,导出可选嵌入 |
 | 编辑配额 | `selfMaxEdits` / `managerMaxEdits`;`autosave` 不计次;达上限草稿只读仍可提交 |
