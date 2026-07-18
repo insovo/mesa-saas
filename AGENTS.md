@@ -137,6 +137,7 @@ mesa/
 - 圆角:卡片 `rounded-card`(20px),按钮/输入 `rounded-xl`
 - 阴影:卡片统一 `shadow-card`
 - 中文 UI 文案,技术术语保留英文(JD / API / CLI / MCP)
+- **评分拖条 / Codex 填充气泡**:见 [`delivery-docs/dev-plans/评分拖条与填充气泡交互规范.md`](./delivery-docs/dev-plans/评分拖条与填充气泡交互规范.md)(拇指内缩对齐 · scrub 浮点 · 整数落盘 · `ScoreFillBubbles`)
 
 ---
 
