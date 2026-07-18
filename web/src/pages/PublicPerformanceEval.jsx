@@ -8,6 +8,7 @@ import {
   Card, Button, Input, I, toast, LoadingBlock, ToastHost, LiquidLoader, RequiredMark, Modal,
 } from "../components/Primitives.jsx";
 import SignaturePad from "../components/SignaturePad.jsx";
+import ScoreFillBubbles from "../components/ScoreFillBubbles.jsx";
 import { signerKeySelf, signerKeyManager } from "../lib/perfSignatureCache.js";
 import { gsap, D, E, ensureMotionPref } from "../anim/gsap.js";
 
@@ -904,6 +905,8 @@ function ScoreSlider({ value, onChange, disabled }) {
   const n = value == null || value === "" ? null : Number(value);
   const score = n != null && Number.isFinite(n) ? Math.min(100, Math.max(1, Math.round(n))) : null;
   const pct = score == null ? 0 : score;
+  // 与面试评价条一致：用 0–1 比例驱动气泡强度（1→0，100→1）
+  const fillRatio = score == null ? 0 : (score - 1) / 99;
 
   useEffect(() => {
     ensureMotionPref();
@@ -951,12 +954,14 @@ function ScoreSlider({ value, onChange, disabled }) {
         {/* 轨道 */}
         <div className="absolute inset-x-0 h-2.5 rounded-full bg-[#E9ECEF] overflow-hidden shadow-inner">
           <div
-            className="h-full rounded-full bg-brand-gradient origin-left"
+            className="relative h-full rounded-full bg-brand-gradient origin-left overflow-hidden"
             style={{
               width: `${pct}%`,
               transition: dragging ? "none" : "width 120ms ease-out",
             }}
-          />
+          >
+            <ScoreFillBubbles active={dragging} fillRatio={fillRatio} />
+          </div>
         </div>
 
         {/* 拖动时拇指光晕 */}
