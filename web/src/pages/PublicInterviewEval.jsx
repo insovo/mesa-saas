@@ -234,7 +234,8 @@ function ScoreSlider({ value, onChange, disabled }) {
                 transition: dragging ? "none" : "width 120ms ease-out",
               }}
             >
-              <ScoreFillBubbles active={dragging} fillRatio={r} />
+              {/* 有评分即持续气泡；active 仅增强，不控制显隐 */}
+              <ScoreFillBubbles active={dragging} fillRatio={visual == null ? 0 : Math.max(r, 0.08)} />
             </div>
           </div>
 
