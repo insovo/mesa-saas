@@ -147,15 +147,18 @@ function RubricModal({ open, onClose, rubric }) {
 
 /**
  * 1–10 拖动评分条（对齐绩效评价页 ScoreSlider 交互）
- * 仅 UI；写入仍为 1–10 整数，Excel 导出字段与公式不变。
+ * 拖动用连续精度保证丝滑；写入仍为 1–10 整数，Excel 导出不变。
  */
 function ScoreSlider({ value, onChange, disabled }) {
   const numRef = useRef(null);
   const thumbGlowRef = useRef(null);
   const [dragging, setDragging] = useState(false);
+  // 拖动中用浮点位置渲染拇指/填充，避免 step=1 只有 10 档的卡顿感
+  const [scrub, setScrub] = useState(null);
   const n = value == null || value === "" ? null : Number(value);
   const score = n != null && Number.isFinite(n) ? Math.min(10, Math.max(1, Math.round(n))) : null;
-  const pct = score == null ? 0 : (score / 10) * 100;
+  const visual = dragging && scrub != null ? scrub : score;
+  const pct = visual == null ? 0 : (visual / 10) * 100;
 
   useEffect(() => {
     ensureMotionPref();
@@ -177,10 +180,26 @@ function ScoreSlider({ value, onChange, disabled }) {
     }
   }, [score]);
 
+  function clampFloat(raw) {
+    const v = Math.min(10, Math.max(1, Number(raw)));
+    return Number.isFinite(v) ? v : null;
+  }
+
   function handleChange(raw) {
-    const v = Math.min(10, Math.max(1, Math.round(Number(raw))));
-    if (!Number.isFinite(v)) return;
-    onChange(v);
+    const f = clampFloat(raw);
+    if (f == null) return;
+    setScrub(f);
+    const rounded = Math.round(f);
+    if (rounded !== score) onChange(rounded);
+  }
+
+  function endDrag() {
+    setDragging(false);
+    if (scrub != null) {
+      const rounded = Math.round(scrub);
+      if (rounded !== score) onChange(rounded);
+    }
+    setScrub(null);
   }
 
   return (
@@ -212,7 +231,7 @@ function ScoreSlider({ value, onChange, disabled }) {
         </div>
 
         {/* 拖动时拇指光晕 */}
-        {score != null && (
+        {visual != null && (
           <div
             ref={thumbGlowRef}
             aria-hidden
@@ -221,14 +240,14 @@ function ScoreSlider({ value, onChange, disabled }) {
           />
         )}
 
-        {/* 拖动气泡 */}
-        {dragging && score != null && (
+        {/* 拖动气泡（显示将写入的整数分） */}
+        {dragging && visual != null && (
           <div
             className="pointer-events-none absolute -top-7 -translate-x-1/2 z-20"
             style={{ left: `${pct}%` }}
           >
             <div className="px-2 py-0.5 rounded-md bg-navy-700 text-white text-[11px] font-bold tabular-nums shadow-card whitespace-nowrap">
-              {score}
+              {Math.round(visual)}
             </div>
           </div>
         )}
@@ -237,17 +256,20 @@ function ScoreSlider({ value, onChange, disabled }) {
           type="range"
           min={1}
           max={10}
-          step={1}
+          step={0.01}
           disabled={disabled}
-          value={score ?? 1}
+          value={visual ?? 1}
           aria-label="评分 1-10"
           aria-valuemin={1}
           aria-valuemax={10}
           aria-valuenow={score ?? undefined}
           aria-valuetext={score == null ? "未评分" : String(score)}
-          onPointerDown={() => setDragging(true)}
-          onPointerUp={() => setDragging(false)}
-          onPointerCancel={() => setDragging(false)}
+          onPointerDown={() => {
+            setDragging(true);
+            setScrub(score ?? 1);
+          }}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
           onChange={(e) => handleChange(e.target.value)}
           className={[
             "relative z-10 w-full h-9 appearance-none bg-transparent cursor-pointer",
@@ -264,20 +286,6 @@ function ScoreSlider({ value, onChange, disabled }) {
             "[&::-moz-range-thumb]:shadow-[0_2px_8px_rgba(66,42,251,0.35)]",
           ].join(" ")}
         />
-      </div>
-
-      {/* 刻度 1–10，帮助对齐整数档 */}
-      <div className="mt-0.5 flex justify-between px-0.5 pointer-events-none" aria-hidden>
-        {Array.from({ length: 10 }, (_, i) => i + 1).map((d) => (
-          <span
-            key={d}
-            className={`text-[9px] tabular-nums ${
-              score === d ? "text-brand font-bold" : "text-[#A0AEC0]"
-            }`}
-          >
-            {d}
-          </span>
-        ))}
       </div>
     </div>
   );
