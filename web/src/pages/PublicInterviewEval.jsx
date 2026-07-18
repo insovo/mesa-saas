@@ -223,8 +223,6 @@ function ScoreSlider({ value, onChange, disabled }) {
             {score ?? "—"}
           </span>
         </div>
-        <span className="pointer-events-none absolute top-1 right-0 text-[10px] text-[#A0AEC0]">/10</span>
-
         <div className="relative h-9 flex items-center">
           {/* 轨道 */}
           <div className="absolute inset-x-0 h-2.5 rounded-full bg-[#E9ECEF] overflow-hidden shadow-inner">
