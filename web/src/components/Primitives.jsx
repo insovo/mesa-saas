@@ -290,7 +290,7 @@ function pickMesaLiquidPalette(value) {
   return MESA_LIQUID_PALETTES.red;
 }
 
-export function LiquidLoader({ size = 56, level = 0, label = "", loading = false }) {
+export function LiquidLoader({ size = 56, level = 0, label = "", loading = false, instant = false }) {
   const fillPct = Math.max(0, Math.min(100, level));
   const numericLabel = typeof label === "number" ? label : (label === "" ? "" : String(label));
   const paletteValue = typeof label === "number" ? label : fillPct;
@@ -317,7 +317,14 @@ export function LiquidLoader({ size = 56, level = 0, label = "", loading = false
           boxShadow: `inset 0 5px 10px rgba(255,255,255,0.55), inset 0 -5px 10px rgba(0,0,0,0.05), 0 4px 14px ${palette.glow}`,
         }}
       >
-        <div className="absolute left-0 right-0 bottom-0" style={{ height: `${fillPct}%`, transition: "height 600ms cubic-bezier(0.34,1.56,0.64,1)" }}>
+        <div
+          className="absolute left-0 right-0 bottom-0"
+          style={{
+            height: `${fillPct}%`,
+            // 拖动 scrub 时关掉 height 过渡，避免液面滞后数字；平时略缩短过弹时长
+            transition: instant ? "none" : "height 280ms cubic-bezier(0.34,1.56,0.64,1)",
+          }}
+        >
           <div className="absolute inset-0" style={{ background: `linear-gradient(180deg, ${palette.main} 0%, ${palette.back} 100%)` }} />
           <svg
             className="absolute left-0 w-[200%]"
@@ -347,7 +354,7 @@ export function LiquidLoader({ size = 56, level = 0, label = "", loading = false
         />
         {numericLabel !== "" && (
           <div
-            className="absolute inset-0 flex items-center justify-center pointer-events-none"
+            className="absolute inset-0 flex items-center justify-center pointer-events-none tabular-nums"
             style={{
               color: "#fff",
               fontWeight: 800,
