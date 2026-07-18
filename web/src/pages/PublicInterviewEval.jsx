@@ -148,17 +148,26 @@ function RubricModal({ open, onClose, rubric }) {
 /**
  * 1–10 拖动评分条（对齐绩效评价页 ScoreSlider 交互）
  * 拖动用连续精度保证丝滑；写入仍为 1–10 整数，Excel 导出不变。
+ *
+ * 原生 range 拇指中心 = r*(轨道宽-拇指宽)+拇指半径，不是简单的 r*100%。
+ * 填充 / 分数 / 光晕必须用同一公式，否则会「进度条冒出圆点 / 光圈偏右」。
  */
+const SLIDER_THUMB_PX = 16; // 与下方 [&::-webkit-slider-thumb]:w-4 一致
+
 function ScoreSlider({ value, onChange, disabled }) {
   const numRef = useRef(null);
-  const thumbGlowRef = useRef(null);
   const [dragging, setDragging] = useState(false);
   // 拖动中用浮点位置渲染拇指/填充，避免 step=1 只有 10 档的卡顿感
   const [scrub, setScrub] = useState(null);
   const n = value == null || value === "" ? null : Number(value);
   const score = n != null && Number.isFinite(n) ? Math.min(10, Math.max(1, Math.round(n))) : null;
   const visual = dragging && scrub != null ? scrub : score;
-  const pct = visual == null ? 0 : (visual / 10) * 100;
+  // min=1 max=10 → r ∈ [0,1]；未评分时填充为 0
+  const r = visual == null ? 0 : (visual - 1) / 9;
+  const thumbCenter = `calc(${r} * (100% - ${SLIDER_THUMB_PX}px) + ${SLIDER_THUMB_PX / 2}px)`;
+  const fillWidth = visual == null
+    ? "0px"
+    : `calc(${r} * (100% - ${SLIDER_THUMB_PX}px) + ${SLIDER_THUMB_PX / 2}px)`;
 
   useEffect(() => {
     ensureMotionPref();
@@ -171,13 +180,6 @@ function ScoreSlider({ value, onChange, disabled }) {
       { scale: 1.22, y: -3 },
       { scale: 1, y: 0, duration: D.fast, ease: E.out, overwrite: "auto" },
     );
-    if (thumbGlowRef.current) {
-      gsap.fromTo(
-        thumbGlowRef.current,
-        { scale: 1.35, opacity: 0.55 },
-        { scale: 1, opacity: 0, duration: 0.35, ease: E.out, overwrite: "auto" },
-      );
-    }
   }, [score]);
 
   function clampFloat(raw) {
@@ -206,86 +208,79 @@ function ScoreSlider({ value, onChange, disabled }) {
     <div
       className={`w-full max-w-[220px] select-none ${disabled ? "opacity-45 pointer-events-none" : ""}`}
     >
-      <div className="flex items-end justify-between mb-1.5 min-h-[22px]">
-        <span
-          ref={numRef}
-          className={`text-lg font-bold tabular-nums leading-none tracking-tight ${
-            score == null ? "text-[#A0AEC0]" : "text-brand"
-          }`}
+      <div className="relative pt-7">
+        {/* 分数贴在拇指正上方（与拇指中心同公式） */}
+        <div
+          className="pointer-events-none absolute top-0 z-20 -translate-x-1/2"
+          style={{ left: thumbCenter }}
         >
-          {score ?? "—"}
-        </span>
-        <span className="text-[10px] text-[#A0AEC0] pb-0.5">/10</span>
-      </div>
+          <span
+            ref={numRef}
+            className={`block text-lg font-bold tabular-nums leading-none tracking-tight ${
+              score == null ? "text-[#A0AEC0]" : "text-brand"
+            }`}
+          >
+            {score ?? "—"}
+          </span>
+        </div>
+        <span className="pointer-events-none absolute top-1 right-0 text-[10px] text-[#A0AEC0]">/10</span>
 
-      <div className="relative h-9 flex items-center">
-        {/* 轨道 */}
-        <div className="absolute inset-x-0 h-2.5 rounded-full bg-[#E9ECEF] overflow-hidden shadow-inner">
-          <div
-            className="h-full rounded-full bg-brand-gradient origin-left"
-            style={{
-              width: `${pct}%`,
-              transition: dragging ? "none" : "width 120ms ease-out",
+        <div className="relative h-9 flex items-center">
+          {/* 轨道 */}
+          <div className="absolute inset-x-0 h-2.5 rounded-full bg-[#E9ECEF] overflow-hidden shadow-inner">
+            <div
+              className="h-full rounded-full bg-brand-gradient origin-left"
+              style={{
+                width: fillWidth,
+                transition: dragging ? "none" : "width 120ms ease-out",
+              }}
+            />
+          </div>
+
+          {/* 拖动时光晕 — 与拇指中心对齐 */}
+          {dragging && visual != null && (
+            <div
+              aria-hidden
+              className="pointer-events-none absolute top-1/2 z-[5] -translate-x-1/2 -translate-y-1/2 h-5 w-5 rounded-full bg-brand/30"
+              style={{ left: thumbCenter }}
+            />
+          )}
+
+          <input
+            type="range"
+            min={1}
+            max={10}
+            step={0.01}
+            disabled={disabled}
+            value={visual ?? 1}
+            aria-label="评分 1-10"
+            aria-valuemin={1}
+            aria-valuemax={10}
+            aria-valuenow={score ?? undefined}
+            aria-valuetext={score == null ? "未评分" : String(score)}
+            onPointerDown={() => {
+              setDragging(true);
+              setScrub(score ?? 1);
             }}
+            onPointerUp={endDrag}
+            onPointerCancel={endDrag}
+            onChange={(e) => handleChange(e.target.value)}
+            className={[
+              "relative z-10 w-full h-9 appearance-none bg-transparent cursor-pointer",
+              "[&::-webkit-slider-runnable-track]:h-2.5 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-transparent",
+              "[&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4",
+              "[&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white",
+              "[&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-brand",
+              "[&::-webkit-slider-thumb]:shadow-[0_2px_8px_rgba(66,42,251,0.35)]",
+              "[&::-webkit-slider-thumb]:mt-[-3px] [&::-webkit-slider-thumb]:transition-transform",
+              "active:[&::-webkit-slider-thumb]:scale-125",
+              "[&::-moz-range-track]:h-2.5 [&::-moz-range-track]:rounded-full [&::-moz-range-track]:bg-transparent",
+              "[&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full",
+              "[&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-brand",
+              "[&::-moz-range-thumb]:shadow-[0_2px_8px_rgba(66,42,251,0.35)]",
+            ].join(" ")}
           />
         </div>
-
-        {/* 拖动时拇指光晕 */}
-        {visual != null && (
-          <div
-            ref={thumbGlowRef}
-            aria-hidden
-            className="pointer-events-none absolute top-1/2 -translate-y-1/2 -translate-x-1/2 h-5 w-5 rounded-full bg-brand/30"
-            style={{ left: `${pct}%` }}
-          />
-        )}
-
-        {/* 拖动气泡（显示将写入的整数分） */}
-        {dragging && visual != null && (
-          <div
-            className="pointer-events-none absolute -top-7 -translate-x-1/2 z-20"
-            style={{ left: `${pct}%` }}
-          >
-            <div className="px-2 py-0.5 rounded-md bg-navy-700 text-white text-[11px] font-bold tabular-nums shadow-card whitespace-nowrap">
-              {Math.round(visual)}
-            </div>
-          </div>
-        )}
-
-        <input
-          type="range"
-          min={1}
-          max={10}
-          step={0.01}
-          disabled={disabled}
-          value={visual ?? 1}
-          aria-label="评分 1-10"
-          aria-valuemin={1}
-          aria-valuemax={10}
-          aria-valuenow={score ?? undefined}
-          aria-valuetext={score == null ? "未评分" : String(score)}
-          onPointerDown={() => {
-            setDragging(true);
-            setScrub(score ?? 1);
-          }}
-          onPointerUp={endDrag}
-          onPointerCancel={endDrag}
-          onChange={(e) => handleChange(e.target.value)}
-          className={[
-            "relative z-10 w-full h-9 appearance-none bg-transparent cursor-pointer",
-            "[&::-webkit-slider-runnable-track]:h-2.5 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-transparent",
-            "[&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4",
-            "[&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white",
-            "[&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-brand",
-            "[&::-webkit-slider-thumb]:shadow-[0_2px_8px_rgba(66,42,251,0.35)]",
-            "[&::-webkit-slider-thumb]:mt-[-3px] [&::-webkit-slider-thumb]:transition-transform",
-            "active:[&::-webkit-slider-thumb]:scale-125",
-            "[&::-moz-range-track]:h-2.5 [&::-moz-range-track]:rounded-full [&::-moz-range-track]:bg-transparent",
-            "[&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full",
-            "[&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-brand",
-            "[&::-moz-range-thumb]:shadow-[0_2px_8px_rgba(66,42,251,0.35)]",
-          ].join(" ")}
-        />
       </div>
     </div>
   );
