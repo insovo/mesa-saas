@@ -155,7 +155,7 @@ function RubricModal({ open, onClose, rubric }) {
  */
 const SLIDER_THUMB_PX = 16; // 与下方 [&::-webkit-slider-thumb]:w-4 一致
 
-function ScoreSlider({ value, onChange, disabled }) {
+function ScoreSlider({ value, onChange, onScrub, disabled }) {
   const numRef = useRef(null);
   const [dragging, setDragging] = useState(false);
   // 拖动中用浮点位置渲染拇指/填充，避免 step=1 只有 10 档的卡顿感
@@ -192,6 +192,7 @@ function ScoreSlider({ value, onChange, disabled }) {
     const f = clampFloat(raw);
     if (f == null) return;
     setScrub(f);
+    onScrub?.(f); // 浮点 scrub 仅喂给 liveTotal，不写入 form / 草稿
     const rounded = Math.round(f);
     if (rounded !== score) onChange(rounded);
   }
@@ -203,6 +204,7 @@ function ScoreSlider({ value, onChange, disabled }) {
       if (rounded !== score) onChange(rounded);
     }
     setScrub(null);
+    onScrub?.(null);
   }
 
   return (
@@ -261,7 +263,9 @@ function ScoreSlider({ value, onChange, disabled }) {
             aria-valuetext={score == null ? "未评分" : String(score)}
             onPointerDown={() => {
               setDragging(true);
-              setScrub(score ?? 1);
+              const start = score ?? 1;
+              setScrub(start);
+              onScrub?.(start);
             }}
             onPointerUp={endDrag}
             onPointerCancel={endDrag}
@@ -287,8 +291,9 @@ function ScoreSlider({ value, onChange, disabled }) {
   );
 }
 
-function ScoreRow({ dim, item, onChange, readonly }) {
-  const w = weighted(dim.weight, item?.score);
+function ScoreRow({ dim, item, onChange, onScrub, liveScore, readonly }) {
+  // 拖动中用 float liveScore 算加权，松手后回落到整数 score
+  const w = weighted(dim.weight, liveScore ?? item?.score);
   return (
     <div className="border-t border-gray-100 first:border-t-0 py-4">
       <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-4">
@@ -304,6 +309,7 @@ function ScoreRow({ dim, item, onChange, readonly }) {
             value={item?.score ?? null}
             disabled={readonly}
             onChange={(v) => onChange({ key: dim.key, score: v, remark: item?.remark || "" })}
+            onScrub={(v) => onScrub?.(dim.key, v)}
           />
           <p className="text-[11px] text-gray-500 mt-1 text-right">
             {w == null ? <span className="text-gray-400">加权 -</span> : <>加权 <b className="text-brand">{w}</b></>}
@@ -523,6 +529,8 @@ export default function PublicInterviewEval() {
   const [rubricOpen, setRubricOpen] = useState(false);
   const [confirmSubmit, setConfirmSubmit] = useState(false);
   const [showSubmitted, setShowSubmitted] = useState(false);  // 提交成功后 banner
+  // 拖动中各维度的浮点 scrub（仅参与 liveTotal，不进 form / 草稿 API）
+  const [scrubByKey, setScrubByKey] = useState({});
 
   // 草稿合并保存防抖
   const dirtyRef = useRef(false);
@@ -541,6 +549,7 @@ export default function PublicInterviewEval() {
         setDimensions((ev.scores || []).map((s) => ({
           key: s.key, name: s.name, weight: s.weight, observation: s.observation,
         })));
+        setScrubByKey({});
         setForm({
           candidateName: ev.candidateName || "",
           position: ev.position || "",
@@ -574,16 +583,32 @@ export default function PublicInterviewEval() {
   }, [token]);
 
   const readonly = meta?.readonly === true;
+  const scrubbing = Object.keys(scrubByKey).length > 0;
 
-  // 实时 total / recommendation
+  // 实时 total / recommendation（拖动中用 float scrub 覆盖对应维度）
   const scoresForCompute = useMemo(() => {
     if (!form || !dimensions.length) return [];
     const byKey = new Map(form.scores.map((s) => [s.key, s.score]));
-    return dimensions.map((d) => ({ ...d, score: byKey.get(d.key) ?? null }));
-  }, [form, dimensions]);
+    return dimensions.map((d) => ({
+      ...d,
+      score: scrubByKey[d.key] ?? byKey.get(d.key) ?? null,
+    }));
+  }, [form, dimensions, scrubByKey]);
   const liveTotal = useMemo(() => totalOf(scoresForCompute), [scoresForCompute]);
   const liveRecommend = useMemo(() => recommendOf(liveTotal), [liveTotal]);
 
+  function handleScoreScrub(key, value) {
+    setScrubByKey((prev) => {
+      if (value == null) {
+        if (!(key in prev)) return prev;
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      }
+      if (prev[key] === value) return prev;
+      return { ...prev, [key]: value };
+    });
+  }
   // 草稿自动保存
   function markDirty() {
     dirtyRef.current = true;
@@ -875,6 +900,8 @@ export default function PublicInterviewEval() {
                   dim={dim}
                   item={item}
                   readonly={readonly}
+                  liveScore={scrubByKey[dim.key]}
+                  onScrub={handleScoreScrub}
                   onChange={(next) => {
                     setForm((prev) => {
                       const arr = prev.scores.filter((s) => s.key !== next.key);
@@ -892,7 +919,7 @@ export default function PublicInterviewEval() {
           <div className="mt-6 pt-5 border-t-2 border-dashed border-gray-200 flex items-center justify-between gap-4 flex-wrap">
             <p className="text-sm text-gray-700">总分 (满分 100)</p>
             <div className="flex items-center gap-4">
-              <LiquidLoader size={64} level={liveTotal ?? 0} label={liveTotal ?? ""} loading={false} />
+              <LiquidLoader size={64} level={liveTotal ?? 0} label={liveTotal ?? ""} loading={false} instant={scrubbing} />
               <div>
                 <p className="text-[11px] text-gray-700">推荐结论</p>
                 <div className="mt-1">{liveRecommend ? <RecommendChip recommendation={liveRecommend} /> : <span className="text-xs text-gray-400">填完 7 项评分后显示</span>}</div>
