@@ -12,6 +12,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "../lib/api.js";
 import { Card, Button, Input, I, toast, LoadingBlock, ToastHost, Modal, LiquidLoader, RequiredMark } from "../components/Primitives.jsx";
+import { gsap, D, E, ensureMotionPref } from "../anim/gsap.js";
 
 // 访客在公开分享页「添加评论」时填过的姓名(本浏览器 localStorage)— key 与 SharedCandidate 一致,
 // 用于面试评价页面试官姓名为空时自动预填(可改)。
@@ -144,45 +145,138 @@ function RubricModal({ open, onClose, rubric }) {
   );
 }
 
-// 1-10 评分控件 — 数字步进器 + 豆豆条 + 直接键盘输入
-function ScoreInput({ value, onChange, disabled }) {
-  const n = value == null ? null : Number(value);
+/**
+ * 1–10 拖动评分条（对齐绩效评价页 ScoreSlider 交互）
+ * 仅 UI；写入仍为 1–10 整数，Excel 导出字段与公式不变。
+ */
+function ScoreSlider({ value, onChange, disabled }) {
+  const numRef = useRef(null);
+  const thumbGlowRef = useRef(null);
+  const [dragging, setDragging] = useState(false);
+  const n = value == null || value === "" ? null : Number(value);
+  const score = n != null && Number.isFinite(n) ? Math.min(10, Math.max(1, Math.round(n))) : null;
+  const pct = score == null ? 0 : (score / 10) * 100;
+
+  useEffect(() => {
+    ensureMotionPref();
+  }, []);
+
+  useEffect(() => {
+    if (score == null || !numRef.current) return;
+    gsap.fromTo(
+      numRef.current,
+      { scale: 1.22, y: -3 },
+      { scale: 1, y: 0, duration: D.fast, ease: E.out, overwrite: "auto" },
+    );
+    if (thumbGlowRef.current) {
+      gsap.fromTo(
+        thumbGlowRef.current,
+        { scale: 1.35, opacity: 0.55 },
+        { scale: 1, opacity: 0, duration: 0.35, ease: E.out, overwrite: "auto" },
+      );
+    }
+  }, [score]);
+
+  function handleChange(raw) {
+    const v = Math.min(10, Math.max(1, Math.round(Number(raw))));
+    if (!Number.isFinite(v)) return;
+    onChange(v);
+  }
+
   return (
-    <div className="flex items-center gap-2 w-full">
-      <input
-        type="number"
-        min={1}
-        max={10}
-        step={1}
-        value={n == null ? "" : n}
-        disabled={disabled}
-        onChange={(e) => {
-          const v = e.target.value;
-          if (v === "") return onChange(null);
-          const x = parseInt(v, 10);
-          if (Number.isInteger(x) && x >= 1 && x <= 10) onChange(x);
-        }}
-        className="w-12 h-9 shrink-0 rounded-xl border border-gray-200 px-1 text-center text-sm font-bold text-navy-700 outline-none focus:border-brand disabled:bg-gray-100"
-        placeholder="-"
-      />
-      {/* 圆点按可用宽度自适应收缩(flex-1 + aspect-square), 永不横向溢出手机屏 */}
-      <div className="flex gap-1 flex-1 min-w-0" role="radiogroup" aria-label="评分 1-10">
+    <div
+      className={`w-full max-w-[220px] select-none ${disabled ? "opacity-45 pointer-events-none" : ""}`}
+    >
+      <div className="flex items-end justify-between mb-1.5 min-h-[22px]">
+        <span
+          ref={numRef}
+          className={`text-lg font-bold tabular-nums leading-none tracking-tight ${
+            score == null ? "text-[#A0AEC0]" : "text-brand"
+          }`}
+        >
+          {score ?? "—"}
+        </span>
+        <span className="text-[10px] text-[#A0AEC0] pb-0.5">/10</span>
+      </div>
+
+      <div className="relative h-9 flex items-center">
+        {/* 轨道 */}
+        <div className="absolute inset-x-0 h-2.5 rounded-full bg-[#E9ECEF] overflow-hidden shadow-inner">
+          <div
+            className="h-full rounded-full bg-brand-gradient origin-left"
+            style={{
+              width: `${pct}%`,
+              transition: dragging ? "none" : "width 120ms ease-out",
+            }}
+          />
+        </div>
+
+        {/* 拖动时拇指光晕 */}
+        {score != null && (
+          <div
+            ref={thumbGlowRef}
+            aria-hidden
+            className="pointer-events-none absolute top-1/2 -translate-y-1/2 -translate-x-1/2 h-5 w-5 rounded-full bg-brand/30"
+            style={{ left: `${pct}%` }}
+          />
+        )}
+
+        {/* 拖动气泡 */}
+        {dragging && score != null && (
+          <div
+            className="pointer-events-none absolute -top-7 -translate-x-1/2 z-20"
+            style={{ left: `${pct}%` }}
+          >
+            <div className="px-2 py-0.5 rounded-md bg-navy-700 text-white text-[11px] font-bold tabular-nums shadow-card whitespace-nowrap">
+              {score}
+            </div>
+          </div>
+        )}
+
+        <input
+          type="range"
+          min={1}
+          max={10}
+          step={1}
+          disabled={disabled}
+          value={score ?? 1}
+          aria-label="评分 1-10"
+          aria-valuemin={1}
+          aria-valuemax={10}
+          aria-valuenow={score ?? undefined}
+          aria-valuetext={score == null ? "未评分" : String(score)}
+          onPointerDown={() => setDragging(true)}
+          onPointerUp={() => setDragging(false)}
+          onPointerCancel={() => setDragging(false)}
+          onChange={(e) => handleChange(e.target.value)}
+          className={[
+            "relative z-10 w-full h-9 appearance-none bg-transparent cursor-pointer",
+            "[&::-webkit-slider-runnable-track]:h-2.5 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-transparent",
+            "[&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4",
+            "[&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white",
+            "[&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-brand",
+            "[&::-webkit-slider-thumb]:shadow-[0_2px_8px_rgba(66,42,251,0.35)]",
+            "[&::-webkit-slider-thumb]:mt-[-3px] [&::-webkit-slider-thumb]:transition-transform",
+            "active:[&::-webkit-slider-thumb]:scale-125",
+            "[&::-moz-range-track]:h-2.5 [&::-moz-range-track]:rounded-full [&::-moz-range-track]:bg-transparent",
+            "[&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full",
+            "[&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-brand",
+            "[&::-moz-range-thumb]:shadow-[0_2px_8px_rgba(66,42,251,0.35)]",
+          ].join(" ")}
+        />
+      </div>
+
+      {/* 刻度 1–10，帮助对齐整数档 */}
+      <div className="mt-0.5 flex justify-between px-0.5 pointer-events-none" aria-hidden>
         {Array.from({ length: 10 }, (_, i) => i + 1).map((d) => (
-          <button
+          <span
             key={d}
-            type="button"
-            role="radio"
-            aria-checked={n === d}
-            disabled={disabled}
-            onClick={() => onChange(d)}
-            className={`flex-1 min-w-0 aspect-square max-w-9 rounded-full text-[11px] font-bold transition ${
-              n === d
-                ? "bg-brand-gradient text-white shadow"
-                : "bg-gray-100 text-gray-700 hover:bg-lightPrimary"
-            } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
+            className={`text-[9px] tabular-nums ${
+              score === d ? "text-brand font-bold" : "text-[#A0AEC0]"
+            }`}
           >
             {d}
-          </button>
+          </span>
         ))}
       </div>
     </div>
@@ -193,7 +287,7 @@ function ScoreRow({ dim, item, onChange, readonly }) {
   const w = weighted(dim.weight, item?.score);
   return (
     <div className="border-t border-gray-100 first:border-t-0 py-4">
-      <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
             <p className="text-sm font-bold text-navy-700">{dim.name}<RequiredMark /></p>
@@ -201,9 +295,8 @@ function ScoreRow({ dim, item, onChange, readonly }) {
           </div>
           <p className="text-[12px] text-gray-700 leading-relaxed">{dim.observation}</p>
         </div>
-        {/* 手机端占满整行(竖堆在文字下方), 桌面端右侧定宽 360px → 圆点尺寸稳定舒适、不溢出不挤压 */}
-        <div className="w-full sm:w-[360px] sm:shrink-0">
-          <ScoreInput
+        <div className="w-full sm:w-[220px] sm:shrink-0">
+          <ScoreSlider
             value={item?.score ?? null}
             disabled={readonly}
             onChange={(v) => onChange({ key: dim.key, score: v, remark: item?.remark || "" })}
