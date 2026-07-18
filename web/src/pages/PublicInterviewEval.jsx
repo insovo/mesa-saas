@@ -12,6 +12,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "../lib/api.js";
 import { Card, Button, Input, I, toast, LoadingBlock, ToastHost, Modal, LiquidLoader, RequiredMark } from "../components/Primitives.jsx";
+import ScoreFillBubbles from "../components/ScoreFillBubbles.jsx";
 import { gsap, D, E, ensureMotionPref } from "../anim/gsap.js";
 
 // 访客在公开分享页「添加评论」时填过的姓名(本浏览器 localStorage)— key 与 SharedCandidate 一致,
@@ -227,12 +228,14 @@ function ScoreSlider({ value, onChange, disabled }) {
           {/* 轨道 */}
           <div className="absolute inset-x-0 h-2.5 rounded-full bg-[#E9ECEF] overflow-hidden shadow-inner">
             <div
-              className="h-full rounded-full bg-brand-gradient origin-left"
+              className="relative h-full rounded-full bg-brand-gradient origin-left overflow-hidden"
               style={{
                 width: fillWidth,
                 transition: dragging ? "none" : "width 120ms ease-out",
               }}
-            />
+            >
+              <ScoreFillBubbles active={dragging} fillRatio={r} />
+            </div>
           </div>
 
           {/* 拖动时光晕 — 与拇指中心对齐 */}

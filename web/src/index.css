@@ -153,6 +153,35 @@ body {
   100% { transform: translateX(100%); }
 }
 
+/* 评分条填充区 Codex 风格气泡：右→左漂移 + 轻微上下浮动 */
+@keyframes score-bubble-drift {
+  0% {
+    transform: translate(0, 0) scale(0.85);
+    opacity: 0;
+  }
+  12% {
+    opacity: var(--bubble-opacity, 0.4);
+  }
+  50% {
+    transform: translate(-55%, -35%) scale(1);
+    opacity: var(--bubble-opacity, 0.4);
+  }
+  100% {
+    transform: translate(-130%, 25%) scale(0.7);
+    opacity: 0;
+  }
+}
+
+.score-fill-bubble {
+  position: absolute;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.25);
+  animation: score-bubble-drift var(--bubble-dur, 2s) ease-in-out infinite;
+  animation-delay: var(--bubble-delay, 0s);
+  will-change: transform, opacity;
+}
+
 /* 全站可聚焦元素的统一焦点环(键盘可达性 + 精致感) */
 @layer base {
   a, button, input, select, textarea, [tabindex] {
@@ -166,7 +195,8 @@ body {
   .animate-aurora-drift,
   .animate-float,
   .animate-gradient-x,
-  .animate-glow-pulse {
+  .animate-glow-pulse,
+  .score-fill-bubble {
     animation: none !important;
   }
 }
