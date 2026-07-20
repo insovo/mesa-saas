@@ -21,12 +21,20 @@ const HYPER_BG = "#050510";
 // 品牌渐变(与站内 brand-logo 流光同族)
 const BRAND_GRADIENT = "linear-gradient(90deg,#5B6CF0,#7C3AED,#C026D3,#7C3AED,#5B6CF0)";
 
-// 桌面左侧特性卡(暗色玻璃 chip;icon 色对应 Hyperspeed 车灯配色)
-const FEATURES = [
-  { icon: "users", title: "多渠道人才聚合", desc: "汇聚全球优质研发人才", iconBg: "rgba(216,86,191,0.18)", iconFg: "#E58BD4" },
-  { icon: "sparkles", title: "智能筛选与匹配", desc: "AI 驱动,提升招聘效率", iconBg: "rgba(124,58,237,0.22)", iconFg: "#B39AF7" },
-  { icon: "users-round", title: "协同招聘管理", desc: "团队协作,流程透明高效", iconBg: "rgba(3,179,195,0.16)", iconFg: "#5BD6E2" },
-];
+// 桌面断点(lg):Hyperspeed 桌面放左侧面板、移动端铺全屏 —— 两处只能挂一个实例
+// (display:none 藏起来的 WebGL canvas 仍会跑渲染循环,白耗 GPU),所以用 matchMedia 二选一。
+function useIsDesktop() {
+  const [isDesktop, setIsDesktop] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches,
+  );
+  useEffect(() => {
+    const mql = window.matchMedia("(min-width: 1024px)");
+    const apply = () => setIsDesktop(mql.matches);
+    mql.addEventListener("change", apply);
+    return () => mql.removeEventListener("change", apply);
+  }, []);
+  return isDesktop;
+}
 
 export default function Login() {
   const navigate = useNavigate();
@@ -44,6 +52,7 @@ export default function Login() {
   const [remember, setRemember] = useState(false);
   const [showPwd, setShowPwd] = useState(false);
   const stageRef = useRef(null);
+  const isDesktop = useIsDesktop();
 
   useEffect(() => {
     if (!stageRef.current) return;
@@ -102,8 +111,9 @@ export default function Login() {
 
   return (
     <div ref={stageRef} className="min-h-screen relative overflow-hidden" style={{ background: HYPER_BG }}>
-      {/* Hyperspeed 光速公路全屏背景(空白处按住鼠标/触摸可加速) */}
-      {!REDUCE_MOTION && (
+      {/* 移动端(<lg):Hyperspeed 铺全屏背景。桌面端动效改放左侧圆角面板里(见下),
+          两处只挂一个实例 —— 隐藏的 WebGL canvas 仍会跑渲染循环白耗 GPU。 */}
+      {!REDUCE_MOTION && !isDesktop && (
         <Suspense fallback={null}>
           <Hyperspeed />
         </Suspense>
@@ -116,9 +126,8 @@ export default function Login() {
       />
 
       <div className="relative z-10 min-h-screen flex items-center justify-center px-4 py-10 lg:px-14">
-        {/* pointer-events-none 让列间空白透给背景 canvas(可按住加速);卡片单独恢复交互 */}
-        <div className="w-full max-w-6xl flex flex-col lg:flex-row items-center justify-center lg:justify-between gap-10 lg:gap-20 pointer-events-none">
-          {/* ── 左:品牌 + 主张(桌面完整版;移动端只保留 logo 行) ── */}
+        <div className="w-full max-w-6xl flex flex-col lg:flex-row items-center justify-center lg:justify-between gap-10 lg:gap-20">
+          {/* ── 左:品牌 + 主张 + Hyperspeed 面板(桌面完整版;移动端只保留 logo 行) ── */}
           <div className="login-rise w-full max-w-md lg:max-w-[540px] lg:flex-1 select-none">
             <div className="flex items-center justify-center lg:justify-start gap-3">
               <video src={sphereWhite} autoPlay loop muted playsInline aria-hidden="true"
@@ -143,65 +152,63 @@ export default function Login() {
               </h1>
               <p className="mt-4 text-[15px] text-white/55 tracking-wider">智能化招聘管理,助力企业全球研发人才战略</p>
 
-              <div className="mt-10 space-y-3.5">
-                {FEATURES.map((f) => (
-                  <div key={f.title}
-                    className="flex items-center gap-4 rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-md px-5 py-4">
-                    <span className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                      style={{ background: f.iconBg, color: f.iconFg }}>
-                      <I name={f.icon} size={19} />
-                    </span>
-                    <div className="min-w-0">
-                      <p className="text-[15px] font-bold text-white">{f.title}</p>
-                      <p className="text-[12.5px] text-white/50 mt-0.5">{f.desc}</p>
-                    </div>
-                  </div>
-                ))}
+              {/* Hyperspeed 圆角面板(替换原三张特性卡的位置;按住可加速) */}
+              <div className="mt-9 relative rounded-[24px] overflow-hidden border border-white/10 shadow-glow-lg aspect-[16/10]"
+                style={{ background: HYPER_BG }}>
+                {!REDUCE_MOTION && isDesktop && (
+                  <Suspense fallback={null}>
+                    <Hyperspeed />
+                  </Suspense>
+                )}
+                {/* 面板内缘暗角,让动效与卡片边界更柔和 */}
+                <div aria-hidden className="pointer-events-none absolute inset-0 rounded-[24px]"
+                  style={{ boxShadow: "inset 0 0 60px 10px rgba(5,5,16,0.55)" }} />
               </div>
             </div>
           </div>
 
-          {/* ── 右:玻璃拟态登录卡(桌面/移动共用同一表单) ── */}
-          <div className="login-rise w-full max-w-md lg:w-[440px] lg:shrink-0 pointer-events-auto">
-            <div className="rounded-[28px] bg-white/90 backdrop-blur-xl border border-white/60 shadow-glow-lg p-8">
-              <h1 className="text-3xl font-bold text-navy-800 tracking-tight">欢迎登录</h1>
-              <p className="text-sm text-gray-600 mt-2 mb-8">海外研发招聘管理系统</p>
+          {/* ── 右:暗色玻璃拟态登录卡(桌面/移动共用同一表单) ── */}
+          <div className="login-rise w-full max-w-md lg:w-[440px] lg:shrink-0">
+            <div className="rounded-[28px] border border-white/10 shadow-glow-lg p-8"
+              style={{ background: "rgba(20,18,40,0.55)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)" }}>
+              <h1 className="text-3xl font-bold text-white tracking-tight">欢迎登录</h1>
+              <p className="text-sm text-white/55 mt-2 mb-8">海外研发招聘管理系统</p>
               <form onSubmit={onSubmit} className="space-y-5">
                 <div>
-                  <label htmlFor="email" className="text-xs font-bold text-gray-700 ml-1 mb-2 block">email</label>
+                  <label htmlFor="email" className="text-xs font-bold text-white/70 ml-1 mb-2 block">email</label>
                   <div className="relative">
-                    <I name="mail" size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    <I name="mail" size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 pointer-events-none" />
                     <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="请输入邮箱" autoComplete="email" required
-                      className="w-full h-[52px] rounded-2xl border border-gray-200 bg-white/60 pl-11 pr-4 text-sm text-navy-700 placeholder:text-gray-400 outline-none focus:border-brand focus:bg-white focus:ring-4 focus:ring-brand/10 transition-all" />
+                      className="w-full h-[52px] rounded-2xl border border-white/15 bg-white/5 pl-11 pr-4 text-sm text-white placeholder:text-white/40 outline-none focus:border-brand focus:bg-white/10 focus:ring-4 focus:ring-brand/20 transition-all" />
                   </div>
                 </div>
                 <div>
-                  <label htmlFor="password" className="text-xs font-bold text-gray-700 ml-1 mb-2 block">密码</label>
+                  <label htmlFor="password" className="text-xs font-bold text-white/70 ml-1 mb-2 block">密码</label>
                   <div className="relative">
-                    <I name="lock" size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    <I name="lock" size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 pointer-events-none" />
                     <input id="password" type={showPwd ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="请输入密码" autoComplete="current-password" required
-                      className="w-full h-[52px] rounded-2xl border border-gray-200 bg-white/60 pl-11 pr-11 text-sm text-navy-700 placeholder:text-gray-400 outline-none focus:border-brand focus:bg-white focus:ring-4 focus:ring-brand/10 transition-all" />
-                    <button type="button" onClick={() => setShowPwd((v) => !v)} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-brand transition" aria-label="切换密码可见">
+                      className="w-full h-[52px] rounded-2xl border border-white/15 bg-white/5 pl-11 pr-11 text-sm text-white placeholder:text-white/40 outline-none focus:border-brand focus:bg-white/10 focus:ring-4 focus:ring-brand/20 transition-all" />
+                    <button type="button" onClick={() => setShowPwd((v) => !v)} className="absolute right-4 top-1/2 -translate-y-1/2 text-white/50 hover:text-white transition" aria-label="切换密码可见">
                       <I name={showPwd ? "eye" : "eye-off"} size={18} />
                     </button>
                   </div>
                 </div>
                 <div className="flex items-center justify-between gap-2">
                   <label className="inline-flex items-center gap-2 cursor-pointer select-none">
-                    <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="accent-brand w-4 h-4" />
-                    <span className="text-xs text-gray-600">记住账号</span>
+                    <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="accent-brand w-4 h-4" style={{ colorScheme: "dark" }} />
+                    <span className="text-xs text-white/60">记住账号</span>
                   </label>
-                  <button type="button" onClick={() => setForgotOpen(true)} className="text-xs font-medium text-brand hover:underline">忘记密码?</button>
+                  <button type="button" onClick={() => setForgotOpen(true)} className="text-xs font-medium text-brand-300 hover:text-white hover:underline transition">忘记密码?</button>
                 </div>
-                {error && <div className="text-sm text-red-500 bg-red-50 rounded-xl px-4 py-3 flex items-center gap-2"><I name="alert-circle" size={16} />{error}</div>}
-                {deactivated && <div className="text-sm text-amber-700 bg-amber-50 rounded-xl px-4 py-3">账号已被停用 · {deactivated.reason || "请联系系统管理员开通"}</div>}
+                {error && <div className="text-sm text-red-200 bg-red-500/15 border border-red-400/25 rounded-xl px-4 py-3 flex items-center gap-2"><I name="alert-circle" size={16} />{error}</div>}
+                {deactivated && <div className="text-sm text-amber-200 bg-amber-500/15 border border-amber-400/25 rounded-xl px-4 py-3">账号已被停用 · {deactivated.reason || "请联系系统管理员开通"}</div>}
                 <button type="submit" disabled={submitting} className="w-full h-[54px] rounded-2xl text-white text-[15px] font-bold inline-flex items-center justify-center gap-2 shadow-[0_12px_28px_rgba(213,56,114,0.42)] active:scale-[0.98] transition-all disabled:opacity-70" style={{ background: "linear-gradient(90deg,#D53872 0%,#DF6395 100%)" }}>
                   {submitting ? (<><I name="loader" size={16} className="animate-spin" /> 登录中...</>) : (<>登录</>)}
                 </button>
               </form>
-              <p className="text-center text-sm text-gray-600 mt-6">还没有账号? <span className="text-brand font-medium">联系管理员开通</span></p>
+              <p className="text-center text-sm text-white/55 mt-6">还没有账号? <span className="text-brand-300 font-medium">联系管理员开通</span></p>
             </div>
-            <div className="flex items-center justify-center gap-1.5 mt-5 text-xs text-gray-300"><I name="shield-check" size={13} className="text-emerald-400" /> 数据安全保障 · 隐私严格保护</div>
+            <div className="flex items-center justify-center gap-1.5 mt-5 text-xs text-white/45"><I name="shield-check" size={13} className="text-emerald-400" /> 数据安全保障 · 隐私严格保护</div>
           </div>
         </div>
       </div>
