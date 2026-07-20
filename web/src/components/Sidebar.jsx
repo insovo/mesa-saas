@@ -219,7 +219,7 @@ export default function Sidebar({ user, mobileOpen = false, onMobileClose, colla
                 aria-hidden="true"
                 className="w-9 h-9 shrink-0 object-cover pointer-events-none"
               />
-              <RansomLogo text="Overseas R&D" fontPx={13} className="min-w-0" />
+              <RansomLogo text="HRMS" fontPx={18} className="min-w-0" />
             </div>
           ) : (
             <video
