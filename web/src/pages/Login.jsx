@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import gsap from "gsap";
 import { api } from "../lib/api.js";
@@ -6,11 +6,8 @@ import { setAuth, addSavedAccount } from "../lib/auth.js";
 import { Button, Input, I, Modal, toast } from "../components/Primitives.jsx";
 import { useAuth } from "../lib/authContext.jsx";
 import PasswordStrengthMeter from "../components/PasswordStrengthMeter.jsx";
-// 登录页:背景图形 + 透明人像用素材;所有文字用真实 HTML 文本(清晰/可选中/不裁切)
-import bgImg from "../assets/login/bg.png";
-import portraitImg from "../assets/login/portrait.png";
-import sphereLogin from "../assets/login/sphere.mp4"; // 桌面 logo 循环球(底色融入登录页)
-import sphereWhite from "../assets/logo-sphere.mp4"; // 移动端 logo 循环球(白底融入卡片)
+// 登录页 v2(2026-07):Hyperspeed 全屏暗色背景 + 玻璃拟态卡片,弃用原烘焙设计图素材
+import sphereWhite from "../assets/logo-sphere.mp4"; // logo 循环球(圆角磁贴呈现)
 
 // Hyperspeed 光速公路背景(three.js,lazy → 单独 chunk,仅登录页拉取)
 const Hyperspeed = lazy(() => import("../components/Hyperspeed.jsx"));
@@ -21,21 +18,14 @@ const REDUCE_MOTION =
 // 背景效果的暗色底(与 Hyperspeed fog 黑色衔接)
 const HYPER_BG = "#050510";
 
-// 文字层(1920×1080 设计空间坐标)。grad=渐变文字,否则用 color。
-const TX_NAVY = "#1B2A4E", TX_SUB = "#8893B0", TX_FSUB = "#8E99B8", TX_LABEL = "#586187";
-const LOGIN_TEXTS = [
-  { c: "智能化招聘管理,助力企业全球研发人才战略", l: 138, t: 346, size: 15.5, weight: 400, color: "#7E8AAC", ls: "0.4px" },
-  { c: "多渠道人才聚合", l: 234, t: 437, size: 16, weight: 700, color: TX_NAVY, ls: "1px" },
-  { c: "汇聚全球优质研发人才", l: 234, t: 472, size: 12.5, weight: 400, color: TX_FSUB, ls: "0.4px" },
-  { c: "智能筛选与匹配", l: 234, t: 549, size: 16, weight: 700, color: TX_NAVY, ls: "1px" },
-  { c: "AI 驱动,提升招聘效率", l: 234, t: 584, size: 12.5, weight: 400, color: TX_FSUB, ls: "0.4px" },
-  { c: "协同招聘管理", l: 234, t: 663, size: 16, weight: 700, color: TX_NAVY, ls: "1px" },
-  { c: "团队协作,流程透明高效", l: 234, t: 698, size: 12.5, weight: 400, color: TX_FSUB, ls: "0.4px" },
-  { c: "欢迎登录", l: 1326, t: 210, size: 33, weight: 700, color: TX_NAVY, ls: "4px" },
-  { c: "海外研发招聘管理系统", l: 1309, t: 285, size: 15.5, weight: 400, color: TX_SUB, ls: "1px" },
-  { c: "email", l: 1172, t: 344, size: 15, weight: 700, color: TX_LABEL, ls: "0.4px" },
-  { c: "密码", l: 1172, t: 490, size: 15, weight: 700, color: TX_LABEL, ls: "1px" },
-  { c: "数据安全保障 · 隐私严格保护", l: 1336, t: 980, size: 12.5, weight: 400, color: "#A2ABC6", ls: "0.4px" },
+// 品牌渐变(与站内 brand-logo 流光同族)
+const BRAND_GRADIENT = "linear-gradient(90deg,#5B6CF0,#7C3AED,#C026D3,#7C3AED,#5B6CF0)";
+
+// 桌面左侧特性卡(暗色玻璃 chip;icon 色对应 Hyperspeed 车灯配色)
+const FEATURES = [
+  { icon: "users", title: "多渠道人才聚合", desc: "汇聚全球优质研发人才", iconBg: "rgba(216,86,191,0.18)", iconFg: "#E58BD4" },
+  { icon: "sparkles", title: "智能筛选与匹配", desc: "AI 驱动,提升招聘效率", iconBg: "rgba(124,58,237,0.22)", iconFg: "#B39AF7" },
+  { icon: "users-round", title: "协同招聘管理", desc: "团队协作,流程透明高效", iconBg: "rgba(3,179,195,0.16)", iconFg: "#5BD6E2" },
 ];
 
 export default function Login() {
@@ -54,31 +44,6 @@ export default function Login() {
   const [remember, setRemember] = useState(false);
   const [showPwd, setShowPwd] = useState(false);
   const stageRef = useRef(null);
-  const scaleRef = useRef(null);
-
-  // 桌面设计稿等比缩放:JS 按容器实际尺寸取 contain 缩放并直接设舞台尺寸
-  // - 用容器 clientWidth(非 window.innerWidth)——开浏览器侧边栏时可视区变窄,window 不准
-  // - useLayoutEffect 在绘制前就设好 scale,避免首帧原始尺寸闪烁
-  // - 缩放内层不能再有任何 CSS transform 动画(会覆盖 scale 导致缩放丢失 → 溢出被裁)
-  useLayoutEffect(() => {
-    const el = scaleRef.current;
-    if (!el) return;
-    const stage = el.parentElement; // 16:9 舞台
-    const outer = stage.parentElement; // fixed inset-0 容器 = 实际可视区(随侧边栏/窗口变化)
-    const apply = () => {
-      const w = outer.clientWidth;
-      const h = outer.clientHeight;
-      if (!w || !h) return;
-      const s = Math.min(w / 1920, h / 1080);
-      el.style.transform = `scale(${s})`;
-      stage.style.width = `${Math.round(1920 * s)}px`;
-      stage.style.height = `${Math.round(1080 * s)}px`;
-    };
-    apply();
-    const ro = new ResizeObserver(apply);
-    ro.observe(outer);
-    return () => ro.disconnect();
-  }, []);
 
   useEffect(() => {
     if (!stageRef.current) return;
@@ -136,165 +101,108 @@ export default function Login() {
   }
 
   return (
-    <div ref={stageRef} className="min-h-screen relative overflow-hidden">
-      {/* ===== 桌面(lg+):按设计稿原件 1:1 拼装,等比缩放铺满视口 ===== */}
-      <div className="hidden lg:flex fixed inset-0 items-center justify-center overflow-hidden" style={{ background: HYPER_BG }}>
-        {/* Hyperspeed 光速公路背景(设计稿舞台之外的区域;按住鼠标可加速) */}
-        {!REDUCE_MOTION && (
-          <Suspense fallback={null}>
-            <Hyperspeed />
-          </Suspense>
-        )}
-        <div className="relative z-10" style={{ width: "1px", height: "1px" }}>
-          <div ref={scaleRef} className="absolute top-0 left-0 origin-top-left"
-            style={{ width: "1920px", height: "1080px" }}>
-            {/* 背景设计图(色块/地球/药卡/卡片/输入框/按钮全在此) */}
-            <img src={bgImg} alt="" draggable={false}
-              className="absolute top-0 left-0 select-none pointer-events-none" style={{ width: 1920, height: 1080 }} />
-            {/* logo 循环球(盖住烘焙的 app 图标,底色融入登录页,更大) */}
-            <video src={sphereLogin} autoPlay loop muted playsInline aria-hidden="true" draggable={false}
-              className="absolute select-none pointer-events-none object-cover" style={{ left: 132, top: 116, width: 96, height: 96 }} />
-            {/* 透明人像 */}
-            <img src={portraitImg} alt="" aria-hidden="true" draggable={false}
-              className="absolute select-none pointer-events-none" style={{ left: 2, top: 112, width: 1768, height: 961 }} />
-            {/* 文字层(真实 HTML 文本,非素材) */}
-            {LOGIN_TEXTS.map((x, i) => (
-              <div key={i} className="absolute pointer-events-none select-none" style={{
-                left: x.l, top: x.t, fontSize: x.size, fontWeight: x.weight,
-                letterSpacing: x.ls, lineHeight: 1, whiteSpace: "nowrap", fontFamily: x.ff,
-                ...(x.grad
-                  ? { background: x.grad, WebkitBackgroundClip: "text", backgroundClip: "text", WebkitTextFillColor: "transparent" }
-                  : { color: x.color }),
-              }}>{x.c}</div>
-            ))}
-            {/* 品牌名(流动渐变流光动效) */}
-            <div className="absolute pointer-events-none select-none animate-gradient-x"
-              style={{
-                left: 234, top: 156, fontSize: 32, fontWeight: 700, fontFamily: "Poppins, sans-serif",
-                letterSpacing: "0.3px", lineHeight: 1, whiteSpace: "nowrap",
-                background: "linear-gradient(90deg,#5B6CF0,#7C3AED,#C026D3,#7C3AED,#5B6CF0)",
-                backgroundSize: "200% auto",
-                WebkitBackgroundClip: "text", backgroundClip: "text", WebkitTextFillColor: "transparent",
-              }}>Overseas R&D</div>
-            {/* 主标题(混色:navy + 粉渐变) */}
-            <div className="absolute pointer-events-none select-none font-bold"
-              style={{ left: 138, top: 234, fontSize: 38, letterSpacing: "4px", lineHeight: 1, whiteSpace: "nowrap" }}>
-              <span style={{ color: "#1B2A4E" }}>全球人才</span>
-              <span style={{ color: "#1B2A4E", margin: "0 9px" }}>·</span>
-              <span style={{ background: "linear-gradient(90deg,#D53872,#E0639B)", WebkitBackgroundClip: "text", backgroundClip: "text", WebkitTextFillColor: "transparent" }}>精准招聘</span>
+    <div ref={stageRef} className="min-h-screen relative overflow-hidden" style={{ background: HYPER_BG }}>
+      {/* Hyperspeed 光速公路全屏背景(空白处按住鼠标/触摸可加速) */}
+      {!REDUCE_MOTION && (
+        <Suspense fallback={null}>
+          <Hyperspeed />
+        </Suspense>
+      )}
+      {/* 品牌区氛围柔光(不挡交互) */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 z-[1]"
+        style={{ background: "radial-gradient(ellipse 68% 52% at 28% 24%, rgba(124,58,237,0.16), transparent 62%)" }}
+      />
+
+      <div className="relative z-10 min-h-screen flex items-center justify-center px-4 py-10 lg:px-14">
+        {/* pointer-events-none 让列间空白透给背景 canvas(可按住加速);卡片单独恢复交互 */}
+        <div className="w-full max-w-6xl flex flex-col lg:flex-row items-center justify-center lg:justify-between gap-10 lg:gap-20 pointer-events-none">
+          {/* ── 左:品牌 + 主张(桌面完整版;移动端只保留 logo 行) ── */}
+          <div className="login-rise w-full max-w-md lg:max-w-[540px] lg:flex-1 select-none">
+            <div className="flex items-center justify-center lg:justify-start gap-3">
+              <video src={sphereWhite} autoPlay loop muted playsInline aria-hidden="true"
+                className="w-11 h-11 lg:w-12 lg:h-12 shrink-0 object-cover rounded-2xl shadow-card pointer-events-none" />
+              {/* 亮色光带扫过时渐变字易糊,用 filter drop-shadow 垫暗保持可读(text-shadow 对 clip 文字无效) */}
+              <span className="text-[26px] lg:text-[30px] font-bold animate-gradient-x"
+                style={{
+                  fontFamily: "Poppins, sans-serif",
+                  background: BRAND_GRADIENT, backgroundSize: "200% auto",
+                  WebkitBackgroundClip: "text", backgroundClip: "text", WebkitTextFillColor: "transparent",
+                  filter: "drop-shadow(0 2px 10px rgba(5,5,16,0.9)) drop-shadow(0 0 2px rgba(5,5,16,0.8))",
+                }}>
+                Overseas R&D
+              </span>
             </div>
 
-            {/* 透明可交互控件,覆盖在烘焙好的输入框/按钮上 */}
-            <form onSubmit={onSubmit}>
-              <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                placeholder="请输入邮箱" autoComplete="email" required
-                className="absolute bg-transparent outline-none text-navy-700 placeholder:text-gray-400"
-                style={{ left: 1172, top: 377, width: 500, height: 52, paddingLeft: 72, fontSize: 19 }} />
-              <input id="password" type={showPwd ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)}
-                placeholder="请输入密码" autoComplete="current-password" required
-                className="absolute bg-transparent outline-none text-navy-700 placeholder:text-gray-400"
-                style={{ left: 1172, top: 523, width: 440, height: 52, paddingLeft: 72, fontSize: 19 }} />
-              {/* 眼睛切换 — 卡片色底盖住烘焙眼睛(避免双眼重合),只留可切换的这个 */}
-              <button type="button" onClick={() => setShowPwd((v) => !v)} aria-label="切换密码可见"
-                className="absolute flex items-center justify-center text-gray-400 hover:text-brand transition-colors rounded-lg"
-                style={{ left: 1608, top: 533, width: 58, height: 48, background: "#FCFCFC" }}>
-                <I name={showPwd ? "eye" : "eye-off"} size={24} />
-              </button>
-              {/* 记住账号(真实复选框,接 remember 状态) */}
-              <label className="absolute flex items-center gap-2 cursor-pointer select-none"
-                style={{ left: 1180, top: 610, fontSize: 14, color: "#586187" }}>
-                <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)}
-                  className="accent-brand cursor-pointer" style={{ width: 16, height: 16 }} />
-                记住账号
-              </label>
-              {/* 忘记密码(真实文本) */}
-              <button type="button" onClick={() => setForgotOpen(true)}
-                className="absolute text-right hover:underline" style={{ left: 1470, top: 612, width: 200, fontSize: 14, fontWeight: 500, color: "#5B6CF0", letterSpacing: "0.4px" }}>
-                忘记密码?
-              </button>
-              {/* 登录 提交(透明覆盖烘焙粉色按钮,真实文本) */}
-              <button type="submit" disabled={submitting} aria-label="登录"
-                className="absolute rounded-[16px] flex items-center justify-center gap-2 text-white active:scale-[0.99] transition-transform"
-                style={{ left: 1170, top: 694, width: 500, height: 82, fontSize: 21, fontWeight: 700, letterSpacing: "3px" }}>
-                {submitting
-                  ? (<span className="absolute inset-0 flex items-center justify-center rounded-[16px] gap-2" style={{ background: "#D53872", fontSize: 18, letterSpacing: "1px" }}><I name="loader" size={18} className="animate-spin" /> 登录中...</span>)
-                  : "登录"}
-              </button>
-              {/* 还没有账号 + 联系管理员开通(真实文本) */}
-              <div className="absolute select-none" style={{ left: 1300, top: 840, fontSize: 13.5, color: "#8893B0", letterSpacing: "0.4px", whiteSpace: "nowrap" }}>
-                还没有账号?
-              </div>
-              <button type="button"
-                className="absolute hover:underline" style={{ left: 1414, top: 840, fontSize: 13.5, fontWeight: 700, color: "#4A56C4", letterSpacing: "0.4px", whiteSpace: "nowrap" }}>
-                联系管理员开通
-              </button>
-              {/* 错误提示 */}
-              {(error || deactivated) && (
-                <div className="absolute text-center" style={{ left: 1170, top: 788, width: 500 }}>
-                  {error && <p className="text-sm text-red-600 bg-red-50/95 rounded-lg px-3 py-2 shadow-card-soft">{error}</p>}
-                  {deactivated && <p className="text-sm text-amber-700 bg-amber-50/95 rounded-lg px-3 py-2 shadow-card-soft">账号已被停用 · {deactivated.reason || "请联系系统管理员开通"}</p>}
-                </div>
-              )}
-            </form>
-          </div>
-        </div>
-      </div>
+            <div className="hidden lg:block">
+              <h1 className="mt-9 text-[42px] font-bold leading-tight whitespace-nowrap" style={{ letterSpacing: "3px" }}>
+                <span className="text-white">全球人才</span>
+                <span className="text-white/60 mx-2.5">·</span>
+                <span style={{ background: "linear-gradient(90deg,#E0639B,#D53872)", WebkitBackgroundClip: "text", backgroundClip: "text", WebkitTextFillColor: "transparent" }}>精准招聘</span>
+              </h1>
+              <p className="mt-4 text-[15px] text-white/55 tracking-wider">智能化招聘管理,助力企业全球研发人才战略</p>
 
-      {/* ===== 移动端(<lg):简洁卡片(桌面设计稿等比缩放在窄屏不适用) ===== */}
-      <div className="lg:hidden min-h-screen relative flex items-center justify-center px-4 py-8 overflow-hidden"
-        style={{ background: HYPER_BG }}>
-        {!REDUCE_MOTION && (
-          <Suspense fallback={null}>
-            <Hyperspeed />
-          </Suspense>
-        )}
-        <div className="login-rise w-full max-w-md relative z-10">
-          <div className="flex items-center justify-center gap-2 mb-6">
-            {/* 暗底下白底视频改为圆角 logo 磁贴(blend 在新 stacking context 里融不进 canvas 背景) */}
-            <video src={sphereWhite} autoPlay loop muted playsInline aria-hidden="true"
-              className="w-11 h-11 shrink-0 object-cover pointer-events-none rounded-2xl shadow-card" />
-            <span className="text-[26px] font-bold animate-gradient-x" style={{ fontFamily: "Poppins, sans-serif", background: "linear-gradient(90deg,#5B6CF0,#7C3AED,#C026D3,#7C3AED,#5B6CF0)", backgroundSize: "200% auto", WebkitBackgroundClip: "text", backgroundClip: "text", WebkitTextFillColor: "transparent" }}>Overseas R&D</span>
+              <div className="mt-10 space-y-3.5">
+                {FEATURES.map((f) => (
+                  <div key={f.title}
+                    className="flex items-center gap-4 rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-md px-5 py-4">
+                    <span className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                      style={{ background: f.iconBg, color: f.iconFg }}>
+                      <I name={f.icon} size={19} />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-[15px] font-bold text-white">{f.title}</p>
+                      <p className="text-[12.5px] text-white/50 mt-0.5">{f.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
-          <div className="rounded-[28px] bg-white/90 backdrop-blur-xl border border-white/80 shadow-glow-lg p-8">
-            <h1 className="text-3xl font-bold text-navy-800 tracking-tight">欢迎登录</h1>
-            <p className="text-sm text-gray-600 mt-2 mb-8">海外研发招聘管理系统</p>
-            <form onSubmit={onSubmit} className="space-y-5">
-              <div>
-                <label htmlFor="email-m" className="text-xs font-bold text-gray-700 ml-1 mb-2 block">email</label>
-                <div className="relative">
-                  <I name="mail" size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                  <input id="email-m" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="请输入邮箱" autoComplete="email" required
-                    className="w-full h-[52px] rounded-2xl border border-gray-200 bg-white/60 pl-11 pr-4 text-sm text-navy-700 placeholder:text-gray-400 outline-none focus:border-brand focus:bg-white focus:ring-4 focus:ring-brand/10 transition-all" />
+
+          {/* ── 右:玻璃拟态登录卡(桌面/移动共用同一表单) ── */}
+          <div className="login-rise w-full max-w-md lg:w-[440px] lg:shrink-0 pointer-events-auto">
+            <div className="rounded-[28px] bg-white/90 backdrop-blur-xl border border-white/60 shadow-glow-lg p-8">
+              <h1 className="text-3xl font-bold text-navy-800 tracking-tight">欢迎登录</h1>
+              <p className="text-sm text-gray-600 mt-2 mb-8">海外研发招聘管理系统</p>
+              <form onSubmit={onSubmit} className="space-y-5">
+                <div>
+                  <label htmlFor="email" className="text-xs font-bold text-gray-700 ml-1 mb-2 block">email</label>
+                  <div className="relative">
+                    <I name="mail" size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="请输入邮箱" autoComplete="email" required
+                      className="w-full h-[52px] rounded-2xl border border-gray-200 bg-white/60 pl-11 pr-4 text-sm text-navy-700 placeholder:text-gray-400 outline-none focus:border-brand focus:bg-white focus:ring-4 focus:ring-brand/10 transition-all" />
+                  </div>
                 </div>
-              </div>
-              <div>
-                <label htmlFor="password-m" className="text-xs font-bold text-gray-700 ml-1 mb-2 block">密码</label>
-                <div className="relative">
-                  <I name="lock" size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                  <input id="password-m" type={showPwd ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="请输入密码" autoComplete="current-password" required
-                    className="w-full h-[52px] rounded-2xl border border-gray-200 bg-white/60 pl-11 pr-11 text-sm text-navy-700 placeholder:text-gray-400 outline-none focus:border-brand focus:bg-white focus:ring-4 focus:ring-brand/10 transition-all" />
-                  <button type="button" onClick={() => setShowPwd((v) => !v)} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-brand transition" aria-label="切换密码可见">
-                    <I name={showPwd ? "eye" : "eye-off"} size={18} />
-                  </button>
+                <div>
+                  <label htmlFor="password" className="text-xs font-bold text-gray-700 ml-1 mb-2 block">密码</label>
+                  <div className="relative">
+                    <I name="lock" size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    <input id="password" type={showPwd ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="请输入密码" autoComplete="current-password" required
+                      className="w-full h-[52px] rounded-2xl border border-gray-200 bg-white/60 pl-11 pr-11 text-sm text-navy-700 placeholder:text-gray-400 outline-none focus:border-brand focus:bg-white focus:ring-4 focus:ring-brand/10 transition-all" />
+                    <button type="button" onClick={() => setShowPwd((v) => !v)} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-brand transition" aria-label="切换密码可见">
+                      <I name={showPwd ? "eye" : "eye-off"} size={18} />
+                    </button>
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <label className="inline-flex items-center gap-2 cursor-pointer select-none">
-                  <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="accent-brand w-4 h-4" />
-                  <span className="text-xs text-gray-600">记住账号</span>
-                </label>
-                <button type="button" onClick={() => setForgotOpen(true)} className="text-xs font-medium text-brand hover:underline">忘记密码?</button>
-              </div>
-              {error && <div className="text-sm text-red-500 bg-red-50 rounded-xl px-4 py-3 flex items-center gap-2"><I name="alert-circle" size={16} />{error}</div>}
-              {deactivated && <div className="text-sm text-amber-700 bg-amber-50 rounded-xl px-4 py-3">账号已被停用 · {deactivated.reason || "请联系系统管理员开通"}</div>}
-              <button type="submit" disabled={submitting} className="w-full h-[54px] rounded-2xl text-white text-[15px] font-bold inline-flex items-center justify-center gap-2 shadow-[0_12px_28px_rgba(213,56,114,0.42)] active:scale-[0.98] transition-all disabled:opacity-70" style={{ background: "linear-gradient(90deg,#D53872 0%,#DF6395 100%)" }}>
-                {submitting ? (<><I name="loader" size={16} className="animate-spin" /> 登录中...</>) : (<>登录</>)}
-              </button>
-            </form>
-            <p className="text-center text-sm text-gray-600 mt-6">还没有账号? <span className="text-brand font-medium">联系管理员开通</span></p>
+                <div className="flex items-center justify-between gap-2">
+                  <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                    <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="accent-brand w-4 h-4" />
+                    <span className="text-xs text-gray-600">记住账号</span>
+                  </label>
+                  <button type="button" onClick={() => setForgotOpen(true)} className="text-xs font-medium text-brand hover:underline">忘记密码?</button>
+                </div>
+                {error && <div className="text-sm text-red-500 bg-red-50 rounded-xl px-4 py-3 flex items-center gap-2"><I name="alert-circle" size={16} />{error}</div>}
+                {deactivated && <div className="text-sm text-amber-700 bg-amber-50 rounded-xl px-4 py-3">账号已被停用 · {deactivated.reason || "请联系系统管理员开通"}</div>}
+                <button type="submit" disabled={submitting} className="w-full h-[54px] rounded-2xl text-white text-[15px] font-bold inline-flex items-center justify-center gap-2 shadow-[0_12px_28px_rgba(213,56,114,0.42)] active:scale-[0.98] transition-all disabled:opacity-70" style={{ background: "linear-gradient(90deg,#D53872 0%,#DF6395 100%)" }}>
+                  {submitting ? (<><I name="loader" size={16} className="animate-spin" /> 登录中...</>) : (<>登录</>)}
+                </button>
+              </form>
+              <p className="text-center text-sm text-gray-600 mt-6">还没有账号? <span className="text-brand font-medium">联系管理员开通</span></p>
+            </div>
+            <div className="flex items-center justify-center gap-1.5 mt-5 text-xs text-gray-300"><I name="shield-check" size={13} className="text-emerald-400" /> 数据安全保障 · 隐私严格保护</div>
           </div>
-          <div className="flex items-center justify-center gap-1.5 mt-5 text-xs text-gray-300"><I name="shield-check" size={13} className="text-emerald-400" /> 数据安全保障 · 隐私严格保护</div>
-          <p className="text-center text-[11px] text-gray-400 mt-2.5">本地默认账号 <code className="font-mono text-gray-300">admin@mesa.local / mesa-dev-2026</code></p>
         </div>
       </div>
 
