@@ -6,7 +6,7 @@
 import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { I, Modal, Button, toast } from "./Primitives.jsx";
-import BrandLogo from "./BrandLogo.jsx";
+import RansomLogo from "./RansomLogo.jsx";
 import logoSphere from "../assets/logo-sphere.mp4";
 import { api } from "../lib/api.js";
 import { useMe } from "../lib/authContext.jsx";
@@ -219,12 +219,7 @@ export default function Sidebar({ user, mobileOpen = false, onMobileClose, colla
                 aria-hidden="true"
                 className="w-9 h-9 shrink-0 object-cover pointer-events-none"
               />
-              <BrandLogo
-                text="Overseas R&D"
-                size="text-[17px]"
-                className="tracking-tight whitespace-nowrap"
-                style={{ fontFamily: "Poppins, sans-serif", fontWeight: 700 }}
-              />
+              <RansomLogo text="Overseas R&D" fontPx={13} className="min-w-0" />
             </div>
           ) : (
             <video

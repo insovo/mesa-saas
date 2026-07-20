@@ -264,3 +264,73 @@ body {
     animation: brand-shine 6s linear infinite;
   }
 }
+
+/* ================================================================
+   Ransom Logo「Overseas R&D」— 勒索信拼贴效果 (components/RansomLogo.jsx)
+   每个字母 = 一张歪贴的「纸片」:随机纸色/字色/字体/倾斜/基线/缩放(seeded)。
+   入场 rise & settle:从下方带模糊升入,按字符 40ms stagger(expo-out 无过冲);
+   点击翻换:快速缩小旋转再弹回(back-out),像撕掉重贴一张新纸片。
+   ================================================================ */
+.ransom-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.ransom-char {
+  display: inline-block;
+  padding: 1px 3px;
+  border-radius: 2px;
+  font-weight: 800;
+  line-height: 1.1;
+  cursor: pointer;
+  user-select: none;
+  /* 静止姿态:seeded 倾斜 + 基线弹跳 + 缩放(CSS 变量由 JSX 注入) */
+  transform: translateY(var(--ransom-dy, 0)) rotate(var(--ransom-rot, 0deg)) scale(var(--ransom-scale, 1));
+  animation: ransom-rise-in 0.46s cubic-bezier(0.16, 1, 0.3, 1) both;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.ransom-char:hover {
+  transform: translateY(var(--ransom-dy, 0)) rotate(var(--ransom-rot, 0deg)) scale(calc(var(--ransom-scale, 1) * 1.15));
+}
+
+@keyframes ransom-rise-in {
+  0% {
+    opacity: 0;
+    filter: blur(3.5px);
+    transform: translateY(calc(var(--ransom-dy, 0) + 0.35em))
+      rotate(calc(var(--ransom-rot, 0deg) * 1.25)) scale(calc(var(--ransom-scale, 1) * 0.96));
+  }
+  100% {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(var(--ransom-dy, 0)) rotate(var(--ransom-rot, 0deg)) scale(var(--ransom-scale, 1));
+  }
+}
+
+/* 翻换:旧纸片快速旋转缩小消失 → 新纸片(状态已换)back-out 弹入 */
+.ransom-char-swap {
+  animation: ransom-swap-in 0.26s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@keyframes ransom-swap-in {
+  0% {
+    opacity: 0;
+    transform: translateY(var(--ransom-dy, 0)) rotate(calc(var(--ransom-rot, 0deg) - 24deg))
+      scale(calc(var(--ransom-scale, 1) * 0.55));
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(var(--ransom-dy, 0)) rotate(var(--ransom-rot, 0deg)) scale(var(--ransom-scale, 1));
+  }
+}
+
+/* reduced-motion:静态呈现(拼贴姿态保留,取消入场/翻换动画) */
+@media (prefers-reduced-motion: reduce) {
+  .ransom-char,
+  .ransom-char-swap {
+    animation: none;
+    transition: none;
+  }
+}
