@@ -21,6 +21,7 @@ export default defineConfig(({ mode }) => {
           manualChunks(id) {
             if (!id.includes("node_modules")) return;
             if (id.includes("react-router") || id.includes("/react-dom/") || id.includes("/react/") || id.includes("/scheduler/")) return "react-vendor";
+            if (id.includes("/three/") || id.includes("/postprocessing/")) return "three";
             if (id.includes("recharts") || id.includes("/d3-") || id.includes("/victory")) return "charts";
             if (id.includes("/gsap") || id.includes("@gsap/")) return "gsap";
             if (id.includes("@dnd-kit")) return "dnd";

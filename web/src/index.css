@@ -357,3 +357,16 @@ body {
     transition: none;
   }
 }
+
+/* Hyperspeed 背景宿主(components/Hyperspeed.jsx)— three.js canvas 铺满父容器 */
+.hyperspeed-host {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.hyperspeed-host canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
