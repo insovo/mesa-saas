@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import gsap from "gsap";
 import { api } from "../lib/api.js";
@@ -11,6 +11,15 @@ import bgImg from "../assets/login/bg.png";
 import portraitImg from "../assets/login/portrait.png";
 import sphereLogin from "../assets/login/sphere.mp4"; // 桌面 logo 循环球(底色融入登录页)
 import sphereWhite from "../assets/logo-sphere.mp4"; // 移动端 logo 循环球(白底融入卡片)
+
+// Hyperspeed 光速公路背景(three.js,lazy → 单独 chunk,仅登录页拉取)
+const Hyperspeed = lazy(() => import("../components/Hyperspeed.jsx"));
+// reduced-motion 用户不跑 WebGL 动画,退回静态深色底
+const REDUCE_MOTION =
+  typeof window !== "undefined" &&
+  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+// 背景效果的暗色底(与 Hyperspeed fog 黑色衔接)
+const HYPER_BG = "#050510";
 
 // 文字层(1920×1080 设计空间坐标)。grad=渐变文字,否则用 color。
 const TX_NAVY = "#1B2A4E", TX_SUB = "#8893B0", TX_FSUB = "#8E99B8", TX_LABEL = "#586187";
@@ -129,8 +138,14 @@ export default function Login() {
   return (
     <div ref={stageRef} className="min-h-screen relative overflow-hidden">
       {/* ===== 桌面(lg+):按设计稿原件 1:1 拼装,等比缩放铺满视口 ===== */}
-      <div className="hidden lg:flex fixed inset-0 items-center justify-center overflow-hidden" style={{ background: "#ECEAF6" }}>
-        <div className="relative" style={{ width: "1px", height: "1px" }}>
+      <div className="hidden lg:flex fixed inset-0 items-center justify-center overflow-hidden" style={{ background: HYPER_BG }}>
+        {/* Hyperspeed 光速公路背景(设计稿舞台之外的区域;按住鼠标可加速) */}
+        {!REDUCE_MOTION && (
+          <Suspense fallback={null}>
+            <Hyperspeed />
+          </Suspense>
+        )}
+        <div className="relative z-10" style={{ width: "1px", height: "1px" }}>
           <div ref={scaleRef} className="absolute top-0 left-0 origin-top-left"
             style={{ width: "1920px", height: "1080px" }}>
             {/* 背景设计图(色块/地球/药卡/卡片/输入框/按钮全在此) */}
@@ -226,12 +241,18 @@ export default function Login() {
       </div>
 
       {/* ===== 移动端(<lg):简洁卡片(桌面设计稿等比缩放在窄屏不适用) ===== */}
-      <div className="lg:hidden min-h-screen flex items-center justify-center px-4 py-8"
-        style={{ background: "linear-gradient(155deg,#F3F5FC 0%,#F5F2FB 48%,#FCF4F8 100%)" }}>
-        <div className="login-rise w-full max-w-md">
+      <div className="lg:hidden min-h-screen relative flex items-center justify-center px-4 py-8 overflow-hidden"
+        style={{ background: HYPER_BG }}>
+        {!REDUCE_MOTION && (
+          <Suspense fallback={null}>
+            <Hyperspeed />
+          </Suspense>
+        )}
+        <div className="login-rise w-full max-w-md relative z-10">
           <div className="flex items-center justify-center gap-2 mb-6">
+            {/* 暗底下白底视频改为圆角 logo 磁贴(blend 在新 stacking context 里融不进 canvas 背景) */}
             <video src={sphereWhite} autoPlay loop muted playsInline aria-hidden="true"
-              className="w-11 h-11 shrink-0 object-cover pointer-events-none" style={{ mixBlendMode: "multiply" }} />
+              className="w-11 h-11 shrink-0 object-cover pointer-events-none rounded-2xl shadow-card" />
             <span className="text-[26px] font-bold animate-gradient-x" style={{ fontFamily: "Poppins, sans-serif", background: "linear-gradient(90deg,#5B6CF0,#7C3AED,#C026D3,#7C3AED,#5B6CF0)", backgroundSize: "200% auto", WebkitBackgroundClip: "text", backgroundClip: "text", WebkitTextFillColor: "transparent" }}>Overseas R&D</span>
           </div>
           <div className="rounded-[28px] bg-white/90 backdrop-blur-xl border border-white/80 shadow-glow-lg p-8">
@@ -272,8 +293,8 @@ export default function Login() {
             </form>
             <p className="text-center text-sm text-gray-600 mt-6">还没有账号? <span className="text-brand font-medium">联系管理员开通</span></p>
           </div>
-          <div className="flex items-center justify-center gap-1.5 mt-5 text-xs text-gray-500"><I name="shield-check" size={13} className="text-emerald-500" /> 数据安全保障 · 隐私严格保护</div>
-          <p className="text-center text-[11px] text-gray-400 mt-2.5">本地默认账号 <code className="font-mono text-gray-500">admin@mesa.local / mesa-dev-2026</code></p>
+          <div className="flex items-center justify-center gap-1.5 mt-5 text-xs text-gray-300"><I name="shield-check" size={13} className="text-emerald-400" /> 数据安全保障 · 隐私严格保护</div>
+          <p className="text-center text-[11px] text-gray-400 mt-2.5">本地默认账号 <code className="font-mono text-gray-300">admin@mesa.local / mesa-dev-2026</code></p>
         </div>
       </div>
 
