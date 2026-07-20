@@ -21,21 +21,6 @@ const HYPER_BG = "#050510";
 // 品牌渐变(与站内 brand-logo 流光同族)
 const BRAND_GRADIENT = "linear-gradient(90deg,#5B6CF0,#7C3AED,#C026D3,#7C3AED,#5B6CF0)";
 
-// 桌面断点(lg):Hyperspeed 桌面放左侧面板、移动端铺全屏 —— 两处只能挂一个实例
-// (display:none 藏起来的 WebGL canvas 仍会跑渲染循环,白耗 GPU),所以用 matchMedia 二选一。
-function useIsDesktop() {
-  const [isDesktop, setIsDesktop] = useState(
-    () => typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches,
-  );
-  useEffect(() => {
-    const mql = window.matchMedia("(min-width: 1024px)");
-    const apply = () => setIsDesktop(mql.matches);
-    mql.addEventListener("change", apply);
-    return () => mql.removeEventListener("change", apply);
-  }, []);
-  return isDesktop;
-}
-
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -52,7 +37,6 @@ export default function Login() {
   const [remember, setRemember] = useState(false);
   const [showPwd, setShowPwd] = useState(false);
   const stageRef = useRef(null);
-  const isDesktop = useIsDesktop();
 
   useEffect(() => {
     if (!stageRef.current) return;
@@ -111,9 +95,8 @@ export default function Login() {
 
   return (
     <div ref={stageRef} className="min-h-screen relative overflow-hidden" style={{ background: HYPER_BG }}>
-      {/* 移动端(<lg):Hyperspeed 铺全屏背景。桌面端动效改放左侧圆角面板里(见下),
-          两处只挂一个实例 —— 隐藏的 WebGL canvas 仍会跑渲染循环白耗 GPU。 */}
-      {!REDUCE_MOTION && !isDesktop && (
+      {/* Hyperspeed 光速公路全屏背景(桌面 + 移动统一单实例;空白处按住鼠标/触摸可加速) */}
+      {!REDUCE_MOTION && (
         <Suspense fallback={null}>
           <Hyperspeed />
         </Suspense>
@@ -125,10 +108,11 @@ export default function Login() {
         style={{ background: "radial-gradient(ellipse 68% 52% at 28% 24%, rgba(124,58,237,0.16), transparent 62%)" }}
       />
 
-      <div className="relative z-10 min-h-screen flex items-center justify-center px-4 py-10 lg:px-14">
+      {/* pointer-events-none 让空白区把鼠标事件透传给底层 canvas(按住加速);仅登录卡恢复交互 */}
+      <div className="relative z-10 min-h-screen flex items-center justify-center px-4 py-10 lg:px-14 pointer-events-none">
         <div className="w-full max-w-6xl flex flex-col lg:flex-row items-center justify-center lg:justify-between gap-10 lg:gap-20">
-          {/* ── 左:品牌 + 主张 + Hyperspeed 面板(桌面完整版;移动端只保留 logo 行) ── */}
-          <div className="login-rise w-full max-w-md lg:max-w-[540px] lg:flex-1 select-none">
+          {/* ── 左:品牌 + 主张(桌面完整版;移动端只保留 logo 行);背景已是全屏动效 ── */}
+          <div className="login-rise w-full max-w-md lg:max-w-[540px] lg:flex-1 select-none pointer-events-none">
             <div className="flex items-center justify-center lg:justify-start gap-3">
               <video src={sphereWhite} autoPlay loop muted playsInline aria-hidden="true"
                 className="w-11 h-11 lg:w-12 lg:h-12 shrink-0 object-cover rounded-2xl shadow-card pointer-events-none" />
@@ -151,24 +135,11 @@ export default function Login() {
                 <span style={{ background: "linear-gradient(90deg,#E0639B,#D53872)", WebkitBackgroundClip: "text", backgroundClip: "text", WebkitTextFillColor: "transparent" }}>精准招聘</span>
               </h1>
               <p className="mt-4 text-[15px] text-white/55 tracking-wider">智能化招聘管理,助力企业全球研发人才战略</p>
-
-              {/* Hyperspeed 圆角面板(替换原三张特性卡的位置;按住可加速) */}
-              <div className="mt-9 relative rounded-[24px] overflow-hidden border border-white/10 shadow-glow-lg aspect-[16/10]"
-                style={{ background: HYPER_BG }}>
-                {!REDUCE_MOTION && isDesktop && (
-                  <Suspense fallback={null}>
-                    <Hyperspeed />
-                  </Suspense>
-                )}
-                {/* 面板内缘暗角,让动效与卡片边界更柔和 */}
-                <div aria-hidden className="pointer-events-none absolute inset-0 rounded-[24px]"
-                  style={{ boxShadow: "inset 0 0 60px 10px rgba(5,5,16,0.55)" }} />
-              </div>
             </div>
           </div>
 
           {/* ── 右:暗色玻璃拟态登录卡(桌面/移动共用同一表单) ── */}
-          <div className="login-rise w-full max-w-md lg:w-[440px] lg:shrink-0">
+          <div className="login-rise w-full max-w-md lg:w-[440px] lg:shrink-0 pointer-events-auto">
             <div className="rounded-[28px] border border-white/10 shadow-glow-lg p-8"
               style={{ background: "rgba(20,18,40,0.55)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)" }}>
               <h1 className="text-3xl font-bold text-white tracking-tight">欢迎登录</h1>
