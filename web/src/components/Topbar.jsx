@@ -43,7 +43,7 @@ function pageTitleFor(pathname) {
   return "Overseas R&D";
 }
 
-export default function Topbar() {
+export default function Topbar({ navOpen = false }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { me, patchMe, logout } = useAuth();
@@ -137,14 +137,19 @@ export default function Topbar() {
 
   return (
     <header className="sticky top-0 z-20 bg-lightPrimary/70 backdrop-blur-md border-b border-white/40">
-      {/* 左侧 padding 给固定左上角的 StaggeredMenu 展开按钮 + HRMS logo 让位 */}
-      <div className="flex items-center gap-4 px-4 md:px-8 pt-7 pb-5 pl-36 md:pl-40">
-        <div className="min-w-0 flex-1">
-          <p className="text-xs font-medium text-gray-700">Overseas R&amp;D · 招聘工作台</p>
-          <h1 className="title-page mt-1 text-[22px] md:text-page-title">{title}</h1>
+      {/* 左侧 padding 只在菜单关闭时给固定左上角的开关按钮让位;展开时内容区已被面板推开,无需再预留 */}
+      <div
+        className={`flex items-center gap-4 px-4 md:px-8 pt-7 pb-5 transition-[padding-left] duration-300 ${
+          navOpen ? "" : "pl-20 md:pl-20"
+        }`}
+      >
+        {/* min-w 保证标题不被搜索框挤到消失;超出仍 truncate 不竖排 */}
+        <div className="min-w-[140px] md:min-w-[170px] flex-1 overflow-hidden">
+          <p className="text-xs font-medium text-gray-700 whitespace-nowrap truncate">Overseas R&amp;D · 招聘工作台</p>
+          <h1 className="title-page mt-1 text-[22px] md:text-page-title whitespace-nowrap truncate">{title}</h1>
         </div>
 
-        <div className="hidden md:flex items-center bg-white rounded-full shadow-card pl-5 pr-2 h-[60px] w-[420px] transition-all duration-200 focus-within:ring-4 focus-within:ring-brand/10 focus-within:shadow-glow">
+        <div className="hidden md:flex items-center bg-white rounded-full shadow-card pl-5 pr-2 h-[60px] w-[420px] min-w-0 shrink transition-all duration-200 focus-within:ring-4 focus-within:ring-brand/10 focus-within:shadow-glow">
           <I name="search" size={18} className="text-gray-400 shrink-0" />
           <input
             placeholder="搜索候选人 / 岗位 / 部门..."
@@ -152,7 +157,7 @@ export default function Topbar() {
           />
         </div>
 
-        <div className="flex items-center gap-2 md:gap-3">
+        <div className="flex items-center gap-2 md:gap-3 shrink-0">
           <button className="hidden sm:flex w-11 h-11 rounded-full bg-white shadow-card items-center justify-center text-gray-700 hover:text-brand hover:-translate-y-0.5 hover:shadow-glow transition-all duration-200">
             <I name="bell" size={18} />
           </button>

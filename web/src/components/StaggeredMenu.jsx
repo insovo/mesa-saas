@@ -12,7 +12,7 @@ import { I } from "./Primitives.jsx";
 import RansomLogo from "./RansomLogo.jsx";
 
 // 面板宽度 — Layout 推开内容区时用同一值(改动需两处同步)
-export const MENU_PANEL_WIDTH = "clamp(300px, 30vw, 420px)";
+export const MENU_PANEL_WIDTH = "clamp(240px, 19vw, 300px)";
 
 function prefersReducedMotion() {
   if (typeof window === "undefined") return false;
@@ -217,7 +217,12 @@ export default function StaggeredMenu({
           <I name="panel-left-close" size={18} />
         </button>
 
-        <div className="sm-panel-inner flex-1 flex flex-col gap-5 pt-[5.5em] pb-6 px-8">
+        <div className="sm-panel-inner flex-1 flex flex-col gap-5 pt-5 pb-6 px-7">
+          {/* 面板品牌头:HRMS logo 随面板滑入(原固定顶栏 logo 移入此处) */}
+          <div className="sm-panel-brand flex items-center min-h-[36px] pr-12 select-none">
+            <RansomLogo text="HRMS" fontPx={20} />
+          </div>
+
           <ul className="sm-panel-list list-none m-0 p-0 flex flex-col" role="list">
             {items.map((it) => {
               const isActive =
@@ -234,7 +239,11 @@ export default function StaggeredMenu({
                       isActive ? "text-brand" : "text-navy-700 hover:text-brand"
                     }`}
                   >
-                    <span className="sm-panel-itemLabel inline-block [transform-origin:50%_100%] will-change-transform">
+                    {/* 图标和文字都放进 itemLabel,GSAP stagger 时一起飞入 */}
+                    <span className="sm-panel-itemLabel inline-flex items-center gap-3 [transform-origin:50%_100%] will-change-transform">
+                      <span className="inline-flex w-5 shrink-0 items-center justify-center" aria-hidden="true">
+                        <I name={it.icon} size={20} />
+                      </span>
                       {it.label}
                     </span>
                   </NavLink>
@@ -247,8 +256,8 @@ export default function StaggeredMenu({
         </div>
       </aside>
 
-      {/* 固定左上角:展开按钮(菜单关闭时可见)+ logo */}
-      <header className="fixed top-0 left-0 flex items-center gap-3 p-5 z-20 pointer-events-none" aria-label="Main navigation header">
+      {/* 固定左上角:展开按钮(菜单关闭时可见;logo 已移入面板内) */}
+      <header className="fixed top-0 left-0 flex items-center p-5 z-20 pointer-events-none" aria-label="Main navigation header">
         <button
           ref={openBtnRef}
           onClick={openMenu}
@@ -263,15 +272,12 @@ export default function StaggeredMenu({
         >
           <I name="panel-left-open" size={18} />
         </button>
-        <div className={`pointer-events-auto select-none transition-opacity duration-300 ${open ? "opacity-0" : "opacity-100"}`}>
-          <RansomLogo text="HRMS" fontPx={16} />
-        </div>
       </header>
 
       <style>{`
 .sm-scope .sm-panel,
 .sm-scope .sm-prelayers { width: ${MENU_PANEL_WIDTH}; }
-.sm-scope .sm-panel-item { font-size: clamp(1.5rem, 3.6vh, 2.2rem); padding: 0.32em 0; letter-spacing: 0.5px; }
+.sm-scope .sm-panel-item { font-size: clamp(1.1rem, 2.6vh, 1.5rem); padding: 0.38em 0; letter-spacing: 0.5px; }
 @media (max-width: 640px) {
   .sm-scope .sm-panel,
   .sm-scope .sm-prelayers { width: 100%; }
