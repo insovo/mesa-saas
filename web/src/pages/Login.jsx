@@ -127,12 +127,12 @@ export default function Login() {
         className="pointer-events-none absolute inset-0 z-[1]"
         style={{ background: "radial-gradient(ellipse 68% 52% at 28% 24%, rgba(124,58,237,0.16), transparent 62%)" }}
       />
-      {/* 桌面端的品牌弧形标语：收在左上留白，避开右侧登录卡的交互区域。 */}
-      <div aria-hidden className="pointer-events-none absolute left-0 top-0 z-[2] hidden h-[48vh] w-[58vw] max-w-[920px] lg:block">
+      {/* 桌面端的品牌弧形标语：贴左上角沿陡峭弧线上冲(对齐设计标注红线),避开右侧登录卡。 */}
+      <div aria-hidden className="pointer-events-none absolute left-0 top-0 z-[2] hidden h-[52vh] w-[40vw] max-w-[640px] lg:block">
         <CurvedLoop
           marqueeText="Build ✦ Future ✦ Code ✦ With ✦ Us ✦"
           speed={2}
-          curveAmount={900}
+          curveAmount={70}
           direction="right"
           interactive={false}
           className="opacity-90"
