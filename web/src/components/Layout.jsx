@@ -1,75 +1,35 @@
 // MESA Recruit · 受保护的主框架
-// 桌面: Sidebar (可收起) + Topbar + 内容
-// 移动: 汉堡按钮 + 抽屉 Sidebar
+// 左侧导航 = StaggeredMenu 覆盖式菜单(GSAP staggered 面板,汉堡按钮固定左上角)
+// 内容区全宽:Topbar + Outlet
 
-import { useEffect, useRef, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
-import Sidebar, { COLLAPSED_KEY } from "./Sidebar.jsx";
+import StaggeredMenu from "./StaggeredMenu.jsx";
+import LlmConfig from "./LlmConfig.jsx";
 import Topbar from "./Topbar.jsx";
-import { I, ToastHost } from "./Primitives.jsx";
+import { ToastHost } from "./Primitives.jsx";
 import { getUser } from "../lib/auth.js";
+import { useMe } from "../lib/authContext.jsx";
+import { hasPage as canSeePage, isAdmin as checkIsAdmin } from "../lib/permissions.js";
+import { NAV_ITEMS } from "../lib/navItems.js";
 
 export default function Layout() {
   const user = getUser();
   const location = useLocation();
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === "1");
+  const me = useMe();
+  const isAdmin = checkIsAdmin(me) || user?.role === "ADMIN";
 
-  function toggleCollapsed() {
-    const next = !collapsed;
-    setCollapsed(next);
-    localStorage.setItem(COLLAPSED_KEY, next ? "1" : "0");
-  }
-
-  // 路由切换时关闭移动抽屉
-  useEffect(() => {
-    setMobileOpen(false);
-  }, [location.pathname]);
-
-  // 三列详情页:候选人 / 员工(现有人员·入职管理)
-  const isCandidateDetail = /^\/candidates\/[^/]+/.test(location.pathname);
-  const isEmployeeDetail = /^\/(staff|newhire)\/[^/]+/.test(location.pathname);
-  const isDetailPage = isCandidateDetail || isEmployeeDetail;
-  // collapsed 的实时镜像 — 让自动收起 effect 只依赖路由、不因 collapsed 变化重跑(否则在详情页手动展开会被立刻又收起)
-  const collapsedRef = useRef(collapsed);
-  collapsedRef.current = collapsed;
-  // 标记「这次收起是自动触发的」,离开详情页时才据此恢复
-  const autoCollapsedRef = useRef(false);
-
-  // 桌面端进三列详情页自动收起左侧导航(给详情腾空间),离开时恢复;
-  // 用 setCollapsed(不走 toggleCollapsed)→ 不写 localStorage、不污染用户持久化偏好。
-  // 移动端侧栏是抽屉(collapsed 不影响),此逻辑只在桌面产生视觉效果。
-  useEffect(() => {
-    if (isDetailPage) {
-      if (!collapsedRef.current) {
-        autoCollapsedRef.current = true;
-        setCollapsed(true);
-      }
-    } else if (autoCollapsedRef.current) {
-      autoCollapsedRef.current = false;
-      setCollapsed(false);
-    }
-  }, [isDetailPage]);
+  const items = NAV_ITEMS.filter((it) => {
+    if (it.adminOnly && !isAdmin) return false;
+    if (it.pageKey && me) return canSeePage(me, it.pageKey);
+    // me 还在加载时,先展示非 adminOnly 项,避免菜单闪烁
+    return true;
+  });
 
   return (
     <div className="flex min-h-screen bg-lightPrimary">
-      <Sidebar
-        user={user}
-        mobileOpen={mobileOpen}
-        onMobileClose={() => setMobileOpen(false)}
-        collapsed={collapsed}
-        onToggleCollapsed={toggleCollapsed}
-      />
-      <div className="flex-1 min-w-0 flex flex-col">
-        {/* 移动端汉堡 */}
-        <button
-          onClick={() => setMobileOpen(true)}
-          className="md:hidden fixed top-4 left-4 z-30 w-10 h-10 rounded-full bg-white shadow-card flex items-center justify-center text-navy-700"
-          aria-label="打开菜单"
-        >
-          <I name="menu" size={20} />
-        </button>
+      <StaggeredMenu items={items} footer={<LlmConfig className="w-full" />} />
 
+      <div className="flex-1 min-w-0 flex flex-col">
         <Topbar />
         <main className="flex-1 px-4 md:px-8 pb-10">
           {/* 路由切换时 key 变化 → 重挂载触发淡入,全站统一丝滑入场 */}

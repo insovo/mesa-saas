@@ -1,53 +1,23 @@
-// MESA Recruit · 左侧导航
-//   - 桌面端: 268px 宽全展开 / 80px 仅图标收起态
-//   - 移动端 (<md): 抽屉模式,默认隐藏,汉堡按钮唤起
-//   - 含 LLM 状态卡 (点开 modal 切换模型 + admin 改 key)
+// MESA Recruit · LLM 配置入口(按钮 + 配置 Modal + Prompt 编辑 Modal)
+// 原内嵌在 Sidebar,侧栏改为 StaggeredMenu 后上抽为独立组件复用。
+// 权限:admin 或被授权 system.llm pageKey 的用户可见,否则渲染 null。
 
 import { useEffect, useState } from "react";
-import { NavLink, useLocation } from "react-router-dom";
 import { I, Modal, Button, toast } from "./Primitives.jsx";
-import RansomLogo from "./RansomLogo.jsx";
-import logoSphere from "../assets/logo-sphere.mp4";
 import { api } from "../lib/api.js";
 import { useMe } from "../lib/authContext.jsx";
 import { hasPage as canSeePage, isAdmin as checkIsAdmin } from "../lib/permissions.js";
-
-const ITEMS = [
-  { to: "/dashboard",    label: "概览",       icon: "layout-dashboard", pageKey: "dashboard" },
-  { to: "/candidates",   label: "候选人",     icon: "users",            pageKey: "candidates" },
-  { to: "/jobs",         label: "岗位",       icon: "briefcase",        pageKey: "jobs" },
-  { to: "/upload",       label: "简历收件箱", icon: "upload-cloud",     pageKey: "upload" },
-  { to: "/staff",        label: "现有人员",   icon: "users-round",      pageKey: "staff" },
-  { to: "/newhire",      label: "入职管理",   icon: "user-plus",        pageKey: "newhire" },
-  { to: "/departments",  label: "部门管理",   icon: "building-2",       pageKey: "departments" },
-  { to: "/interviews",   label: "面试安排",   icon: "calendar",         pageKey: "interviews" },
-  { to: "/performance",  label: "绩效评价",   icon: "clipboard-check",  pageKey: "performance" },
-  { to: "/reports",      label: "数据报表",   icon: "bar-chart-3",      pageKey: "reports" },
-  { to: "/share-settings", label: "分享设置", icon: "share-2",         pageKey: "share.settings" },
-  { to: "/users",        label: "用户管理",   icon: "shield-check",     pageKey: "users", adminOnly: true },
-  { to: "/audit",        label: "审计日志",   icon: "scroll-text",      pageKey: "audit", adminOnly: true },
-];
 
 const PROVIDER_LABELS = {
   kimi: "Kimi (Moonshot AI)",
   deepseek: "DeepSeek",
 };
 
-const COLLAPSED_KEY = "mesa.sidebar.collapsed";
-
-export default function Sidebar({ user, mobileOpen = false, onMobileClose, collapsed, onToggleCollapsed }) {
-  const location = useLocation();
+export default function LlmConfig({ className = "", onOpenChange }) {
   const me = useMe();
-  // 兼容旧调用方:user prop 仍用,但 page 过滤优先看 me(权限策略)
-  const isAdmin = checkIsAdmin(me) || user?.role === "ADMIN";
-  // LLM 配置入口:admin 或被授权 system.llm pageKey 的用户都能看见
+  const isAdmin = checkIsAdmin(me);
   const canLlmAccess = isAdmin || (me ? canSeePage(me, "system.llm") : false);
-  const items = ITEMS.filter((it) => {
-    if (it.adminOnly && !isAdmin) return false;
-    if (it.pageKey && me) return canSeePage(me, it.pageKey);
-    // me 还在加载时,先展示非 adminOnly 项,避免菜单闪烁
-    return true;
-  });
+
   const [llm, setLlm] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem("mesa.llm.model") || "");
@@ -70,11 +40,15 @@ export default function Sidebar({ user, mobileOpen = false, onMobileClose, colla
     // eslint-disable-next-line
   }, []);
 
-  // admin 或被授权 system.llm 的用户打开 modal 时拉 settings
   useEffect(() => {
     if (!modalOpen || !canLlmAccess) return;
     api.get("/system/settings").then((r) => setAdminSettings(r.data.items)).catch(() => setAdminSettings([]));
   }, [modalOpen, canLlmAccess]);
+
+  function setOpen(v) {
+    setModalOpen(v);
+    onOpenChange?.(v);
+  }
 
   function onPickModel(modelId) {
     setSelectedModel(modelId);
@@ -173,7 +147,6 @@ export default function Sidebar({ user, mobileOpen = false, onMobileClose, colla
     try {
       await api.delete("/system/settings/kimi.prompt");
       toast("已回退到内置 prompt", "success");
-      // 重拉默认值
       const { data } = await api.get("/system/settings/kimi.prompt/full");
       setPromptText(data.value || "");
       await refreshLlmStatus();
@@ -182,6 +155,8 @@ export default function Sidebar({ user, mobileOpen = false, onMobileClose, colla
     }
   }
 
+  if (!canLlmAccess) return null;
+
   const ready = !!llm?.configured;
   const chipClass = ready ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700";
   const chipLabel = ready ? "已就绪" : "待配置";
@@ -189,144 +164,26 @@ export default function Sidebar({ user, mobileOpen = false, onMobileClose, colla
   const keyRow = adminSettings?.find((s) => s.key === "kimi.api_key");
   const modelRow = adminSettings?.find((s) => s.key === "kimi.model");
 
-  // === 渲染 ===
   return (
     <>
-      {/* 移动端遮罩 */}
-      {mobileOpen && (
-        <div
-          className="md:hidden fixed inset-0 z-40 bg-navy-900/40 backdrop-blur-sm"
-          onClick={onMobileClose}
-        />
-      )}
-
-      <aside
-        className={`
-          bg-white shrink-0 flex flex-col pb-8 shadow-sidebar transition-all duration-200
-          fixed md:sticky top-0 z-50 md:z-30
-          h-screen md:h-screen md:overflow-y-auto
-          ${collapsed ? "md:w-[80px]" : "md:w-[268px]"}
-          ${mobileOpen ? "translate-x-0 w-[268px]" : "-translate-x-full md:translate-x-0 w-[268px]"}
-        `}
+      <button
+        onClick={() => setOpen(true)}
+        className={`rounded-xl bg-lightPrimary flex items-center gap-2 px-3 py-2 hover:ring-2 hover:ring-brand/20 transition ${className}`}
       >
-        {/* 头部 · logo + 收起按钮 */}
-        <div className="flex items-center justify-between px-6 pt-9 md:pt-11">
-          {!collapsed ? (
-            <div className="flex items-center gap-2 min-w-0 whitespace-nowrap">
-              <video
-                src={logoSphere}
-                autoPlay loop muted playsInline
-                aria-hidden="true"
-                className="w-9 h-9 shrink-0 object-cover pointer-events-none"
-              />
-              <RansomLogo text="HRMS" fontPx={18} className="min-w-0" />
-            </div>
-          ) : (
-            <video
-              src={logoSphere}
-              autoPlay loop muted playsInline
-              aria-hidden="true"
-              className="w-9 h-9 mx-auto shrink-0 object-cover pointer-events-none"
-            />
-          )}
-          {/* 桌面端收起按钮 */}
-          <button
-            onClick={onToggleCollapsed}
-            className="hidden md:inline-flex w-8 h-8 rounded-full bg-lightPrimary hover:bg-gray-200 items-center justify-center text-gray-700 hover:text-brand transition"
-            title={collapsed ? "展开侧边栏" : "收起侧边栏"}
-          >
-            <I name={collapsed ? "chevron-right" : "chevron-left"} size={16} />
-          </button>
-          {/* 移动端关闭按钮 */}
-          <button
-            onClick={onMobileClose}
-            className="md:hidden w-8 h-8 rounded-full bg-lightPrimary flex items-center justify-center text-gray-700"
-          >
-            <I name="x" size={16} />
-          </button>
-        </div>
-        <div className="mt-9 mb-5 h-px bg-gray-200 mx-6"></div>
-
-        <nav className="flex-1">
-          <ul>
-            {items.map((it) => {
-              const isActive =
-                it.to === "/dashboard"
-                  ? location.pathname === "/" || location.pathname.startsWith("/dashboard")
-                  : location.pathname.startsWith(it.to);
-              return (
-                <li key={it.to} className="relative px-3">
-                  <NavLink
-                    to={it.to}
-                    onClick={onMobileClose}
-                    className={`group my-[3px] flex w-full items-center text-left rounded-xl transition-all duration-200
-                      ${collapsed ? "md:justify-center md:px-0 px-6 py-2.5" : "px-6 py-2.5"}
-                      ${isActive ? "bg-gradient-to-r from-brand-50 to-brand-50/40 shadow-[inset_0_0_0_1px_rgba(66,42,251,0.08)]" : "hover:bg-lightPrimary"}`}
-                    title={collapsed ? it.label : undefined}
-                  >
-                    <span
-                      className={`flex items-center justify-center rounded-lg shrink-0 transition-all duration-300 ${isActive ? "bg-brand-gradient text-white shadow-button" : "text-gray-600 group-hover:text-brand"}`}
-                      style={{ width: 30, height: 30 }}
-                    >
-                      <I name={it.icon} size={17} strokeWidth={isActive ? 2.4 : 2} />
-                    </span>
-                    {!collapsed && (
-                      <span className={`ml-3 text-sm whitespace-nowrap transition-colors ${isActive ? "font-bold text-navy-700" : "font-medium text-gray-700 group-hover:text-navy-700"}`}>
-                        {it.label}
-                      </span>
-                    )}
-                  </NavLink>
-                  {isActive && <div className="absolute right-0 top-1/2 -translate-y-1/2 h-7 w-1 rounded-l-full bg-brand-gradient shadow-glow"></div>}
-                  {!collapsed && it.adminOnly && (
-                    <span className="absolute right-6 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-5 h-5 rounded-md bg-brand-50 text-brand"
-                          title="仅管理员可见">
-                      <I name="shield-check" size={10} />
-                    </span>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-
-          {canLlmAccess && (
-            <>
-              {!collapsed && (
-                <>
-                  <div className="mt-7 mx-9 h-px bg-gray-200"></div>
-                  <div className="px-9 mt-5 mb-3 text-[11px] tracking-wide font-bold text-gray-600">AI 配置</div>
-                </>
-              )}
-              <button
-                onClick={() => setModalOpen(true)}
-                className={`
-                  ${collapsed ? "md:mx-3 md:px-2 md:py-2 md:justify-center" : "mx-7 px-3 py-2"}
-                  rounded-xl bg-lightPrimary flex items-center gap-2 hover:ring-2 hover:ring-brand/20 transition
-                `}
-                title={collapsed ? "LLM 配置" : undefined}
-                style={collapsed ? {} : { width: "calc(100% - 3.5rem)" }}
-              >
-                <I name="key-round" size={16} className="text-brand" />
-                {!collapsed && (
-                  <>
-                    <span className="text-sm font-bold text-navy-700">LLM Key</span>
-                    <span className={`ml-auto text-[10px] px-2 py-0.5 rounded-full font-bold ${chipClass}`}>{chipLabel}</span>
-                  </>
-                )}
-              </button>
-            </>
-          )}
-        </nav>
-      </aside>
+        <I name="key-round" size={16} className="text-brand" />
+        <span className="text-sm font-bold text-navy-700">LLM Key</span>
+        <span className={`ml-auto text-[10px] px-2 py-0.5 rounded-full font-bold ${chipClass}`}>{chipLabel}</span>
+      </button>
 
       {/* === LLM 配置 Modal === */}
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} maxWidth="max-w-lg">
+      <Modal open={modalOpen} onClose={() => setOpen(false)} maxWidth="max-w-lg">
         <div className="p-7 space-y-5">
           <div className="flex items-center justify-between">
             <h3 className="text-xl font-bold text-navy-700 flex items-center gap-2">
               <I name="key-round" size={20} className="text-brand" />
               LLM 配置
             </h3>
-            <button onClick={() => setModalOpen(false)} className="text-gray-400 hover:text-navy-700">
+            <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-navy-700">
               <I name="x" size={20} />
             </button>
           </div>
@@ -490,7 +347,7 @@ export default function Sidebar({ user, mobileOpen = false, onMobileClose, colla
               )}
 
               <div className="flex justify-end gap-3 pt-2 border-t border-gray-200">
-                <Button variant="ghost" onClick={() => setModalOpen(false)}>关闭</Button>
+                <Button variant="ghost" onClick={() => setOpen(false)}>关闭</Button>
               </div>
             </>
           )}
@@ -548,5 +405,3 @@ export default function Sidebar({ user, mobileOpen = false, onMobileClose, colla
     </>
   );
 }
-
-export { COLLAPSED_KEY };
