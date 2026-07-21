@@ -7,6 +7,7 @@ import { Button, Input, I, Modal, toast } from "../components/Primitives.jsx";
 import { useAuth } from "../lib/authContext.jsx";
 import PasswordStrengthMeter from "../components/PasswordStrengthMeter.jsx";
 import DecryptedText from "../components/DecryptedText.jsx";
+import CurvedLoop from "../components/CurvedLoop.jsx";
 // 登录页 v2(2026-07):Hyperspeed 全屏暗色背景 + 玻璃拟态卡片,弃用原烘焙设计图素材
 
 // Hyperspeed 光速公路背景(three.js,lazy → 单独 chunk,仅登录页拉取)
@@ -126,6 +127,17 @@ export default function Login() {
         className="pointer-events-none absolute inset-0 z-[1]"
         style={{ background: "radial-gradient(ellipse 68% 52% at 28% 24%, rgba(124,58,237,0.16), transparent 62%)" }}
       />
+      {/* 桌面端的上扬弧形标语：在品牌区下方起笔，穿过留白后指向右上，不抢占表单交互。 */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 z-[2] hidden lg:block">
+        <CurvedLoop
+          marqueeText="Build ✦ Future ✦ Code ✦ With ✦ Us ✦"
+          speed={2}
+          curveAmount={150}
+          direction="right"
+          interactive={false}
+          className="opacity-80"
+        />
+      </div>
 
       {/* pointer-events-none 让空白区把鼠标事件透传给底层 canvas(按住加速);仅登录卡恢复交互 */}
       <div className="relative z-10 min-h-screen flex items-center justify-center px-4 py-10 lg:px-14 pointer-events-none">
@@ -143,6 +155,8 @@ export default function Login() {
                 sequential
                 revealDirection="start"
                 speed={40}
+                loop
+                loopDelay={1500}
                 parentClassName="animate-gradient-x"
                 className="text-[26px] lg:text-[30px] font-bold [-webkit-text-fill-color:transparent]"
                 encryptedClassName="text-[26px] lg:text-[30px] font-bold text-white/35 [-webkit-text-fill-color:rgba(255,255,255,0.35)]"
