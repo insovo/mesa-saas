@@ -132,24 +132,26 @@ export default function Login() {
         <div className="w-full max-w-6xl flex flex-col lg:flex-row items-center justify-center lg:justify-between gap-10 lg:gap-20">
           {/* ── 左:品牌 + 主张(桌面完整版;移动端只保留 logo 行);背景已是全屏动效 ── */}
           <div className="login-rise w-full max-w-md lg:max-w-[540px] lg:flex-1 select-none pointer-events-none">
-            {/* 品牌名:乱码解密揭示(无 logo 球);亮色光带扫过时用 drop-shadow 垫暗保持可读 */}
-            <div className="flex items-center justify-center lg:justify-start">
+            {/* 品牌名:乱码解密揭示(无 logo 球)。渐变在父层;乱码字显式 fill 避免继承 transparent 看不见 */}
+            <div
+              className="flex items-center justify-center lg:justify-start"
+              style={{ filter: "drop-shadow(0 2px 10px rgba(5,5,16,0.9)) drop-shadow(0 0 2px rgba(5,5,16,0.8))" }}
+            >
               <DecryptedText
                 text="Overseas R&D"
                 animateOn="view"
                 sequential
                 revealDirection="start"
                 speed={40}
-                className="text-[26px] lg:text-[30px] font-bold animate-gradient-x"
-                encryptedClassName="text-[26px] lg:text-[30px] font-bold text-white/35"
+                parentClassName="animate-gradient-x"
+                className="text-[26px] lg:text-[30px] font-bold [-webkit-text-fill-color:transparent]"
+                encryptedClassName="text-[26px] lg:text-[30px] font-bold text-white/35 [-webkit-text-fill-color:rgba(255,255,255,0.35)]"
                 style={{
                   fontFamily: "Poppins, sans-serif",
                   background: BRAND_GRADIENT,
                   backgroundSize: "200% auto",
                   WebkitBackgroundClip: "text",
                   backgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                  filter: "drop-shadow(0 2px 10px rgba(5,5,16,0.9)) drop-shadow(0 0 2px rgba(5,5,16,0.8))",
                 }}
               />
             </div>
