@@ -45,7 +45,7 @@ export default function Layout() {
           transition: "padding-left 0.65s cubic-bezier(0.22, 1, 0.36, 1)",
         }}
       >
-        <Topbar />
+        <Topbar navOpen={menuOpen} />
         <main className="flex-1 px-4 md:px-8 pb-10">
           {/* 路由切换时 key 变化 → 重挂载触发淡入,全站统一丝滑入场 */}
           <div key={location.pathname} className="animate-fade-up">
