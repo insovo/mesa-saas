@@ -80,7 +80,6 @@ import LogIn from "lucide-react/dist/esm/icons/log-in.mjs";
 import LogOut from "lucide-react/dist/esm/icons/log-out.mjs";
 import Mail from "lucide-react/dist/esm/icons/mail.mjs";
 import MapPin from "lucide-react/dist/esm/icons/map-pin.mjs";
-import Menu from "lucide-react/dist/esm/icons/menu.mjs";
 import MessageCircle from "lucide-react/dist/esm/icons/message-circle.mjs";
 import MessageSquare from "lucide-react/dist/esm/icons/message-square.mjs";
 import MessageSquarePlus from "lucide-react/dist/esm/icons/message-square-plus.mjs";
@@ -88,6 +87,8 @@ import Minus from "lucide-react/dist/esm/icons/minus.mjs";
 import Moon from "lucide-react/dist/esm/icons/moon.mjs";
 import MoreHorizontal from "lucide-react/dist/esm/icons/more-horizontal.mjs";
 import Network from "lucide-react/dist/esm/icons/network.mjs";
+import PanelLeftClose from "lucide-react/dist/esm/icons/panel-left-close.mjs";
+import PanelLeftOpen from "lucide-react/dist/esm/icons/panel-left-open.mjs";
 import Paperclip from "lucide-react/dist/esm/icons/paperclip.mjs";
 import PenLine from "lucide-react/dist/esm/icons/pen-line.mjs";
 import Pencil from "lucide-react/dist/esm/icons/pencil.mjs";
@@ -218,7 +219,6 @@ export const ICON_MAP = {
   "log-out": LogOut,
   "mail": Mail,
   "map-pin": MapPin,
-  "menu": Menu,
   "message-circle": MessageCircle,
   "message-square": MessageSquare,
   "message-square-plus": MessageSquarePlus,
@@ -226,6 +226,8 @@ export const ICON_MAP = {
   "moon": Moon,
   "more-horizontal": MoreHorizontal,
   "network": Network,
+  "panel-left-close": PanelLeftClose,
+  "panel-left-open": PanelLeftOpen,
   "paperclip": Paperclip,
   "pen-line": PenLine,
   "pencil": Pencil,

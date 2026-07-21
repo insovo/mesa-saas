@@ -2,8 +2,9 @@
 // 左侧导航 = StaggeredMenu 覆盖式菜单(GSAP staggered 面板,汉堡按钮固定左上角)
 // 内容区全宽:Topbar + Outlet
 
+import { useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
-import StaggeredMenu from "./StaggeredMenu.jsx";
+import StaggeredMenu, { MENU_PANEL_WIDTH } from "./StaggeredMenu.jsx";
 import LlmConfig from "./LlmConfig.jsx";
 import Topbar from "./Topbar.jsx";
 import { ToastHost } from "./Primitives.jsx";
@@ -17,6 +18,9 @@ export default function Layout() {
   const location = useLocation();
   const me = useMe();
   const isAdmin = checkIsAdmin(me) || user?.role === "ADMIN";
+  const [menuOpen, setMenuOpen] = useState(false);
+  // ≥sm 断点菜单展开时把内容区推开(面板宽度);<sm 面板全屏,推开无意义,保持 overlay
+  const isDesktop = typeof window === "undefined" || window.innerWidth > 640;
 
   const items = NAV_ITEMS.filter((it) => {
     if (it.adminOnly && !isAdmin) return false;
@@ -27,9 +31,20 @@ export default function Layout() {
 
   return (
     <div className="flex min-h-screen bg-lightPrimary">
-      <StaggeredMenu items={items} footer={<LlmConfig className="w-full" />} />
+      <StaggeredMenu
+        items={items}
+        footer={<LlmConfig className="w-full" />}
+        onMenuOpen={() => setMenuOpen(true)}
+        onMenuClose={() => setMenuOpen(false)}
+      />
 
-      <div className="flex-1 min-w-0 flex flex-col">
+      <div
+        className="flex-1 min-w-0 flex flex-col"
+        style={{
+          paddingLeft: menuOpen && isDesktop ? MENU_PANEL_WIDTH : 0,
+          transition: "padding-left 0.65s cubic-bezier(0.22, 1, 0.36, 1)",
+        }}
+      >
         <Topbar />
         <main className="flex-1 px-4 md:px-8 pb-10">
           {/* 路由切换时 key 变化 → 重挂载触发淡入,全站统一丝滑入场 */}
