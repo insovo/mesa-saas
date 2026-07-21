@@ -1,30 +1,9 @@
 import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 
-const styles = {
-  wrapper: {
-    display: "inline-block",
-    whiteSpace: "pre-wrap",
-  },
-  srOnly: {
-    position: "absolute",
-    width: "1px",
-    height: "1px",
-    padding: 0,
-    margin: "-1px",
-    overflow: "hidden",
-    clip: "rect(0,0,0,0)",
-    border: 0,
-  },
-};
-
-function prefersReducedMotion() {
-  if (typeof window === "undefined") return false;
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
-
 /**
  * Matrix 风格乱码解密文字(移植自 React Bits DecryptedText)。
  * 不用 framer-motion / motion — 项目硬约定只用 GSAP;本组件动画靠 setInterval。
+ * 不要把 backgroundClip/WebkitTextFillColor 之类样式逐字传入 — 由调用方包外层或只用 className。
  */
 export default function DecryptedText({
   text,
@@ -39,10 +18,10 @@ export default function DecryptedText({
   encryptedClassName = "",
   animateOn = "hover",
   clickMode = "once",
-  style,
   ...props
 }) {
-  const reduceMotion = prefersReducedMotion();
+  const reduceMotion =
+    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   const [displayText, setDisplayText] = useState(text);
   const [isAnimating, setIsAnimating] = useState(false);
@@ -132,26 +111,22 @@ export default function DecryptedText({
       orderRef.current = computeOrder(text.length);
       pointerRef.current = 0;
       setRevealedIndices(new Set());
-      setDisplayText(shuffleText(text, new Set()));
     } else {
       setRevealedIndices(new Set());
-      setDisplayText(shuffleText(text, new Set()));
     }
     setDirection("forward");
     setIsAnimating(true);
-  }, [sequential, computeOrder, text, shuffleText]);
+  }, [sequential, computeOrder, text.length]);
 
   const triggerReverse = useCallback(() => {
     if (sequential) {
       orderRef.current = computeOrder(text.length).slice().reverse();
       pointerRef.current = 0;
-      const full = fillAllIndices();
-      setRevealedIndices(full);
-      setDisplayText(shuffleText(text, full));
+      setRevealedIndices(fillAllIndices());
+      setDisplayText(shuffleText(text, fillAllIndices()));
     } else {
-      const full = fillAllIndices();
-      setRevealedIndices(full);
-      setDisplayText(shuffleText(text, full));
+      setRevealedIndices(fillAllIndices());
+      setDisplayText(shuffleText(text, fillAllIndices()));
     }
     setDirection("reverse");
     setIsAnimating(true);
@@ -234,7 +209,9 @@ export default function DecryptedText({
           }
           if (direction === "reverse") {
             let currentSet = prevRevealed;
-            if (currentSet.size === 0) currentSet = fillAllIndices();
+            if (currentSet.size === 0) {
+              currentSet = fillAllIndices();
+            }
             const removeCount = Math.max(1, Math.ceil(text.length / Math.max(1, maxIterations)));
             const nextSet = removeRandomIndices(currentSet, removeCount);
             setDisplayText(shuffleText(text, nextSet));
@@ -270,14 +247,17 @@ export default function DecryptedText({
 
   const handleClick = () => {
     if (animateOn !== "click") return;
+
     if (clickMode === "once") {
       if (isDecrypted) return;
       setDirection("forward");
       triggerDecrypt();
     }
+
     if (clickMode === "toggle") {
-      if (isDecrypted) triggerReverse();
-      else {
+      if (isDecrypted) {
+        triggerReverse();
+      } else {
         setDirection("forward");
         triggerDecrypt();
       }
@@ -286,12 +266,13 @@ export default function DecryptedText({
 
   const triggerHoverDecrypt = useCallback(() => {
     if (isAnimating) return;
+
     setRevealedIndices(new Set());
     setIsDecrypted(false);
-    setDisplayText(shuffleText(text, new Set()));
+    setDisplayText(text);
     setDirection("forward");
     setIsAnimating(true);
-  }, [isAnimating, text, shuffleText]);
+  }, [isAnimating, text]);
 
   const resetToPlainText = useCallback(() => {
     clearInterval(intervalRef.current);
@@ -321,7 +302,9 @@ export default function DecryptedText({
       threshold: 0.1,
     });
     const currentRef = containerRef.current;
-    if (currentRef) observer.observe(currentRef);
+    if (currentRef) {
+      observer.observe(currentRef);
+    }
 
     return () => {
       if (currentRef) observer.unobserve(currentRef);
@@ -332,14 +315,10 @@ export default function DecryptedText({
     if (reduceMotion) {
       setDisplayText(text);
       setIsDecrypted(true);
-      setRevealedIndices(fillAllIndices());
       setIsAnimating(false);
       return;
     }
     if (animateOn === "click") {
-      encryptInstantly();
-    } else if (animateOn === "view" || animateOn === "inViewHover") {
-      // 进入视口前先显示乱码,避免明文闪一下再 scramble
       encryptInstantly();
     } else {
       setDisplayText(text);
@@ -347,43 +326,43 @@ export default function DecryptedText({
     }
     setRevealedIndices(new Set());
     setDirection("forward");
-  }, [reduceMotion, animateOn, text, encryptInstantly, fillAllIndices]);
+  }, [reduceMotion, animateOn, text, encryptInstantly]);
 
   if (reduceMotion) {
     return (
-      <span className={parentClassName} style={{ ...styles.wrapper, ...style }} {...props}>
-        <span className={className} style={style}>
-          {text}
-        </span>
+      <span className={`inline-block whitespace-pre-wrap ${parentClassName}`} {...props}>
+        <span className={className}>{text}</span>
       </span>
     );
   }
 
   const animateProps =
     animateOn === "hover" || animateOn === "inViewHover"
-      ? { onMouseEnter: triggerHoverDecrypt, onMouseLeave: resetToPlainText }
+      ? {
+          onMouseEnter: triggerHoverDecrypt,
+          onMouseLeave: resetToPlainText,
+        }
       : animateOn === "click"
-        ? { onClick: handleClick }
+        ? {
+            onClick: handleClick,
+          }
         : {};
 
   return (
     <span
-      className={parentClassName}
       ref={containerRef}
-      style={styles.wrapper}
+      className={`inline-block whitespace-pre-wrap ${parentClassName}`}
       {...animateProps}
       {...props}
     >
-      <span style={styles.srOnly}>{displayText}</span>
+      <span className="sr-only">{displayText}</span>
+
       <span aria-hidden="true">
         {displayText.split("").map((char, index) => {
           const isRevealedOrDone = revealedIndices.has(index) || (!isAnimating && isDecrypted);
+
           return (
-            <span
-              key={index}
-              className={isRevealedOrDone ? className : (encryptedClassName || className)}
-              style={style}
-            >
+            <span key={index} className={isRevealedOrDone ? className : encryptedClassName}>
               {char}
             </span>
           );
