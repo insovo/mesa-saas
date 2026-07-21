@@ -18,6 +18,8 @@ export default function DecryptedText({
   encryptedClassName = "",
   animateOn = "hover",
   clickMode = "once",
+  loop = false,
+  loopDelay = 1500,
   ...props
 }) {
   const reduceMotion =
@@ -29,11 +31,14 @@ export default function DecryptedText({
   const [hasAnimated, setHasAnimated] = useState(false);
   const [isDecrypted, setIsDecrypted] = useState(animateOn !== "click");
   const [direction, setDirection] = useState("forward");
+  const [isInView, setIsInView] = useState(false);
+  const [hasCompletedForward, setHasCompletedForward] = useState(false);
 
   const containerRef = useRef(null);
   const orderRef = useRef([]);
   const pointerRef = useRef(0);
   const intervalRef = useRef(null);
+  const loopTimeoutRef = useRef(null);
 
   const availableChars = useMemo(() => {
     return useOriginalCharsOnly
@@ -114,6 +119,7 @@ export default function DecryptedText({
     } else {
       setRevealedIndices(new Set());
     }
+    setHasCompletedForward(false);
     setDirection("forward");
     setIsAnimating(true);
   }, [sequential, computeOrder, text.length]);
@@ -175,6 +181,7 @@ export default function DecryptedText({
             clearInterval(intervalRef.current);
             setIsAnimating(false);
             setIsDecrypted(true);
+            setHasCompletedForward(true);
             return prevRevealed;
           }
           if (direction === "reverse") {
@@ -204,6 +211,7 @@ export default function DecryptedText({
               setIsAnimating(false);
               setDisplayText(text);
               setIsDecrypted(true);
+              setHasCompletedForward(true);
             }
             return prevRevealed;
           }
@@ -289,6 +297,7 @@ export default function DecryptedText({
 
     const observerCallback = (entries) => {
       entries.forEach((entry) => {
+        setIsInView(entry.isIntersecting);
         if (entry.isIntersecting && !hasAnimated) {
           triggerDecrypt();
           setHasAnimated(true);
@@ -312,10 +321,33 @@ export default function DecryptedText({
   }, [reduceMotion, animateOn, hasAnimated, triggerDecrypt]);
 
   useEffect(() => {
+    if (reduceMotion || !loop || !isInView || !hasCompletedForward || isAnimating) return undefined;
+
+    loopTimeoutRef.current = window.setTimeout(() => {
+      encryptInstantly();
+      triggerDecrypt();
+    }, Math.max(0, loopDelay));
+
+    return () => clearTimeout(loopTimeoutRef.current);
+  }, [
+    reduceMotion,
+    loop,
+    loopDelay,
+    isInView,
+    hasCompletedForward,
+    isAnimating,
+    encryptInstantly,
+    triggerDecrypt,
+  ]);
+
+  useEffect(() => () => clearTimeout(loopTimeoutRef.current), []);
+
+  useEffect(() => {
     if (reduceMotion) {
       setDisplayText(text);
       setIsDecrypted(true);
       setIsAnimating(false);
+      setHasCompletedForward(false);
       return;
     }
     if (animateOn === "click") {
@@ -326,6 +358,7 @@ export default function DecryptedText({
     }
     setRevealedIndices(new Set());
     setDirection("forward");
+    setHasCompletedForward(false);
   }, [reduceMotion, animateOn, text, encryptInstantly]);
 
   if (reduceMotion) {
