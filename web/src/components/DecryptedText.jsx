@@ -381,8 +381,8 @@ export default function DecryptedText({
           return (
             <span
               key={index}
-              className={isRevealedOrDone ? className : encryptedClassName}
-              style={isRevealedOrDone ? style : undefined}
+              className={isRevealedOrDone ? className : (encryptedClassName || className)}
+              style={style}
             >
               {char}
             </span>
