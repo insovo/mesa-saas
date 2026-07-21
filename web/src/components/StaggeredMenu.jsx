@@ -1,13 +1,18 @@
-// MESA Recruit · StaggeredMenu 左侧覆盖式导航(移植自 React Bits StaggeredMenu)
+// MESA Recruit · StaggeredMenu 左侧导航(移植自 React Bits StaggeredMenu)
 //   - GSAP 驱动:预层色块先行 + 白色面板跟进 + 菜单项 stagger 飞入(符合项目「动画只用 GSAP」约定)
-//   - 汉堡按钮固定左上角,Menu/Close 文字滚动切换,+ 号旋转成 ×
+//   - 开关控件:关闭态 = 左上角固定图标按钮;展开态 = 面板内右上角开/关图标(随面板滑入)
+//   - 菜单展开时通过 onMenuOpen/onMenuClose 通知 Layout 把主内容区推开(非 overlay 覆盖)
 //   - 菜单项 = 原 Sidebar 导航(权限过滤后由调用方传入),NavLink SPA 跳转,点击后收起
 //   - prefers-reduced-motion:动画时长归零(等效瞬时开合)
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { gsap } from "gsap";
+import { I } from "./Primitives.jsx";
 import RansomLogo from "./RansomLogo.jsx";
+
+// 面板宽度 — Layout 推开内容区时用同一值(改动需两处同步)
+export const MENU_PANEL_WIDTH = "clamp(300px, 30vw, 420px)";
 
 function prefersReducedMotion() {
   if (typeof window === "undefined") return false;
@@ -18,9 +23,6 @@ export default function StaggeredMenu({
   items = [],
   colors = ["#B5A6FF", "#422AFB"],
   accentColor = "#422AFB",
-  menuButtonColor = "#1B254B",
-  openMenuButtonColor = "#1B254B",
-  displayItemNumbering = true,
   footer = null,
   onMenuOpen,
   onMenuClose,
@@ -33,20 +35,10 @@ export default function StaggeredMenu({
   const preLayersRef = useRef(null);
   const preLayerElsRef = useRef([]);
 
-  const plusHRef = useRef(null);
-  const plusVRef = useRef(null);
-  const iconRef = useRef(null);
-
-  const textInnerRef = useRef(null);
-  const [textLines, setTextLines] = useState(["Menu", "Close"]);
-
   const openTlRef = useRef(null);
   const closeTweenRef = useRef(null);
-  const spinTweenRef = useRef(null);
-  const textCycleAnimRef = useRef(null);
-  const colorTweenRef = useRef(null);
 
-  const toggleBtnRef = useRef(null);
+  const openBtnRef = useRef(null);
   const busyRef = useRef(false);
 
   // reduced-motion 时所有时长乘 0 → 瞬时开合
@@ -56,11 +48,7 @@ export default function StaggeredMenu({
     const ctx = gsap.context(() => {
       const panel = panelRef.current;
       const preContainer = preLayersRef.current;
-      const plusH = plusHRef.current;
-      const plusV = plusVRef.current;
-      const icon = iconRef.current;
-      const textInner = textInnerRef.current;
-      if (!panel || !plusH || !plusV || !icon || !textInner) return;
+      if (!panel) return;
 
       let preLayers = [];
       if (preContainer) {
@@ -69,14 +57,9 @@ export default function StaggeredMenu({
       preLayerElsRef.current = preLayers;
 
       gsap.set([panel, ...preLayers], { xPercent: -100, opacity: 1 });
-      gsap.set(plusH, { transformOrigin: "50% 50%", rotate: 0 });
-      gsap.set(plusV, { transformOrigin: "50% 50%", rotate: 90 });
-      gsap.set(icon, { rotate: 0, transformOrigin: "50% 50%" });
-      gsap.set(textInner, { yPercent: 0 });
-      if (toggleBtnRef.current) gsap.set(toggleBtnRef.current, { color: menuButtonColor });
     });
     return () => ctx.revert();
-  }, [menuButtonColor]);
+  }, []);
 
   const buildOpenTimeline = useCallback(() => {
     const panel = panelRef.current;
@@ -90,11 +73,9 @@ export default function StaggeredMenu({
     }
 
     const itemEls = Array.from(panel.querySelectorAll(".sm-panel-itemLabel"));
-    const numberEls = Array.from(panel.querySelectorAll(".sm-panel-list[data-numbering] .sm-panel-item"));
     const footerEl = panel.querySelector(".sm-panel-footer");
 
     if (itemEls.length) gsap.set(itemEls, { yPercent: 140, rotate: 10 });
-    if (numberEls.length) gsap.set(numberEls, { "--sm-num-opacity": 0 });
     if (footerEl) gsap.set(footerEl, { y: 25, opacity: 0 });
 
     const tl = gsap.timeline({ paused: true });
@@ -116,13 +97,6 @@ export default function StaggeredMenu({
         { yPercent: 0, rotate: 0, duration: dur(1), ease: "power4.out", stagger: { each: dur(0.06), from: "start" } },
         itemsStart
       );
-      if (numberEls.length) {
-        tl.to(
-          numberEls,
-          { duration: dur(0.6), ease: "power2.out", "--sm-num-opacity": 1, stagger: { each: dur(0.05), from: "start" } },
-          itemsStart + dur(0.1)
-        );
-      }
     }
 
     if (footerEl) {
@@ -164,8 +138,6 @@ export default function StaggeredMenu({
       onComplete: () => {
         const itemEls = Array.from(panel.querySelectorAll(".sm-panel-itemLabel"));
         if (itemEls.length) gsap.set(itemEls, { yPercent: 140, rotate: 10 });
-        const numberEls = Array.from(panel.querySelectorAll(".sm-panel-list[data-numbering] .sm-panel-item"));
-        if (numberEls.length) gsap.set(numberEls, { "--sm-num-opacity": 0 });
         const footerEl = panel.querySelector(".sm-panel-footer");
         if (footerEl) gsap.set(footerEl, { y: 25, opacity: 0 });
         busyRef.current = false;
@@ -173,91 +145,13 @@ export default function StaggeredMenu({
     });
   }, [dur]);
 
-  const animateIcon = useCallback((opening) => {
-    const icon = iconRef.current;
-    const h = plusHRef.current;
-    const v = plusVRef.current;
-    if (!icon || !h || !v) return;
-
-    spinTweenRef.current?.kill();
-    if (opening) {
-      gsap.set(icon, { rotate: 0, transformOrigin: "50% 50%" });
-      spinTweenRef.current = gsap
-        .timeline({ defaults: { ease: "power4.out" } })
-        .to(h, { rotate: 45, duration: dur(0.5) }, 0)
-        .to(v, { rotate: -45, duration: dur(0.5) }, 0);
-    } else {
-      spinTweenRef.current = gsap
-        .timeline({ defaults: { ease: "power3.inOut" } })
-        .to(h, { rotate: 0, duration: dur(0.35) }, 0)
-        .to(v, { rotate: 90, duration: dur(0.35) }, 0)
-        .to(icon, { rotate: 0, duration: 0.001 }, 0);
-    }
-  }, [dur]);
-
-  const animateColor = useCallback(
-    (opening) => {
-      const btn = toggleBtnRef.current;
-      if (!btn) return;
-      colorTweenRef.current?.kill();
-      const targetColor = opening ? openMenuButtonColor : menuButtonColor;
-      colorTweenRef.current = gsap.to(btn, { color: targetColor, delay: dur(0.18), duration: dur(0.3), ease: "power2.out" });
-    },
-    [openMenuButtonColor, menuButtonColor, dur]
-  );
-
-  const animateText = useCallback(
-    (opening) => {
-      const inner = textInnerRef.current;
-      if (!inner) return;
-
-      textCycleAnimRef.current?.kill();
-
-      const currentLabel = opening ? "Menu" : "Close";
-      const targetLabel = opening ? "Close" : "Menu";
-      const cycles = 3;
-
-      const seq = [currentLabel];
-      let last = currentLabel;
-      for (let i = 0; i < cycles; i++) {
-        last = last === "Menu" ? "Close" : "Menu";
-        seq.push(last);
-      }
-      if (last !== targetLabel) seq.push(targetLabel);
-      seq.push(targetLabel);
-
-      setTextLines(seq);
-      gsap.set(inner, { yPercent: 0 });
-
-      const lineCount = seq.length;
-      const finalShift = ((lineCount - 1) / lineCount) * 100;
-
-      textCycleAnimRef.current = gsap.to(inner, {
-        yPercent: -finalShift,
-        duration: dur(0.5 + lineCount * 0.07),
-        ease: "power4.out",
-      });
-    },
-    [dur]
-  );
-
-  const toggleMenu = useCallback(() => {
-    const target = !openRef.current;
-    openRef.current = target;
-    setOpen(target);
-
-    if (target) {
-      onMenuOpen?.();
-      playOpen();
-    } else {
-      onMenuClose?.();
-      playClose();
-    }
-
-    animateIcon(target);
-    animateColor(target);
-    animateText(target);
-  }, [playOpen, playClose, animateIcon, animateColor, animateText, onMenuOpen, onMenuClose]);
+  const openMenu = useCallback(() => {
+    if (openRef.current) return;
+    openRef.current = true;
+    setOpen(true);
+    onMenuOpen?.();
+    playOpen();
+  }, [playOpen, onMenuOpen]);
 
   const closeMenu = useCallback(() => {
     if (!openRef.current) return;
@@ -265,10 +159,7 @@ export default function StaggeredMenu({
     setOpen(false);
     onMenuClose?.();
     playClose();
-    animateIcon(false);
-    animateColor(false);
-    animateText(false);
-  }, [playClose, animateIcon, animateColor, animateText, onMenuClose]);
+  }, [playClose, onMenuClose]);
 
   // 点击面板外关闭
   useEffect(() => {
@@ -277,8 +168,8 @@ export default function StaggeredMenu({
       if (
         panelRef.current &&
         !panelRef.current.contains(event.target) &&
-        toggleBtnRef.current &&
-        !toggleBtnRef.current.contains(event.target)
+        openBtnRef.current &&
+        !openBtnRef.current.contains(event.target)
       ) {
         closeMenu();
       }
@@ -312,13 +203,23 @@ export default function StaggeredMenu({
       <aside
         id="staggered-menu-panel"
         ref={panelRef}
-        className="sm-panel absolute top-0 left-0 h-full bg-white/95 flex flex-col overflow-y-auto z-10 pointer-events-auto backdrop-blur-[12px]"
-        style={{ WebkitBackdropFilter: "blur(12px)" }}
+        className="sm-panel absolute top-0 left-0 h-full bg-white flex flex-col overflow-y-auto z-10 pointer-events-auto shadow-sidebar"
         aria-hidden={!open}
       >
+        {/* 面板内右上角:收起按钮(开/关图标,随面板滑入滑出) */}
+        <button
+          onClick={closeMenu}
+          className="absolute top-5 right-5 w-9 h-9 rounded-full bg-lightPrimary hover:bg-gray-200 flex items-center justify-center text-gray-700 hover:text-brand transition"
+          aria-label="收起菜单"
+          title="收起菜单"
+          type="button"
+        >
+          <I name="panel-left-close" size={18} />
+        </button>
+
         <div className="sm-panel-inner flex-1 flex flex-col gap-5 pt-[5.5em] pb-6 px-8">
-          <ul className="sm-panel-list list-none m-0 p-0 flex flex-col" role="list" data-numbering={displayItemNumbering || undefined}>
-            {items.map((it, idx) => {
+          <ul className="sm-panel-list list-none m-0 p-0 flex flex-col" role="list">
+            {items.map((it) => {
               const isActive =
                 it.to === "/dashboard"
                   ? location.pathname === "/" || location.pathname.startsWith("/dashboard")
@@ -329,8 +230,7 @@ export default function StaggeredMenu({
                     to={it.to}
                     onClick={closeMenu}
                     aria-label={it.label}
-                    data-index={idx + 1}
-                    className={`sm-panel-item relative font-bold cursor-pointer leading-none inline-block no-underline pr-[1.4em] transition-colors duration-150 ${
+                    className={`sm-panel-item relative font-bold cursor-pointer leading-none inline-block no-underline transition-colors duration-150 ${
                       isActive ? "text-brand" : "text-navy-700 hover:text-brand"
                     }`}
                   >
@@ -347,67 +247,31 @@ export default function StaggeredMenu({
         </div>
       </aside>
 
-      {/* 固定左上角:logo + Menu/Close 切换按钮 */}
-      <header className="fixed top-0 left-0 flex items-center gap-4 p-5 z-20 pointer-events-none" aria-label="Main navigation header">
+      {/* 固定左上角:展开按钮(菜单关闭时可见)+ logo */}
+      <header className="fixed top-0 left-0 flex items-center gap-3 p-5 z-20 pointer-events-none" aria-label="Main navigation header">
         <button
-          ref={toggleBtnRef}
-          className="sm-toggle relative inline-flex items-center gap-[0.4rem] bg-transparent border-0 cursor-pointer font-bold leading-none overflow-visible pointer-events-auto"
-          aria-label={open ? "关闭菜单" : "打开菜单"}
+          ref={openBtnRef}
+          onClick={openMenu}
+          className={`w-9 h-9 rounded-full bg-white shadow-card flex items-center justify-center text-gray-700 hover:text-brand transition-all duration-300 ${
+            open ? "opacity-0 pointer-events-none -translate-x-2" : "opacity-100 pointer-events-auto"
+          }`}
+          aria-label="展开菜单"
           aria-expanded={open}
           aria-controls="staggered-menu-panel"
-          onClick={toggleMenu}
+          title="展开菜单"
           type="button"
         >
-          <span className="relative inline-block h-[1em] overflow-hidden whitespace-nowrap w-[3.2em]" aria-hidden="true">
-            <span ref={textInnerRef} className="flex flex-col leading-none">
-              {textLines.map((l, i) => (
-                <span className="block h-[1em] leading-none text-left" key={i}>
-                  {l}
-                </span>
-              ))}
-            </span>
-          </span>
-          <span
-            ref={iconRef}
-            className="relative w-[14px] h-[14px] shrink-0 inline-flex items-center justify-center [will-change:transform]"
-            aria-hidden="true"
-          >
-            <span
-              ref={plusHRef}
-              className="absolute left-1/2 top-1/2 w-full h-[2px] bg-current rounded-[2px] -translate-x-1/2 -translate-y-1/2 [will-change:transform]"
-            />
-            <span
-              ref={plusVRef}
-              className="absolute left-1/2 top-1/2 w-full h-[2px] bg-current rounded-[2px] -translate-x-1/2 -translate-y-1/2 [will-change:transform]"
-            />
-          </span>
+          <I name="panel-left-open" size={18} />
         </button>
-        <div className="pointer-events-auto select-none">
+        <div className={`pointer-events-auto select-none transition-opacity duration-300 ${open ? "opacity-0" : "opacity-100"}`}>
           <RansomLogo text="HRMS" fontPx={16} />
         </div>
       </header>
 
       <style>{`
 .sm-scope .sm-panel,
-.sm-scope .sm-prelayers { width: clamp(300px, 30vw, 420px); }
+.sm-scope .sm-prelayers { width: ${MENU_PANEL_WIDTH}; }
 .sm-scope .sm-panel-item { font-size: clamp(1.5rem, 3.6vh, 2.2rem); padding: 0.32em 0; letter-spacing: 0.5px; }
-.sm-scope .sm-panel-list[data-numbering] { counter-reset: smItem; }
-.sm-scope .sm-panel-list[data-numbering] .sm-panel-item::after {
-  counter-increment: smItem;
-  content: counter(smItem, decimal-leading-zero);
-  position: absolute;
-  top: 0.45em;
-  right: 0.4em;
-  font-size: 13px;
-  font-weight: 400;
-  color: var(--sm-accent, #422AFB);
-  letter-spacing: 0;
-  pointer-events: none;
-  user-select: none;
-  opacity: var(--sm-num-opacity, 0);
-}
-.sm-scope .sm-toggle { font-size: 15px; }
-.sm-scope .sm-toggle:focus-visible { outline: 2px solid rgba(66,42,251,0.5); outline-offset: 4px; border-radius: 4px; }
 @media (max-width: 640px) {
   .sm-scope .sm-panel,
   .sm-scope .sm-prelayers { width: 100%; }
