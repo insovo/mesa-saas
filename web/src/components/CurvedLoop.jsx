@@ -7,7 +7,7 @@ const MIN_REPEAT_COUNT = 8;
 export default function CurvedLoop({
   marqueeText,
   speed = 1,
-  curveAmount = 180,
+  curveAmount = 700,
   direction = "right",
   interactive = false,
   className = "",
@@ -22,8 +22,8 @@ export default function CurvedLoop({
   const [phraseWidth, setPhraseWidth] = useState(0);
   const [reduceMotion, setReduceMotion] = useState(false);
 
-  // 从左下抬升到右上：控制点保持在路径下方，形成贴合登录页构图的上扬弧线。
-  const pathD = `M-120,900 Q760,${900 - curveAmount} 1640,60`;
+  // 上方拱形路径：负 y 控制点让左上角形成更强的内收弧度。
+  const pathD = `M-180,600 Q480,${600 - curveAmount} 1760,500`;
   const repeatedText = `${marqueeText}     `.repeat(MIN_REPEAT_COUNT);
 
   useEffect(() => {
@@ -98,10 +98,12 @@ export default function CurvedLoop({
       onPointerCancel={handlePointerEnd}
     >
       <defs>
-        <linearGradient id={`${pathId}-gradient`} x1="0%" y1="100%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.18" />
-          <stop offset="42%" stopColor="#D8D4FF" stopOpacity="0.62" />
-          <stop offset="100%" stopColor="#FFFFFF" stopOpacity="0.28" />
+        <linearGradient id={`${pathId}-gradient`} x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="#5B6CF0" stopOpacity="0.92" />
+          <stop offset="30%" stopColor="#7C3AED" stopOpacity="0.96" />
+          <stop offset="58%" stopColor="#C026D3" stopOpacity="0.96" />
+          <stop offset="78%" stopColor="#7C3AED" stopOpacity="0.96" />
+          <stop offset="100%" stopColor="#5B6CF0" stopOpacity="0.92" />
         </linearGradient>
       </defs>
       <path ref={pathRef} id={pathId} d={pathD} fill="none" />
