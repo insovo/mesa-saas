@@ -21,13 +21,30 @@ const HYPER_BG = "#050510";
 // 品牌渐变(与站内 brand-logo 流光同族)
 const BRAND_GRADIENT = "linear-gradient(90deg,#5B6CF0,#7C3AED,#C026D3,#7C3AED,#5B6CF0)";
 
+// 上次成功登录的邮箱记忆(明文邮箱不敏感;绝不存密码)。与「记住账号」多账号切换是两套。
+const LAST_EMAIL_KEY = "mesa.login.last_email";
+function readLastEmail() {
+  try {
+    return localStorage.getItem(LAST_EMAIL_KEY) || "";
+  } catch {
+    return ""; // 隐私模式 / localStorage 被禁用时兜底
+  }
+}
+function writeLastEmail(email) {
+  try {
+    if (email) localStorage.setItem(LAST_EMAIL_KEY, email);
+  } catch {
+    /* 隐私模式 / 禁用时静默忽略 */
+  }
+}
+
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const { refetch } = useAuth();
   const from = location.state?.from || "/dashboard";
 
-  const [email, setEmail] = useState("admin@mesa.local");
+  const [email, setEmail] = useState(readLastEmail);
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -66,6 +83,7 @@ export default function Login() {
         return;
       }
       setAuth(data.token, data.user);
+      writeLastEmail(email);
       if (remember) addSavedAccount(data.token, data.user);
       await refetch();
       navigate(from, { replace: true });
@@ -85,6 +103,7 @@ export default function Login() {
 
   async function onMfaSuccess(data) {
     setAuth(data.token, data.user);
+    writeLastEmail(email);
     if (remember) addSavedAccount(data.token, data.user);
     await refetch();
     if (data.recoveryCodeUsed) {
