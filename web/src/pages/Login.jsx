@@ -154,9 +154,9 @@ export default function Login() {
                 animateOn="view"
                 sequential
                 revealDirection="start"
-                speed={40}
+                speed={55}
                 loop
-                loopDelay={1500}
+                loopDelay={2200}
                 parentClassName="animate-gradient-x"
                 className="text-[26px] lg:text-[30px] font-bold [-webkit-text-fill-color:transparent]"
                 encryptedClassName="text-[26px] lg:text-[30px] font-bold text-white/35 [-webkit-text-fill-color:rgba(255,255,255,0.35)]"
