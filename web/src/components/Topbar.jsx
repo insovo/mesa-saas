@@ -137,7 +137,8 @@ export default function Topbar() {
 
   return (
     <header className="sticky top-0 z-20 bg-lightPrimary/70 backdrop-blur-md border-b border-white/40">
-      <div className="flex items-center gap-4 px-4 md:px-8 pt-7 pb-5 pl-16 md:pl-8">
+      {/* 左侧 padding 给固定左上角的 StaggeredMenu 汉堡按钮 + HRMS logo 让位 */}
+      <div className="flex items-center gap-4 px-4 md:px-8 pt-7 pb-5 pl-28 md:pl-[215px]">
         <div className="min-w-0 flex-1">
           <p className="text-xs font-medium text-gray-700">Overseas R&amp;D · 招聘工作台</p>
           <h1 className="title-page mt-1 text-[22px] md:text-page-title">{title}</h1>
