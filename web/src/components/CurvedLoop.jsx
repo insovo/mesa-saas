@@ -1,13 +1,13 @@
 import { useEffect, useId, useRef, useState } from "react";
 
-const VIEWBOX_WIDTH = 1600;
-const VIEWBOX_HEIGHT = 1000;
+const VIEWBOX_WIDTH = 600;
+const VIEWBOX_HEIGHT = 420;
 const MIN_REPEAT_COUNT = 8;
 
 export default function CurvedLoop({
   marqueeText,
   speed = 1,
-  curveAmount = 700,
+  curveAmount = 100,
   direction = "right",
   interactive = false,
   className = "",
@@ -22,8 +22,9 @@ export default function CurvedLoop({
   const [phraseWidth, setPhraseWidth] = useState(0);
   const [reduceMotion, setReduceMotion] = useState(false);
 
-  // 上方拱形路径：负 y 控制点让左上角形成更强的内收弧度。
-  const pathD = `M-180,600 Q480,${600 - curveAmount} 1760,500`;
+  // 左上角上冲弧线(对齐设计标注红线):左缘中部近水平起笔,越往右上越陡,冲出顶部。
+  // 控制点押在右下方向,curveAmount 越小控制点越低 = 前段越平、尾段越陡(弧度越强烈)。
+  const pathD = `M-40,380 Q300,${380 - curveAmount} 500,-60`;
   const repeatedText = `${marqueeText}     `.repeat(MIN_REPEAT_COUNT);
 
   useEffect(() => {
@@ -90,7 +91,7 @@ export default function CurvedLoop({
     <svg
       aria-hidden
       viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}
-      preserveAspectRatio="none"
+      preserveAspectRatio="xMinYMin meet"
       className={`absolute inset-0 h-full w-full overflow-visible ${interactive ? "pointer-events-auto cursor-grab active:cursor-grabbing" : "pointer-events-none"} ${className}`}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
@@ -110,7 +111,7 @@ export default function CurvedLoop({
       <text
         ref={textRef}
         fill={`url(#${pathId}-gradient)`}
-        className="select-none text-[34px] font-semibold tracking-[0.22em]"
+        className="select-none text-[30px] font-bold tracking-[0.18em]"
         style={{ fontFamily: "Poppins, sans-serif" }}
       >
         <textPath ref={textPathRef} href={`#${pathId}`} startOffset={displayOffset}>
