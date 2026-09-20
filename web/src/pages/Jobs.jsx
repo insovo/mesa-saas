@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
 import { resources } from "../lib/api.js";
+import { useMe } from "../lib/authContext.jsx";
+import { hasModule, isAdmin } from "../lib/permissions.js";
+import JdDescModal from "../components/JdDescModal.jsx";
 import {
   Card,
   Button,
@@ -23,6 +26,10 @@ export default function Jobs() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
+  // 评估标准弹窗(JdDescModal 「评估标准」tab);编辑权限与「编辑岗位」同口径 job.edit
+  const [evalJob, setEvalJob] = useState(null);
+  const me = useMe();
+  const canEditJob = isAdmin(me) || (me ? hasModule(me, "job.edit") : false);
 
   async function load() {
     setLoading(true);
@@ -158,6 +165,15 @@ export default function Jobs() {
                 <div className="flex flex-wrap gap-1.5 mt-3">
                   {j.level && <Tag tone="brand">{j.level}</Tag>}
                   {j.owner && <Tag>负责人 · {j.owner}</Tag>}
+                  <button
+                    type="button"
+                    onClick={() => setEvalJob(j)}
+                    title={j.evaluationModel ? "查看 / 编辑评估标准" : "配置 AI 评估标准"}
+                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold transition ${j.evaluationModel ? "bg-green-50 text-green-700 hover:bg-green-100" : "bg-amber-50 text-amber-700 hover:bg-amber-100"}`}
+                  >
+                    <I name="list-checks" size={11} />
+                    {j.evaluationModel ? `评估标准 v${j.evaluationModelVersion || 1}` : "未配置评估标准"}
+                  </button>
                 </div>
                 <div className="grid grid-cols-3 gap-2 mt-4 text-xs">
                   <div className="bg-white rounded-xl p-2.5">
@@ -194,6 +210,15 @@ export default function Jobs() {
           </div>
         )}
       </Card>
+
+      <JdDescModal
+        open={!!evalJob}
+        onClose={() => setEvalJob(null)}
+        job={evalJob}
+        canEdit={canEditJob}
+        initialTab="eval"
+        onSaved={(saved) => { if (saved) setEvalJob(saved); load(); }}
+      />
 
       <Modal open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="max-w-3xl">
         <form onSubmit={onSubmit} className="p-8">

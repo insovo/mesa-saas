@@ -1,0 +1,1905 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MESA Recruit → TextIn + Kimi + Jev
+三层架构:评估与实施细则</title>
+<meta name="description" content="配套原始想法见同目录
+textin+kimi+jev架构.md / Jev适配方面.md。本文回答三件事:①
+现状与目标架构的差距在哪 ② 对原始想法做了哪些优化取舍 ③
+逐文件、逐阶段的改造细则 + 成本/风险/验收">
+<style>
+:root{--bg:#ffffff;--fg:#1B254B;--muted:#707EAE;--faint:#A0AEC0;--line:#E2E8F0;--accent:#422AFB;--accent-soft:#EEF0FF;--code-bg:#F4F7FE;--card:#ffffff;--shadow:0 18px 40px rgba(112,144,176,.12);--warn-bg:#FFF7E6;--warn-fg:#B7791F}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0B1437;--fg:#E9EDF7;--muted:#A3AED0;--faint:#707EAE;--line:#1F2A5A;--accent:#7551FF;--accent-soft:#1B2559;--code-bg:#111C44;--card:#111C44;--shadow:0 18px 40px rgba(0,0,0,.35);--warn-bg:#2B2411;--warn-fg:#F6C177}}
+:root[data-theme=dark]{--bg:#0B1437;--fg:#E9EDF7;--muted:#A3AED0;--faint:#707EAE;--line:#1F2A5A;--accent:#7551FF;--accent-soft:#1B2559;--code-bg:#111C44;--card:#111C44;--shadow:0 18px 40px rgba(0,0,0,.35);--warn-bg:#2B2411;--warn-fg:#F6C177}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Segoe UI",Roboto,sans-serif}
+.layout{display:grid;grid-template-columns:280px minmax(0,1fr);gap:0;min-height:100vh}
+nav.toc{position:sticky;top:0;height:100vh;overflow-y:auto;padding:24px 16px 40px 20px;border-right:1px solid var(--line);font-size:13px}
+nav.toc .brand{font-weight:700;color:var(--accent);letter-spacing:.02em;margin-bottom:4px}
+nav.toc .sub{color:var(--muted);font-size:12px;margin-bottom:14px}
+nav.toc ul{list-style:none;margin:0;padding-left:0}
+nav.toc ul ul{padding-left:12px;border-left:1px solid var(--line);margin-left:4px}
+nav.toc li{margin:2px 0}
+nav.toc a{color:var(--muted);text-decoration:none;display:block;padding:3px 6px;border-radius:8px;line-height:1.4}
+nav.toc a:hover{color:var(--accent);background:var(--accent-soft)}
+main{padding:40px 48px 120px;max-width:1080px;width:100%}
+header.doc{margin-bottom:28px;padding-bottom:20px;border-bottom:1px solid var(--line)}
+header.doc h1{font-size:30px;line-height:1.25;margin:0 0 10px}
+header.doc .meta{color:var(--muted);font-size:13px;display:flex;flex-wrap:wrap;gap:14px}
+header.doc .meta span::before{content:"◦ ";color:var(--faint)}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h2{font-size:22px;margin:44px 0 14px;padding-top:14px;border-top:1px solid var(--line)}
+h3{font-size:17px;margin:28px 0 10px}
+h4{font-size:15px;margin:20px 0 8px;color:var(--muted)}
+a{color:var(--accent)}
+p{margin:10px 0}
+blockquote{margin:14px 0;padding:10px 16px;border-left:4px solid var(--accent);background:var(--accent-soft);border-radius:0 12px 12px 0;color:var(--fg)}
+blockquote p{margin:4px 0}
+code{font-family:"JetBrains Mono","SF Mono",Menlo,Consolas,monospace;font-size:12.5px;background:var(--code-bg);padding:2px 6px;border-radius:6px}
+pre{background:var(--code-bg);border:1px solid var(--line);border-radius:14px;padding:14px 16px;overflow-x:auto;line-height:1.55}
+pre code{background:none;padding:0;font-size:12.5px}
+table{border-collapse:separate;border-spacing:0;width:100%;margin:14px 0;font-size:13.5px;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+th,td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}
+th{background:var(--code-bg);font-weight:600;color:var(--fg)}
+tr:last-child td{border-bottom:none}
+td code{white-space:nowrap}
+ul,ol{padding-left:22px}
+li{margin:3px 0}
+hr{border:none;border-top:1px solid var(--line);margin:32px 0}
+.diagram{margin:18px 0;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--card);overflow-x:auto}
+.diagram svg{max-width:100%;height:auto;display:block;margin:0 auto;--bg:transparent;--fg:var(--fg);--line:var(--faint);--accent:var(--accent);--muted:var(--muted);--surface:var(--code-bg);--border:var(--line)}
+.diagram svg text{font-family:inherit}
+.callout{margin:14px 0;padding:12px 16px;border-radius:12px;background:var(--warn-bg);color:var(--warn-fg);border:1px solid rgba(183,121,31,.25)}
+.task-list{list-style:none;padding-left:4px}
+input[type=checkbox]{margin-right:6px}
+kbd{font-family:inherit;font-size:12px;border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;padding:1px 6px;background:var(--code-bg)}
+footer.doc{margin-top:60px;padding-top:16px;border-top:1px solid var(--line);color:var(--faint);font-size:12px}
+@media (max-width:960px){.layout{grid-template-columns:1fr}nav.toc{position:static;height:auto;border-right:none;border-bottom:1px solid var(--line);padding:16px}main{padding:24px 16px 80px}header.doc h1{font-size:24px}}
+@media print{nav.toc{display:none}.layout{display:block}main{padding:0;max-width:none}pre,table,.diagram{break-inside:avoid}}
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="toc">
+<div class="brand">MESA Recruit · 设计文档</div>
+<div class="sub">2026-09-20</div>
+<ul>
+<li><a href="#一页结论" id="toc-一页结论">0. 一页结论</a></li>
+<li><a href="#现状盘点as-is" id="toc-现状盘点as-is">1.
+现状盘点(As-Is)</a>
+<ul>
+<li><a href="#现有流水线" id="toc-现有流水线">1.1 现有流水线</a></li>
+<li><a href="#与目标架构的差距逐层" id="toc-与目标架构的差距逐层">1.2
+与目标架构的差距(逐层)</a></li>
+<li><a href="#现有能直接复用的资产不重写"
+id="toc-现有能直接复用的资产不重写">1.3
+现有能直接复用的资产(不重写)</a></li>
+</ul></li>
+<li><a href="#目标架构to-be" id="toc-目标架构to-be">2.
+目标架构(To-Be)</a>
+<ul>
+<li><a href="#总览" id="toc-总览">2.1 总览</a></li>
+<li><a href="#职责矩阵对原始想法的最终定稿"
+id="toc-职责矩阵对原始想法的最终定稿">2.2
+职责矩阵(对原始想法的最终定稿)</a></li>
+</ul></li>
+<li><a href="#外部依赖核实2026-09-20" id="toc-外部依赖核实2026-09-20">3.
+外部依赖核实(2026-09-20)</a>
+<ul>
+<li><a href="#textin-xparse合合信息" id="toc-textin-xparse合合信息">3.1
+TextIn xParse(合合信息)</a></li>
+<li><a href="#jevtypesafe-ai-system-one"
+id="toc-jevtypesafe-ai-system-one">3.2 Jev(TypeSafe AI System
+One)</a></li>
+<li><a href="#kimi不变" id="toc-kimi不变">3.3 Kimi(不变)</a></li>
+</ul></li>
+<li><a href="#对原始想法的评估与优化diff"
+id="toc-对原始想法的评估与优化diff">4.
+对原始想法的评估与优化(Diff)</a></li>
+<li><a href="#详细设计" id="toc-详细设计">5. 详细设计</a>
+<ul>
+<li><a href="#数据模型变更prisma" id="toc-数据模型变更prisma">5.1
+数据模型变更(Prisma)</a></li>
+<li><a href="#配置项settings.js-env-compose"
+id="toc-配置项settings.js-env-compose">5.2
+配置项(<code>settings.js</code> + env + compose)</a></li>
+<li><a href="#jd-需求-schemajob.requirementschema"
+id="toc-jd-需求-schemajob.requirementschema">5.3 JD 需求
+schema(<code>Job.requirementSchema</code>)</a></li>
+<li><a href="#jev-题库生成libevaluationquestions.js"
+id="toc-jev-题库生成libevaluationquestions.js">5.4 Jev
+题库生成(<code>lib/evaluation/questions.js</code>)</a></li>
+<li><a href="#加权与分类libevaluationcomposite.js纯函数-单测"
+id="toc-加权与分类libevaluationcomposite.js纯函数-单测">5.5
+加权与分类(<code>lib/evaluation/composite.js</code>,纯函数 +
+单测)</a></li>
+<li><a href="#硬筛libevaluationhardfilter.js纯函数-单测"
+id="toc-硬筛libevaluationhardfilter.js纯函数-单测">5.6
+硬筛(<code>lib/evaluation/hardFilter.js</code>,纯函数 + 单测)</a></li>
+<li><a href="#报告层libevaluationreport.js-kimi"
+id="toc-报告层libevaluationreport.js-kimi">5.7
+报告层(<code>lib/evaluation/report.js</code> + Kimi)</a></li>
+<li><a href="#流水线编排routesresumes.js-重构点"
+id="toc-流水线编排routesresumes.js-重构点">5.8
+流水线编排(<code>routes/resumes.js</code> 重构点)</a></li>
+<li><a href="#前端改造点web" id="toc-前端改造点web">5.9
+前端改造点(<code>web/</code>)</a></li>
+<li><a href="#新增修改文件清单后端" id="toc-新增修改文件清单后端">5.10
+新增/修改文件清单(后端)</a></li>
+</ul></li>
+<li><a href="#实施路线每阶段独立可上线可回滚"
+id="toc-实施路线每阶段独立可上线可回滚">6.
+实施路线(每阶段独立可上线可回滚)</a></li>
+<li><a href="#成本与性能对比单份简历2-页"
+id="toc-成本与性能对比单份简历2-页">7. 成本与性能对比(单份简历,2
+页)</a></li>
+<li><a href="#风险与对策" id="toc-风险与对策">8. 风险与对策</a></li>
+<li><a href="#验收清单全量上线前" id="toc-验收清单全量上线前">9.
+验收清单(全量上线前)</a></li>
+<li><a href="#参考" id="toc-参考">10. 参考</a></li>
+<li><a href="#配套详细设计2026-09-20-追加"
+id="toc-配套详细设计2026-09-20-追加">11. 配套详细设计(2026-09-20
+追加)</a></li>
+</ul>
+</nav>
+<main>
+<header class="doc">
+<h1>MESA Recruit → TextIn + Kimi + Jev 三层架构:评估与实施细则</h1>
+<div class="meta"><span>方案设计稿(未实施)</span><span>2026-09-20</span><span>基于 main
+0c1df05</span></div>
+<p>配套原始想法见同目录 textin+kimi+jev架构.md /
+Jev适配方面.md。本文回答三件事:① 现状与目标架构的差距在哪 ②
+对原始想法做了哪些优化取舍 ③ 逐文件、逐阶段的改造细则 +
+成本/风险/验收</p>
+</header>
+<h2 id="一页结论">0. 一页结论</h2>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>项</th>
+<th>结论</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>可行性</td>
+<td><strong>可行,且大部分是”加层”而非”重写”</strong>。现有方案 B(Kimi
+只出结构化 JSON + 后端确定性拼装)天然就是目标架构的第 2
+层,<code>assembleSummary</code> / <code>normalizeDegree</code> /
+<code>computeYearsExp</code> / <code>scrubHallucinatedDates</code> /
+<code>parseTaskStore</code> 全部保留复用</td>
+</tr>
+<tr>
+<td>最大收益</td>
+<td>① 文档层:扫描件 / 图片 / <code>.doc</code> 从「Kimi Files API 90s+
+且不稳定」变成 TextIn 秒级同步解析,顺带支持手机拍照简历(校招扫码场景) ②
+评估层:JD 匹配从「一句 LLM 心算 0-100」变成「代码硬筛 + Jev 逐项判定 +
+代码加权 + Kimi 解释」,<strong>可解释、可追溯、可批量</strong>(500 份
+Jev 判定成本约 0.1 美元、每份 &lt;1s) ③ 切 JD 重评从 10-30s Kimi 变成
+&lt;1s Jev + 按需报告</td>
+</tr>
+<tr>
+<td>最大风险</td>
+<td>Jev 是 2026-09-15 才发布的新模型(TypeSafe AI),API 需申请
+key、定价标注”可能补贴后调整”;<strong>必须保留 legacy
+<code>matchAgainstJob</code> 作为 Jev
+不可用时的自动回退</strong>。两家新供应商都会接触简历 PII(TextIn
+在中国、TypeSafe 在海外),需做脱敏与合规说明</td>
+</tr>
+<tr>
+<td>建议路线</td>
+<td>5 个阶段、<strong>每阶段独立可上线、可回滚</strong>(feature flag +
+shadow 双写),总工作量约 <strong>25-32 人日</strong>(单人),先花 3-5
+人日做 Phase 0 校准再决定是否全量</td>
+</tr>
+<tr>
+<td>对原始想法的关键修正</td>
+<td>硬筛三态(PASS/FAIL/UNKNOWN,缺信息不判死)· 年龄/性别默认不硬筛(合规)·
+证据不在抽取阶段要(防幻觉膨胀),放到报告阶段引用 + 代码校验 · Jev 问题由
+JD 需求 schema 自动生成 + 固定通用问题,严禁让 Jev 算数/比日期 ·
+报告按需生成(批量时只对 A/B 自动写报告) · 三档”重新解析”粒度(重识别 /
+重抽取 / 重评估)避免重复计费</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="现状盘点as-is">1. 现状盘点(As-Is)</h2>
+<h3 id="现有流水线">1.1 现有流水线</h3>
+<div class="diagram"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 3132.41 176">
+<style>
+  
+  text { font-family: 'Inter', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 30%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="arrowhead" markerWidth="8" markerHeight="4.8" refX="8" refY="2.4" orient="auto">
+    <polygon points="0 0, 8 2.4, 0 4.8" fill="var(--_arrow)" />
+  </marker>
+  <marker id="arrowhead-start" markerWidth="8" markerHeight="4.8" refX="0" refY="2.4" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.4, 8 4.8" fill="var(--_arrow)" />
+  </marker>
+</defs>
+<polyline points="122.05000000000001,88 162.05,88" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="224.85159994311314,80.50159994311313 307.83000000000004,80.50159994311313 307.83000000000004,58 419.0600000000001,58" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="224.85159994311314,95.49840005688687 307.83000000000004,95.49840005688687 307.83000000000004,118 383.3100000000001,118" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="622.6600000000001,58 828.8100000000001,58 828.8100000000001,70" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="658.4100000000001,118 828.8100000000001,118 828.8100000000001,106" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="959.21,88 999.2100000000002,88" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1224.2600000000002,88 1264.26,88" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1911.16,88 1951.1600000000003,88" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="2176.2100000000005,88 2216.21,88" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="2877.41,88 2917.41,88" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<rect x="282.67" y="44.5" width="50.32" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="307.83000000000004" y="58" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">文本 PDF</text>
+<rect x="248.35000000000002" y="104.5" width="118.96000000000001" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="307.83000000000004" y="118" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">扫描件/图片PDF/doc/docx</text>
+<rect x="40" y="70" width="82.05000000000001" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<polygon points="197.20000000000002,52.85 232.35000000000002,88 197.20000000000002,123.15 162.05,88" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="419.0600000000001" y="40" width="203.60000000000002" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="383.3100000000001" y="100" width="275.1" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="698.4100000000001" y="70" width="260.8" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="999.2100000000002" y="70" width="225.05" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1264.26" y="70" width="646.9000000000001" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1951.1600000000003" y="70" width="225.05" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="2216.21" y="70" width="661.2" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="2917.41" y="71.5" width="175" height="33" fill="var(--_node-fill)" stroke="none" />
+<line x1="2917.41" y1="71.5" x2="2917.41" y2="104.5" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<line x1="3092.41" y1="71.5" x2="3092.41" y2="104.5" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<ellipse cx="3004.91" cy="104.5" rx="87.5" ry="7" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<ellipse cx="3004.91" cy="71.5" rx="87.5" ry="7" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<text x="81.025" y="88" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">R2 简历文件</text>
+<text x="197.20000000000002" y="88" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">格式</text>
+<text x="520.8600000000001" y="58" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">pdftotext -layout · 本地免费</text>
+<text x="520.8600000000001" y="118" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Kimi Files API · file-extract 慢且不稳</text>
+<text x="828.8100000000001" y="88" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">normalizeExtractedText · 水印/页眉清洗</text>
+<text x="1111.7350000000001" y="88" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Kimi parseResume · 结构化 JSON</text>
+<text x="1587.71" y="88" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">确定性闸门 · scrubHallucinatedDates / normalizeDegree / · computeYearsExp / deriveLanguages</text>
+<text x="2063.6850000000004" y="88" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">assembleSummary · HR 简报 txt</text>
+<text x="2546.81" y="88" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Kimi matchAgainstJob · summary + JD 全文 → jdMatch 0-100 · + risks/highlights/insights/...</text>
+<text x="3004.91" y="88" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Candidate 行 · 字段直接覆盖</text>
+</svg></div>
+<p>关键文件:<code>server/src/lib/kimi.js</code>(1061
+行)、<code>server/src/routes/resumes.js</code>(612
+行)、<code>server/src/lib/parseTaskStore.js</code>、<code>server/src/lib/derived.js</code>。</p>
+<h3 id="与目标架构的差距逐层">1.2 与目标架构的差距(逐层)</h3>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>层</th>
+<th>现状</th>
+<th>差距</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>文档层</td>
+<td>pdftotext 优先,失败/扫描件回退 Kimi Files API</td>
+<td>扫描件、图片、<code>.doc</code> 走 Kimi Files 常 &gt;90s(坑
+#33),不支持 jpg/png 上传(<code>upload-links.js</code>
+<code>ALLOWED_MIME</code> 仅 pdf/doc/docx);多栏/表格简历的阅读顺序噪音靠
+prompt 规则 3 硬扛;<strong>原始抽取结果不落库</strong>,每次 reparse
+全部重来</td>
+</tr>
+<tr>
+<td>理解层(简历)</td>
+<td>✅ 方案 B 已是”LLM 只产 JSON + 代码拼装”,带反幻觉闸门</td>
+<td>缺少评估所需的派生事实(管理经验 / 海外经验 / 行业 /
+当前所在地是否可到岗);<code>parser="Kimi"</code>
+<code>parserConfidence=92</code> 硬编码,不反映真实置信度</td>
+</tr>
+<tr>
+<td>理解层(JD)</td>
+<td><code>parseJobDescription</code> 只在”上传 JD 文件新建”时跑,产出
+<code>requirements[]/nice[]</code> 等展示字段</td>
+<td>没有<strong>带类型、条件、权重的需求 schema</strong>;手填 JD(仅
+<code>description</code> 文本)从不结构化;权重无处配置</td>
+</tr>
+<tr>
+<td>规则层</td>
+<td>无</td>
+<td>没有硬筛;学历 / 年限 / 语言 / 地点全靠 LLM 在
+<code>matchAgainstJob</code> 里”顺便看”</td>
+</tr>
+<tr>
+<td>评估层</td>
+<td>Kimi 单次输出 <code>jdMatch</code> 整数 + 文本列表</td>
+<td>无维度拆分、无逐项判定、无置信度、无证据;不存 model/prompt
+版本(无法回答”为什么上月 A 这月 B”);切 JD 每次都要 10-30s
+Kimi;批量不可行</td>
+</tr>
+<tr>
+<td>报告层</td>
+<td>与评估层合在一次 Kimi 调用里</td>
+<td>分数与解释同源,LLM”偷偷改分”无法防</td>
+</tr>
+<tr>
+<td>存储</td>
+<td>评估结果直接覆盖
+<code>Candidate.jdMatch/risks/highlights/insights/matchedFor/againstFor/aiSuggestedTags</code></td>
+<td>无历史、无 (candidate, job)
+多对多评估记录;<code>Employee.jdMatch</code> 只是入职时快照</td>
+</tr>
+</tbody>
+</table>
+<h3 id="现有能直接复用的资产不重写">1.3
+现有能直接复用的资产(不重写)</h3>
+<ul>
+<li>异步任务框架 <code>parseTaskStore.js</code>(Redis + 内存回退,202 +
+轮询,绕 CF 100s)→ 新流水线只是在 task 上加 <code>stages</code></li>
+<li><code>assembleSummary</code> / <code>buildResumeDisplayFields</code>
+/ <code>normalizeDegree</code> / <code>computeYearsExp</code> /
+<code>deriveLanguages</code> / <code>scrubHallucinatedDates</code> /
+<code>stripResumeNoise</code> → 原样用</li>
+<li><code>settings.js</code> 的 DB &gt; env &gt; 默认 三级配置 + AES
+加密 + <code>system.js</code> 的 <code>requireLlmAccess</code> /
+<code>adminOnlyForApiKey</code> → 加 key 即可</li>
+<li><code>kimiRequest</code> 的 429/5xx 指数退避 + AbortController 模式
+→ <code>textin.js</code> / <code>jev.js</code> 照抄</li>
+<li>前端
+<code>LiquidLoader</code>、<code>ReparseConfirmModal</code>、<code>JdDescModal</code>、Upload
+页 <code>pollParseTask</code> + sessionStorage 持久化 → 扩展不替换</li>
+<li>飞书卡片链路(<code>feishu.js</code> 「解析」按钮 →
+<code>runReparse</code> → <code>notifyCandidateReady</code>)→
+入口不变</li>
+</ul>
+<hr />
+<h2 id="目标架构to-be">2. 目标架构(To-Be)</h2>
+<h3 id="总览">2.1 总览</h3>
+<div class="diagram"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1463.1875 2634.75">
+<style>
+  
+  text { font-family: 'Inter', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 30%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="arrowhead" markerWidth="8" markerHeight="4.8" refX="8" refY="2.4" orient="auto">
+    <polygon points="0 0, 8 2.4, 0 4.8" fill="var(--_arrow)" />
+  </marker>
+  <marker id="arrowhead-start" markerWidth="8" markerHeight="4.8" refX="0" refY="2.4" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.4, 8 4.8" fill="var(--_arrow)" />
+  </marker>
+</defs>
+<rect x="963.2000000000003" y="40" width="386.69999999999993" height="441" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="963.2000000000003" y="40" width="386.69999999999993" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="975.2000000000003" y="54" dy="0.35em" font-size="12" font-weight="600" fill="var(--_text-sec)">文档层 · TextIn xParse</text>
+<rect x="47.15000000000009" y="692" width="754.05" height="268" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="47.15000000000009" y="692" width="754.05" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="59.15000000000009" y="706" dy="0.35em" font-size="12" font-weight="600" fill="var(--_text-sec)">理解层 · Kimi</text>
+<rect x="40" y="1004" width="668.25" height="123" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="40" y="1004" width="668.25" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="52" y="1018" dy="0.35em" font-size="12" font-weight="600" fill="var(--_text-sec)">规则层 · 代码</text>
+<rect x="821.1999999999998" y="525" width="601.9875000000001" height="1070" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="821.1999999999998" y="525" width="601.9875000000001" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="833.1999999999998" y="539" dy="0.35em" font-size="12" font-weight="600" fill="var(--_text-sec)">评估层 · Jev</text>
+<rect x="922.4250000000001" y="1639" width="482.88750000000005" height="652.75" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="922.4250000000001" y="1639" width="482.88750000000005" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="934.4250000000001" y="1653" dy="0.35em" font-size="12" font-weight="600" fill="var(--_text-sec)">报告层 · Kimi</text>
+<polyline points="1132.025,132 1132.025,252" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1132.025,288 1132.025,308 1201.0750000000003,308 1201.0750000000003,425" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1132.025,288 1132.025,308 1062.975,308 1062.975,604.5 951.575,604.5" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1201.0750000000003,461 1201.0750000000003,604.5 1312.4750000000001,604.5" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1132.025,628 1132.025,648 932.4250000000001,648 932.4250000000001,766 312.07500000000005,766" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="192.40000000000006,784 192.40000000000006,904" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="192.40000000000006,940 192.40000000000006,1065.5" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="559.4250000000001,784 559.4250000000001,904" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="559.4250000000001,940 559.4250000000001,1060" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="192.40000000000006,1101.5 192.40000000000006,1147 936.0000000000001,1147 936.0000000000001,1245 843.2000000000002,1245" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="559.4250000000001,1107 559.4250000000001,1147 1125.6,1147 1125.6,1245 1218.4,1245" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1030.8000000000002,1263 1030.8000000000002,1383" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1132.025,628 1132.025,648 1240.4,648 1240.4,748" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1030.8000000000002,1419 1030.8000000000002,1557 1015.925,1557" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1240.4,784 1240.4,1557 1255.2749999999999,1557" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1135.6,1575 1135.6,1695" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1135.6,1731 1135.6,1751 1217.1625000000004,1751 1217.1625000000004,1851" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1217.1625000000004,1942.75 1217.1625000000004,2079.75" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1217.1625000000004,2115.75 1217.1625000000004,2235.75" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1135.6,1731 1135.6,1751 1049.0125,1751 1049.0125,2415.25 1008.7749999999999,2415.25" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1217.1625000000004,2271.75 1217.1625000000004,2415.25 1262.425,2415.25" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1135.6,2438.75 1135.6,2558.75" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<rect x="1175.9150000000002" y="343" width="50.32" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="1201.0750000000003" y="356.5" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">失败/未配置</text>
+<rect x="1177.7025000000003" y="1997.75" width="78.92" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="1217.1625000000004" y="2011.25" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">A/B 或 HR 打开</text>
+<rect x="1008.7749999999999" y="2398.75" width="253.65" height="33" fill="var(--_node-fill)" stroke="none" />
+<line x1="1008.7749999999999" y1="2398.75" x2="1008.7749999999999" y2="2431.75" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<line x1="1262.425" y1="2398.75" x2="1262.425" y2="2431.75" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<ellipse cx="1135.6" cy="2431.75" rx="126.825" ry="7" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<ellipse cx="1135.6" cy="2398.75" rx="126.825" ry="7" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="940.8499999999999" y="2558.75" width="389.50000000000006" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1015.9250000000001" y="96" width="232.20000000000002" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="994.4750000000001" y="252" width="275.1" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1084.9750000000004" y="425" width="232.20000000000002" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="951.575" y="588" width="360.90000000000003" height="33" fill="var(--_node-fill)" stroke="none" />
+<line x1="951.575" y1="588" x2="951.575" y2="621" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<line x1="1312.4750000000001" y1="588" x2="1312.4750000000001" y2="621" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<ellipse cx="1132.025" cy="621" rx="180.45000000000002" ry="7" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<ellipse cx="1132.025" cy="588" rx="180.45000000000002" ry="7" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="72.72500000000005" y="748" width="239.35000000000002" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="69.15000000000005" y="904" width="246.50000000000003" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="62.00000000000006" y="1065.5" width="260.8" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="461.20000000000005" y="748" width="196.45000000000002" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="339.6500000000001" y="904" width="439.55" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="432.6000000000001" y="1067" width="253.65" height="33" fill="var(--_node-fill)" stroke="none" />
+<line x1="432.6000000000001" y1="1067" x2="432.6000000000001" y2="1100" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<line x1="686.2500000000001" y1="1067" x2="686.2500000000001" y2="1100" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<ellipse cx="559.4250000000001" cy="1100" rx="126.825" ry="7" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<ellipse cx="559.4250000000001" cy="1067" rx="126.825" ry="7" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="843.2000000000002" y="1227" width="375.20000000000005" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="861.0750000000002" y="1383" width="339.45000000000005" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1099.275" y="748" width="282.25" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1015.925" y="1539" width="239.35000000000002" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="944.425" y="1695" width="382.35" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<polygon points="1217.1625000000004,1851 1263.0375000000004,1896.875 1217.1625000000004,1942.75 1171.2875000000004,1896.875" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1076.0375000000004" y="2079.75" width="282.25" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1111.7875000000004" y="2235.75" width="210.75000000000003" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<text x="1135.6" y="2415.25" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">CandidateEvaluation · 逐次快照 + 版本</text>
+<text x="1135.6" y="2576.75" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Candidate.jdMatch 等 · = 当前评估的反规范化快照 · 现有 UI 零改动即可跑</text>
+<text x="1132.025" y="114" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">R2 文件 · pdf/doc/docx/jpg/png</text>
+<text x="1132.025" y="270" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">TextIn pdf_to_markdown · 同步 · 按页计费</text>
+<text x="1201.0750000000003" y="443" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">回退链 · pdftotext → Kimi Files</text>
+<text x="1132.025" y="604.5" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">ResumeParse · markdown + raw JSON key + sha256</text>
+<text x="192.40000000000006" y="766" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">parseResume · 现有方案 B + 评估派生事实</text>
+<text x="192.40000000000006" y="922" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">确定性闸门 · 现有 4 个 + 新 deriveFacts</text>
+<text x="192.40000000000006" y="1083.5" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Candidate 结构化字段 · + aiSummary 简报</text>
+<text x="559.4250000000001" y="766" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Job.description / JD 文件</text>
+<text x="559.4250000000001" y="922" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">structureJobRequirements · 需求 schema: hard/core/preferred</text>
+<text x="559.4250000000001" y="1083.5" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Job.requirementSchema · HR 可改权重</text>
+<text x="1030.8000000000002" y="1245" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">hardFilter · 学历/年限/语言/地点 · PASS · FAIL · UNKNOWN</text>
+<text x="1030.8000000000002" y="1401" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">questions 生成器 · schema → noul/score + 固定通用题</text>
+<text x="1240.4" y="766" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">state = 脱敏 markdown + profile + job</text>
+<text x="1135.6" y="1557" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Jev jev-latest · 一次调用并行答题 &lt;1s</text>
+<text x="1135.6" y="1713" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">composite · 代码加权 → overall + 维度分 + A/B/C/D + 置信门控</text>
+<text x="1217.1625000000004" y="1896.875" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">需要报告?</text>
+<text x="1217.1625000000004" y="2097.75" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">buildReport · 只解释不改分 · 引用证据 + 面试验证点</text>
+<text x="1217.1625000000004" y="2253.75" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">证据校验 · 引文必须在 markdown 中存在</text>
+</svg></div>
+<h3 id="职责矩阵对原始想法的最终定稿">2.2
+职责矩阵(对原始想法的最终定稿)</h3>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr>
+<th>模块</th>
+<th>工具</th>
+<th>只做</th>
+<th>绝不做</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>文档层</td>
+<td>TextIn xParse</td>
+<td>任意格式 → Markdown(阅读顺序、表格、标题层级、OCR)</td>
+<td>判断内容好坏</td>
+</tr>
+<tr>
+<td>理解层</td>
+<td>Kimi(non-reasoning,<code>moonshot-v1-32k</code> 或 admin 选)</td>
+<td>简历 → 结构化事实 JSON;JD → 需求 schema;评估结果 → 人话报告</td>
+<td>出分、排序、决定分类</td>
+</tr>
+<tr>
+<td>规则层</td>
+<td>MESA 代码</td>
+<td>硬筛(仅机器可判项)、年限/学历归一、加权、阈值分类、置信门控、证据校验</td>
+<td>语义判断</td>
+</tr>
+<tr>
+<td>评估层</td>
+<td>Jev</td>
+<td>每个需求项的 noul / score 判定 + 置信度;稳定性 / 信息充分性 /
+夸大风险</td>
+<td>算数、比日期、抽取字段、写字</td>
+</tr>
+<tr>
+<td>决策层</td>
+<td>HR</td>
+<td>看证据、复核 C 类、安排面试</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="外部依赖核实2026-09-20">3. 外部依赖核实(2026-09-20)</h2>
+<h3 id="textin-xparse合合信息">3.1 TextIn xParse(合合信息)</h3>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>项</th>
+<th>核实结果</th>
+<th>对方案的影响</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>端点</td>
+<td><code>POST https://api.textin.com/ai/service/v1/pdf_to_markdown</code>(xParse
+新版)· 旧版 <code>x_to_markdown</code> 仍在</td>
+<td>用 <code>pdf_to_markdown</code>;实施时以控制台当天文档为准</td>
+</tr>
+<tr>
+<td>鉴权</td>
+<td>Header <code>x-ti-app-id</code> + <code>x-ti-secret-code</code></td>
+<td>两个值都进 <code>SystemSetting</code> 加密 + env fallback</td>
+</tr>
+<tr>
+<td>请求</td>
+<td>body 二进制(<code>application/octet-stream</code>)或 URL
+文本;≤500MB;1000 页</td>
+<td>直接把 R2 buffer 发过去;简历 1-5 页</td>
+</tr>
+<tr>
+<td>格式</td>
+<td>pdf / doc / docx / png / jpg / jpeg / bmp / tiff / webp / html /
+xls(x) / ppt(x) / txt / ofd / rtf</td>
+<td><strong>新增图片上传</strong>(公开上传页 + 飞书白名单 + Upload
+页)</td>
+</tr>
+<tr>
+<td>关键参数</td>
+<td><code>parse_mode=auto</code>(自动判文本层/扫描)·
+<code>table_flavor=md</code> · <code>apply_document_tree=1</code> ·
+<code>markdown_details=1</code> · <code>get_image=none</code> ·
+<code>page_count</code></td>
+<td><code>page_count</code> 上限设 10 防止有人传 200 页 PDF 烧额度</td>
+</tr>
+<tr>
+<td>返回</td>
+<td><code>result.markdown</code> + <code>result.pages[]</code>(含
+<code>status</code>)+ <code>result.detail[]</code>(元素级坐标/页码)+
+<code>metrics</code> + <code>duration</code></td>
+<td>存 markdown 进 DB,raw JSON 存 R2;<code>detail[].page_id</code>
+可给证据回溯页码</td>
+</tr>
+<tr>
+<td>计费</td>
+<td>文档解析 <strong>0.05 T币/页</strong>,仅成功页计费;新用户 100 页 +
+关注公众号 1000 页;有报道称每日 1000 页免费额度(以控制台为准)</td>
+<td>每份简历 ≈ 0.1-0.25 T币,可忽略;<strong>reparse 必须复用已存
+markdown,否则重复计费</strong></td>
+</tr>
+<tr>
+<td>同步</td>
+<td>同步返回,官方 duration 毫秒级到数秒</td>
+<td>仍放在异步 task 里跑(统一体验),但不再是瓶颈</td>
+</tr>
+<tr>
+<td>限制</td>
+<td>错误码 40003 余额不足 / 4030x QPS 超限</td>
+<td><code>textinRequest</code> 对 4030x 与 5xx
+指数退避;余额不足直接回退本地链</td>
+</tr>
+</tbody>
+</table>
+<h3 id="jevtypesafe-ai-system-one">3.2 Jev(TypeSafe AI System One)</h3>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>项</th>
+<th>核实结果</th>
+<th>对方案的影响</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>发布</td>
+<td>2026-09-15 发布,作者含 InstructGPT 合著者;Recruitly 当天上生产</td>
+<td><strong>供应商极新</strong>,必须保留 legacy 回退</td>
+</tr>
+<tr>
+<td>端点</td>
+<td><code>POST https://api.typesafe.ai/v1/systemone</code> ·
+<code>Authorization: Bearer &lt;key&gt;</code> ·
+<code>model: "jev-latest"</code></td>
+<td>key 从 TypeSafe 控制台申请(可能有 waitlist)</td>
+</tr>
+<tr>
+<td>替代接入</td>
+<td>Cloudflare Workers AI / AI Gateway 列有
+<code>typesafe/jev</code>;Vercel AI Gateway
+<code>typesafe-ai/jev</code>(<code>experimental_evaluate</code>)。另有报道称
+gateway 不可用,<strong>信息冲突</strong></td>
+<td>优先直连;若 waitlist 卡住,MESA 已有 Cloudflare 账号,可走 Workers AI
+作为 B 方案,实施 Phase 0 时二选一验证</td>
+</tr>
+<tr>
+<td>三种题型</td>
+<td><code>noul</code>(是/否概率 0-1)· <code>choice</code>(≤255 选项,带
+probabilities + confidence)· <code>score</code>(2-10 个有序等级描述,带
+score/legend/probabilities/confidence)</td>
+<td>硬性项 → noul;核心/加分项 → score(4-5 级情境描述);分类 →
+<strong>不用 choice,由代码算</strong></td>
+</tr>
+<tr>
+<td>请求</td>
+<td><code>state</code>(string / object / array)+
+<code>questions</code>(map);一次请求所有题并行,加题几乎不加延迟</td>
+<td>一个 (candidate, job) = 一次调用,10-20 题</td>
+</tr>
+<tr>
+<td>限制</td>
+<td>单题 + state ≈ 32K token;整请求 ≈ 64K;限流约 1200 req/min、250K
+token/s</td>
+<td>简历 md 2-5K token + profile + JD 1-2K + 题 1-2K,余量充足</td>
+</tr>
+<tr>
+<td>定价</td>
+<td>$0.042 / 1M 输入 token,输出免费;官方称价格可能是补贴价</td>
+<td>每次评估 ≈ $0.0002-0.0004;500 份 ≈ $0.1-0.2</td>
+</tr>
+<tr>
+<td>延迟</td>
+<td>70-500ms 典型,中位 ~100ms;中文分类独立测评 ~890ms</td>
+<td>切 JD 重评从 10-30s → ~1s</td>
+</tr>
+<tr>
+<td>错误</td>
+<td>401 / 422 / 429 / 529,官方建议指数退避</td>
+<td><code>jevRequest</code> 复刻 <code>kimiRequest</code> 退避</td>
+</tr>
+<tr>
+<td>中文</td>
+<td>第三方独立测评 130 条中文分类样本 97.7%,3 次跑完全确定;开源项目
+<code>nanami-0713/jev-resume-screening</code> 做中英简历-JD 初筛,判据
+v1→v3 迭代可复现</td>
+<td>可用,但<strong>必须用自家 golden set 校准判据措辞</strong>(见 §6
+Phase 0)</td>
+</tr>
+<tr>
+<td>官方明确不能做</td>
+<td>生成文本、算数、数数、比日期、抽取值、看图</td>
+<td>年限/学历/日期全在代码算(已有);证据引用交给 Kimi 报告层</td>
+</tr>
+<tr>
+<td>判据写法最佳实践</td>
+<td>一题一判 · 描述情境而非程度 · 用反引号引用 state 字段 ·
+给”未提及/其他”逃生选项 · 置信 &lt;0.5 转人工、0.5-0.9 谨慎、&gt;0.9
+自动</td>
+<td>§5.4 题库模板照此写</td>
+</tr>
+</tbody>
+</table>
+<h3 id="kimi不变">3.3 Kimi(不变)</h3>
+<p>沿用
+<code>api.moonshot.cn</code>,模型策略不变(<code>pickParseModel</code>
+强制 non-reasoning)。新增用途:JD 需求 schema 结构化、评估报告生成。海外
+VPS → 三家 API 出站均可达(Kimi 现已跑通;TextIn 在国内、TypeSafe
+在海外,延迟可接受,均放异步任务)。</p>
+<hr />
+<h2 id="对原始想法的评估与优化diff">4. 对原始想法的评估与优化(Diff)</h2>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr>
+<th>#</th>
+<th>原始想法</th>
+<th>评估</th>
+<th>定稿做法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>TextIn 输出保存
+<code>textin_raw_result / textin_markdown / parse_version</code></td>
+<td>✅ 完全同意,且是最重要的一条</td>
+<td>新表 <code>ResumeParse</code>;raw JSON 存
+R2(<code>parses/&lt;candidateId&gt;/&lt;sha256&gt;.json</code>)避免撑爆
+PG,markdown 存 DB(截 200KB);以 <code>fileSha256 + parserVersion</code>
+做幂等</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Kimi 抽取每个字段都带
+<code>{value, evidence, source_page}</code></td>
+<td>⚠️ 输出体积翻 2-3 倍、JSON 抖动概率上升、evidence 本身也会幻觉</td>
+<td>抽取阶段<strong>不要 evidence</strong>,保持现有
+schema;证据放到<strong>报告阶段</strong>由 Kimi 引用原文 1-2
+句,代码用子串匹配校验引文确实存在于 markdown(与
+<code>scrubHallucinatedDates</code> 同思路),校验失败的引文丢弃并标
+<code>evidenceVerified:false</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td>硬筛:年龄 / 学历 / 专业 / 年限 / 语言 / 地点 / 出差 / 证书 /
+硬技能,不满足 → FAIL</td>
+<td>⚠️ 两个问题:① 简历没写 ≠ 不满足 ②
+年龄、性别作为硬筛在中国《就业促进法》与欧盟法域下有歧视风险,MESA
+有海外研究院候选人</td>
+<td>三态
+<code>PASS / FAIL / UNKNOWN</code>,只对<strong>机器可判、候选人字段非空</strong>的项判
+FAIL;<code>UNKNOWN</code> 不扣分只降置信 → 进 C
+类人工复核。<strong>年龄/性别默认不进硬筛</strong>,<code>requirementSchema</code>
+里若 HR 手动加,UI 显示合规提示。证书 / 硬技能 / 出差意愿属语义判断 → 交
+Jev noul,不放代码硬筛</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Jev 逐项匹配表 + 多维分 + A/B/C/D</td>
+<td>✅ 同意</td>
+<td>题目由 <code>Job.requirementSchema</code>
+<strong>自动生成</strong>(每条需求一题)+ 固定通用题(稳定性 / 信息充分性
+/ 夸大风险 / 到岗可能),分数与分类由代码算,<strong>Jev
+不出总分、不出分类</strong></td>
+</tr>
+<tr>
+<td>5</td>
+<td>最终分 = 规则分 + JEV 评估分 + 人工修正</td>
+<td>✅ 同意</td>
+<td><code>composite.js</code> 加权公式见 §5.5;人工修正 = HR
+在详情页覆盖分类并留 note(记入
+<code>CandidateEvaluation.manualOverride</code>),不改 AI 原始分</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Kimi 第二次:整理成人话报告</td>
+<td>✅ 同意</td>
+<td>输入只给 Jev 答案 + 硬筛结果 + 简历事实,prompt
+明令”不得给出与输入不同的分数”;输出继续填现有
+<code>highlights/risks/insights/matchedFor/againstFor/aiSuggestedTags</code>
+字段,<strong>前端零改动即可跑</strong>;新增
+<code>interviewProbes[]</code>(重点验证问题)供面试准备</td>
+</tr>
+<tr>
+<td>7</td>
+<td>500 份批量分流</td>
+<td>✅ Jev 使之可行</td>
+<td><strong>报告按需</strong>:批量时只给 A/B 自动跑 Kimi 报告,C/D 在 HR
+打开详情时再生成(省 60-80% Kimi 成本、批量时间从 N×20s 降到 N×1s)</td>
+</tr>
+<tr>
+<td>8</td>
+<td>三种结果:直接面试 / 人工复核 / 暂不进入</td>
+<td>✅ 同意,与 Jev 置信门控天然契合</td>
+<td><code>reviewPriority: HIGH / REVIEW / LOW</code> 与
+<code>classification: A/B/C/D</code> 双字段;C 类 = 任一核心题 confidence
+&lt;0.5 或”信息不足” noul &gt;0.6</td>
+</tr>
+<tr>
+<td>9</td>
+<td>存 <code>model + prompt_version</code></td>
+<td>✅ 同意</td>
+<td><code>CandidateEvaluation</code> 存
+<code>{textinVersion, kimiModel, kimiPromptHash, jevModel(响应里的 jev-1.x.y), questionTemplateVersion, schemaVersion}</code></td>
+</tr>
+<tr>
+<td>10</td>
+<td>(未提)重新解析怎么计费</td>
+<td>—</td>
+<td>三档粒度:<strong>重新评估</strong>(只跑 L2-L4,切 JD 默认,秒级免
+TextIn 费)/ <strong>重新抽取</strong>(从已存 markdown 起跑 Kimi)/
+<strong>重新识别</strong>(文件 sha 变了或 admin 强制,才重新调
+TextIn)</td>
+</tr>
+<tr>
+<td>11</td>
+<td>(未提)Jev 挂了怎么办</td>
+<td>—</td>
+<td><code>jev.enabled=false</code> 或调用失败 → 自动走 legacy
+<code>matchAgainstJob</code>,<code>CandidateEvaluation.engine="legacy"</code>,UI
+显示”基础评估”</td>
+</tr>
+<tr>
+<td>12</td>
+<td>(未提)隐私</td>
+<td>—</td>
+<td>发给 Jev 的 state
+<strong>默认脱敏</strong>(姓名/电话/邮箱/照片链接替换为占位,Jev
+判定不需要身份);TextIn 必须收原文件(无法脱敏)→
+隐私政策与交付文档需写明第三方处理者</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="详细设计">5. 详细设计</h2>
+<h3 id="数据模型变更prisma">5.1 数据模型变更(Prisma)</h3>
+<pre class="prisma"><code>// 文档层产物 — 一份文件一条(按 sha256 幂等),reparse 优先复用
+model ResumeParse {
+  id            String    @id @default(uuid()) @db.Uuid
+  candidateId   String    @map(&quot;candidate_id&quot;) @db.Uuid
+  candidate     Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  attachmentKey String    @map(&quot;attachment_key&quot;)        // R2 key(与 candidate.attachment 对应)
+  fileSha256    String    @map(&quot;file_sha256&quot;)
+  provider      String                                  // &quot;textin&quot; | &quot;pdftotext&quot; | &quot;kimi-files&quot;
+  providerVersion String? @map(&quot;provider_version&quot;)      // TextIn 返回 version
+  markdown      String    @db.Text                      // ≤200KB,超出截断并置 truncated=true
+  truncated     Boolean   @default(false)
+  rawResultKey  String?   @map(&quot;raw_result_key&quot;)        // R2: parses/&lt;candidateId&gt;/&lt;sha&gt;.json
+  pageCount     Int?      @map(&quot;page_count&quot;)
+  durationMs    Int?      @map(&quot;duration_ms&quot;)
+  charCount     Int?      @map(&quot;char_count&quot;)
+  createdAt     DateTime  @default(now()) @map(&quot;created_at&quot;)
+
+  @@unique([candidateId, fileSha256, provider])
+  @@index([candidateId])
+  @@map(&quot;resume_parses&quot;)
+}
+
+// 评估层产物 — (candidate, job) 每次评估一条快照,isCurrent 标当前
+model CandidateEvaluation {
+  id             String    @id @default(uuid()) @db.Uuid
+  candidateId    String    @map(&quot;candidate_id&quot;) @db.Uuid
+  candidate      Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  jobId          String    @map(&quot;job_id&quot;) @db.Uuid
+  job            Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  resumeParseId  String?   @map(&quot;resume_parse_id&quot;) @db.Uuid
+  engine         String                                  // &quot;jev&quot; | &quot;legacy&quot;
+  isCurrent      Boolean   @default(true) @map(&quot;is_current&quot;)
+
+  hardFilter     Json      // { result:&quot;PASS&quot;|&quot;FAIL&quot;|&quot;UNKNOWN&quot;, items:[{key,label,required,candidate,result,reason}] }
+  jevRequest     Json?     @map(&quot;jev_request&quot;)           // 脱敏后的 questions(便于复现,不存 state 全文)
+  jevAnswers     Json?     @map(&quot;jev_answers&quot;)           // 原样答案
+  dimensions     Json      // [{key:&quot;hard&quot;|&quot;core&quot;|&quot;preferred&quot;|&quot;stability&quot;, score:0-100, weight, confidence}]
+  items          Json      // 逐项:[{reqKey,label,tier,weight,type,normalized,confidence,verdict:&quot;满足|部分|不满足|未提及&quot;}]
+  overallScore   Int       @map(&quot;overall_score&quot;)         // 0-100(代码加权)
+  classification String                                  // &quot;A&quot;|&quot;B&quot;|&quot;C&quot;|&quot;D&quot;
+  reviewPriority String    @map(&quot;review_priority&quot;)       // &quot;HIGH&quot;|&quot;REVIEW&quot;|&quot;LOW&quot;
+  minConfidence  Float?    @map(&quot;min_confidence&quot;)
+
+  report         Json?     // { highlights[], risks[], insights[], matchedFor[], againstFor[], aiSuggestedTags[], matchReason, interviewProbes[], evidence:[{reqKey,quote,page,verified}] }
+  reportStatus   String    @default(&quot;pending&quot;) @map(&quot;report_status&quot;) // &quot;pending&quot;|&quot;done&quot;|&quot;failed&quot;|&quot;skipped&quot;
+
+  manualOverride Json?     @map(&quot;manual_override&quot;)       // { classification, by, at, note }
+
+  versions       Json      // { schema, questionTemplate, kimiModel, kimiPromptHash, jevModel, textinVersion }
+  costs          Json?     // { textinPages, kimiTokens, jevTokens }
+  evaluatedAt    DateTime  @default(now()) @map(&quot;evaluated_at&quot;)
+
+  @@index([candidateId, jobId, evaluatedAt])
+  @@index([jobId, isCurrent, classification])
+  @@map(&quot;candidate_evaluations&quot;)
+}
+
+// Job 增量
+model Job {
+  // ...现有字段...
+  requirementSchema          Json?     @map(&quot;requirement_schema&quot;)            // §5.3
+  requirementSchemaVersion   Int       @default(0) @map(&quot;requirement_schema_version&quot;)
+  requirementSchemaUpdatedAt DateTime? @map(&quot;requirement_schema_updated_at&quot;)
+  requirementSchemaSource    String?   @map(&quot;requirement_schema_source&quot;)     // &quot;kimi&quot; | &quot;manual&quot;
+  evaluations                CandidateEvaluation[]
+}
+
+// Candidate 增量(其余现有字段保持,作为&quot;当前评估&quot;的反规范化快照)
+model Candidate {
+  // ...现有字段...
+  resumeParses   ResumeParse[]
+  evaluations    CandidateEvaluation[]
+  classification String?   // 当前评估 A/B/C/D(冗余,列表筛选用,加 @@index)
+  reviewPriority String?   @map(&quot;review_priority&quot;)
+  // parser 语义调整:&quot;textin+kimi+jev&quot; / &quot;kimi&quot;(legacy);parserConfidence 改为 Jev minConfidence*100 或抽取质量分
+}</code></pre>
+<p>迁移手写(坑 #30 经验):三张表纯新增列 /
+新表,无类型转换,<code>prisma migrate dev --create-only</code>
+生成后核对即可。<strong>不动历史 migration</strong>。</p>
+<h3 id="配置项settings.js-env-compose">5.2
+配置项(<code>settings.js</code> + env + compose)</h3>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr>
+<th>key</th>
+<th>加密</th>
+<th>env fallback</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>textin.app_id</code></td>
+<td>✅</td>
+<td><code>TEXTIN_APP_ID</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>textin.secret_code</code></td>
+<td>✅</td>
+<td><code>TEXTIN_SECRET_CODE</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>textin.enabled</code></td>
+<td>—</td>
+<td><code>TEXTIN_ENABLED</code>(默认 <code>false</code>)</td>
+<td>关 = 走旧回退链,零行为变化</td>
+</tr>
+<tr>
+<td><code>textin.max_pages</code></td>
+<td>—</td>
+<td>默认 <code>10</code></td>
+<td>防烧额度</td>
+</tr>
+<tr>
+<td><code>jev.api_key</code></td>
+<td>✅</td>
+<td><code>JEV_API_KEY</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>jev.base_url</code></td>
+<td>—</td>
+<td><code>JEV_BASE_URL</code>(默认
+<code>https://api.typesafe.ai/v1</code>)</td>
+<td>切 Cloudflare Workers AI 时改这里 + <code>jev.provider</code></td>
+</tr>
+<tr>
+<td><code>jev.provider</code></td>
+<td>—</td>
+<td><code>direct</code> / <code>cloudflare</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>jev.model</code></td>
+<td>—</td>
+<td><code>jev-latest</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>jev.enabled</code></td>
+<td>—</td>
+<td>默认 <code>false</code></td>
+<td>关 = legacy <code>matchAgainstJob</code></td>
+</tr>
+<tr>
+<td><code>jev.mode</code></td>
+<td>—</td>
+<td><code>shadow</code> / <code>primary</code></td>
+<td>shadow = 双写不切 UI(Phase 3 灰度)</td>
+</tr>
+<tr>
+<td><code>eval.thresholds</code></td>
+<td>—</td>
+<td>JSON <code>{A:85,B:70,C:55}</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>eval.default_weights</code></td>
+<td>—</td>
+<td>JSON <code>{hard:25,core:45,preferred:15,stability:15}</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>eval.confidence_gate</code></td>
+<td>—</td>
+<td>默认 <code>0.5</code></td>
+<td>核心题低于此 → C</td>
+</tr>
+<tr>
+<td><code>eval.report_policy</code></td>
+<td>—</td>
+<td><code>auto_ab</code> / <code>auto_all</code> /
+<code>on_demand</code></td>
+<td>报告按需策略</td>
+</tr>
+<tr>
+<td><code>eval.pii_strip</code></td>
+<td>—</td>
+<td>默认 <code>true</code></td>
+<td>发 Jev 前脱敏</td>
+</tr>
+<tr>
+<td><code>kimi.report_prompt</code></td>
+<td>—</td>
+<td>代码 <code>DEFAULT_REPORT_PROMPT</code></td>
+<td>admin 可改</td>
+</tr>
+<tr>
+<td><code>kimi.jd_schema_prompt</code></td>
+<td>—</td>
+<td>代码默认</td>
+<td>admin 可改</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><code>ENCRYPTED_KEYS</code> 增 4 个;<code>system.js</code> 的
+<code>adminOnlyForApiKey</code> 改为对所有
+<code>*.api_key / *.secret_code / *.app_id</code>
+生效;<code>/settings/:key/full</code> 对这些 key 同样拒绝明文回显</li>
+<li>新增探活:<code>POST /api/system/settings/textin/test</code>(拿 1
+页示例 PDF 试解析)、<code>POST /api/system/settings/jev/test</code>(1 道
+noul 题)</li>
+<li><code>docker-compose.yml</code> backend <code>environment</code> 加
+8 个 <code>${...:-}</code>;<code>.env.example</code> 全部
+<code>__SET_BY_OPS__</code>;CLAUDE.md §4「永不入 Git」表加 TextIn / Jev
+凭证两行</li>
+</ul>
+<h3 id="jd-需求-schemajob.requirementschema">5.3 JD 需求
+schema(<code>Job.requirementSchema</code>)</h3>
+<pre class="jsonc"><code>{
+  &quot;version&quot;: 1,
+  &quot;position&quot;: &quot;海外 HRBP&quot;,
+  &quot;requirements&quot;: [
+    // tier: hard(硬性,可 FAIL) / core(核心) / preferred(加分)
+    // type 决定谁来判:code(规则层机器判) / jev(评估层语义判)
+    { &quot;key&quot;: &quot;edu_min&quot;,   &quot;tier&quot;: &quot;hard&quot;, &quot;type&quot;: &quot;code&quot;, &quot;field&quot;: &quot;education&quot;, &quot;op&quot;: &quot;&gt;=&quot;, &quot;value&quot;: &quot;本科&quot;, &quot;weight&quot;: 10, &quot;label&quot;: &quot;本科及以上&quot; },
+    { &quot;key&quot;: &quot;years_min&quot;, &quot;tier&quot;: &quot;hard&quot;, &quot;type&quot;: &quot;code&quot;, &quot;field&quot;: &quot;yearsExp&quot;,  &quot;op&quot;: &quot;&gt;=&quot;, &quot;value&quot;: 5,      &quot;weight&quot;: 10, &quot;label&quot;: &quot;5 年以上经验&quot; },
+    { &quot;key&quot;: &quot;lang_en&quot;,   &quot;tier&quot;: &quot;hard&quot;, &quot;type&quot;: &quot;jev&quot;,  &quot;weight&quot;: 10, &quot;label&quot;: &quot;英语可作为工作语言&quot;,
+      &quot;criteria&quot;: { &quot;true&quot;: &quot;简历有明确证据:海外工作/英文授课学历/雅思托福分数/明确写英语工作语言&quot;, &quot;false&quot;: &quot;无任何英语能力证据,或仅写&#39;英语一般&#39;&quot; } },
+    { &quot;key&quot;: &quot;overseas&quot;,  &quot;tier&quot;: &quot;core&quot;, &quot;type&quot;: &quot;jev&quot;,  &quot;weight&quot;: 25, &quot;label&quot;: &quot;海外业务经验&quot;,
+      &quot;levels&quot;: [&quot;无海外相关经历&quot;, &quot;仅有海外出差/短期项目或海外客户对接&quot;, &quot;1-3 年海外常驻或负责海外区域业务&quot;, &quot;3 年以上海外常驻并独立负责区域&quot;] },
+    { &quot;key&quot;: &quot;hrbp&quot;,      &quot;tier&quot;: &quot;core&quot;, &quot;type&quot;: &quot;jev&quot;,  &quot;weight&quot;: 20, &quot;label&quot;: &quot;HRBP 经验&quot;, &quot;levels&quot;: [&quot;…4 级…&quot;] },
+    { &quot;key&quot;: &quot;semicon&quot;,   &quot;tier&quot;: &quot;preferred&quot;, &quot;type&quot;: &quot;jev&quot;, &quot;weight&quot;: 10, &quot;label&quot;: &quot;半导体行业&quot;, &quot;levels&quot;: [&quot;…&quot;] },
+    { &quot;key&quot;: &quot;mgmt&quot;,      &quot;tier&quot;: &quot;preferred&quot;, &quot;type&quot;: &quot;jev&quot;, &quot;weight&quot;: 5,  &quot;label&quot;: &quot;团队管理&quot;, &quot;levels&quot;: [&quot;…&quot;] }
+  ],
+  &quot;location&quot;: { &quot;city&quot;: &quot;上海&quot;, &quot;mode&quot;: &quot;onsite&quot; },      // 供 code 判到岗 + jev 判搬迁意愿
+  &quot;notes&quot;: &quot;…HR 补充的判断口径…&quot;
+}</code></pre>
+<ul>
+<li><strong>来源 A</strong>:<code>parseJobDescription</code>(上传 JD
+文件)prompt 增一节输出
+<code>requirementSchema</code>,和现有字段一起回填新建 JD 弹窗</li>
+<li><strong>来源
+B</strong>(新):<code>POST /api/jobs/:id/structure-requirements</code> —
+对已有 JD 的
+<code>description + requirements + nice + educationRequirement + languageRequirement + yearsExpRange</code>
+跑 Kimi <code>structureJobRequirements</code>,返回草稿,HR 在
+<code>JdDescModal</code> 新 tab「评估标准」里改 tier / weight / 措辞后
+<code>PATCH /api/jobs/:id { requirementSchema }</code></li>
+<li>规则:<code>type=code</code> 只允许
+<code>education / yearsExp / location / language(level 枚举)</code> 四个
+field(机器可判);Kimi 产出的其他 hard 项一律 <code>type=jev</code></li>
+<li>schema 变更 → <code>requirementSchemaVersion++</code>,已有评估在 UI
+标「评估标准已更新,建议重评」,不自动重跑(避免批量计费)</li>
+<li>无 schema 的 JD:评估时临时生成”仅通用题”版本(见 5.4
+固定题),<code>items</code> 为空、维度只有 stability,并提示 HR
+补充评估标准</li>
+</ul>
+<h3 id="jev-题库生成libevaluationquestions.js">5.4 Jev
+题库生成(<code>lib/evaluation/questions.js</code>)</h3>
+<p><strong>state</strong>(object,便于用反引号引用):</p>
+<pre class="jsonc"><code>{
+  &quot;resume_markdown&quot;: &quot;&lt;TextIn markdown,脱敏:姓名→[候选人],手机/邮箱→[已隐藏],照片链接删除&gt;&quot;,
+  &quot;profile&quot;: { &quot;education&quot;: &quot;硕士&quot;, &quot;yearsExp&quot;: 7, &quot;location&quot;: &quot;上海&quot;, &quot;skills&quot;: &quot;- …&quot;, &quot;experience&quot;: &quot;- …&quot;, &quot;languages&quot;: [...] },  // Kimi 事实字段(已归一)
+  &quot;job&quot;: { &quot;title&quot;: &quot;…&quot;, &quot;responsibilities&quot;: [...], &quot;requirements&quot;: [...], &quot;location&quot;: {...} }
+}</code></pre>
+<p><strong>题目</strong>(全部一次调用):</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>来源</th>
+<th>题型</th>
+<th>生成规则</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>schema <code>type=jev, tier=hard</code></td>
+<td><code>noul</code></td>
+<td><code>instructions</code>: “根据 `resume_markdown` 与
+`profile`,候选人是否满足:<label>?” + <code>criteria</code> 直接取
+schema</td>
+</tr>
+<tr>
+<td>schema <code>tier=core / preferred</code></td>
+<td><code>score</code></td>
+<td><code>criteria</code> = <code>levels</code>(4-5
+级情境描述,禁用”一般/较好/优秀”这类程度词);末级之前插入”简历未提及相关信息”作为
+level 0 逃生口</td>
+</tr>
+<tr>
+<td>固定 · 稳定性</td>
+<td><code>score</code></td>
+<td>4 级:频繁跳槽(近 5 年 ≥4 段且多数 &lt;1 年)/ 有 1-2 段短任职 /
+任职稳定 / 长期稳定且有晋升</td>
+</tr>
+<tr>
+<td>固定 · 信息充分性</td>
+<td><code>noul</code></td>
+<td>“简历信息是否<strong>不足以</strong>判断与 `job.requirements`
+的匹配(经历只有职位没有内容、大量空白)”</td>
+</tr>
+<tr>
+<td>固定 · 夸大风险</td>
+<td><code>noul</code></td>
+<td>“是否存在关键词堆砌但无具体事例支撑的技能声明”(来自 nanami
+项目的陷阱样本经验)</td>
+</tr>
+<tr>
+<td>固定 · 到岗可能</td>
+<td><code>noul</code></td>
+<td>仅 schema 有 <code>location</code>
+时生成:“候选人当前所在地或简历意向是否与 `job.location`
+一致或明确表示可搬迁”</td>
+</tr>
+</tbody>
+</table>
+<p>题量 8-20 题,单次 token ≈ 4-8K,<strong>严禁</strong>出现”共 X
+年”“是否超过 5 年”这类算数题(Jev
+官方明确不擅长)。<code>questionTemplateVersion</code>
+常量随模板改动递增。</p>
+<h3 id="加权与分类libevaluationcomposite.js纯函数-单测">5.5
+加权与分类(<code>lib/evaluation/composite.js</code>,纯函数 + 单测)</h3>
+<pre><code>每题归一化 n ∈ [0,1]:
+  noul  → n = p(yes)
+  score → n = score / (levels-1),若 argmax 为 level 0(未提及)则 n=0 且 verdict=&quot;未提及&quot;
+  code(hardFilter) → PASS=1 / FAIL=0 / UNKNOWN=不计入分母,只记 unknownCount
+
+维度分 dim_k = 100 × Σ(w_i × n_i) / Σ(w_i)   (i ∈ 该维度题;权重来自 schema,默认权重表兜底)
+overall     = 100 × Σ_k(W_k × dim_k/100) / Σ W_k   (W 来自 eval.default_weights,schema 可覆盖)
+
+分类(顺序判定,先命中先出):
+  1. hardFilter.result == &quot;FAIL&quot;(代码判定,确定事实)          → D · LOW
+  2. 任一 hard noul p &lt; 0.3                                    → D · LOW
+  3. 信息不足 p &gt; 0.6 或 任一 core 题 confidence &lt; gate(0.5)   → C · REVIEW
+  4. hardFilter 有 UNKNOWN 且 overall ≥ B 线                   → C · REVIEW(硬性项待确认)
+  5. overall ≥ A → A · HIGH;≥ B → B · HIGH;≥ C → C · REVIEW;否则 D · LOW
+verdict 文本:n ≥ 0.75 满足 / 0.4-0.75 部分满足 / &lt; 0.4 不满足 / level0 未提及
+minConfidence = min(所有 choice/score 题 confidence)  → 写回 Candidate.parserConfidence = round(minConfidence×100)</code></pre>
+<p>规则 3、4
+保证”硬性条件不满足不会被总分掩盖”且”缺信息不判死”。阈值全部走
+<code>eval.thresholds</code> 配置。</p>
+<h3 id="硬筛libevaluationhardfilter.js纯函数-单测">5.6
+硬筛(<code>lib/evaluation/hardFilter.js</code>,纯函数 + 单测)</h3>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>field</th>
+<th>比较方式</th>
+<th>复用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>education</code></td>
+<td><code>degreeRank(normalizeDegree(candidate)) &gt;= degreeRank(value)</code>;候选人为
+<code>Other</code>/空 → UNKNOWN</td>
+<td><code>kimi.js</code> 已有 <code>normalizeDegree</code> /
+<code>degreeRank</code>(需 export)</td>
+</tr>
+<tr>
+<td><code>yearsExp</code></td>
+<td><code>computeYearsExp</code> 结果 ≥ value;null → UNKNOWN</td>
+<td>已有</td>
+</tr>
+<tr>
+<td><code>location</code></td>
+<td>城市名归一(去”市”、别名表)相等 → PASS;不等 → <strong>不
+FAIL</strong>,记 <code>MISMATCH</code> 交 Jev「到岗可能」题;空 →
+UNKNOWN</td>
+<td>新增小别名表</td>
+</tr>
+<tr>
+<td><code>language</code></td>
+<td><code>candidate.languages[]</code> 中 name 命中且 level
+归一(母语/精通/流利/CEFR≥B2/雅思≥6.5/托福≥90 → 达标) → PASS;未列 →
+UNKNOWN(不 FAIL,交 Jev noul 找证据)</td>
+<td>新增 level 归一</td>
+</tr>
+</tbody>
+</table>
+<p>输出 <code>{ result, items[] }</code>;<code>result = FAIL</code>
+当且仅当存在 FAIL 项;全 PASS → PASS;其余 UNKNOWN。</p>
+<h3 id="报告层libevaluationreport.js-kimi">5.7
+报告层(<code>lib/evaluation/report.js</code> + Kimi)</h3>
+<p>输入:<code>profile</code> 摘要(aiSummary)+ <code>items[]</code>(含
+verdict / confidence)+ <code>hardFilter</code> + <code>dimensions</code>
++ <code>resume_markdown</code>(供引用)。 Prompt 硬约束: 1.
+“分数与结论已由系统确定,你只解释,不得改写或给出新的分数/等级” 2. 每条
+highlight / risk 必须附 <code>evidence: { reqKey, quote }</code>,quote
+为简历原文 ≤60 字<strong>逐字</strong>片段 3.
+<code>interviewProbes[]</code> 3-6 条:针对 verdict=部分满足 / 未提及 /
+低置信项写”重点验证问题” 4. 输出与现有 <code>matchAgainstJob</code> 同形
+JSON(+ <code>interviewProbes</code> + <code>evidence</code>)</p>
+<p>后处理:每条 quote 在 markdown
+里做归一化子串匹配(去空白/全半角),命中记 <code>verified:true</code> 并从
+TextIn <code>detail[]</code> 反查页码;未命中丢弃 quote 保留文案。Kimi
+失败 → <code>reportStatus=failed</code>,分数照常入库,UI
+显示”报告生成失败,重试”。</p>
+<h3 id="流水线编排routesresumes.js-重构点">5.8
+流水线编排(<code>routes/resumes.js</code> 重构点)</h3>
+<pre><code>runPipeline(app, task, { candidateId | createPayload, jobId, mode })
+  mode ∈ &quot;full&quot;(新建/重识别) | &quot;reextract&quot;(重抽取) | &quot;reevaluate&quot;(仅重评) | &quot;report&quot;(只补报告)
+
+  stage extract   : ResumeParse 查 (candidateId, sha256, provider=textin) 命中 → 复用;否则 textin → 失败 → pdftotext → kimi-files;写 ResumeParse
+  stage structure : parseResume(markdown)(改 extractResumeTextForLlm 接受 preExtractedText)→ 闸门 → assembleSummary → 写 Candidate 事实字段
+  stage hardFilter: 无 jobId 跳过
+  stage evaluate  : jev.enabled &amp;&amp; schema? → jev → composite;否则 legacy matchAgainstJob → 包装成同形 CandidateEvaluation(engine=legacy)
+  stage report    : 按 eval.report_policy 决定立即 / skipped
+  finalize        : 事务:CandidateEvaluation 旧 isCurrent=false + 新行;Candidate 快照字段(jdMatch=overall, classification, reviewPriority, risks/highlights/... 来自 report 或空)+ parsingStartedAt=null;换 JD 逻辑不变(status 回待筛选 + cleanupEmployeeOnJobChange)
+  task.stages = { extract:{status,ms,provider}, structure:{...}, evaluate:{...,engine}, report:{...} }  → 前端进度条分段显示</code></pre>
+<p>端点变化:</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>端点</th>
+<th>变化</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>POST /api/resumes/parse</code></td>
+<td>body 增 <code>mode</code>(默认:新建=full,reparse=reextract;文件 sha
+变化自动升 full);响应不变(202 + task)</td>
+</tr>
+<tr>
+<td><code>POST /api/resumes/match</code></td>
+<td>内部改走
+<code>mode=reevaluate</code>,<strong>同步改异步</strong>(返回 202 +
+task,前端 <code>pollParseTask</code> 已有)— Jev 快但 Kimi 报告仍可能
+&gt;10s</td>
+</tr>
+<tr>
+<td><code>POST /api/resumes/evaluate-batch</code></td>
+<td>新:<code>{ jobId, candidateIds[] ≤200 }</code> → 每人一个
+task,串行限并发 3(Jev 1200 rpm 远够,瓶颈是 Kimi 报告 → 用
+<code>auto_ab</code>);返回
+<code>batchId</code>,<code>GET /api/resumes/batches/:id</code> 汇总</td>
+</tr>
+<tr>
+<td><code>POST /api/resumes/evaluations/:id/report</code></td>
+<td>新:按需生成报告(HR 打开 C/D 详情时前端自动调)</td>
+</tr>
+<tr>
+<td><code>GET /api/candidates/:id/evaluations</code></td>
+<td>新:历史列表(供”为什么上月 A 这月 B”)</td>
+</tr>
+<tr>
+<td><code>PATCH /api/candidates/:id/evaluations/current/override</code></td>
+<td>新:HR 人工改分类 + note</td>
+</tr>
+<tr>
+<td><code>POST /api/jobs/:id/structure-requirements</code> /
+<code>PATCH /api/jobs/:id</code>(增 <code>requirementSchema</code>)</td>
+<td>新 / 扩</td>
+</tr>
+<tr>
+<td><code>GET /api/resumes/llm-status</code></td>
+<td>增
+<code>providers: { textin:{configured,enabled}, jev:{configured,enabled,mode} }</code></td>
+</tr>
+<tr>
+<td>公开 <code>GET /api/public/share/:token</code></td>
+<td>增
+<code>evaluation: { classification, dimensions, items(去 confidence 细节) }</code>,受现有
+toggle 体系(建议复用 <code>showNotes</code> 同级新 toggle
+<code>showEvaluation</code>,默认开)</td>
+</tr>
+<tr>
+<td>飞书 <code>/api/feishu/card-callback</code> 与
+<code>notifyCandidateReady</code></td>
+<td>卡片增 A/B/C/D + overall + 前 2 条 risk</td>
+</tr>
+</tbody>
+</table>
+<h3 id="前端改造点web">5.9 前端改造点(<code>web/</code>)</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>页面/组件</th>
+<th>改造</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CandidateDetail.jsx</code> JD 匹配卡</td>
+<td>LiquidLoader 保留显示 overall;下方新增:分类 chip(A 绿/B 蓝/C 琥珀/D
+灰)+ 维度条形(recharts,shadcn 风格,与 Reports 一致)+ 硬筛清单(✓/✗/?)+
+逐项表(需求 / 判定 / 置信 / 证据 popover 跳原文)+「重点验证问题」区 +
+「查看历史评估」抽屉 + 「人工调整分类」;C/D 无报告时自动调
+<code>/report</code> 并显示”生成报告中”</td>
+</tr>
+<tr>
+<td><code>ReparseConfirmModal.jsx</code></td>
+<td>增单选:重新评估(默认,秒级)/ 重新抽取 /
+重新识别文档(会重新计费提示)</td>
+</tr>
+<tr>
+<td><code>Candidates.jsx</code> / <code>Upload.jsx</code> /
+<code>Dashboard.jsx</code> 列表</td>
+<td>行内增分类 chip;筛选增「分类」「查看优先级」;批量勾选 → 「批量评估到
+JD」按钮 → <code>/evaluate-batch</code> + 进度</td>
+</tr>
+<tr>
+<td><code>Upload.jsx</code> 解析进度</td>
+<td>由单一「解析中」改为 4 段 stepper(识别 → 抽取 → 评估 → 报告),读
+<code>task.stages</code>;文件类型接受 <code>image/*</code></td>
+</tr>
+<tr>
+<td><code>PublicUpload.jsx</code></td>
+<td>接受 jpg/png(手机拍照),前端压缩到 ≤5MB(TextIn 图片 20-10000px
+限制)</td>
+</tr>
+<tr>
+<td><code>Jobs.jsx</code> + <code>JdDescModal.jsx</code></td>
+<td>新 tab「评估标准」:一键「AI 生成」→ 可编辑表格(tier / 类型 / 权重 /
+措辞 / 等级描述)+ 权重合计校验 + 版本号;年龄/性别项显示合规提示</td>
+</tr>
+<tr>
+<td><code>SharedCandidate.jsx</code></td>
+<td>分类 + 维度 + 逐项(只读),受 <code>showEvaluation</code> toggle</td>
+</tr>
+<tr>
+<td><code>Sidebar.jsx</code> LLM 配置弹窗</td>
+<td>增 TextIn / Jev 两组(key 输入 mask、启用开关、探活按钮、模式
+shadow/primary、报告策略、阈值/默认权重 JSON 编辑)</td>
+</tr>
+<tr>
+<td><code>Primitives.jsx</code> <code>AiBadge</code></td>
+<td>parser 映射:<code>textin+kimi+jev</code> → 「AI
+三层评估」,<code>kimi</code> → 「Kimi」;confidence 改真实值</td>
+</tr>
+<tr>
+<td><code>Reports.jsx</code></td>
+<td>漏斗增按分类分布;JD 维度表增 A/B 数</td>
+</tr>
+<tr>
+<td><code>lib/iconMap.js</code></td>
+<td>新图标后重跑 <code>node scripts/gen-icon-map.mjs</code>(坑 #48)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="新增修改文件清单后端">5.10 新增/修改文件清单(后端)</h3>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>文件</th>
+<th>动作</th>
+<th>要点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>server/src/lib/textin.js</code></td>
+<td>新</td>
+<td><code>textinRequest</code>(退避 + AbortController
+60s)、<code>parseDocument({buffer, filename}) → {markdown, raw, pages, version, durationMs}</code>、<code>isTextinConfigured</code>、<code>ping</code></td>
+</tr>
+<tr>
+<td><code>server/src/lib/jev.js</code></td>
+<td>新</td>
+<td><code>jevRequest</code>(429/529
+退避)、<code>evaluate({state, questions}) → answers</code>、provider
+适配(direct / cloudflare 两种 URL 与 body
+形状)、<code>isJevConfigured</code>、<code>ping</code></td>
+</tr>
+<tr>
+<td><code>server/src/lib/evaluation/hardFilter.js</code></td>
+<td>新</td>
+<td>§5.6,纯函数</td>
+</tr>
+<tr>
+<td><code>server/src/lib/evaluation/questions.js</code></td>
+<td>新</td>
+<td>§5.4,<code>buildQuestions(schema, opts)</code> +
+<code>buildState(...)</code> +
+<code>stripPii(markdown, candidate)</code></td>
+</tr>
+<tr>
+<td><code>server/src/lib/evaluation/composite.js</code></td>
+<td>新</td>
+<td>§5.5,纯函数</td>
+</tr>
+<tr>
+<td><code>server/src/lib/evaluation/report.js</code></td>
+<td>新</td>
+<td>§5.7,Kimi 调用 + 引文校验</td>
+</tr>
+<tr>
+<td><code>server/src/lib/evaluation/legacyAdapter.js</code></td>
+<td>新</td>
+<td>把 <code>matchAgainstJob</code> 输出包成
+<code>CandidateEvaluation</code> 同形(engine=legacy)</td>
+</tr>
+<tr>
+<td><code>server/src/lib/evaluation/pipeline.js</code></td>
+<td>新</td>
+<td>§5.8 <code>runPipeline</code>,从 <code>resumes.js</code> 抽出
+<code>runReparse</code> / <code>runParseAndCreate</code> 共用主体</td>
+</tr>
+<tr>
+<td><code>server/src/lib/kimi.js</code></td>
+<td>改</td>
+<td><code>extractResumeTextForLlm</code> 增
+<code>preExtractedText</code> 短路;export
+<code>degreeRank</code>;<code>parseJobDescription</code> prompt 增
+<code>requirementSchema</code>;新
+<code>structureJobRequirements(text)</code>;新
+<code>DEFAULT_REPORT_PROMPT</code> /
+<code>generateReport</code>;<code>matchAgainstJob</code>
+<strong>保留不动</strong></td>
+</tr>
+<tr>
+<td><code>server/src/lib/settings.js</code></td>
+<td>改</td>
+<td>§5.2 keys / env / 加密集合</td>
+</tr>
+<tr>
+<td><code>server/src/lib/derived.js</code></td>
+<td>改</td>
+<td><code>withDerivedCandidate</code> 透传
+<code>classification/reviewPriority</code>(已是列,无需算)</td>
+</tr>
+<tr>
+<td><code>server/src/routes/resumes.js</code></td>
+<td>改</td>
+<td>瘦身为编排入口 + 新端点(§5.8)</td>
+</tr>
+<tr>
+<td><code>server/src/routes/system.js</code></td>
+<td>改</td>
+<td>允许 key 集合、探活端点、敏感 key 门禁扩展</td>
+</tr>
+<tr>
+<td><code>server/src/routes/jobs.js</code></td>
+<td>改</td>
+<td><code>requirementSchema</code> 校验 schema(Fastify JSON
+schema:tier/type/weight 范围、code 型 field 白名单)+ structure 端点</td>
+</tr>
+<tr>
+<td><code>server/src/routes/candidates.js</code></td>
+<td>改</td>
+<td>list 支持 <code>classification</code> / <code>reviewPriority</code>
+过滤与排序;evaluations 子路由</td>
+</tr>
+<tr>
+<td><code>server/src/routes/share.js</code></td>
+<td>改</td>
+<td>公开 payload 增 evaluation(受 toggle)</td>
+</tr>
+<tr>
+<td><code>server/src/routes/upload-links.js</code></td>
+<td>改</td>
+<td><code>ALLOWED_MIME</code> 增 <code>image/jpeg</code>
+<code>image/png</code>(仅 textin.enabled 时)</td>
+</tr>
+<tr>
+<td><code>server/src/routes/feishu.js</code> /
+<code>lib/feishuNotify.js</code></td>
+<td>改</td>
+<td>卡片字段</td>
+</tr>
+<tr>
+<td><code>tools/lark-ingest</code></td>
+<td>改</td>
+<td>后缀白名单增 jpg/png(受 env 开关)</td>
+</tr>
+<tr>
+<td><code>server/prisma/schema.prisma</code> + 新 migration</td>
+<td>改</td>
+<td>§5.1</td>
+</tr>
+<tr>
+<td><code>server/prisma/backfill-evaluations.js</code></td>
+<td>新</td>
+<td>把存量 <code>Candidate.jdMatch</code> 等包成
+<code>engine=legacy</code> 的
+<code>CandidateEvaluation</code>,保证历史可见</td>
+</tr>
+<tr>
+<td><code>server/src/lib/evaluation/*.test.js</code></td>
+<td>新</td>
+<td>hardFilter / composite / questions / 引文校验
+单测(<code>node --test</code>)</td>
+</tr>
+<tr>
+<td><code>server/Dockerfile</code></td>
+<td>不变</td>
+<td>poppler 留作回退;无新静态目录</td>
+</tr>
+<tr>
+<td><code>docker-compose.yml</code> / <code>.env.example</code></td>
+<td>改</td>
+<td>§5.2</td>
+</tr>
+<tr>
+<td><code>.github/workflows/ci.yml</code></td>
+<td>改</td>
+<td><code>node --test</code> 已含新测试;无新镜像</td>
+</tr>
+<tr>
+<td><code>CLAUDE.md</code> /
+<code>delivery-docs/src/06_ai_evaluation.md</code>(新)/
+<code>02_api.md</code></td>
+<td>改</td>
+<td>架构表、数据模型、API、坑</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="实施路线每阶段独立可上线可回滚">6.
+实施路线(每阶段独立可上线可回滚)</h2>
+<table>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+</colgroup>
+<thead>
+<tr>
+<th>阶段</th>
+<th>内容</th>
+<th>开关 / 回滚</th>
+<th>验收</th>
+<th>工作量</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>P0 校准(先做,决定去留)</strong></td>
+<td>① 申请 TextIn + Jev key(TypeSafe 若 waitlist 则同步试 Cloudflare
+Workers AI)② 从生产 R2 抽 30-50
+份<strong>已脱敏</strong>历史简历(含扫描件 / .doc / 多栏 / 英法文)做
+golden set,HR 对 2-3 个真实 JD 手标 A/B/C/D ③
+离线脚本(<code>scratch/</code>,不入库)对比 pdftotext vs TextIn markdown
+的 Kimi 抽取字段准确率 ④ 用 §5.3-5.5 规则对 golden set 跑
+Jev,迭代判据措辞 2-3 轮</td>
+<td>无生产改动</td>
+<td>TextIn 抽取字段准确率 ≥ pdftotext 且扫描件/.doc 成功率 &gt;95%;Jev
+分类与 HR 标注一致率 ≥80%,硬性 noul 在事实题上 confidence
+≥0.9;<strong>不达标则只做 P1,不做 P3</strong></td>
+<td>3-5 人日</td>
+</tr>
+<tr>
+<td><strong>P1 文档层</strong></td>
+<td><code>textin.js</code> + <code>ResumeParse</code> 表 + 回退链 +
+reparse 复用 markdown + 图片格式放开 + LLM 配置 UI 加 TextIn 组</td>
+<td><code>textin.enabled=false</code> 即回到现状</td>
+<td>生产 10 份混合格式简历 reparse:全部 provider=textin,耗时
+&lt;10s;关开关后行为与现状一致;R2 raw JSON 落地</td>
+<td>3-4 人日</td>
+</tr>
+<tr>
+<td><strong>P2 JD schema + 硬筛</strong></td>
+<td><code>requirementSchema</code> 字段与 UI
+tab、<code>structureJobRequirements</code>、<code>hardFilter.js</code> +
+单测;评估仍走 legacy,但详情页先显示硬筛清单</td>
+<td>无 schema 的 JD 行为不变</td>
+<td>3 个真实 JD 生成 schema HR 认可;硬筛 FAIL 零误杀(golden set)</td>
+<td>4-5 人日</td>
+</tr>
+<tr>
+<td><strong>P3 Jev 评估 + 报告(shadow → primary)</strong></td>
+<td><code>jev.js</code> / <code>questions.js</code> /
+<code>composite.js</code> / <code>report.js</code> /
+<code>pipeline.js</code> / <code>CandidateEvaluation</code> 表 +
+backfill;先 <code>jev.mode=shadow</code>(双写、UI 仍显 legacy)跑 1-2
+周对比,再切 primary</td>
+<td><code>jev.enabled=false</code> 或 <code>mode=shadow</code></td>
+<td>shadow 期 Jev 分类与 legacy jdMatch 的分布对比无系统性偏移;切
+primary 后 HR 抽检 20 份认可;报告引文校验通过率 &gt;90%</td>
+<td>6-8 人日</td>
+</tr>
+<tr>
+<td><strong>P4 UI 升级 + 批量 + 按需报告 + 分享/飞书</strong></td>
+<td>§5.9 全部;<code>/evaluate-batch</code>;三档 reparse 粒度</td>
+<td>前端按 <code>llm-status.providers</code> 降级渲染</td>
+<td>100 份批量评估到一个 JD:Jev 阶段 &lt;3 分钟,A/B 报告自动生成,C/D
+点开 &lt;15s 出报告;Playwright 走通详情 / 列表 / JD 标准 / 公开页</td>
+<td>6-8 人日</td>
+</tr>
+<tr>
+<td><strong>P5 收尾</strong></td>
+<td>移除 Kimi Files 抽取为默认(保留为最后回退)、文档 / 交付 docx
+更新、CLAUDE.md 坑记录、成本看板(costs 字段聚合进 Reports)</td>
+<td>—</td>
+<td>文档与代码一致</td>
+<td>2 人日</td>
+</tr>
+</tbody>
+</table>
+<p><strong>总计 ≈ 25-32 人日</strong>(单人串行;P1 与 P2 可并行
+worktree:<code>.worktrees/feature/textin-doc-layer</code>、<code>.worktrees/feature/jd-requirement-schema</code>,按
+§7.0.1 登记端口)。</p>
+<hr />
+<h2 id="成本与性能对比单份简历2-页">7. 成本与性能对比(单份简历,2
+页)</h2>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr>
+<th>项</th>
+<th>现状</th>
+<th>目标</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>文档抽取</td>
+<td>pdftotext 免费;扫描/.doc 走 Kimi Files(按 token 计费 + 20-90s)</td>
+<td>TextIn 0.05 T币/页 ≈ 0.1 T币/份,1-5s</td>
+<td>与控制台 T币汇率核对;reparse 复用不重复计费</td>
+</tr>
+<tr>
+<td>简历结构化</td>
+<td>Kimi ≈ 6-8K in / 1.5K out,10-20s</td>
+<td>不变</td>
+<td>输入更干净,预计 JSON 抖动下降</td>
+</tr>
+<tr>
+<td>JD 评估</td>
+<td>Kimi ≈ 4K in / 1K out,10-30s</td>
+<td>Jev ≈ 5-8K in,$0.0002-0.0004,&lt;1s</td>
+<td></td>
+</tr>
+<tr>
+<td>报告</td>
+<td>含在上一项</td>
+<td>Kimi ≈ 4-5K in / 1K out,10-20s,<strong>按需</strong></td>
+<td>批量场景只对 A/B 跑</td>
+</tr>
+<tr>
+<td>切 JD 重评</td>
+<td>10-30s + 1 次 Kimi</td>
+<td>~1s Jev(+ 报告按需)</td>
+<td>HR 体感最大改善</td>
+</tr>
+<tr>
+<td>500 份批量到 1 个 JD</td>
+<td>不可行(500 × 20s 串行 ≈ 3h,且无优先级)</td>
+<td>Jev 阶段 ≈ 500 × 1s;Kimi 报告仅 A/B(假设 30% ≈ 150 份 × 15s / 并发 3
+≈ 12 分钟)</td>
+<td></td>
+</tr>
+<tr>
+<td>每份总成本</td>
+<td>≈ 1 次 Kimi 抽取 + 1 次 Kimi 评估(+扫描件 Files 费)</td>
+<td>≈ 0.1 T币 + 1 次 Kimi 抽取 + $0.0003 + (A/B 时)1 次 Kimi 报告</td>
+<td><strong>基本持平,扫描件场景更便宜</strong></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="风险与对策">8. 风险与对策</h2>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr>
+<th>#</th>
+<th>风险</th>
+<th>等级</th>
+<th>对策</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Jev 上线 5 天,API / 定价 / 可用性可能变动;key 需申请</td>
+<td>高</td>
+<td>legacy 回退常驻;<code>jev.provider</code> 可切 Cloudflare;P0
+先验证再投入 P3;定价”补贴”写进交付风险</td>
+</tr>
+<tr>
+<td>2</td>
+<td>简历 PII 流向新增两家第三方(TextIn 国内、TypeSafe 海外)</td>
+<td>高(合规)</td>
+<td>Jev state 默认脱敏(<code>eval.pii_strip</code>);TextIn 无法脱敏 →
+隐私政策/候选人告知与交付文档 04 补「第三方处理者」清单;评估 PIPL
+跨境要求(海外 VPS 本身已是跨境,需确认企业已有合规基础)</td>
+</tr>
+<tr>
+<td>3</td>
+<td>硬筛 / 权重设计不当造成歧视性筛选</td>
+<td>中(合规)</td>
+<td>年龄/性别默认不入 hard;UI 合规提示;AI
+结果定位为「查看优先级」而非淘汰(密歇根大学 HR AI 指南口径);HR 人工覆盖
++ 审计日志(现有 <code>audit.js</code>)</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Jev 判据措辞敏感(nanami 项目 v1→v3 显示同一证据 3.0→2.18 分差)</td>
+<td>中</td>
+<td>golden set + <code>questionTemplateVersion</code>;判据改动需重跑
+golden set 对比;<code>CandidateEvaluation</code> 保历史可解释漂移</td>
+</tr>
+<tr>
+<td>5</td>
+<td>TextIn 额度耗尽 / QPS 限 → 40003 / 4030x</td>
+<td>中</td>
+<td>回退链 + <code>textin.max_pages</code> + 每日用量计数进
+Reports;告警接 Uptime Kuma 探活</td>
+</tr>
+<tr>
+<td>6</td>
+<td>双写 shadow 期数据库膨胀</td>
+<td>低</td>
+<td><code>CandidateEvaluation</code> 每次评估 ~5-20KB JSON;1 万次 ≈
+200MB,可接受;raw TextIn JSON 走 R2</td>
+</tr>
+<tr>
+<td>7</td>
+<td>前端老页面读 <code>Candidate.jdMatch</code> 等快照字段的一致性</td>
+<td>低</td>
+<td>快照在同一事务里写;<code>isCurrent</code> 单一;backfill
+让历史候选人也有 evaluation 行</td>
+</tr>
+<tr>
+<td>8</td>
+<td><code>.doc</code> 老格式 TextIn 解析质量未知</td>
+<td>低</td>
+<td>P0 golden set 必含 .doc;失败走回退链</td>
+</tr>
+<tr>
+<td>9</td>
+<td>海外 VPS → TextIn(国内)延迟/丢包</td>
+<td>低</td>
+<td>异步任务 + 60s AbortController + 退避;P0 实测</td>
+</tr>
+<tr>
+<td>10</td>
+<td>Kimi 报告”偷偷改分”</td>
+<td>低</td>
+<td>分数不由 Kimi 输出;报告 JSON
+中若出现数字分数字段直接忽略;引文校验</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="验收清单全量上线前">9. 验收清单(全量上线前)</h2>
+<ul class="task-list">
+<li><label><input
+type="checkbox" /><code>textin.enabled=false &amp;&amp; jev.enabled=false</code>
+时,全部现有 e2e 行为与 main 一致(回归)</label></li>
+<li><label><input type="checkbox" />golden set:分类一致率
+≥80%、硬筛零误杀、引文校验 &gt;90%、扫描件/.doc/jpg 成功率
+&gt;95%</label></li>
+<li><label><input type="checkbox" />三档 reparse:重评不产生 TextIn
+计费(ResumeParse 复用);文件替换后自动重识别</label></li>
+<li><label><input type="checkbox" />切 JD:<code>status</code> 回待筛选 +
+employee 清理逻辑不变(坑 #40 回归测试)</label></li>
+<li><label><input type="checkbox" />公开分享页 / 飞书卡片 / 面试评价预填
+读取的 <code>Candidate</code> 快照字段正确</label></li>
+<li><label><input type="checkbox" /><code>git diff --cached</code> 无
+<code>x-ti</code> / <code>sk-</code> / <code>Bearer</code>
+真实值;<code>.env.example</code> 全占位</label></li>
+<li><label><input type="checkbox" />Dockerfile 无新静态目录(坑 #38);CI
+<code>node --test</code> 覆盖 4 个纯函数模块</label></li>
+<li><label><input type="checkbox" />文档:CLAUDE.md §1.1 / §4 / §8 /
+§10、delivery-docs 06 新篇、02 API 增补、04
+运维增第三方处理者与额度监控</label></li>
+</ul>
+<hr />
+<h2 id="参考">10. 参考</h2>
+<ul>
+<li>TextIn xParse 快速启动 <a
+href="https://docs.textin.com/xparse/parse-quickstart"
+class="uri">https://docs.textin.com/xparse/parse-quickstart</a> · 计费
+<a href="https://docs.textin.com/xparse/charge"
+class="uri">https://docs.textin.com/xparse/charge</a> · 旧版通用解析 API
+<a href="https://www.textin.com/document/x_to_markdown"
+class="uri">https://www.textin.com/document/x_to_markdown</a> · SDK <a
+href="https://github.com/intsig-textin/xparse-sdk"
+class="uri">https://github.com/intsig-textin/xparse-sdk</a></li>
+<li>TypeSafe Jev API 参考 <a href="https://docs.typesafe.ai/api"
+class="uri">https://docs.typesafe.ai/api</a> · 索引 <a
+href="https://docs.typesafe.ai/llms.txt"
+class="uri">https://docs.typesafe.ai/llms.txt</a> · Cloudflare 模型页 <a
+href="https://developers.cloudflare.com/ai/models/typesafe/jev/"
+class="uri">https://developers.cloudflare.com/ai/models/typesafe/jev/</a>
+· Vercel AI SDK 指南 <a
+href="https://vercel.com/kb/guide/typesafe-jev-and-ai-sdk"
+class="uri">https://vercel.com/kb/guide/typesafe-jev-and-ai-sdk</a></li>
+<li>实践案例:Recruitly 上生产 <a
+href="https://recruitly.io/resources/decision-model-in-production-the-day-it-was-released"
+class="uri">https://recruitly.io/resources/decision-model-in-production-the-day-it-was-released</a>
+· 中英简历-JD 初筛判据迭代 <a
+href="https://github.com/nanami-0713/jev-resume-screening"
+class="uri">https://github.com/nanami-0713/jev-resume-screening</a> ·
+中文分类独立测评 <a
+href="https://github.com/typesafe-ai/skills/issues/3"
+class="uri">https://github.com/typesafe-ai/skills/issues/3</a></li>
+<li>现有代码:<code>server/src/lib/kimi.js</code> ·
+<code>server/src/routes/resumes.js</code> ·
+<code>server/src/lib/parseTaskStore.js</code> ·
+<code>server/src/lib/settings.js</code> ·
+<code>server/src/routes/system.js</code> ·
+<code>server/prisma/schema.prisma</code></li>
+</ul>
+<hr />
+<h2 id="配套详细设计2026-09-20-追加">11. 配套详细设计(2026-09-20
+追加)</h2>
+<ul>
+<li><p>《02_Jev接入详细设计》— api.typesafe.ai 直连:客户端 / state 脱敏
+/ 题目生成 / 加权分类 / 回退 / 灰度 / 校准</p></li>
+<li><p>《03_简历与JD信息抽取详细设计》— 数据协议 V1:简历 Schema / JD
+Schema(jdFacts + evaluationModel,取代本文 §5.3 的 requirementSchema)/
+派生指标 / 词表 / 映射表</p></li>
+<li><p>《04_实施记录与验收》—
+as-built:实际代码结构、与设计差异、本地真实链路验证、上线步骤、成本与限制</p></li>
+</ul>
+<footer class="doc">单文件 HTML · 由 tools/md2html 从 Markdown 生成 · 无外部依赖,可离线打开与打印</footer>
+</main>
+</div>
+</body>
+</html>

@@ -208,6 +208,8 @@ export function UrgencyChip({ urgency }) {
 }
 
 // === AI Badge =======================================================
+// parser 标识 → 展示文案:三层流水线(TextIn 文档层 + Kimi 结构化)显示「AI 三层解析」,旧路径保持「Kimi 已解析」
+const PARSER_LABELS = { "TextIn+Kimi": "AI 三层解析", Kimi: "Kimi 已解析" };
 export function AiBadge({ parser = "Kimi", confidence }) {
   return (
     <span
@@ -215,7 +217,7 @@ export function AiBadge({ parser = "Kimi", confidence }) {
       style={{ background: "linear-gradient(135deg,#868CFF 0%,#432CF3 50%,#422AFB 100%)" }}
     >
       <I name="sparkles" size={11} strokeWidth={2.5} />
-      {parser} 已解析
+      {PARSER_LABELS[parser] || `${parser} 已解析`}
       {confidence != null && <span className="opacity-80 font-medium">· {confidence}%</span>}
     </span>
   );

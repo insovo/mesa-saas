@@ -1,0 +1,1558 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>简历与 JD 信息抽取详细设计 — 数据协议 V1(TextIn → Kimi →
+Jev)</title>
+<meta name="description" content="把《简历+JD信息抽取.md》的想法落成可实现的数据协议:简历
+Schema V1、JD Schema V1(事实层 +
+评价模型层)、代码派生指标、两侧一一映射表、Kimi 抽取 prompt
+与确定性闸门、存储与 API、UI、迁移与验收。本文替代 00 号文档 §5.3 中
+requirementSchema 的简化定义。">
+<style>
+:root{--bg:#ffffff;--fg:#1B254B;--muted:#707EAE;--faint:#A0AEC0;--line:#E2E8F0;--accent:#422AFB;--accent-soft:#EEF0FF;--code-bg:#F4F7FE;--card:#ffffff;--shadow:0 18px 40px rgba(112,144,176,.12);--warn-bg:#FFF7E6;--warn-fg:#B7791F}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0B1437;--fg:#E9EDF7;--muted:#A3AED0;--faint:#707EAE;--line:#1F2A5A;--accent:#7551FF;--accent-soft:#1B2559;--code-bg:#111C44;--card:#111C44;--shadow:0 18px 40px rgba(0,0,0,.35);--warn-bg:#2B2411;--warn-fg:#F6C177}}
+:root[data-theme=dark]{--bg:#0B1437;--fg:#E9EDF7;--muted:#A3AED0;--faint:#707EAE;--line:#1F2A5A;--accent:#7551FF;--accent-soft:#1B2559;--code-bg:#111C44;--card:#111C44;--shadow:0 18px 40px rgba(0,0,0,.35);--warn-bg:#2B2411;--warn-fg:#F6C177}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Segoe UI",Roboto,sans-serif}
+.layout{display:grid;grid-template-columns:280px minmax(0,1fr);gap:0;min-height:100vh}
+nav.toc{position:sticky;top:0;height:100vh;overflow-y:auto;padding:24px 16px 40px 20px;border-right:1px solid var(--line);font-size:13px}
+nav.toc .brand{font-weight:700;color:var(--accent);letter-spacing:.02em;margin-bottom:4px}
+nav.toc .sub{color:var(--muted);font-size:12px;margin-bottom:14px}
+nav.toc ul{list-style:none;margin:0;padding-left:0}
+nav.toc ul ul{padding-left:12px;border-left:1px solid var(--line);margin-left:4px}
+nav.toc li{margin:2px 0}
+nav.toc a{color:var(--muted);text-decoration:none;display:block;padding:3px 6px;border-radius:8px;line-height:1.4}
+nav.toc a:hover{color:var(--accent);background:var(--accent-soft)}
+main{padding:40px 48px 120px;max-width:1080px;width:100%}
+header.doc{margin-bottom:28px;padding-bottom:20px;border-bottom:1px solid var(--line)}
+header.doc h1{font-size:30px;line-height:1.25;margin:0 0 10px}
+header.doc .meta{color:var(--muted);font-size:13px;display:flex;flex-wrap:wrap;gap:14px}
+header.doc .meta span::before{content:"◦ ";color:var(--faint)}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h2{font-size:22px;margin:44px 0 14px;padding-top:14px;border-top:1px solid var(--line)}
+h3{font-size:17px;margin:28px 0 10px}
+h4{font-size:15px;margin:20px 0 8px;color:var(--muted)}
+a{color:var(--accent)}
+p{margin:10px 0}
+blockquote{margin:14px 0;padding:10px 16px;border-left:4px solid var(--accent);background:var(--accent-soft);border-radius:0 12px 12px 0;color:var(--fg)}
+blockquote p{margin:4px 0}
+code{font-family:"JetBrains Mono","SF Mono",Menlo,Consolas,monospace;font-size:12.5px;background:var(--code-bg);padding:2px 6px;border-radius:6px}
+pre{background:var(--code-bg);border:1px solid var(--line);border-radius:14px;padding:14px 16px;overflow-x:auto;line-height:1.55}
+pre code{background:none;padding:0;font-size:12.5px}
+table{border-collapse:separate;border-spacing:0;width:100%;margin:14px 0;font-size:13.5px;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+th,td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}
+th{background:var(--code-bg);font-weight:600;color:var(--fg)}
+tr:last-child td{border-bottom:none}
+td code{white-space:nowrap}
+ul,ol{padding-left:22px}
+li{margin:3px 0}
+hr{border:none;border-top:1px solid var(--line);margin:32px 0}
+.diagram{margin:18px 0;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--card);overflow-x:auto}
+.diagram svg{max-width:100%;height:auto;display:block;margin:0 auto;--bg:transparent;--fg:var(--fg);--line:var(--faint);--accent:var(--accent);--muted:var(--muted);--surface:var(--code-bg);--border:var(--line)}
+.diagram svg text{font-family:inherit}
+.callout{margin:14px 0;padding:12px 16px;border-radius:12px;background:var(--warn-bg);color:var(--warn-fg);border:1px solid rgba(183,121,31,.25)}
+.task-list{list-style:none;padding-left:4px}
+input[type=checkbox]{margin-right:6px}
+kbd{font-family:inherit;font-size:12px;border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;padding:1px 6px;background:var(--code-bg)}
+footer.doc{margin-top:60px;padding-top:16px;border-top:1px solid var(--line);color:var(--faint);font-size:12px}
+@media (max-width:960px){.layout{grid-template-columns:1fr}nav.toc{position:static;height:auto;border-right:none;border-bottom:1px solid var(--line);padding:16px}main{padding:24px 16px 80px}header.doc h1{font-size:24px}}
+@media print{nav.toc{display:none}.layout{display:block}main{padding:0;max-width:none}pre,table,.diagram{break-inside:avoid}}
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="toc">
+<div class="brand">MESA Recruit · 设计文档</div>
+<div class="sub">2026-09-20</div>
+<ul>
+<li><a href="#本文定位与核心原则" id="toc-本文定位与核心原则">0.
+本文定位与核心原则</a></li>
+<li><a href="#现状对照代码实读" id="toc-现状对照代码实读">1.
+现状对照(代码实读)</a></li>
+<li><a href="#简历-schema-v1candidate.profile"
+id="toc-简历-schema-v1candidate.profile">2. 简历 Schema
+V1(<code>Candidate.profile</code>)</a>
+<ul>
+<li><a href="#顶层结构" id="toc-顶层结构">2.1 顶层结构</a></li>
+<li><a href="#identity基础身份" id="toc-identity基础身份">2.2
+identity(基础身份)</a></li>
+<li><a href="#intent求职意向" id="toc-intent求职意向">2.3
+intent(求职意向)</a></li>
+<li><a href="#education" id="toc-education">2.4 education</a></li>
+<li><a href="#experience-internships"
+id="toc-experience-internships">2.5 experience[] / internships</a></li>
+<li><a href="#projects" id="toc-projects">2.6 projects</a></li>
+<li><a href="#skills分层" id="toc-skills分层">2.7 skills(分层)</a></li>
+<li><a href="#languages" id="toc-languages">2.8 languages[]</a></li>
+<li><a href="#certificates" id="toc-certificates">2.9
+certificates[]</a></li>
+<li><a href="#campus校园经历" id="toc-campus校园经历">2.10
+campus(校园经历)</a></li>
+<li><a href="#research科研成果" id="toc-research科研成果">2.11
+research(科研成果)</a></li>
+</ul></li>
+<li><a href="#计算层-代码派生指标candidate.derived"
+id="toc-计算层-代码派生指标candidate.derived">3. 计算层 —
+代码派生指标(<code>Candidate.derived</code>)</a></li>
+<li><a href="#词表taxonomy" id="toc-词表taxonomy">4. 词表(Taxonomy)</a>
+<ul>
+<li><a href="#语言等级阶梯归一规则" id="toc-语言等级阶梯归一规则">4.3
+语言等级阶梯(归一规则)</a></li>
+</ul></li>
+<li><a href="#jd-schema-v1" id="toc-jd-schema-v1">5. JD Schema V1</a>
+<ul>
+<li><a href="#job.jdfacts事实层kimi-抽取忠于原文"
+id="toc-job.jdfacts事实层kimi-抽取忠于原文">5.1
+<code>Job.jdFacts</code>(事实层,Kimi 抽取,忠于原文)</a></li>
+<li><a href="#job.evaluationmodel评价模型层hr-拥有"
+id="toc-job.evaluationmodel评价模型层hr-拥有">5.2
+<code>Job.evaluationModel</code>(评价模型层,HR 拥有)</a></li>
+<li><a href="#岗位评价模板hr-拥有llm-不定权重"
+id="toc-岗位评价模板hr-拥有llm-不定权重">5.3 岗位评价模板(HR 拥有,LLM
+不定权重)</a></li>
+</ul></li>
+<li><a href="#两侧映射表本文的核心" id="toc-两侧映射表本文的核心">6.
+两侧映射表(本文的核心)</a></li>
+<li><a href="#kimi-抽取设计" id="toc-kimi-抽取设计">7. Kimi 抽取设计</a>
+<ul>
+<li><a href="#简历抽取-prompt-v2default_prompt-演进"
+id="toc-简历抽取-prompt-v2default_prompt-演进">7.1 简历抽取 prompt
+v2(<code>DEFAULT_PROMPT</code> 演进)</a></li>
+<li><a href="#jd-事实抽取-promptparsejobdescription-演进-文本入口"
+id="toc-jd-事实抽取-promptparsejobdescription-演进-文本入口">7.2 JD
+事实抽取 prompt(<code>parseJobDescription</code> 演进 +
+文本入口)</a></li>
+<li><a href="#评价模型措辞补全-promptsuggestevaluationwording"
+id="toc-评价模型措辞补全-promptsuggestevaluationwording">7.3
+评价模型措辞补全 prompt(<code>suggestEvaluationWording</code>)</a></li>
+<li><a href="#确定性闸门新增" id="toc-确定性闸门新增">7.4
+确定性闸门(新增)</a></li>
+</ul></li>
+<li><a href="#存储与-api" id="toc-存储与-api">8. 存储与 API</a>
+<ul>
+<li><a href="#prisma-增量" id="toc-prisma-增量">8.1 Prisma 增量</a></li>
+<li><a href="#端点" id="toc-端点">8.2 端点</a></li>
+</ul></li>
+<li><a href="#兼容与迁移" id="toc-兼容与迁移">9. 兼容与迁移</a>
+<ul>
+<li><a href="#兼容视图旧列-profile" id="toc-兼容视图旧列-profile">9.1
+兼容视图(旧列 ← profile)</a></li>
+<li><a href="#存量数据" id="toc-存量数据">9.2 存量数据</a></li>
+<li><a href="#版本" id="toc-版本">9.3 版本</a></li>
+</ul></li>
+<li><a href="#前端" id="toc-前端">10. 前端</a></li>
+<li><a href="#测试与验收" id="toc-测试与验收">11. 测试与验收</a></li>
+<li><a href="#与-00-02-号文档的关系" id="toc-与-00-02-号文档的关系">12.
+与 00 / 02 号文档的关系</a></li>
+</ul>
+</nav>
+<main>
+<header class="doc">
+<h1>简历与 JD 信息抽取详细设计 — 数据协议 V1(TextIn → Kimi → Jev)</h1>
+<div class="meta"><span>详细设计稿(未实施)</span><span>2026-09-20</span><span>基于 main
+0c1df05</span></div>
+<p>把《简历+JD信息抽取.md》的想法落成可实现的数据协议:简历 Schema V1、JD
+Schema V1(事实层 + 评价模型层)、代码派生指标、两侧一一映射表、Kimi 抽取
+prompt 与确定性闸门、存储与 API、UI、迁移与验收。本文替代 00 号文档 §5.3
+中 requirementSchema 的简化定义。</p>
+</header>
+<h2 id="本文定位与核心原则">0. 本文定位与核心原则</h2>
+<p>《00
+方案设计与评估》回答”要不要做、怎么分阶段”;本文回答”三个环节之间<strong>传什么数据</strong>”。三条不可妥协的原则:</p>
+<ol type="1">
+<li><strong>抽取与评分分离</strong>:Kimi
+只产”忠于原文的事实”,不出分、不判断;评分规则改动、换模型、合规审计互不牵连。</li>
+<li><strong>事实 / 计算 / 判断 三层</strong>:
+<ul>
+<li>事实层(Facts)— Kimi 抽取,字段值必须能在原文找到;</li>
+<li>计算层(Derived)—
+代码确定性派生(年限、行业年限、跳槽率、时间线冲突、最高学历、应届判定),可复现、可单测;</li>
+<li>判断层(Judgement)— Jev 只做语义判定,输入是上两层 + JD
+评价模型。</li>
+</ul></li>
+<li><strong>两侧 Schema 一一对应</strong>:JD 的每一类要求都能指到简历
+Schema 的某个字段或派生指标,否则这条要求就没法机器评估,只能交给 Jev
+或人工。</li>
+</ol>
+<div class="diagram"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1337.1499999999999 236">
+<style>
+  
+  text { font-family: 'Inter', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 30%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="arrowhead" markerWidth="8" markerHeight="4.8" refX="8" refY="2.4" orient="auto">
+    <polygon points="0 0, 8 2.4, 0 4.8" fill="var(--_arrow)" />
+  </marker>
+  <marker id="arrowhead-start" markerWidth="8" markerHeight="4.8" refX="0" refY="2.4" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.4, 8 4.8" fill="var(--_arrow)" />
+  </marker>
+</defs>
+<polyline points="179.25,78 219.25,78" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="401.4,78 421.4,78 421.4,58 541.5,58" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="161.375,178 233.54999999999998,178" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="387.1,178 441.4,178" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="702.2,58 842.3,58" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="802.3000000000001,178 822.3,178 822.3,148 922.65,148 922.65,76" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="702.2,58 822.3,58 822.3,88 922.65,88 922.65,100" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="802.3000000000001,178 922.65,178 922.65,136" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="401.4,78 421.4,78 421.4,118 878.05,118" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="967.25,118 1043,118" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1003,58 1248.975,58 1248.975,70" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1160.8000000000002,118 1248.975,118 1248.975,106" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<rect x="40" y="60" width="139.25" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="219.25" y="60" width="182.15" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="541.5" y="40" width="160.70000000000002" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="57.875" y="160" width="103.5" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="233.54999999999998" y="160" width="153.55" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="441.4" y="160" width="360.90000000000003" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="842.3" y="40" width="160.70000000000002" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="878.05" y="100" width="89.2" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1043" y="100" width="117.80000000000001" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1200.8" y="70" width="96.35000000000001" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<text x="109.625" y="78" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">TextIn markdown</text>
+<text x="310.325" y="78" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Kimi 抽取 · 事实层 profile</text>
+<text x="621.85" y="58" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">代码派生 · 计算层 derived</text>
+<text x="109.625" y="178" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">JD 文本 / 文件</text>
+<text x="310.325" y="178" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Kimi 抽取 · jdFacts</text>
+<text x="621.85" y="178" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">评价模型 evaluationModel · HR 模板 + Kimi 建议 + HR 确认</text>
+<text x="922.65" y="58" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">代码硬筛 · MUST code 项</text>
+<text x="922.65" y="118" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Jev 题目生成</text>
+<text x="1101.9" y="118" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Jev 判定 · 判断层</text>
+<text x="1248.975" y="88" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">代码加权 · 分类</text>
+</svg></div>
+<p>与 00 号文档的名称对齐:00 号 §5.3 的
+<code>Job.requirementSchema</code> 在本文拆成
+<strong><code>Job.jdFacts</code>(事实层)+
+<code>Job.evaluationModel</code>(评价模型层)</strong>,后者即 00
+号里的需求 schema,字段更细。</p>
+<hr />
+<h2 id="现状对照代码实读">1. 现状对照(代码实读)</h2>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>现状</th>
+<th>位置</th>
+<th>差距</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>简历抽取输出 16
+个顶层键:<code>name / currentTitle / location / gender / age / phones / emails / languages / skills / awards / appliedFor / tags / yearsExp / educationHistory[] / experience[] / projects[]</code></td>
+<td><code>kimi.js</code> <code>DEFAULT_PROMPT</code></td>
+<td>无实习/校园/科研/证书/求职意向;工作经历没有行业/职能/地区标签,派生”汽车行业
+5 年”不可能;<code>projects</code> 只有
+<code>responsibility/output</code> 两字段</td>
+</tr>
+<tr>
+<td>顶层扁平列:<code>education / school / major / yearsExp / phone / email / languages / skills(md) / experience(md) / educationHistory(md)</code></td>
+<td><code>schema.prisma</code> Candidate</td>
+<td>结构化数组<strong>不落库</strong>,只留 markdown
+字符串展示;二次计算必须重新调 Kimi</td>
+</tr>
+<tr>
+<td>JD
+抽取:<code>title / description / responsibilities[] / requirements[] / nice[] / benefits[] / employment / salary / levelRange / yearsExpRange / educationRequirement / languageRequirement</code></td>
+<td><code>kimi.js</code> <code>parseJobDescription</code>,仅”上传 JD
+文件”入口触发</td>
+<td>要求是字符串数组,无类型/条件/权重;年限、语言、学历是自由文本(“5-7
+年”),不可机器比较;手填 JD 从不结构化</td>
+</tr>
+<tr>
+<td>确定性闸门</td>
+<td><code>scrubHallucinatedDates / normalizeDegree / computeYearsExp / deriveLanguages / stripResumeNoise</code></td>
+<td>保留,并扩展到新字段</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="简历-schema-v1candidate.profile">2. 简历 Schema
+V1(<code>Candidate.profile</code>)</h2>
+<h3 id="顶层结构">2.1 顶层结构</h3>
+<pre class="jsonc"><code>{
+  &quot;schemaVersion&quot;: &quot;resume.v1&quot;,
+  &quot;identity&quot;:     { /* 2.2 */ },
+  &quot;intent&quot;:       { /* 2.3 */ },
+  &quot;education&quot;:    [ /* 2.4 */ ],
+  &quot;experience&quot;:   [ /* 2.5 正式工作 */ ],
+  &quot;internships&quot;:  [ /* 2.5 同结构,实习单列 */ ],
+  &quot;projects&quot;:     [ /* 2.6 */ ],
+  &quot;skills&quot;:       { /* 2.7 */ },
+  &quot;languages&quot;:    [ /* 2.8 */ ],
+  &quot;certificates&quot;: [ /* 2.9 */ ],
+  &quot;campus&quot;:       { /* 2.10 */ },
+  &quot;research&quot;:     { /* 2.11 */ },
+  &quot;awards&quot;:       [ &quot;照抄原文&quot; ],
+  &quot;meta&quot;:         { &quot;resumeParseId&quot;: &quot;uuid&quot;, &quot;extractedAt&quot;: &quot;ISO&quot;, &quot;model&quot;: &quot;moonshot-v1-32k&quot;, &quot;promptHash&quot;: &quot;sha256:…&quot; }
+}</code></pre>
+<p>约定: - 读不到 → <code>null</code> / <code>[]</code>,<strong>不省略
+key</strong>(现有 prompt 规则沿用); - 时间统一
+<code>YYYY-MM</code>,只写原文有的一端,“至今” → <code>current:true</code>
++ <code>endDate:null</code>; - 所有 <code>*Tags</code> 字段只能取
+<strong>词表 id</strong>(§4),映射不上的写
+<code>"other:&lt;原文&gt;"</code>; - <code>evidenceRefs</code>
+是<strong>指针</strong>不是引文:<code>{ "section": "experience", "index": 1 }</code>,零幻觉、零
+token 膨胀;引文留给报告阶段。 -
+<strong>不抽取</strong>:身份证号、家庭住址、婚育、照片内容、民族、政治面貌(prompt
+明令忽略;合规)。<code>gender / age</code> 保留在 <code>identity</code>
+仅供展示与 INFO 记录,<strong>不进任何评估</strong>。</p>
+<h3 id="identity基础身份">2.2 identity(基础身份)</h3>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>类型</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td>string|null</td>
+<td>读不到 null,严禁占位名(坑 #45)</td>
+</tr>
+<tr>
+<td><code>gender</code></td>
+<td><code>male\|female\|unknown</code></td>
+<td>仅展示</td>
+</tr>
+<tr>
+<td><code>age</code></td>
+<td>int|null</td>
+<td>仅展示</td>
+</tr>
+<tr>
+<td><code>phones[]</code> / <code>emails[]</code></td>
+<td>string[]</td>
+<td>保留打码格式</td>
+</tr>
+<tr>
+<td><code>currentCity</code> / <code>currentCountry</code></td>
+<td>string|null</td>
+<td>现居地,原文写法</td>
+</tr>
+<tr>
+<td><code>currentTitle</code> / <code>currentCompany</code></td>
+<td>string|null</td>
+<td></td>
+</tr>
+<tr>
+<td><code>jobStatus</code></td>
+<td><code>employed\|unemployed\|fresh\|null</code></td>
+<td>在职/离职/应届</td>
+</tr>
+<tr>
+<td><code>links[]</code></td>
+<td><code>[{type:"github\|linkedin\|portfolio\|other", url}]</code></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="intent求职意向">2.3 intent(求职意向)</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>字段</th>
+<th>类型</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>targetTitles[]</code> / <code>targetFunctions[]</code>(词表)/
+<code>targetIndustries[]</code>(词表)</td>
+<td>string[]</td>
+</tr>
+<tr>
+<td><code>targetCities[]</code> / <code>targetRegions[]</code></td>
+<td>string[]</td>
+</tr>
+<tr>
+<td><code>expectedSalary</code></td>
+<td><code>{ min, max, unit:"k/month\|k/year", raw }</code>|null(只在原文有数字时填)</td>
+</tr>
+<tr>
+<td><code>availability</code></td>
+<td><code>{ raw, withinDays }</code>|null</td>
+</tr>
+<tr>
+<td><code>employmentType</code></td>
+<td><code>fulltime\|parttime\|intern\|contract\|null</code></td>
+</tr>
+<tr>
+<td><code>acceptTravel</code> / <code>acceptOverseas</code> /
+<code>acceptRelocation</code> / <code>acceptOvertime</code></td>
+<td><code>true\|false\|null</code>(只在原文明确写时非 null)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="education">2.4 education<a href="每段"></a></h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>字段</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>school</code> / <code>college</code> / <code>major</code></td>
+<td>照抄原文</td>
+</tr>
+<tr>
+<td><code>degree</code></td>
+<td>枚举
+<code>函授/专科/大专/本科/硕士/博士/博士后/教授/Other</code>(沿用
+<code>normalizeDegree</code>)</td>
+</tr>
+<tr>
+<td><code>degreeTitle</code></td>
+<td>原文学位名(如 “Master of Science”)</td>
+</tr>
+<tr>
+<td><code>startDate</code> / <code>endDate</code> /
+<code>current</code></td>
+<td>见约定</td>
+</tr>
+<tr>
+<td><code>fullTime</code></td>
+<td>bool|null</td>
+</tr>
+<tr>
+<td><code>overseas</code></td>
+<td>bool(学校所在国非中国;由代码按学校国家词表补,LLM 可先填)</td>
+</tr>
+<tr>
+<td><code>gpa</code> / <code>ranking</code></td>
+<td><code>{ value, scale }</code> / string</td>
+</tr>
+<tr>
+<td><code>courses[]</code> / <code>researchDirection</code> /
+<code>thesis</code> / <code>scholarships[]</code> /
+<code>honors[]</code></td>
+<td>照抄</td>
+</tr>
+</tbody>
+</table>
+<h3 id="experience-internships">2.5 experience[] / internships<a
+href="每段"></a></h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>字段</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>company</code> / <code>department</code> / <code>title</code>
+/ <code>level</code></td>
+<td>照抄</td>
+</tr>
+<tr>
+<td><code>companyIndustryTags[]</code></td>
+<td>词表 id(如 <code>auto.oem</code> / <code>auto.parts</code> /
+<code>semi</code>)</td>
+</tr>
+<tr>
+<td><code>companyType</code></td>
+<td><code>oem\|tier1\|tier2\|internet\|consulting\|public\|startup\|other\|null</code></td>
+</tr>
+<tr>
+<td><code>companySize</code></td>
+<td><code>{ raw, bucket:"&lt;50\|50-500\|500-5000\|&gt;5000" }</code>|null</td>
+</tr>
+<tr>
+<td><code>location</code> / <code>country</code> /
+<code>isOverseas</code></td>
+<td>原文 + 代码按国家词表补 <code>isOverseas</code></td>
+</tr>
+<tr>
+<td><code>startDate</code> / <code>endDate</code> /
+<code>current</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>employmentType</code></td>
+<td><code>fulltime\|parttime\|intern\|contract\|null</code></td>
+</tr>
+<tr>
+<td><code>reportsTo</code> / <code>teamSize</code>(下属人数 int)/
+<code>isManagement</code>(bool)</td>
+<td><code>teamSize&gt;0</code> ⇒
+<code>isManagement=true</code>,否则按原文”负责团队/带领”</td>
+</tr>
+<tr>
+<td><code>duties[]</code></td>
+<td>核心职责(现有)</td>
+</tr>
+<tr>
+<td><code>achievements[]</code></td>
+<td>关键成果(现有)</td>
+</tr>
+<tr>
+<td><code>quantified[]</code></td>
+<td><code>[{ metric, value, unit, context }]</code>
+量化成果,原文有数字才填</td>
+</tr>
+<tr>
+<td><code>tools[]</code> / <code>technologies[]</code></td>
+<td>词表 id 或 <code>other:</code></td>
+</tr>
+<tr>
+<td><code>domainTags[]</code> / <code>functionTags[]</code></td>
+<td>业务领域(如 <code>quality.product</code> /
+<code>cert.overseas</code>)、职能(如 <code>hr.bp</code>)词表 id</td>
+</tr>
+<tr>
+<td><code>regionTags[]</code></td>
+<td><code>europe / north_america / sea / …</code></td>
+</tr>
+<tr>
+<td><code>projectRefs[]</code></td>
+<td>指向 <code>projects[]</code> 下标</td>
+</tr>
+</tbody>
+</table>
+<h3 id="projects">2.6 projects<a href="每个"></a></h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>字段</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code> /
+<code>type</code>(<code>mass_production\|rnd\|certification\|launch\|it\|research\|other</code>)/
+<code>background</code> / <code>goal</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>startDate</code> / <code>endDate</code> /
+<code>stage</code>(<code>concept\|development\|validation\|mass_production\|after_sales\|null</code>)</td>
+<td></td>
+</tr>
+<tr>
+<td><code>role</code> / <code>teamSize</code> /
+<code>collaborators[]</code>(部门/供应商)/ <code>client</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>duties[]</code> / <code>contributions[]</code> /
+<code>outcomes[]</code> / <code>metrics[]</code>(同 quantified
+结构)</td>
+<td></td>
+</tr>
+<tr>
+<td><code>technologies[]</code> / <code>tools[]</code> /
+<code>domainTags[]</code> / <code>regionTags[]</code></td>
+<td>词表</td>
+</tr>
+<tr>
+<td><code>experienceRef</code></td>
+<td>所属工作经历下标 | null</td>
+</tr>
+</tbody>
+</table>
+<h3 id="skills分层">2.7 skills(分层)</h3>
+<pre class="jsonc"><code>{
+  &quot;professional&quot;: [ { &quot;name&quot;: &quot;海外质量问题分析&quot;, &quot;tag&quot;: &quot;quality.analysis&quot;, &quot;level&quot;: &quot;proficient|familiar|expert|null&quot;, &quot;evidenceRefs&quot;: [{&quot;section&quot;:&quot;experience&quot;,&quot;index&quot;:0}] } ],
+  &quot;tools&quot;:        [ { &quot;name&quot;: &quot;8D&quot;, &quot;tag&quot;: &quot;tool.8d&quot;, &quot;level&quot;: null, &quot;evidenceRefs&quot;: [] } ],
+  &quot;industry&quot;:     [ { &quot;name&quot;: &quot;新能源汽车&quot;, &quot;tag&quot;: &quot;auto.nev&quot;, &quot;evidenceRefs&quot;: [] } ],
+  &quot;soft&quot;:         [ { &quot;name&quot;: &quot;跨部门协作&quot;, &quot;tag&quot;: &quot;soft.cross_team&quot;, &quot;behaviors&quot;: [&quot;协调研发/质量/供应商解决 X 问题&quot;], &quot;evidenceRefs&quot;: [] } ]
+}</code></pre>
+<p><code>level</code>
+只在原文写了”熟练/精通/了解”时填;<code>soft[].behaviors</code>
+必须是原文里的<strong>可验证行为</strong>,不是形容词。</p>
+<h3 id="languages">2.8 languages[]</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>字段</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td>词表(<code>zh / en / ja / de / fr …</code>)+ <code>raw</code></td>
+</tr>
+<tr>
+<td><code>level</code></td>
+<td>归一枚举:<code>native / working(工作语言) / fluent / intermediate / basic / null</code>(代码由
+<code>exams</code> 与原文词归一,阶梯见 §4.3)</td>
+</tr>
+<tr>
+<td><code>exams[]</code></td>
+<td><code>[{ name:"IELTS", score:"7.0" }]</code> 照抄</td>
+</tr>
+<tr>
+<td><code>businessCapable</code></td>
+<td>bool|null(原文明确写”可作为工作语言/商务沟通”)</td>
+</tr>
+<tr>
+<td><code>evidenceRefs[]</code></td>
+<td>海外经历/英文授课学历等指针(代码补)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="certificates">2.9 certificates[]</h3>
+<p><code>{ name, tag(词表</code>cert.pmp<code>等), type:"professional|language|industry|software|license|other", issuer, obtainedAt, validUntil, number:null }</code>。证书编号默认不抽。</p>
+<h3 id="campus校园经历">2.10 campus(校园经历)</h3>
+<p><code>{ roles[], clubs[], competitions:[{ name, level:"school|city|province|national|international", rank, award, role, contribution }], research[], volunteer[], scholarships[], honors[] }</code></p>
+<h3 id="research科研成果">2.11 research(科研成果)</h3>
+<p><code>{ papers:[{ title, venue, tier:"sci|ei|core|other|null", authorRole:"first|co-first|corresponding|co-author", year }], patents:[{ title, type:"invention|utility|design", status:"granted|pending" }], projects:[{ name, funder, role }], labs[] }</code></p>
+<hr />
+<h2 id="计算层-代码派生指标candidate.derived">3. 计算层 —
+代码派生指标(<code>Candidate.derived</code>)</h2>
+<p>全部纯函数(<code>server/src/lib/profile/derive.js</code>),输入
+<code>profile</code> + 词表,输出如下,<strong>单测覆盖</strong>:</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>指标</th>
+<th>算法</th>
+<th>复用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>totalYears</code></td>
+<td>所有 <code>experience[]</code> 区间合并去重 /
+12(<strong>不含实习</strong>)</td>
+<td><code>yearsFromPeriods</code></td>
+</tr>
+<tr>
+<td><code>industryYears{ [tag]: years }</code></td>
+<td>对每个行业 tag,取 <code>companyIndustryTags</code> 含该
+tag(含词表祖先,如 <code>auto.nev ⊂ auto</code>)的经历区间合并</td>
+<td>同上</td>
+</tr>
+<tr>
+<td><code>domainYears{ [tag] }</code> /
+<code>functionYears{ [tag] }</code></td>
+<td>同上,按 <code>domainTags / functionTags</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>overseasYears</code></td>
+<td><code>isOverseas=true</code> 的经历区间合并</td>
+<td></td>
+</tr>
+<tr>
+<td><code>managementYears</code> / <code>maxTeamSize</code></td>
+<td><code>isManagement=true</code> 区间;<code>max(teamSize)</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>highestDegree / highestSchool / highestMajor</code></td>
+<td><code>degreeRank</code> 最大者</td>
+<td><code>deriveEducationFromArray</code></td>
+</tr>
+<tr>
+<td><code>latestGraduation</code> / <code>isFreshGraduate</code></td>
+<td>最近 <code>education.endDate</code>;<code>jobStatus=fresh</code> 或
+<code>endDate</code> 在 [今-6 月, 今+18 月] 且无全职经历</td>
+<td></td>
+</tr>
+<tr>
+<td><code>graduationYear</code></td>
+<td><code>latestGraduation.year</code>(校招批次匹配用)</td>
+<td></td>
+</tr>
+<tr>
+<td><code>jobHopping</code></td>
+<td><code>{ segmentsLast5y, shortSegmentsLast5y(&lt;12 月), avgTenureMonths }</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>timelineIssues[]</code></td>
+<td>经历重叠 &gt;3 月、空档 &gt;12
+月、教育与工作重叠(全日制)、未来日期</td>
+<td></td>
+</tr>
+<tr>
+<td><code>currentCityNorm</code></td>
+<td>城市别名归一</td>
+<td>词表</td>
+</tr>
+<tr>
+<td><code>capabilityTags[]</code></td>
+<td><code>skills.*[].tag ∪ experience[].domainTags ∪ projects[].domainTags</code>,按出现次数与经历时长加权排序,取前
+20</td>
+<td></td>
+</tr>
+<tr>
+<td><code>languageLevels{ en:"working", … }</code></td>
+<td>§4.3 阶梯归一</td>
+<td></td>
+</tr>
+<tr>
+<td><code>certificateTags[]</code></td>
+<td>证书词表 id 集合</td>
+<td></td>
+</tr>
+<tr>
+<td><code>profileQuality</code></td>
+<td>字段填充率 + 每段经历是否有 duties/achievements + 时间完整度 →
+0-100;替代硬编码 <code>parserConfidence=92</code></td>
+<td><code>computeProfileCompletion</code> 扩展</td>
+</tr>
+</tbody>
+</table>
+<p><strong>为什么不让 Jev 或 Kimi 算</strong>:官方明确 Jev
+不做算数/日期;Kimi 心算年限已被坑 #（<code>computeYearsExp</code>
+注释)证明不可靠。</p>
+<hr />
+<h2 id="词表taxonomy">4. 词表(Taxonomy)</h2>
+<p>位置 <code>server/src/lib/taxonomy/*.json</code>,启动时加载,后续可迁
+DB 由 admin 维护。LLM prompt 里<strong>只给 id
+与中文名</strong>,不给同义词(同义词由代码归一)。</p>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr>
+<th>词表</th>
+<th>结构</th>
+<th>初始规模</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>industries.json</code></td>
+<td>两级树 <code>{ id, name, aliases[], parent }</code>,如
+<code>auto</code> →
+<code>auto.oem / auto.parts / auto.nev / auto.smart_cabin / auto.adas</code>;<code>semi</code>;<code>internet</code>;<code>finance</code>;<code>manufacturing</code>;<code>consumer_elec</code>;<code>ai</code></td>
+<td>60-80</td>
+<td>行业年限、行业匹配</td>
+</tr>
+<tr>
+<td><code>functions.json</code></td>
+<td>职能
+<code>quality / rnd / pm / hr / hr.bp / sales / supply_chain / …</code></td>
+<td>40-60</td>
+<td>职能年限、岗位方向</td>
+</tr>
+<tr>
+<td><code>domains.json</code></td>
+<td>业务领域
+<code>quality.product / quality.system / quality.analysis / cert.overseas / project.mass_production / supplier.mgmt / …</code></td>
+<td>80-120</td>
+<td>核心能力匹配</td>
+</tr>
+<tr>
+<td><code>tools.json</code></td>
+<td><code>tool.8d / tool.spc / tool.excel / tool.catia / lang.python …</code></td>
+<td>150+</td>
+<td>工具技能</td>
+</tr>
+<tr>
+<td><code>soft.json</code></td>
+<td><code>soft.cross_team / soft.problem_solving / soft.leadership …</code></td>
+<td>20</td>
+<td>通用能力</td>
+</tr>
+<tr>
+<td><code>languages.json</code> + <code>language_levels.json</code></td>
+<td>语言 id;等级阶梯(§4.3)</td>
+<td>15 / 5 级</td>
+<td>语言硬筛</td>
+</tr>
+<tr>
+<td><code>certificates.json</code></td>
+<td><code>cert.pmp / cert.six_sigma_bb / cert.iso9001_auditor / cert.cpa …</code>
++ aliases</td>
+<td>60</td>
+<td>证书匹配</td>
+</tr>
+<tr>
+<td><code>majors.json</code></td>
+<td>专业族
+<code>major.vehicle / major.mech / major.ee / major.cs …</code> +
+aliases(含英文)</td>
+<td>80</td>
+<td>专业匹配</td>
+</tr>
+<tr>
+<td><code>cities.json</code></td>
+<td>城市 + 别名 + 国家;国家 → 海外标记</td>
+<td>300</td>
+<td>地点匹配</td>
+</tr>
+<tr>
+<td><code>degree_ladder</code>(代码内)</td>
+<td>现有 <code>DEGREE_RANK</code></td>
+<td>—</td>
+<td>学历比较</td>
+</tr>
+</tbody>
+</table>
+<h3 id="语言等级阶梯归一规则">4.3 语言等级阶梯(归一规则)</h3>
+<p><code>native(母语) &gt; working(工作语言/商务流利) &gt; fluent(流利) &gt; intermediate(良好/一般) &gt; basic(基础)</code>
+考试映射:IELTS ≥7 → working;6.5 → fluent;6 → intermediate;TOEFL ≥100 →
+working;90-99 → fluent;CET-6 → intermediate;CET-4 → basic;CEFR C1+ →
+working;B2 → fluent;B1 → intermediate;JLPT N1 → working;N2 →
+fluent。原文”可作为工作语言”直接 working。<strong>证据加成</strong>由
+Jev 判(海外常驻、英文授课),不在此阶梯里。</p>
+<hr />
+<h2 id="jd-schema-v1">5. JD Schema V1</h2>
+<h3 id="job.jdfacts事实层kimi-抽取忠于原文">5.1
+<code>Job.jdFacts</code>(事实层,Kimi 抽取,忠于原文)</h3>
+<pre class="jsonc"><code>{
+  &quot;schemaVersion&quot;: &quot;jd.v1&quot;,
+  &quot;basics&quot;: { &quot;title&quot;: &quot;海外产品质量工程师&quot;, &quot;direction&quot;: &quot;产品质量&quot;, &quot;functionTag&quot;: &quot;quality&quot;, &quot;department&quot;: &quot;海外事业部&quot;, &quot;level&quot;: &quot;专员/主管&quot;, &quot;openings&quot;: 3,
+              &quot;locations&quot;: [{ &quot;city&quot;: &quot;上海&quot;, &quot;country&quot;: &quot;CN&quot; }, { &quot;city&quot;: &quot;斯图加特&quot;, &quot;country&quot;: &quot;DE&quot; }], &quot;reportsTo&quot;: &quot;海外质量总监&quot;, &quot;teamSize&quot;: { &quot;min&quot;: 0, &quot;max&quot;: 5 },
+              &quot;employmentType&quot;: &quot;fulltime&quot;, &quot;recruitType&quot;: &quot;social|campus|both&quot;, &quot;salary&quot;: { &quot;min&quot;: 20, &quot;max&quot;: 30, &quot;unit&quot;: &quot;k/month&quot;, &quot;raw&quot;: &quot;20–30K&quot; }, &quot;startBy&quot;: { &quot;raw&quot;: &quot;1 个月内&quot;, &quot;withinDays&quot;: 30 } },
+  &quot;responsibilities&quot;: [ { &quot;name&quot;: &quot;海外产品质量管理&quot;, &quot;description&quot;: &quot;原文&quot;, &quot;actions&quot;: [&quot;质量问题分析&quot;, &quot;客户反馈处理&quot;, &quot;跨部门协调&quot;, &quot;问题闭环&quot;], &quot;businessArea&quot;: &quot;欧洲市场&quot;, &quot;objects&quot;: [&quot;客户反馈&quot;, &quot;供应商&quot;], &quot;outcomes&quot;: [&quot;问题闭环&quot;], &quot;importance&quot;: &quot;core|normal&quot;, &quot;domainTags&quot;: [&quot;quality.product&quot;, &quot;quality.analysis&quot;], &quot;regionTags&quot;: [&quot;europe&quot;] } ],
+  &quot;education&quot;: { &quot;minDegree&quot;: &quot;本科&quot;, &quot;degreeTypes&quot;: [], &quot;majors&quot;: [{ &quot;raw&quot;: &quot;车辆工程&quot;, &quot;tag&quot;: &quot;major.vehicle&quot; }, { &quot;raw&quot;: &quot;机械工程&quot;, &quot;tag&quot;: &quot;major.mech&quot; }], &quot;majorType&quot;: &quot;related|strict|any&quot;, &quot;schoolRequirement&quot;: null, &quot;acceptOverseasDegree&quot;: null, &quot;acceptFresh&quot;: null },
+  &quot;experienceYears&quot;: { &quot;total&quot;: { &quot;min&quot;: 5, &quot;max&quot;: null }, &quot;industry&quot;: [{ &quot;industryTag&quot;: &quot;auto&quot;, &quot;min&quot;: 5 }], &quot;relevant&quot;: [{ &quot;domainTag&quot;: &quot;quality.overseas&quot;, &quot;raw&quot;: &quot;海外质量&quot;, &quot;min&quot;: 3 }], &quot;management&quot;: null, &quot;overseas&quot;: null },
+  &quot;professionalSkills&quot;: [ { &quot;name&quot;: &quot;海外质量问题分析&quot;, &quot;tag&quot;: &quot;quality.analysis&quot;, &quot;level&quot;: &quot;proficient&quot;, &quot;required&quot;: true, &quot;evidenceHint&quot;: &quot;有海外客户质量问题处理经历&quot; } ],
+  &quot;tools&quot;:       [ { &quot;name&quot;: &quot;8D&quot;, &quot;tag&quot;: &quot;tool.8d&quot;, &quot;level&quot;: &quot;proficient&quot;, &quot;required&quot;: true }, { &quot;name&quot;: &quot;SPC&quot;, &quot;tag&quot;: &quot;tool.spc&quot;, &quot;required&quot;: true } ],
+  &quot;languages&quot;:   [ { &quot;language&quot;: &quot;en&quot;, &quot;level&quot;: &quot;working&quot;, &quot;exams&quot;: [], &quot;scenarios&quot;: [&quot;speaking&quot;, &quot;writing&quot;], &quot;required&quot;: true } ],
+  &quot;industries&quot;:  [ { &quot;industryTag&quot;: &quot;auto&quot;, &quot;subIndustryTag&quot;: &quot;auto.nev&quot;, &quot;productType&quot;: null, &quot;regionTags&quot;: [&quot;overseas&quot;], &quot;experienceType&quot;: &quot;project|work|any&quot;, &quot;required&quot;: false } ],
+  &quot;projectRequirements&quot;: [ { &quot;type&quot;: &quot;mass_production&quot;, &quot;domain&quot;: &quot;vehicle&quot;, &quot;regionTags&quot;: [&quot;overseas&quot;], &quot;stage&quot;: null, &quot;role&quot;: null, &quot;required&quot;: false } ],
+  &quot;certificates&quot;: [ { &quot;name&quot;: &quot;PMP&quot;, &quot;tag&quot;: &quot;cert.pmp&quot;, &quot;required&quot;: false } ],
+  &quot;softSkills&quot;:   [ { &quot;name&quot;: &quot;跨部门协作&quot;, &quot;tag&quot;: &quot;soft.cross_team&quot;, &quot;behaviors&quot;: [&quot;协调研发、质量、供应商共同解决复杂问题&quot;] } ],
+  &quot;workConditions&quot;: { &quot;locations&quot;: [&quot;上海&quot;], &quot;relocation&quot;: null, &quot;overseasPosting&quot;: { &quot;required&quot;: true, &quot;raw&quot;: &quot;长期海外派驻&quot; }, &quot;travel&quot;: { &quot;required&quot;: true, &quot;frequency&quot;: &quot;high&quot;, &quot;daysPerYear&quot;: 150, &quot;regions&quot;: [&quot;europe&quot;] }, &quot;overtime&quot;: null, &quot;shifts&quot;: null, &quot;remote&quot;: null },
+  &quot;restrictions&quot;: { &quot;age&quot;: { &quot;min&quot;: null, &quot;max&quot;: 35, &quot;raw&quot;: &quot;35 岁以下&quot; }, &quot;gender&quot;: null, &quot;other&quot;: [] },
+  &quot;campus&quot;: { &quot;candidateType&quot;: &quot;fresh|experienced|any&quot;, &quot;graduationYears&quot;: [2027], &quot;degrees&quot;: [&quot;本科&quot;, &quot;硕士&quot;], &quot;internshipRequired&quot;: null, &quot;batch&quot;: null },
+  &quot;preferred&quot;: [ { &quot;raw&quot;: &quot;有欧洲项目经验者优先&quot;, &quot;mappedTo&quot;: &quot;projectRequirements[0]&quot; }, { &quot;raw&quot;: &quot;雅思 6.5 以上优先&quot;, &quot;mappedTo&quot;: &quot;languages[0].exams&quot; } ],
+  &quot;benefits&quot;: [],
+  &quot;sourceQuotes&quot;: { &quot;education.minDegree&quot;: &quot;本科及以上&quot;, &quot;experienceYears.industry[0]&quot;: &quot;5年以上汽车行业工作经验&quot; },
+  &quot;meta&quot;: { &quot;model&quot;: &quot;…&quot;, &quot;promptHash&quot;: &quot;…&quot;, &quot;extractedAt&quot;: &quot;…&quot; }
+}</code></pre>
+<p>规则: - <strong>MUST / PREFERRED 语义在事实层只用
+<code>required: true|false</code> 记录原文语气</strong>(“必须/须/以上” →
+true;“优先/者优先/加分” → false);真正的 tier 在评价模型层定; -
+<code>restrictions</code>
+单独存放,<strong>不进评价模型</strong>(合规);UI 展示时带提示; -
+<code>sourceQuotes</code> 每个关键事实附原文 ≤40
+字,代码做子串校验,校验失败的字段降级为 <code>null</code> +
+<code>unverified[]</code> 列表提示 HR
+核对(与简历日期反幻觉闸门同思路)。</p>
+<h3 id="job.evaluationmodel评价模型层hr-拥有">5.2
+<code>Job.evaluationModel</code>(评价模型层,HR 拥有)</h3>
+<pre class="jsonc"><code>{
+  &quot;version&quot;: 3,
+  &quot;templateId&quot;: &quot;tpl.quality.overseas&quot;,       // 来源模板(§5.3)
+  &quot;requirements&quot;: [
+    { &quot;key&quot;: &quot;edu_min&quot;,      &quot;label&quot;: &quot;本科及以上&quot;,              &quot;tier&quot;: &quot;MUST&quot;,      &quot;method&quot;: &quot;code&quot;,      &quot;source&quot;: &quot;education.minDegree&quot;,
+      &quot;code&quot;: { &quot;field&quot;: &quot;derived.highestDegree&quot;, &quot;op&quot;: &quot;degree&gt;=&quot;, &quot;value&quot;: &quot;本科&quot; }, &quot;unknownPolicy&quot;: &quot;review&quot;, &quot;weight&quot;: 0 },
+    { &quot;key&quot;: &quot;major_rel&quot;,    &quot;label&quot;: &quot;车辆/机械相关专业&quot;,         &quot;tier&quot;: &quot;MUST&quot;,      &quot;method&quot;: &quot;code_then_jev&quot;, &quot;source&quot;: &quot;education.majors&quot;,
+      &quot;code&quot;: { &quot;field&quot;: &quot;derived.highestMajorTag&quot;, &quot;op&quot;: &quot;in_family&quot;, &quot;value&quot;: [&quot;major.vehicle&quot;, &quot;major.mech&quot;] },
+      &quot;jev&quot;:  { &quot;type&quot;: &quot;noul&quot;, &quot;instructions&quot;: &quot;候选人 `profile.education` 的专业是否与车辆工程 / 机械工程相关(含自动化、材料等近邻专业)?&quot;, &quot;criteria&quot;: { &quot;true&quot;: &quot;专业名称或主修课程明显属于车辆/机械/近邻工程学科&quot;, &quot;false&quot;: &quot;专业与工程无关,或未提供专业信息&quot; } },
+      &quot;unknownPolicy&quot;: &quot;review&quot;, &quot;weight&quot;: 0 },
+    { &quot;key&quot;: &quot;years_auto&quot;,   &quot;label&quot;: &quot;汽车行业 ≥5 年&quot;,           &quot;tier&quot;: &quot;MUST&quot;,      &quot;method&quot;: &quot;code&quot;,      &quot;source&quot;: &quot;experienceYears.industry[0]&quot;,
+      &quot;code&quot;: { &quot;field&quot;: &quot;derived.industryYears.auto&quot;, &quot;op&quot;: &quot;&gt;=&quot;, &quot;value&quot;: 5 }, &quot;unknownPolicy&quot;: &quot;review&quot;, &quot;weight&quot;: 0 },
+    { &quot;key&quot;: &quot;years_oq&quot;,     &quot;label&quot;: &quot;海外质量 ≥3 年&quot;,           &quot;tier&quot;: &quot;CORE&quot;,      &quot;method&quot;: &quot;code_then_jev&quot;, &quot;source&quot;: &quot;experienceYears.relevant[0]&quot;,
+      &quot;code&quot;: { &quot;field&quot;: &quot;derived.domainYears.quality.overseas&quot;, &quot;op&quot;: &quot;&gt;=&quot;, &quot;value&quot;: 3 },
+      &quot;jev&quot;:  { &quot;type&quot;: &quot;score&quot;, &quot;instructions&quot;: &quot;候选人海外质量相关工作的深度&quot;, &quot;levels&quot;: [&quot;简历未提及海外或质量相关工作&quot;, &quot;仅有海外出差或短期项目支持&quot;, &quot;1-3 年负责海外市场质量问题处理&quot;, &quot;3 年以上常驻或独立负责海外区域质量&quot;] },
+      &quot;weight&quot;: 30 },
+    { &quot;key&quot;: &quot;lang_en&quot;,      &quot;label&quot;: &quot;英语工作语言&quot;,             &quot;tier&quot;: &quot;MUST&quot;,      &quot;method&quot;: &quot;code_then_jev&quot;, &quot;source&quot;: &quot;languages[0]&quot;,
+      &quot;code&quot;: { &quot;field&quot;: &quot;derived.languageLevels.en&quot;, &quot;op&quot;: &quot;level&gt;=&quot;, &quot;value&quot;: &quot;working&quot; },
+      &quot;jev&quot;:  { &quot;type&quot;: &quot;noul&quot;, &quot;instructions&quot;: &quot;根据 `resume_markdown`,候选人是否有英语可作为工作语言的证据?&quot;, &quot;criteria&quot;: { &quot;true&quot;: &quot;海外常驻/英文授课学历/雅思≥7 或托福≥100/明确写英语工作语言&quot;, &quot;false&quot;: &quot;无证据,或仅写英语一般/CET-4&quot; } },
+      &quot;unknownPolicy&quot;: &quot;review&quot;, &quot;weight&quot;: 15 },
+    { &quot;key&quot;: &quot;cap_pq&quot;,       &quot;label&quot;: &quot;产品质量管理&quot;,             &quot;tier&quot;: &quot;CORE&quot;,      &quot;method&quot;: &quot;jev_score&quot;, &quot;source&quot;: &quot;professionalSkills[0]&quot;, &quot;jev&quot;: { &quot;levels&quot;: [&quot;…4 级…&quot;] }, &quot;weight&quot;: 20 },
+    { &quot;key&quot;: &quot;cap_project&quot;,  &quot;label&quot;: &quot;海外项目管理&quot;,             &quot;tier&quot;: &quot;CORE&quot;,      &quot;method&quot;: &quot;jev_score&quot;, &quot;source&quot;: &quot;responsibilities[0]&quot;,     &quot;jev&quot;: { &quot;levels&quot;: [&quot;…&quot;] }, &quot;weight&quot;: 15 },
+    { &quot;key&quot;: &quot;tool_8d_spc&quot;,  &quot;label&quot;: &quot;8D / SPC&quot;,                &quot;tier&quot;: &quot;CORE&quot;,      &quot;method&quot;: &quot;code_then_jev&quot;, &quot;source&quot;: &quot;tools&quot;,
+      &quot;code&quot;: { &quot;field&quot;: &quot;derived.toolTags&quot;, &quot;op&quot;: &quot;has_all&quot;, &quot;value&quot;: [&quot;tool.8d&quot;, &quot;tool.spc&quot;] }, &quot;jev&quot;: { &quot;type&quot;: &quot;score&quot;, &quot;levels&quot;: [&quot;未提及&quot;, &quot;仅列在技能栏&quot;, &quot;有实际使用案例&quot;, &quot;主导过基于 8D/SPC 的质量改进&quot;] }, &quot;weight&quot;: 10 },
+    { &quot;key&quot;: &quot;pref_europe&quot;,  &quot;label&quot;: &quot;欧洲项目经验&quot;,             &quot;tier&quot;: &quot;PREFERRED&quot;, &quot;method&quot;: &quot;jev_score&quot;, &quot;source&quot;: &quot;projectRequirements[0]&quot;, &quot;jev&quot;: { &quot;levels&quot;: [&quot;…&quot;] }, &quot;weight&quot;: 5 },
+    { &quot;key&quot;: &quot;bonus_nev&quot;,    &quot;label&quot;: &quot;新能源汽车经验&quot;,           &quot;tier&quot;: &quot;BONUS&quot;,     &quot;method&quot;: &quot;code_then_jev&quot;, &quot;source&quot;: &quot;industries[0]&quot;, &quot;code&quot;: { &quot;field&quot;: &quot;derived.industryYears.auto.nev&quot;, &quot;op&quot;: &quot;&gt;&quot;, &quot;value&quot;: 0 }, &quot;jev&quot;: { &quot;type&quot;: &quot;noul&quot; }, &quot;bonus&quot;: 3 },
+    { &quot;key&quot;: &quot;cond_travel&quot;,  &quot;label&quot;: &quot;接受高频海外出差&quot;,         &quot;tier&quot;: &quot;CORE&quot;,      &quot;method&quot;: &quot;code_then_jev&quot;, &quot;source&quot;: &quot;workConditions.travel&quot;,
+      &quot;code&quot;: { &quot;field&quot;: &quot;profile.intent.acceptTravel&quot;, &quot;op&quot;: &quot;==&quot;, &quot;value&quot;: true }, &quot;jev&quot;: { &quot;type&quot;: &quot;noul&quot;, &quot;instructions&quot;: &quot;简历是否显示候选人接受或已适应高频海外出差/派驻?&quot; }, &quot;unknownPolicy&quot;: &quot;interview&quot;, &quot;weight&quot;: 5 },
+    { &quot;key&quot;: &quot;info_age&quot;,     &quot;label&quot;: &quot;35 岁以下(仅记录)&quot;,        &quot;tier&quot;: &quot;INFO&quot;,      &quot;method&quot;: &quot;none&quot;,      &quot;source&quot;: &quot;restrictions.age&quot; }
+  ],
+  &quot;tierWeights&quot;: { &quot;MUST&quot;: 25, &quot;CORE&quot;: 45, &quot;PREFERRED&quot;: 15, &quot;STABILITY&quot;: 15 },   // 维度权重(00 号 §5.5)
+  &quot;bonusCap&quot;: 8,                                                                 // BONUS 合计最多 +8 分
+  &quot;thresholds&quot;: { &quot;A&quot;: 85, &quot;B&quot;: 70, &quot;C&quot;: 55 },
+  &quot;confidenceGate&quot;: 0.5,
+  &quot;fixedQuestions&quot;: [&quot;stability&quot;, &quot;sufficiency&quot;, &quot;inflation&quot;, &quot;relocation&quot;],      // 固定通用题开关(00 号 §5.4)
+  &quot;updatedBy&quot;: &quot;uuid&quot;, &quot;updatedAt&quot;: &quot;ISO&quot;, &quot;source&quot;: &quot;kimi_suggested|manual&quot;
+}</code></pre>
+<p>字段语义:</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>字段</th>
+<th>取值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>tier</code></td>
+<td><code>MUST / CORE / PREFERRED / BONUS / INFO</code></td>
+<td>MUST 不满足 → D(硬性);CORE / PREFERRED 进加权;BONUS 只加分、封顶
+<code>bonusCap</code>;INFO 只记录不评估</td>
+</tr>
+<tr>
+<td><code>method</code></td>
+<td><code>code / jev_noul / jev_score / code_then_jev / none</code></td>
+<td><code>code_then_jev</code>:代码能判(字段非空)就用代码结果,UNKNOWN
+才问 Jev;两者都有时代码优先(确定性)</td>
+</tr>
+<tr>
+<td><code>unknownPolicy</code></td>
+<td><code>review / interview / ignore / fail</code></td>
+<td>缺信息时:转人工复核 / 标为面试验证点 / 忽略 / 判不满足(<strong>默认
+review,<code>fail</code> 仅 HR 显式选择</strong>)</td>
+</tr>
+<tr>
+<td><code>weight</code></td>
+<td>0-100</td>
+<td>MUST 的 <code>weight</code> 参与「硬性维度分」(00 号 §5.5)但分类由
+PASS/FAIL 决定</td>
+</tr>
+<tr>
+<td><code>code.op</code></td>
+<td><code>&gt;= / &gt; / == / in / in_family / has_all / has_any / degree&gt;= / level&gt;=</code></td>
+<td>全部在 <code>hardFilter.js</code> 实现,单测</td>
+</tr>
+</tbody>
+</table>
+<h3 id="岗位评价模板hr-拥有llm-不定权重">5.3 岗位评价模板(HR 拥有,LLM
+不定权重)</h3>
+<p><code>server/src/lib/evaluation/templates/*.json</code>,首批 6
+个:<code>tpl.general</code>(通用)/ <code>tpl.quality.overseas</code> /
+<code>tpl.rnd.engineer</code> / <code>tpl.hr.bp</code> /
+<code>tpl.sales.overseas</code> /
+<code>tpl.campus.general</code>。每个模板给出<strong>各类要求的默认 tier
+与权重区间</strong>,例如通用模板:</p>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr>
+<th>要求类别(jdFacts 路径)</th>
+<th>默认 tier</th>
+<th>默认 method</th>
+<th>默认权重</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>education.minDegree</code></td>
+<td>MUST</td>
+<td>code</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>education.majors</code></td>
+<td>MUST(<code>majorType=strict</code>)/ CORE(<code>related</code>)</td>
+<td>code_then_jev</td>
+<td>10</td>
+</tr>
+<tr>
+<td><code>experienceYears.total / industry / relevant</code></td>
+<td>MUST(原文”以上”且 <code>required</code>)/ CORE</td>
+<td>code(_then_jev)</td>
+<td>15-30</td>
+</tr>
+<tr>
+<td><code>languages[].required=true</code></td>
+<td>MUST</td>
+<td>code_then_jev</td>
+<td>15</td>
+</tr>
+<tr>
+<td><code>languages[].required=false</code> / exams</td>
+<td>BONUS</td>
+<td>code</td>
+<td>3</td>
+</tr>
+<tr>
+<td><code>professionalSkills[]</code></td>
+<td>CORE</td>
+<td>jev_score</td>
+<td>10-20</td>
+</tr>
+<tr>
+<td><code>tools[]</code></td>
+<td>CORE / PREFERRED</td>
+<td>code_then_jev</td>
+<td>5-10</td>
+</tr>
+<tr>
+<td><code>industries[] / projectRequirements[]</code></td>
+<td>CORE(<code>required</code>)/ PREFERRED</td>
+<td>code_then_jev / jev_score</td>
+<td>5-15</td>
+</tr>
+<tr>
+<td><code>certificates[]</code></td>
+<td>MUST(<code>required</code>)/ BONUS</td>
+<td>code</td>
+<td>0-5</td>
+</tr>
+<tr>
+<td><code>softSkills[]</code></td>
+<td>PREFERRED</td>
+<td>jev_score</td>
+<td>5</td>
+</tr>
+<tr>
+<td><code>workConditions.*</code></td>
+<td>CORE(出差/派驻硬要求)/ INFO</td>
+<td>code_then_jev</td>
+<td>5</td>
+</tr>
+<tr>
+<td><code>restrictions.*</code></td>
+<td>INFO</td>
+<td>none</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>campus.*</code></td>
+<td>MUST(校招批次)</td>
+<td>code</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p>流程:<strong>Kimi 抽 jdFacts → 代码按模板生成 evaluationModel
+草稿(tier / method / 权重区间中值)→ Kimi 只补 Jev 题目的
+<code>levels</code> 情境措辞 → HR 在 UI 调 tier / 权重 / 措辞 →
+保存,版本 +1</strong>。权重总和由代码归一,不要求 HR 凑 100。</p>
+<hr />
+<h2 id="两侧映射表本文的核心">6. 两侧映射表(本文的核心)</h2>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr>
+<th>JD 要求类别</th>
+<th>简历数据来源</th>
+<th>判定方法</th>
+<th>UNKNOWN 处理</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>最低学历</td>
+<td><code>derived.highestDegree</code></td>
+<td>code <code>degree&gt;=</code></td>
+<td>学历为 Other/空 → review</td>
+</tr>
+<tr>
+<td>专业范围</td>
+<td><code>derived.highestMajorTag</code>(专业族词表)</td>
+<td>code <code>in_family</code> → 映射不上问 Jev noul</td>
+<td>review</td>
+</tr>
+<tr>
+<td>学校要求(985/211/海外)</td>
+<td><code>education[].school</code> + 学校词表(后期)</td>
+<td>code(词表)→ 无词表时 Jev noul</td>
+<td>ignore(BONUS 类)</td>
+</tr>
+<tr>
+<td>总年限 / 行业年限 / 领域年限 / 管理年限 / 海外年限</td>
+<td><code>derived.totalYears / industryYears / domainYears / managementYears / overseasYears</code></td>
+<td>code <code>&gt;=</code>;tag 缺失 → Jev score(经历深度 4 级)</td>
+<td>review</td>
+</tr>
+<tr>
+<td>专业能力</td>
+<td><code>skills.professional[].tag</code> +
+<code>experience[].domainTags</code> + <code>projects[]</code></td>
+<td>Jev score(4 级情境)</td>
+<td>—</td>
+</tr>
+<tr>
+<td>工具 / 软件</td>
+<td><code>derived.toolTags</code></td>
+<td>code <code>has_all/has_any</code> → 命中后 Jev score
+判”有使用案例”(防关键词堆砌)</td>
+<td>review</td>
+</tr>
+<tr>
+<td>语言</td>
+<td><code>derived.languageLevels</code></td>
+<td>code <code>level&gt;=</code> → UNKNOWN 问 Jev noul(证据搜索)</td>
+<td>review</td>
+</tr>
+<tr>
+<td>行业经验</td>
+<td><code>derived.industryYears[tag]</code>(含祖先)</td>
+<td>code <code>&gt;</code> 0 / <code>&gt;=</code> n → Jev score
+判深度</td>
+<td>review</td>
+</tr>
+<tr>
+<td>项目经验要求</td>
+<td><code>projects[]</code>(type/stage/regionTags/role)</td>
+<td>code 预筛(type/region 命中)→ Jev score</td>
+<td>review</td>
+</tr>
+<tr>
+<td>证书</td>
+<td><code>derived.certificateTags</code></td>
+<td>code <code>has_any</code>(别名归一)</td>
+<td>MUST → review;BONUS → ignore</td>
+</tr>
+<tr>
+<td>软技能</td>
+<td><code>skills.soft[].behaviors</code> + duties</td>
+<td>Jev score(只认可验证行为)</td>
+<td>—</td>
+</tr>
+<tr>
+<td>地点 / 搬迁 / 派驻</td>
+<td><code>derived.currentCityNorm</code> +
+<code>intent.acceptRelocation/acceptOverseas</code></td>
+<td>code 相等 → 不等且意向空 → Jev noul「到岗可能」</td>
+<td>interview</td>
+</tr>
+<tr>
+<td>出差 / 加班 / 倒班 / 远程</td>
+<td><code>intent.acceptTravel …</code> + 经历中出差证据</td>
+<td>code <code>==</code> → Jev noul</td>
+<td>interview</td>
+</tr>
+<tr>
+<td>校招批次 / 应届</td>
+<td><code>derived.graduationYear / isFreshGraduate</code></td>
+<td>code</td>
+<td>review</td>
+</tr>
+<tr>
+<td>实习要求(校招)</td>
+<td><code>internships[]</code> 长度 / domainTags</td>
+<td>code + Jev score</td>
+<td>review</td>
+</tr>
+<tr>
+<td>科研 / 论文 / 专利</td>
+<td><code>research.*</code></td>
+<td>code 计数 + Jev score(相关性)</td>
+<td>ignore</td>
+</tr>
+<tr>
+<td>年龄 / 性别</td>
+<td><code>identity</code></td>
+<td><strong>none</strong>(INFO)</td>
+<td>—</td>
+</tr>
+<tr>
+<td>稳定性(固定题)</td>
+<td><code>derived.jobHopping</code> + 原文</td>
+<td>code 预算 + Jev score</td>
+<td>—</td>
+</tr>
+<tr>
+<td>信息充分性 / 夸大(固定题)</td>
+<td><code>derived.profileQuality</code> + 原文</td>
+<td>Jev noul</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p>覆盖检查:JD 侧 17 类要求全部有归宿;简历侧 12 类字段中
+<code>identity(部分) / awards / campus.volunteer</code>
+不参与评估(仅展示)。</p>
+<hr />
+<h2 id="kimi-抽取设计">7. Kimi 抽取设计</h2>
+<h3 id="简历抽取-prompt-v2default_prompt-演进">7.1 简历抽取 prompt
+v2(<code>DEFAULT_PROMPT</code> 演进)</h3>
+<p>保留现有一~四节(噪声清洗 / 提取规则 / 输出格式 / 自检),变更: 1.
+输出格式换成 §2 的 <code>profile</code> 结构(旧 16
+键作为<strong>兼容视图</strong>由代码从 profile 映射,见 §9.1); 2.
+新增规则:实习与全职分列;职责/成果/量化三分;<code>*Tags</code>
+只能用附录词表 id(prompt 末尾附 id+中文名列表,约 300 行,token ≈
+3K,可接受;后续按简历行业动态裁剪);<code>soft[].behaviors</code>
+必须是行为句;<code>evidenceRefs</code>
+只写下标;身份证/住址/婚育/民族一律忽略; 3. 输入改为 TextIn
+markdown(标题层级与表格保留,prompt 规则 3「表格按行重建」压力下降)。 4.
+<code>response_format: json_object</code> 不变;JSON 抢救 4
+层不变;失败重试 1 次不变。</p>
+<h3 id="jd-事实抽取-promptparsejobdescription-演进-文本入口">7.2 JD
+事实抽取 prompt(<code>parseJobDescription</code> 演进 + 文本入口)</h3>
+<ul>
+<li>新函数 <code>extractJdFacts({ text })</code>,同时服务「上传 JD
+文件」(TextIn/Kimi Files 抽文本后)与「已有 JD
+文本」(<code>description + requirements + nice + …</code> 拼接);</li>
+<li>规则:<code>required</code>
+只按原文语气;数字(年限/人数/薪资/出差天数)只在原文有数字时填;<code>sourceQuotes</code>
+每个关键字段附原文;<code>restrictions</code> 单列;tags 用词表 id;</li>
+<li>现有 <code>parseJobDescription</code> 的 12
+个展示字段<strong>继续输出</strong>(前端表单不变),<code>jdFacts</code>
+作为新增键返回。</li>
+</ul>
+<h3 id="评价模型措辞补全-promptsuggestevaluationwording">7.3
+评价模型措辞补全 prompt(<code>suggestEvaluationWording</code>)</h3>
+<p>输入:代码生成的 evaluationModel 草稿(已有 key/tier/method/source)+
+jdFacts;输出:只补每条 <code>jev.instructions / criteria / levels</code>
+的措辞。硬约束:一题一判、情境描述不用程度词、level 0
+必为”未提及”、不含算数、不改 tier/weight(代码忽略 LLM
+返回的这两个字段)。</p>
+<h3 id="确定性闸门新增">7.4 确定性闸门(新增)</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>闸门</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>verifyQuotes(sourceQuotes, text)</code></td>
+<td>引文归一子串匹配,失败字段置 null + <code>unverified[]</code></td>
+</tr>
+<tr>
+<td><code>normalizeTags(profile, taxonomy)</code></td>
+<td>非法 tag → 词表别名反查 → 仍失败 →
+<code>other:&lt;raw&gt;</code></td>
+</tr>
+<tr>
+<td><code>normalizeLanguageLevel</code></td>
+<td>§4.3 阶梯</td>
+</tr>
+<tr>
+<td><code>normalizeCertificate / normalizeCity / normalizeMajor</code></td>
+<td>别名表</td>
+</tr>
+<tr>
+<td><code>scrubHallucinatedDates</code></td>
+<td>现有,扩展到 projects / internships / certificates</td>
+</tr>
+<tr>
+<td><code>dedupe</code></td>
+<td>skills / tools / certificates 按 tag 去重</td>
+</tr>
+<tr>
+<td><code>crossCheck</code></td>
+<td><code>identity.currentTitle</code> 应等于
+<code>experience[current].title</code>;<code>derived.totalYears</code>
+与 LLM <code>yearsExp</code> 差 &gt;2 年记
+<code>warnings[]</code>(展示用,不改结果)</td>
+</tr>
+<tr>
+<td><code>piiAllowlist</code></td>
+<td>删除 profile 中任何非 §2 定义的键(防 LLM 自作主张抽身份证)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="存储与-api">8. 存储与 API</h2>
+<h3 id="prisma-增量">8.1 Prisma 增量</h3>
+<pre class="prisma"><code>model Candidate {
+  // 现有列全部保留(作为 profile 的反规范化视图)
+  profile        Json?     // resume.v1(§2)
+  derived        Json?     // §3
+  profileVersion String?   @map(&quot;profile_version&quot;)   // &quot;resume.v1&quot;
+  profileWarnings Json     @default(&quot;[]&quot;) @map(&quot;profile_warnings&quot;)
+}
+model Job {
+  jdFacts                Json?     @map(&quot;jd_facts&quot;)
+  jdFactsVersion         String?   @map(&quot;jd_facts_version&quot;)
+  evaluationModel        Json?     @map(&quot;evaluation_model&quot;)       // 取代 00 号 requirementSchema
+  evaluationModelVersion Int       @default(0) @map(&quot;evaluation_model_version&quot;)
+  evaluationModelUpdatedAt DateTime? @map(&quot;evaluation_model_updated_at&quot;)
+}</code></pre>
+<p>JSON 列不做 Postgres
+索引;列表筛选依旧走反规范化列(<code>education / yearsExp / classification</code>
+等)。</p>
+<h3 id="端点">8.2 端点</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>端点</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET /api/candidates/:id/profile</code></td>
+<td><code>{ profile, derived, warnings }</code>(受 candidate
+数据范围权限)</td>
+</tr>
+<tr>
+<td><code>POST /api/resumes/parse</code> (现有)</td>
+<td>任务内 Kimi 输出 → 闸门 → <code>profile</code> +
+<code>derived</code> + 兼容视图列一起写入</td>
+</tr>
+<tr>
+<td><code>POST /api/resumes/parse-jd</code> (现有)</td>
+<td>响应增 <code>jdFacts</code></td>
+</tr>
+<tr>
+<td><code>POST /api/jobs/:id/extract-facts</code></td>
+<td>对已有 JD 文本抽 jdFacts(同步,10-20s,<code>LONG_TIMEOUT</code>)→
+返回草稿不落库</td>
+</tr>
+<tr>
+<td><code>POST /api/jobs/:id/evaluation-model/suggest</code></td>
+<td>body <code>{ jdFacts?, templateId }</code> → 代码草稿 + Kimi 措辞 →
+返回草稿</td>
+</tr>
+<tr>
+<td><code>PATCH /api/jobs/:id</code></td>
+<td>增 <code>jdFacts / evaluationModel</code>(Fastify schema
+校验:tier/method 枚举、<code>code.field</code>
+白名单、<code>weight</code> 0-100、<code>levels</code> 2-10 项、INFO
+不得有 jev/code)</td>
+</tr>
+<tr>
+<td><code>GET /api/evaluation/templates</code></td>
+<td>模板列表</td>
+</tr>
+<tr>
+<td><code>GET /api/taxonomy/:name</code></td>
+<td>词表(前端 tag 选择器用,10 分钟缓存)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="兼容与迁移">9. 兼容与迁移</h2>
+<h3 id="兼容视图旧列-profile">9.1 兼容视图(旧列 ← profile)</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>旧列</th>
+<th>来源</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name / gender / age / phone / email / location</code></td>
+<td><code>identity.*</code>(phone = phones[0])</td>
+</tr>
+<tr>
+<td><code>education / school / major</code></td>
+<td><code>derived.highestDegree / highestSchool / highestMajor</code></td>
+</tr>
+<tr>
+<td><code>yearsExp</code></td>
+<td><code>derived.totalYears</code>(四舍五入)</td>
+</tr>
+<tr>
+<td><code>languages</code>(JSON)</td>
+<td><code>languages[].{name:raw, level:raw}</code></td>
+</tr>
+<tr>
+<td><code>skills / experience / educationHistory</code>(markdown)</td>
+<td><code>buildResumeDisplayFields(profile)</code> 适配:skills =
+professional ∪ tools 名称;experience = experience[] 格式不变</td>
+</tr>
+<tr>
+<td><code>aiSummary</code></td>
+<td><code>assembleSummary(profile)</code>:模板增「项目经验(详)/ 证书 /
+实习 / 校园经历」段,占位符规则不变</td>
+</tr>
+<tr>
+<td><code>tags</code></td>
+<td>LLM <code>tags</code> → 改由 <code>derived.capabilityTags</code> 前
+6 个中文名</td>
+</tr>
+</tbody>
+</table>
+<p><code>SharedCandidate.jsx</code> / 飞书卡片 / 面试评价预填 只读这些列
+→ <strong>零改动</strong>。</p>
+<h3 id="存量数据">9.2 存量数据</h3>
+<ul>
+<li>候选人:不批量重跑(计费);详情页对 <code>profile=null</code>
+的候选人显示「升级为结构化档案」按钮 →
+<code>mode=reextract</code>(复用已存 markdown,若无 ResumeParse 则
+full);admin 提供「按 JD 批量升级」入口(走 <code>evaluate-batch</code>
+前置);</li>
+<li>JD:首次进入「评估标准」tab 或首次被评估时懒抽 jdFacts +
+模板草稿;admin「一键为所有招聘中 JD 生成」按钮。</li>
+</ul>
+<h3 id="版本">9.3 版本</h3>
+<p><code>profileVersion = "resume.v1"</code>、<code>jdFactsVersion = "jd.v1"</code>;Schema
+变更走 <code>resume.v2</code> 并提供 <code>migrateProfile(v1→v2)</code>
+纯函数,评估层读取时按版本适配。</p>
+<hr />
+<h2 id="前端">10. 前端</h2>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>页面</th>
+<th>改造</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CandidateDetail.jsx</code></td>
+<td>中列新增「结构化档案」Card(tab:教育 / 工作 / 实习 / 项目 / 技能 /
+证书 / 语言 / 校园 / 科研),每段可折叠;顶部「派生指标」chip 行(总年限 ·
+行业年限 top2 · 海外年限 · 管理 · 稳定性 ·
+资料质量);<code>warnings[]</code> 以 amber 提示</td>
+</tr>
+<tr>
+<td><code>JdDescModal.jsx</code> / <code>Jobs.jsx</code></td>
+<td>新 tab「结构化 JD」(只读 jdFacts,<code>restrictions</code>
+带合规提示)+「评估标准」(表格编辑:label / tier / method / 权重滑杆 /
+措辞 / levels 编辑 / UNKNOWN 策略;模板选择;「AI 生成草稿」「AI
+补措辞」;版本与更新人)</td>
+</tr>
+<tr>
+<td><code>Upload.jsx</code></td>
+<td>新建 JD 弹窗回填增 jdFacts(隐藏)→ 保存时一起提交;抽取阶段 stepper
+文案「结构化档案」</td>
+</tr>
+<tr>
+<td><code>Primitives.jsx</code></td>
+<td>新 <code>TagPicker</code>(词表下拉 + 搜索;上抽
+<code>PublicInterviewEval</code> 的 Combobox,CLAUDE.md §6.3 已预留)</td>
+</tr>
+<tr>
+<td><code>Candidates.jsx</code></td>
+<td>筛选增「行业年限 ≥ n」「语言 ≥ 等级」「证书」(读 derived
+反规范化列,后续按需)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="测试与验收">11. 测试与验收</h2>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>层</th>
+<th>测试</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>派生指标</td>
+<td><code>derive.test.js</code>:重叠区间、实习不计、行业祖先聚合、跳槽指标、应届判定、时间线冲突(≥30
+用例)</td>
+</tr>
+<tr>
+<td>闸门</td>
+<td><code>gates.test.js</code>:引文校验、tag
+归一、语言阶梯、别名归一、PII 白名单</td>
+</tr>
+<tr>
+<td>硬筛</td>
+<td><code>hardFilter.test.js</code>:全部 <code>op</code>、UNKNOWN
+三态、INFO 忽略</td>
+</tr>
+<tr>
+<td>模板 → 草稿</td>
+<td><code>templates.test.js</code>:jdFacts 固定样本 → 期望
+evaluationModel 结构</td>
+</tr>
+<tr>
+<td>Kimi 抽取(离线)</td>
+<td>golden set 30-50 份:字段级准确率(教育 / 工作段数与时间 / 行业 tag /
+语言等级)≥ 现有 prompt;<code>unverified</code> 率 &lt;5%</td>
+</tr>
+<tr>
+<td>JD 抽取(离线)</td>
+<td>10 份真实 JD:<code>required</code> 语气判断准确率
+≥95%;数字字段零编造</td>
+</tr>
+<tr>
+<td>端到端</td>
+<td>Playwright:上传 → 结构化档案渲染 → JD 评估标准编辑保存 → 评估(02
+号文档)</td>
+</tr>
+</tbody>
+</table>
+<p>验收门槛沿用 00 号 §6 P0/P2。</p>
+<hr />
+<h2 id="与-00-02-号文档的关系">12. 与 00 / 02 号文档的关系</h2>
+<ul>
+<li>00 号 §5.1 <code>Job.requirementSchema</code> → 本文
+<code>Job.jdFacts + Job.evaluationModel</code>;§5.3 示例被 §5.2
+取代;§5.6 硬筛的 <code>op</code> 集合按 §5.2 扩展;</li>
+<li>02 号《Jev 接入详细设计》的 state / questions 构造直接消费本文
+<code>profile / derived / jdFacts / evaluationModel</code>;</li>
+<li>实施顺序:本文 §2-4(Schema + 词表 + 派生)属 00 号 P1-P2,§5-7 属
+P2,§8-10 随 P2/P4。</li>
+</ul>
+<footer class="doc">单文件 HTML · 由 tools/md2html 从 Markdown 生成 · 无外部依赖,可离线打开与打印</footer>
+</main>
+</div>
+</body>
+</html>

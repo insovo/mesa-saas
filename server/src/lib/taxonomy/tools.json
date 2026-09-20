@@ -1,0 +1,499 @@
+[
+ {
+  "id": "tool.8d",
+  "name": "8D",
+  "aliases": [
+   "8d",
+   "8d报告",
+   "8d分析"
+  ]
+ },
+ {
+  "id": "tool.spc",
+  "name": "SPC",
+  "aliases": [
+   "spc",
+   "统计过程控制"
+  ]
+ },
+ {
+  "id": "tool.fmea",
+  "name": "FMEA",
+  "aliases": [
+   "fmea",
+   "dfmea",
+   "pfmea"
+  ]
+ },
+ {
+  "id": "tool.msa",
+  "name": "MSA",
+  "aliases": [
+   "msa",
+   "测量系统分析"
+  ]
+ },
+ {
+  "id": "tool.apqp",
+  "name": "APQP",
+  "aliases": [
+   "apqp"
+  ]
+ },
+ {
+  "id": "tool.ppap",
+  "name": "PPAP",
+  "aliases": [
+   "ppap"
+  ]
+ },
+ {
+  "id": "tool.six_sigma",
+  "name": "六西格玛",
+  "aliases": [
+   "六西格玛",
+   "6sigma",
+   "six sigma",
+   "dmaic"
+  ]
+ },
+ {
+  "id": "tool.minitab",
+  "name": "Minitab",
+  "aliases": [
+   "minitab"
+  ]
+ },
+ {
+  "id": "tool.jmp",
+  "name": "JMP",
+  "aliases": [
+   "jmp"
+  ]
+ },
+ {
+  "id": "tool.excel",
+  "name": "Excel",
+  "aliases": [
+   "excel",
+   "office excel"
+  ]
+ },
+ {
+  "id": "tool.powerpoint",
+  "name": "PowerPoint",
+  "aliases": [
+   "ppt",
+   "powerpoint"
+  ]
+ },
+ {
+  "id": "tool.word",
+  "name": "Word",
+  "aliases": [
+   "word",
+   "office word"
+  ]
+ },
+ {
+  "id": "tool.project",
+  "name": "MS Project",
+  "aliases": [
+   "ms project",
+   "project"
+  ]
+ },
+ {
+  "id": "tool.visio",
+  "name": "Visio",
+  "aliases": [
+   "visio"
+  ]
+ },
+ {
+  "id": "tool.catia",
+  "name": "CATIA",
+  "aliases": [
+   "catia"
+  ]
+ },
+ {
+  "id": "tool.ug",
+  "name": "UG/NX",
+  "aliases": [
+   "ug",
+   "nx",
+   "unigraphics"
+  ]
+ },
+ {
+  "id": "tool.solidworks",
+  "name": "SolidWorks",
+  "aliases": [
+   "solidworks"
+  ]
+ },
+ {
+  "id": "tool.proe",
+  "name": "Pro/E Creo",
+  "aliases": [
+   "pro/e",
+   "proe",
+   "creo"
+  ]
+ },
+ {
+  "id": "tool.autocad",
+  "name": "AutoCAD",
+  "aliases": [
+   "autocad",
+   "cad"
+  ]
+ },
+ {
+  "id": "tool.ansys",
+  "name": "ANSYS",
+  "aliases": [
+   "ansys"
+  ]
+ },
+ {
+  "id": "tool.abaqus",
+  "name": "Abaqus",
+  "aliases": [
+   "abaqus"
+  ]
+ },
+ {
+  "id": "tool.hypermesh",
+  "name": "HyperMesh",
+  "aliases": [
+   "hypermesh"
+  ]
+ },
+ {
+  "id": "tool.matlab",
+  "name": "MATLAB/Simulink",
+  "aliases": [
+   "matlab",
+   "simulink"
+  ]
+ },
+ {
+  "id": "tool.canoe",
+  "name": "CANoe",
+  "aliases": [
+   "canoe",
+   "canalyzer",
+   "vector"
+  ]
+ },
+ {
+  "id": "tool.doors",
+  "name": "DOORS",
+  "aliases": [
+   "doors"
+  ]
+ },
+ {
+  "id": "tool.polarion",
+  "name": "Polarion",
+  "aliases": [
+   "polarion"
+  ]
+ },
+ {
+  "id": "tool.jira",
+  "name": "Jira",
+  "aliases": [
+   "jira",
+   "confluence"
+  ]
+ },
+ {
+  "id": "tool.sap",
+  "name": "SAP",
+  "aliases": [
+   "sap",
+   "sap erp"
+  ]
+ },
+ {
+  "id": "tool.oracle_erp",
+  "name": "Oracle ERP",
+  "aliases": [
+   "oracle erp"
+  ]
+ },
+ {
+  "id": "tool.mes",
+  "name": "MES",
+  "aliases": [
+   "mes"
+  ]
+ },
+ {
+  "id": "tool.plm",
+  "name": "PLM",
+  "aliases": [
+   "plm",
+   "teamcenter",
+   "windchill"
+  ]
+ },
+ {
+  "id": "tool.qdms",
+  "name": "QDMS",
+  "aliases": [
+   "qdms"
+  ]
+ },
+ {
+  "id": "lang.python",
+  "name": "Python",
+  "aliases": [
+   "python"
+  ]
+ },
+ {
+  "id": "lang.java",
+  "name": "Java",
+  "aliases": [
+   "java"
+  ]
+ },
+ {
+  "id": "lang.c",
+  "name": "C/C++",
+  "aliases": [
+   "c++",
+   "c/c++",
+   "c语言",
+   "cpp"
+  ]
+ },
+ {
+  "id": "lang.js",
+  "name": "JavaScript/TypeScript",
+  "aliases": [
+   "javascript",
+   "typescript",
+   "js",
+   "ts",
+   "node.js",
+   "nodejs"
+  ]
+ },
+ {
+  "id": "lang.go",
+  "name": "Go",
+  "aliases": [
+   "golang",
+   "go语言"
+  ]
+ },
+ {
+  "id": "lang.sql",
+  "name": "SQL",
+  "aliases": [
+   "sql",
+   "mysql",
+   "postgresql",
+   "oracle sql"
+  ]
+ },
+ {
+  "id": "lang.rust",
+  "name": "Rust",
+  "aliases": [
+   "rust"
+  ]
+ },
+ {
+  "id": "lang.kotlin",
+  "name": "Kotlin",
+  "aliases": [
+   "kotlin"
+  ]
+ },
+ {
+  "id": "lang.swift",
+  "name": "Swift",
+  "aliases": [
+   "swift"
+  ]
+ },
+ {
+  "id": "fw.react",
+  "name": "React",
+  "aliases": [
+   "react",
+   "react.js"
+  ]
+ },
+ {
+  "id": "fw.vue",
+  "name": "Vue",
+  "aliases": [
+   "vue",
+   "vue.js"
+  ]
+ },
+ {
+  "id": "fw.spring",
+  "name": "Spring",
+  "aliases": [
+   "spring",
+   "spring boot"
+  ]
+ },
+ {
+  "id": "fw.autosar",
+  "name": "AUTOSAR",
+  "aliases": [
+   "autosar"
+  ]
+ },
+ {
+  "id": "fw.ros",
+  "name": "ROS",
+  "aliases": [
+   "ros",
+   "ros2"
+  ]
+ },
+ {
+  "id": "fw.pytorch",
+  "name": "PyTorch",
+  "aliases": [
+   "pytorch"
+  ]
+ },
+ {
+  "id": "fw.tensorflow",
+  "name": "TensorFlow",
+  "aliases": [
+   "tensorflow"
+  ]
+ },
+ {
+  "id": "tool.docker",
+  "name": "Docker",
+  "aliases": [
+   "docker",
+   "kubernetes",
+   "k8s"
+  ]
+ },
+ {
+  "id": "tool.git",
+  "name": "Git",
+  "aliases": [
+   "git",
+   "github",
+   "gitlab"
+  ]
+ },
+ {
+  "id": "tool.linux",
+  "name": "Linux",
+  "aliases": [
+   "linux",
+   "shell"
+  ]
+ },
+ {
+  "id": "cloud.aws",
+  "name": "AWS",
+  "aliases": [
+   "aws"
+  ]
+ },
+ {
+  "id": "cloud.azure",
+  "name": "Azure",
+  "aliases": [
+   "azure"
+  ]
+ },
+ {
+  "id": "cloud.aliyun",
+  "name": "阿里云",
+  "aliases": [
+   "阿里云",
+   "aliyun"
+  ]
+ },
+ {
+  "id": "tool.tableau",
+  "name": "Tableau",
+  "aliases": [
+   "tableau"
+  ]
+ },
+ {
+  "id": "tool.powerbi",
+  "name": "Power BI",
+  "aliases": [
+   "power bi",
+   "powerbi"
+  ]
+ },
+ {
+  "id": "tool.figma",
+  "name": "Figma",
+  "aliases": [
+   "figma",
+   "sketch"
+  ]
+ },
+ {
+  "id": "tool.photoshop",
+  "name": "Photoshop",
+  "aliases": [
+   "photoshop",
+   "ps"
+  ]
+ },
+ {
+  "id": "tool.workday",
+  "name": "Workday",
+  "aliases": [
+   "workday"
+  ]
+ },
+ {
+  "id": "tool.sap_hr",
+  "name": "SAP HR",
+  "aliases": [
+   "sap hr",
+   "successfactors"
+  ]
+ },
+ {
+  "id": "tool.beisen",
+  "name": "北森",
+  "aliases": [
+   "北森"
+  ]
+ },
+ {
+  "id": "tool.moka",
+  "name": "Moka",
+  "aliases": [
+   "moka"
+  ]
+ },
+ {
+  "id": "tool.ai_llm",
+  "name": "AI 工具/LLM",
+  "aliases": [
+   "chatgpt",
+   "claude",
+   "copilot",
+   "大模型工具",
+   "ai工具",
+   "cursor"
+  ]
+ }
+]

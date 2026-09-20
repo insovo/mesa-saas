@@ -376,6 +376,21 @@ export default async function shareRoutes(app) {
 
     // 「展示已有面试评价」开启时,带出该候选人已提交的评价记录(只读可看,含 token 查看详情);
     // 草稿/未提交不暴露 token,防被随意编辑。独立于「支持填写」开关。
+    // 三层评估摘要(受 candidate.jdMatch 模块闸控制;不含置信度明细与 Jev 原始答案)
+    let evaluation = null;
+    if (showJdMatch) {
+      const ev = await app.prisma.candidateEvaluation.findFirst({ where: { candidateId: c.id, isCurrent: true }, select: { engine: true, classification: true, reviewPriority: true, overallScore: true, dimensions: true, items: true, hardFilter: true, report: true, evaluatedAt: true } });
+      if (ev) {
+        evaluation = {
+          engine: ev.engine, classification: ev.classification, reviewPriority: ev.reviewPriority, overallScore: ev.overallScore, evaluatedAt: ev.evaluatedAt,
+          dimensions: ev.dimensions,
+          items: (ev.items || []).map((i) => ({ key: i.key, label: i.label, tier: i.tier, verdict: i.verdict })),
+          hardFilter: { result: ev.hardFilter?.result || null, items: (ev.hardFilter?.items || []).map((i) => ({ key: i.key, label: i.label, result: i.result })) },
+          interviewProbes: showAiInsights ? (ev.report?.interviewProbes || []) : [],
+        };
+      }
+    }
+
     let interviewEvals = [];
     if (showInterviewEvalList) {
       const evs = await app.prisma.interviewEvaluation.findMany({
@@ -462,6 +477,9 @@ export default async function shareRoutes(app) {
         aiSummary: showAiInsights ? sanitizeSummaryContact(c.aiSummary, showContact) : null,
         insights: Array.isArray(c.insights) ? c.insights : [], // 洞察始终展示,不受开关控制
         notes, // 受 showNotes 控制,关闭时为空数组
+        classification: showJdMatch ? c.classification : null,
+        reviewPriority: showJdMatch ? c.reviewPriority : null,
+        evaluation,
       },
       share: {
         expiresAt: link.expiresAt,

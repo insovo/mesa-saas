@@ -28,6 +28,64 @@ function fmtSource(s) {
   return trimmed || "未提供";
 }
 
+// AI 评估分类 chip(A 高匹配 / B 较匹配 / C 待复核 / D 低匹配),分类为空不渲染
+const CLASS_META = {
+  A: { label: "高匹配", cls: "bg-green-100 text-green-700" },
+  B: { label: "较匹配", cls: "bg-blue-100 text-blue-700" },
+  C: { label: "待复核", cls: "bg-amber-100 text-amber-700" },
+  D: { label: "低匹配", cls: "bg-gray-100 text-gray-600" },
+};
+function ClassChip({ classification, reviewPriority }) {
+  const m = CLASS_META[classification];
+  if (!m) return null;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold shrink-0 whitespace-nowrap ${m.cls}`}
+      title={`AI 评估分类 ${classification} · ${m.label}${reviewPriority === "REVIEW" ? " · 建议人工复核" : ""}`}
+    >
+      {classification} {m.label}
+      {reviewPriority === "REVIEW" && <span className="opacity-80">⚑ 复核</span>}
+    </span>
+  );
+}
+
+// 三层流水线阶段 stepper:识别文档(TextIn/本地/Kimi Files)→ 结构化 → 评估(Jev/基础)→ 报告
+const STAGE_STEPS = [["extract", "识别文档"], ["structure", "结构化"], ["evaluate", "评估"], ["report", "报告"]];
+const PROVIDER_LABEL = { textin: "TextIn", pdftotext: "本地", "kimi-files": "Kimi Files", summary: "简报" };
+function StageStepper({ stages, className = "" }) {
+  if (!stages || typeof stages !== "object") return null;
+  return (
+    <div className={`flex items-center gap-1 flex-wrap text-[10px] ${className}`}>
+      {STAGE_STEPS.map(([k, label], i) => {
+        const st = stages[k];
+        const status = st?.status;
+        const running = status === "running";
+        const failed = status === "failed";
+        const done = !!status && !running && !failed;
+        const extra = k === "extract" && st?.provider ? (PROVIDER_LABEL[st.provider] || st.provider)
+          : k === "evaluate" && st?.engine ? (st.engine === "jev" ? `Jev${st.classification ? ` ${st.classification}` : ""}` : "基础")
+          : k === "evaluate" && status === "fallback" ? "回退" : null;
+        return (
+          <span key={k} className="inline-flex items-center gap-1">
+            {i > 0 && <span className="text-gray-300">›</span>}
+            <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md whitespace-nowrap ${failed ? "bg-red-50 text-red-600" : done ? "bg-green-50 text-green-700" : running ? "bg-brand/10 text-brand" : "bg-gray-50 text-gray-400"}`}>
+              {running && <I name="loader" size={9} className="animate-spin" />}
+              {label}
+              {extra && <span className="opacity-70">· {extra}</span>}
+              {done && st?.ms != null && <span className="opacity-60">{(st.ms / 1000).toFixed(1)}s</span>}
+            </span>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+const IMAGE_RE = /^image\/(jpeg|png)$/;
+const IMAGE_MAX = 10 * 1024 * 1024;
+function isImageFile(f) {
+  return IMAGE_RE.test(f?.type || "") || /\.(jpe?g|png)$/i.test(f?.name || "");
+}
+
 // 本次已入库列表用 sessionStorage 持久化(切页/刷新都保留,关 tab 自动清,tab 间隔离防多用户串数据)
 const PARSED_SS_KEY = "mesa.upload.parsed.v1";
 const PARSED_MAX = 20;
@@ -89,6 +147,9 @@ export default function Upload() {
   const [newJobFile, setNewJobFile] = useState(null);      // 用户选的 JD 文件(可选,选了则上传 R2 + AI 解析)
   const [newJobParsing, setNewJobParsing] = useState(false); // AI 正在解析 JD 文件
   const [newJobSaving, setNewJobSaving] = useState(false);   // POST /jobs 落库中
+  const [newJobFacts, setNewJobFacts] = useState(null);      // parse-jd 返回的 jdFacts(jd.v1),随 POST /jobs 一起落库
+  // 上传中任务的阶段进度(taskId → { name, stages }),onParse 结束清空
+  const [liveStages, setLiveStages] = useState({});
 
   // 上传链接 / 二维码(更多上传方式)
   const [uploadLinks, setUploadLinks] = useState([]);
@@ -233,6 +294,7 @@ export default function Upload() {
           await refetchOwned(true);
           if (task.status === "failed") toast(`解析失败: ${task.error?.message || ""}`.slice(0, 200), "error");
         } else {
+          if (task.stages) setReparsingMap((prev) => (prev[candidateId] ? { ...prev, [candidateId]: { ...prev[candidateId], stages: task.stages } } : prev));
           setTimeout(tick, 2000);
         }
       } catch (e) {
@@ -276,6 +338,7 @@ export default function Upload() {
   useEffect(() => {
     if (showNewJob) {
       setNewJob(NEW_JOB_DEFAULT);
+      setNewJobFacts(null);
       setNewJobFile(null);
       setNewJobParsing(false);
       setNewJobSaving(false);
@@ -284,16 +347,22 @@ export default function Upload() {
 
   function onPick(e) {
     const fs = Array.from(e.target.files || []);
-    setFiles((prev) => [...prev, ...fs]);
+    const ok = [];
+    for (const f of fs) {
+      if (isImageFile(f) && f.size > IMAGE_MAX) { toast(`${f.name} 图片超过 10MB,已跳过`, "error"); continue; }
+      ok.push(f);
+    }
+    setFiles((prev) => [...prev, ...ok]);
     e.target.value = "";
   }
 
   // 2s 一次轮询 parse-task,直到 done/failed,或超过 maxAttempts(180 次 = 6 分钟,够 Kimi 任何慢 case)
-  async function pollParseTask(taskId, maxAttempts = 180) {
+  async function pollParseTask(taskId, maxAttempts = 180, fileName = "") {
     for (let i = 0; i < maxAttempts; i++) {
       await new Promise((r) => setTimeout(r, 2000));
       const { data } = await api.get(`/resumes/parse-tasks/${taskId}`);
       const task = data.task;
+      if (task.stages) setLiveStages((prev) => ({ ...prev, [taskId]: { name: fileName, stages: task.stages } }));
       if (task.status === "done") return task;
       if (task.status === "failed") {
         const err = new Error(task.error?.message || "解析失败");
@@ -340,7 +409,7 @@ export default function Upload() {
         if (selectedJobId) body.jobId = selectedJobId;
         if (trimmedSource) body.source = trimmedSource;
         const { data: createData } = await api.post("/resumes/parse", body);
-        const finalTask = await pollParseTask(createData.task.id);
+        const finalTask = await pollParseTask(createData.task.id, 180, file.name);
         return finalTask.candidate;  // 后端已 create,直接返回 DB 快照
       } catch (e) {
         const msg = e.taskError?.message || e.response?.data?.message || e.message;
@@ -404,7 +473,8 @@ export default function Upload() {
         educationRequirement: data.job.educationRequirement,
         languageRequirement: data.job.languageRequirement,
       }));
-      toast("AI 已抽取 JD 字段,请核对", "success");
+      setNewJobFacts(data.jdFacts || null);
+      toast(data.jdFacts ? "AI 已抽取 JD 字段与结构化要求,请核对" : "AI 已抽取 JD 字段,请核对", "success");
     } catch (e) {
       toast(e.response?.data?.message || "JD 解析失败,可手动填写", "error");
     } finally {
@@ -521,6 +591,7 @@ export default function Upload() {
         yearsExpRange: newJob.yearsExpRange,
         educationRequirement: newJob.educationRequirement,
         languageRequirement: newJob.languageRequirement,
+        ...(newJobFacts ? { jdFacts: newJobFacts } : {}),
       });
       setJobs((prev) => [created, ...prev]);
       setSelectedJobId(created.id);
@@ -552,6 +623,7 @@ export default function Upload() {
       toast(e.response?.data?.message || "解析失败", "error");
     } finally {
       setParsing(false);
+      setLiveStages({});
     }
   }
 
@@ -568,7 +640,7 @@ export default function Upload() {
           <div className="min-w-0 flex-1">
             <h2 className="text-xl font-bold text-navy-700">简历收件箱</h2>
             <p className="text-sm text-gray-700 mt-1">
-              支持 PDF / DOCX / DOC,通过 {llmStatus?.provider === "kimi" ? "Kimi (Moonshot AI)" : "LLM"} 自动解析为候选人结构化字段。
+              支持 PDF / DOCX / DOC / 手机拍照 JPG·PNG,经{llmStatus?.providers?.textin?.enabled ? " TextIn 文档识别 +" : ""} {llmStatus?.provider === "kimi" ? "Kimi (Moonshot AI)" : "LLM"} 自动解析为候选人结构化字段{llmStatus?.providers?.jev?.enabled ? ",并由 Jev 逐项评估" : ""}。
             </p>
           </div>
           {llmReady ? (
@@ -590,12 +662,12 @@ export default function Upload() {
         >
           <I name="file-up" size={36} className="text-brand mx-auto" />
           <p className="mt-3 text-sm font-bold text-navy-700">点击或拖拽文件到这里</p>
-          <p className="text-xs text-gray-700 mt-1">单次最多 10 份 · 单文件 ≤ 20MB · PDF / DOCX / DOC</p>
+          <p className="text-xs text-gray-700 mt-1">单次最多 10 份 · 文档 ≤ 20MB / 图片 ≤ 10MB · PDF / DOCX / DOC / JPG / PNG</p>
           <input
             id="resume-upload"
             type="file"
             multiple
-            accept=".pdf,.docx,.doc,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            accept=".pdf,.docx,.doc,.jpg,.jpeg,.png,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png"
             className="hidden"
             onChange={onPick}
           />
@@ -692,7 +764,17 @@ export default function Upload() {
         </Card>
       )}
 
-      {parsing && <LoadingBlock label="Kimi 正在阅读简历,请稍候..." height="h-16" />}
+      {parsing && (
+        <Card className="p-4 space-y-3">
+          <LoadingBlock label="AI 正在识别并阅读简历,请稍候..." height="h-12" />
+          {Object.entries(liveStages).map(([taskId, v]) => (
+            <div key={taskId} className="flex items-center gap-3 flex-wrap px-2">
+              <span className="text-[11px] text-navy-700 font-bold truncate max-w-[220px]">{v.name}</span>
+              <StageStepper stages={v.stages} />
+            </div>
+          ))}
+        </Card>
+      )}
 
       {parsed.length > 0 && (
         <Card className="p-6">
@@ -758,7 +840,7 @@ export default function Upload() {
                 onClick={() => onReparse(selectedIds)}
                 disabled={bulkAssigning || !llmStatus?.configured}
                 className="inline-flex items-center gap-1 h-8 px-3 rounded-lg bg-brand-gradient text-white text-xs font-bold shadow-button hover:shadow-button-hover active:scale-95 transition-all disabled:opacity-50"
-                title={!llmStatus?.configured ? "LLM 未配置,无法解析" : "用 Kimi 重新解析选中的简历"}
+                title={!llmStatus?.configured ? "LLM 未配置,无法解析" : "AI 重新解析选中的简历"}
               >
                 <I name="sparkles" size={11} /> 批量解析 ({selectedIds.size})
               </button>
@@ -841,12 +923,13 @@ export default function Upload() {
                         onClick={() => onReparse([c.id])}
                         disabled={isReparsing}
                         className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg bg-brand-gradient text-white text-[11px] font-bold shadow-button hover:shadow-button-hover active:scale-95 transition-all disabled:opacity-60 shrink-0"
-                        title={isReparsing ? "正在解析中" : (c.parser ? "用 Kimi 重新解析这份简历" : "用 Kimi 解析这份简历")}
+                        title={isReparsing ? "正在解析中" : (c.parser ? "重新解析(AI)" : "AI 解析这份简历")}
                       >
                         <I name={isReparsing ? "loader" : (c.parser ? "refresh-cw" : "sparkles")} size={10} className={isReparsing ? "animate-spin" : ""} />
                         {isReparsing ? "解析中" : (c.parser ? "重新解析" : "解析")}
                       </button>
                     )}
+                    <ClassChip classification={c.classification} reviewPriority={c.reviewPriority} />
                     {c.jdMatch != null && (
                       <div className="shrink-0">
                         <LiquidLoader size={40} level={c.jdMatch} label={c.jdMatch} />
@@ -854,6 +937,9 @@ export default function Upload() {
                     )}
                   </div>
                 </div>
+                {isReparsing && reparsingMap[c.id]?.stages && (
+                  <StageStepper stages={reparsingMap[c.id].stages} className="mt-2 pl-[56px]" />
+                )}
               </li>
             );})}
           </ul>

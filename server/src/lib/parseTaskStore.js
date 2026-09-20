@@ -97,13 +97,14 @@ export async function markRunning(app, taskId) {
 }
 
 // 标记任务为 done,带最终 candidate(已写 DB 的快照)
-export async function markDone(app, taskId, { candidate, match, reparsed }) {
+export async function markDone(app, taskId, { candidate, match, reparsed, ...extra }) {
   return updateTask(app, taskId, {
     status: "done",
     finishedAt: new Date().toISOString(),
     candidate,
     match: match || null,
     reparsed: !!reparsed,
+    ...extra, // evaluation 摘要等(三层流水线)
   });
 }
 

@@ -176,6 +176,17 @@ model Candidate {
   languages         Json     @default("[]") // [{name:"中文",level:"母语"}, {name:"英语",level:"CEFR C1"}]
   documents         Json     @default("{\"resume\":[],\"materials\":[],\"portfolio\":[]}") // 附件分类: resume/materials/portfolio,每项 [{id,kind:"file"|"link"|"note",name/label,url?,size?,verified?,content?}]
 
+  // === TextIn + Kimi + Jev 三层架构(2026-09-20)===
+  // profile: 简历 Schema resume.v1(事实层,Kimi 抽取);derived: 代码派生指标(年限/行业年限/跳槽/应届…)
+  // 旧扁平列(education/school/yearsExp/skills md…)保留为 profile 的反规范化视图,旧页面零改动
+  profile         Json?
+  derived         Json?
+  profileVersion  String?  @map("profile_version")
+  profileWarnings Json     @default("[]") @map("profile_warnings")
+  // 当前评估的分类快照(A/B/C/D)与查看优先级(HIGH/REVIEW/LOW),列表筛选用;明细在 CandidateEvaluation
+  classification  String?
+  reviewPriority  String?  @map("review_priority")
+
   ownerId String? @map("owner_id") @db.Uuid
   owner   User?   @relation("CandidateOwner", fields: [ownerId], references: [id], onDelete: SetNull)
 
@@ -193,6 +204,8 @@ model Candidate {
   shareLinks             ShareLink[]
   reviews                Review[]
   interviewEvaluations   InterviewEvaluation[]
+  resumeParses           ResumeParse[]
+  evaluations            CandidateEvaluation[]
   performanceEvaluations PerformanceEvaluation[]
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -202,6 +215,7 @@ model Candidate {
   @@index([status])
   @@index([ownerId])
   @@index([jobId])
+  @@index([classification])
   @@map("candidates")
 }
 
@@ -233,12 +247,22 @@ model Job {
   nice                 String[]  @default([])
   benefits             String[]  @default([])
 
+  // === JD 结构化(2026-09-20)===
+  // jdFacts: JD 事实层 jd.v1(Kimi 抽取,忠于原文);evaluationModel: 评价模型层(HR 拥有:tier/method/权重/Jev 题目措辞)
+  jdFacts                  Json?     @map("jd_facts")
+  jdFactsVersion           String?   @map("jd_facts_version")
+  evaluationModel          Json?     @map("evaluation_model")
+  evaluationModelVersion   Int       @default(0) @map("evaluation_model_version")
+  evaluationModelUpdatedAt DateTime? @map("evaluation_model_updated_at")
+  evaluationModelSource    String?   @map("evaluation_model_source") // "kimi_suggested" | "manual"
+
   interviews           Interview[]
   employees            Employee[]
   linkedCandidates     Candidate[]           @relation("CandidateJob")
   uploadLinks          UploadShareLink[]     @relation("UploadLinkJob")
   userScopes           UserJobScope[]
   interviewEvaluations InterviewEvaluation[]
+  evaluations          CandidateEvaluation[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -727,4 +751,66 @@ model PerformanceEvaluation {
   @@index([createdBy])
   @@index([status])
   @@map("performance_evaluations")
+}
+
+// ─── TextIn + Kimi + Jev 三层架构(2026-09-20)────────────────────────────
+
+// 文档层产物 — 一份文件一条(按 sha256 幂等),reparse 优先复用不重复向 TextIn 计费
+model ResumeParse {
+  id              String    @id @default(uuid()) @db.Uuid
+  candidateId     String    @map("candidate_id") @db.Uuid
+  candidate       Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  attachmentKey   String    @map("attachment_key")     // R2 key(与 candidate.attachment 对应)
+  fileSha256      String    @map("file_sha256")
+  provider        String                               // "textin" | "pdftotext" | "kimi-files"
+  providerVersion String?   @map("provider_version")   // TextIn 返回 version
+  markdown        String    @db.Text                   // ≤200KB,超出截断并置 truncated=true
+  truncated       Boolean   @default(false)
+  rawResultKey    String?   @map("raw_result_key")     // R2: parses/<candidateId>/<sha>.json(TextIn 完整响应)
+  pageCount       Int?      @map("page_count")
+  durationMs      Int?      @map("duration_ms")
+  charCount       Int?      @map("char_count")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  @@unique([candidateId, fileSha256, provider])
+  @@index([candidateId])
+  @@map("resume_parses")
+}
+
+// 评估层产物 — (candidate, job) 每次评估一条快照;isCurrent 标当前;engine=jev|legacy
+model CandidateEvaluation {
+  id             String    @id @default(uuid()) @db.Uuid
+  candidateId    String    @map("candidate_id") @db.Uuid
+  candidate      Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  jobId          String    @map("job_id") @db.Uuid
+  job            Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  resumeParseId  String?   @map("resume_parse_id") @db.Uuid
+  engine         String                                 // "jev" | "legacy"
+  isCurrent      Boolean   @default(true) @map("is_current")
+  shadow         Boolean   @default(false)              // jev.mode=shadow 时的副评估(不写 Candidate 快照)
+
+  hardFilter     Json      // { result:"PASS"|"FAIL"|"UNKNOWN", items:[…] }
+  jevRequest     Json?     @map("jev_request")          // { questions, meta }(不存 state 全文)
+  jevAnswers     Json?     @map("jev_answers")
+  dimensions     Json      // [{ key, score, weight }]
+  items          Json      // 逐项 [{ key,label,tier,method,source,normalized,verdict,confidence,raw }]
+  overallScore   Int       @map("overall_score")
+  classification String                                 // "A"|"B"|"C"|"D"
+  reviewPriority String    @map("review_priority")      // "HIGH"|"REVIEW"|"LOW"
+  reasons        Json      @default("[]")
+  flags          Json      @default("[]")
+  minConfidence  Float?    @map("min_confidence")
+
+  report         Json?     // { highlights[], risks[], insights[], matchedFor[], againstFor[], aiSuggestedTags[], matchReason, interviewProbes[], evidence[] }
+  reportStatus   String    @default("pending") @map("report_status") // pending|done|failed|skipped
+
+  manualOverride Json?     @map("manual_override")      // { classification, by, at, note }
+
+  versions       Json      // { schema, questionTemplate, evaluationModel, jevModel, kimiModel, kimiPromptHash, textinVersion }
+  costs          Json?     // { jevInputTokens, jevUsd, cached, latencyMs, kimiTokens }
+  evaluatedAt    DateTime  @default(now()) @map("evaluated_at")
+
+  @@index([candidateId, jobId, evaluatedAt])
+  @@index([jobId, isCurrent, classification])
+  @@map("candidate_evaluations")
 }

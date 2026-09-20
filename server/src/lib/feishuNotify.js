@@ -81,7 +81,8 @@ function buildReadyCard(candidate, shareUrl) {
   const lines = [
     `🎉 **${candidate.name}** 简历解析完成`,
     candidate.appliedFor ? `投递岗位:${candidate.appliedFor}` : null,
-    `JD 匹配度:**${score}**`,
+    `JD 匹配度:**${score}**${candidate.classification ? ` · ${candidate.classification} 类(${{ A: "高匹配", B: "较匹配", C: "待复核", D: "低匹配" }[candidate.classification] || ""})` : ""}`,
+    ...(Array.isArray(candidate.risks) && candidate.risks.length ? [`关注:${candidate.risks.slice(0, 2).join(";")}`] : []),
     "",
     `👉 [点击查看候选人详情](${shareUrl})`,
   ].filter((l) => l !== null);

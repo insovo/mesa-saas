@@ -1,0 +1,503 @@
+[
+ {
+  "id": "quality.product",
+  "name": "产品质量管理",
+  "aliases": [
+   "产品质量",
+   "整车质量",
+   "质量管理",
+   "质量问题",
+   "quality management",
+   "产品品质"
+  ]
+ },
+ {
+  "id": "quality.analysis",
+  "name": "质量问题分析与闭环",
+  "aliases": [
+   "质量分析",
+   "问题分析",
+   "根因分析",
+   "问题闭环",
+   "8d",
+   "故障分析",
+   "fta",
+   "rca"
+  ]
+ },
+ {
+  "id": "quality.system",
+  "name": "质量体系",
+  "aliases": [
+   "质量体系",
+   "iatf16949",
+   "iso9001",
+   "体系审核",
+   "内审",
+   "qms",
+   "vda6.3"
+  ]
+ },
+ {
+  "id": "quality.supplier",
+  "name": "供应商质量",
+  "aliases": [
+   "供应商质量",
+   "sqe",
+   "sqa",
+   "供应商审核",
+   "来料质量",
+   "供应商开发"
+  ]
+ },
+ {
+  "id": "quality.overseas",
+  "name": "海外质量",
+  "aliases": [
+   "海外质量",
+   "海外市场质量",
+   "欧洲质量",
+   "海外售后质量",
+   "出口质量",
+   "海外客户质量"
+  ]
+ },
+ {
+  "id": "quality.customer",
+  "name": "客户质量/投诉处理",
+  "aliases": [
+   "客户投诉",
+   "客户质量",
+   "客诉",
+   "客户反馈",
+   "售后质量",
+   "field quality"
+  ]
+ },
+ {
+  "id": "quality.process",
+  "name": "过程/工艺质量",
+  "aliases": [
+   "过程质量",
+   "工艺质量",
+   "spc",
+   "cpk",
+   "过程审核",
+   "pfmea",
+   "控制计划"
+  ]
+ },
+ {
+  "id": "cert.overseas",
+  "name": "海外认证/法规",
+  "aliases": [
+   "海外认证",
+   "ece",
+   "e-mark",
+   "欧盟认证",
+   "法规",
+   "whvta",
+   "fmvss",
+   "认证",
+   "homologation",
+   "ce认证"
+  ]
+ },
+ {
+  "id": "project.mass_production",
+  "name": "量产项目",
+  "aliases": [
+   "量产",
+   "sop",
+   "量产项目",
+   "产品上市",
+   "launch",
+   "apqp",
+   "ppap"
+  ]
+ },
+ {
+  "id": "project.overseas",
+  "name": "海外项目",
+  "aliases": [
+   "海外项目",
+   "国际项目",
+   "出海",
+   "海外上市",
+   "海外市场项目",
+   "global project"
+  ]
+ },
+ {
+  "id": "project.rnd",
+  "name": "研发项目",
+  "aliases": [
+   "研发项目",
+   "开发项目",
+   "新产品开发",
+   "npi",
+   "npd"
+  ]
+ },
+ {
+  "id": "supplier.mgmt",
+  "name": "供应商管理",
+  "aliases": [
+   "供应商管理",
+   "供应商协调",
+   "供应商开发",
+   "sourcing",
+   "vendor management"
+  ]
+ },
+ {
+  "id": "cross_team",
+  "name": "跨部门协作",
+  "aliases": [
+   "跨部门",
+   "跨职能",
+   "协调",
+   "cross-functional",
+   "跨团队"
+  ]
+ },
+ {
+  "id": "overseas.business",
+  "name": "海外业务",
+  "aliases": [
+   "海外业务",
+   "国际业务",
+   "海外市场",
+   "出海业务",
+   "国际化"
+  ]
+ },
+ {
+  "id": "overseas.hr",
+  "name": "海外人力资源",
+  "aliases": [
+   "海外人力",
+   "海外招聘",
+   "外籍员工管理",
+   "海外hr",
+   "国际派遣"
+  ]
+ },
+ {
+  "id": "hr.bp",
+  "name": "HRBP 业务伙伴",
+  "aliases": [
+   "hrbp",
+   "业务伙伴",
+   "组织发展",
+   "od",
+   "人才管理"
+  ]
+ },
+ {
+  "id": "hr.recruiting",
+  "name": "招聘",
+  "aliases": [
+   "招聘",
+   "校园招聘",
+   "社会招聘",
+   "猎头",
+   "人才获取"
+  ]
+ },
+ {
+  "id": "hr.comp",
+  "name": "薪酬绩效",
+  "aliases": [
+   "薪酬",
+   "绩效",
+   "c&b",
+   "绩效管理",
+   "激励"
+  ]
+ },
+ {
+  "id": "hr.training",
+  "name": "培训发展",
+  "aliases": [
+   "培训",
+   "学习发展",
+   "l&d",
+   "人才发展"
+  ]
+ },
+ {
+  "id": "rnd.vehicle",
+  "name": "整车开发",
+  "aliases": [
+   "整车开发",
+   "整车集成",
+   "车型开发",
+   "vehicle development"
+  ]
+ },
+ {
+  "id": "rnd.chassis",
+  "name": "底盘",
+  "aliases": [
+   "底盘",
+   "悬架",
+   "制动",
+   "转向",
+   "chassis"
+  ]
+ },
+ {
+  "id": "rnd.body",
+  "name": "车身/内外饰",
+  "aliases": [
+   "车身",
+   "内饰",
+   "外饰",
+   "白车身",
+   "body"
+  ]
+ },
+ {
+  "id": "rnd.powertrain",
+  "name": "动力总成/三电",
+  "aliases": [
+   "动力总成",
+   "三电",
+   "电驱",
+   "电池",
+   "电机",
+   "电控",
+   "powertrain",
+   "bms"
+  ]
+ },
+ {
+  "id": "rnd.ee",
+  "name": "电子电气架构",
+  "aliases": [
+   "电子电气",
+   "eea",
+   "电气架构",
+   "线束",
+   "ee架构"
+  ]
+ },
+ {
+  "id": "rnd.software",
+  "name": "软件开发",
+  "aliases": [
+   "软件开发",
+   "嵌入式",
+   "autosar",
+   "应用开发",
+   "后端开发",
+   "前端开发"
+  ]
+ },
+ {
+  "id": "rnd.adas",
+  "name": "智能驾驶研发",
+  "aliases": [
+   "adas",
+   "自动驾驶",
+   "感知",
+   "规划控制",
+   "智能驾驶"
+  ]
+ },
+ {
+  "id": "rnd.cabin",
+  "name": "智能座舱研发",
+  "aliases": [
+   "座舱",
+   "车机",
+   "hmi",
+   "语音",
+   "车载娱乐"
+  ]
+ },
+ {
+  "id": "test.validation",
+  "name": "试验验证",
+  "aliases": [
+   "试验",
+   "验证",
+   "dv",
+   "pv",
+   "路试",
+   "台架",
+   "耐久"
+  ]
+ },
+ {
+  "id": "manufacturing.process",
+  "name": "制造工艺",
+  "aliases": [
+   "工艺",
+   "冲压",
+   "焊装",
+   "涂装",
+   "总装",
+   "制造工程"
+  ]
+ },
+ {
+  "id": "supply_chain.planning",
+  "name": "供应链计划",
+  "aliases": [
+   "计划",
+   "物流",
+   "仓储",
+   "供应链计划",
+   "s&op"
+  ]
+ },
+ {
+  "id": "sales.overseas",
+  "name": "海外销售",
+  "aliases": [
+   "海外销售",
+   "出口销售",
+   "国际销售",
+   "海外渠道",
+   "海外经销商"
+  ]
+ },
+ {
+  "id": "sales.key_account",
+  "name": "大客户销售",
+  "aliases": [
+   "大客户",
+   "kа",
+   "key account",
+   "客户经理"
+  ]
+ },
+ {
+  "id": "product.planning",
+  "name": "产品规划/定义",
+  "aliases": [
+   "产品规划",
+   "产品定义",
+   "产品策划",
+   "需求管理"
+  ]
+ },
+ {
+  "id": "data.analysis",
+  "name": "数据分析",
+  "aliases": [
+   "数据分析",
+   "bi",
+   "报表",
+   "数据挖掘",
+   "数据指标"
+  ]
+ },
+ {
+  "id": "finance.accounting",
+  "name": "财务核算",
+  "aliases": [
+   "会计",
+   "核算",
+   "报表",
+   "税务"
+  ]
+ },
+ {
+  "id": "finance.fpa",
+  "name": "财务分析/预算",
+  "aliases": [
+   "财务分析",
+   "预算",
+   "fp&a",
+   "经营分析"
+  ]
+ },
+ {
+  "id": "legal.compliance",
+  "name": "法务合规",
+  "aliases": [
+   "合同",
+   "合规",
+   "法务",
+   "知识产权"
+  ]
+ },
+ {
+  "id": "market.europe",
+  "name": "欧洲市场",
+  "aliases": [
+   "欧洲",
+   "德国",
+   "法国",
+   "英国",
+   "意大利",
+   "西班牙",
+   "europe",
+   "eu市场"
+  ]
+ },
+ {
+  "id": "market.sea",
+  "name": "东南亚市场",
+  "aliases": [
+   "东南亚",
+   "泰国",
+   "越南",
+   "印尼",
+   "马来西亚",
+   "asean"
+  ]
+ },
+ {
+  "id": "market.mideast",
+  "name": "中东市场",
+  "aliases": [
+   "中东",
+   "沙特",
+   "阿联酋",
+   "迪拜",
+   "middle east"
+  ]
+ },
+ {
+  "id": "market.latam",
+  "name": "拉美市场",
+  "aliases": [
+   "拉美",
+   "南美",
+   "墨西哥",
+   "巴西",
+   "智利",
+   "latam"
+  ]
+ },
+ {
+  "id": "market.na",
+  "name": "北美市场",
+  "aliases": [
+   "北美",
+   "美国",
+   "加拿大",
+   "north america"
+  ]
+ },
+ {
+  "id": "management.team",
+  "name": "团队管理",
+  "aliases": [
+   "团队管理",
+   "带团队",
+   "人员管理",
+   "团队建设",
+   "管理经验"
+  ]
+ },
+ {
+  "id": "other",
+  "name": "其他领域",
+  "aliases": []
+ }
+]

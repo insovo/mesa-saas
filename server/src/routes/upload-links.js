@@ -19,6 +19,9 @@ const ALLOWED_MIME = new Set([
   "application/pdf",
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  // 手机拍照简历(校招扫码场景);文档层 TextIn 可 OCR,未启用时回退 Kimi Files
+  "image/jpeg",
+  "image/png",
 ]);
 const MAX_SIZE = 20 * 1024 * 1024;
 
@@ -184,7 +187,7 @@ export default async function uploadLinksRoutes(app) {
     if (!link) return;
     if (!app.r2) return reply.code(503).send({ error: "r2_not_configured", message: "R2 未配置" });
     if (!ALLOWED_MIME.has(req.body.contentType)) {
-      return reply.code(400).send({ error: "unsupported_type", message: "仅支持 PDF / Word 简历" });
+      return reply.code(400).send({ error: "unsupported_type", message: "仅支持 PDF / Word / JPG / PNG 简历" });
     }
     // 公开上传的 key 单独分桶,方便审计
     const key = `resumes/public-uploads/${monthBucket()}/${sanitizeFilename(req.body.filename)}`;
