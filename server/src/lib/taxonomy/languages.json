@@ -1,0 +1,138 @@
+[
+ {
+  "id": "zh",
+  "name": "中文",
+  "aliases": [
+   "中文",
+   "汉语",
+   "普通话",
+   "chinese",
+   "mandarin",
+   "粤语",
+   "cantonese"
+  ]
+ },
+ {
+  "id": "en",
+  "name": "英语",
+  "aliases": [
+   "英语",
+   "英文",
+   "english"
+  ]
+ },
+ {
+  "id": "ja",
+  "name": "日语",
+  "aliases": [
+   "日语",
+   "日文",
+   "japanese"
+  ]
+ },
+ {
+  "id": "de",
+  "name": "德语",
+  "aliases": [
+   "德语",
+   "德文",
+   "german",
+   "deutsch"
+  ]
+ },
+ {
+  "id": "fr",
+  "name": "法语",
+  "aliases": [
+   "法语",
+   "法文",
+   "french",
+   "français",
+   "francais"
+  ]
+ },
+ {
+  "id": "es",
+  "name": "西班牙语",
+  "aliases": [
+   "西班牙语",
+   "spanish",
+   "español",
+   "espanol"
+  ]
+ },
+ {
+  "id": "ko",
+  "name": "韩语",
+  "aliases": [
+   "韩语",
+   "韩文",
+   "korean"
+  ]
+ },
+ {
+  "id": "ru",
+  "name": "俄语",
+  "aliases": [
+   "俄语",
+   "russian"
+  ]
+ },
+ {
+  "id": "it",
+  "name": "意大利语",
+  "aliases": [
+   "意大利语",
+   "italian"
+  ]
+ },
+ {
+  "id": "pt",
+  "name": "葡萄牙语",
+  "aliases": [
+   "葡萄牙语",
+   "portuguese"
+  ]
+ },
+ {
+  "id": "ar",
+  "name": "阿拉伯语",
+  "aliases": [
+   "阿拉伯语",
+   "arabic"
+  ]
+ },
+ {
+  "id": "th",
+  "name": "泰语",
+  "aliases": [
+   "泰语",
+   "thai"
+  ]
+ },
+ {
+  "id": "vi",
+  "name": "越南语",
+  "aliases": [
+   "越南语",
+   "vietnamese"
+  ]
+ },
+ {
+  "id": "id",
+  "name": "印尼语",
+  "aliases": [
+   "印尼语",
+   "indonesian",
+   "bahasa"
+  ]
+ },
+ {
+  "id": "ms",
+  "name": "马来语",
+  "aliases": [
+   "马来语",
+   "malay"
+  ]
+ }
+]

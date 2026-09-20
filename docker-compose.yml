@@ -61,6 +61,16 @@ services:
       KIMI_API_KEY: ${KIMI_API_KEY:-}
       KIMI_MODEL: ${KIMI_MODEL:-moonshot-v1-32k}
       KIMI_BASE_URL: ${KIMI_BASE_URL:-https://api.moonshot.cn/v1}
+      # TextIn xParse(文档层,可选)— 未配置或 TEXTIN_ENABLED=false 时走 pdftotext → Kimi Files 旧回退链
+      TEXTIN_APP_ID: ${TEXTIN_APP_ID:-}
+      TEXTIN_SECRET_CODE: ${TEXTIN_SECRET_CODE:-}
+      TEXTIN_ENABLED: ${TEXTIN_ENABLED:-false}
+      # Jev / TypeSafe AI(评估层,可选)— 未启用时 JD 评估走 Kimi legacy;JEV_MODE=shadow 双写不切 UI
+      JEV_API_KEY: ${JEV_API_KEY:-}
+      JEV_ENABLED: ${JEV_ENABLED:-false}
+      JEV_MODE: ${JEV_MODE:-shadow}
+      JEV_BASE_URL: ${JEV_BASE_URL:-https://api.typesafe.ai/v1}
+      JEV_MODEL: ${JEV_MODEL:-jev-latest}
       # Resend(账号自助:改邮箱/改密验证码 + 忘记密码)
       # 未配 RESEND_API_KEY 时后端 dev fallback:验证码进响应 devCode + 日志可见
       # 生产前必须先在 Resend Dashboard 加自有域名并验证 DNS

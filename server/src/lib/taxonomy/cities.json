@@ -1,0 +1,668 @@
+[
+ {
+  "id": "上海",
+  "name": "上海",
+  "country": "CN",
+  "aliases": [
+   "上海市",
+   "shanghai"
+  ]
+ },
+ {
+  "id": "北京",
+  "name": "北京",
+  "country": "CN",
+  "aliases": [
+   "北京市",
+   "beijing"
+  ]
+ },
+ {
+  "id": "深圳",
+  "name": "深圳",
+  "country": "CN",
+  "aliases": [
+   "深圳市",
+   "shenzhen"
+  ]
+ },
+ {
+  "id": "广州",
+  "name": "广州",
+  "country": "CN",
+  "aliases": [
+   "广州市",
+   "guangzhou"
+  ]
+ },
+ {
+  "id": "杭州",
+  "name": "杭州",
+  "country": "CN",
+  "aliases": [
+   "杭州市",
+   "hangzhou"
+  ]
+ },
+ {
+  "id": "苏州",
+  "name": "苏州",
+  "country": "CN",
+  "aliases": [
+   "苏州市",
+   "suzhou"
+  ]
+ },
+ {
+  "id": "南京",
+  "name": "南京",
+  "country": "CN",
+  "aliases": [
+   "南京市",
+   "nanjing"
+  ]
+ },
+ {
+  "id": "成都",
+  "name": "成都",
+  "country": "CN",
+  "aliases": [
+   "成都市",
+   "chengdu"
+  ]
+ },
+ {
+  "id": "重庆",
+  "name": "重庆",
+  "country": "CN",
+  "aliases": [
+   "重庆市",
+   "chongqing"
+  ]
+ },
+ {
+  "id": "武汉",
+  "name": "武汉",
+  "country": "CN",
+  "aliases": [
+   "武汉市",
+   "wuhan"
+  ]
+ },
+ {
+  "id": "西安",
+  "name": "西安",
+  "country": "CN",
+  "aliases": [
+   "西安市",
+   "xian",
+   "xi'an"
+  ]
+ },
+ {
+  "id": "天津",
+  "name": "天津",
+  "country": "CN",
+  "aliases": [
+   "天津市",
+   "tianjin"
+  ]
+ },
+ {
+  "id": "合肥",
+  "name": "合肥",
+  "country": "CN",
+  "aliases": [
+   "合肥市",
+   "hefei"
+  ]
+ },
+ {
+  "id": "长沙",
+  "name": "长沙",
+  "country": "CN",
+  "aliases": [
+   "长沙市",
+   "changsha"
+  ]
+ },
+ {
+  "id": "宁波",
+  "name": "宁波",
+  "country": "CN",
+  "aliases": [
+   "宁波市",
+   "ningbo"
+  ]
+ },
+ {
+  "id": "无锡",
+  "name": "无锡",
+  "country": "CN",
+  "aliases": [
+   "无锡市",
+   "wuxi"
+  ]
+ },
+ {
+  "id": "常州",
+  "name": "常州",
+  "country": "CN",
+  "aliases": [
+   "常州市",
+   "changzhou"
+  ]
+ },
+ {
+  "id": "青岛",
+  "name": "青岛",
+  "country": "CN",
+  "aliases": [
+   "青岛市",
+   "qingdao"
+  ]
+ },
+ {
+  "id": "郑州",
+  "name": "郑州",
+  "country": "CN",
+  "aliases": [
+   "郑州市",
+   "zhengzhou"
+  ]
+ },
+ {
+  "id": "长春",
+  "name": "长春",
+  "country": "CN",
+  "aliases": [
+   "长春市",
+   "changchun"
+  ]
+ },
+ {
+  "id": "沈阳",
+  "name": "沈阳",
+  "country": "CN",
+  "aliases": [
+   "沈阳市",
+   "shenyang"
+  ]
+ },
+ {
+  "id": "大连",
+  "name": "大连",
+  "country": "CN",
+  "aliases": [
+   "大连市",
+   "dalian"
+  ]
+ },
+ {
+  "id": "厦门",
+  "name": "厦门",
+  "country": "CN",
+  "aliases": [
+   "厦门市",
+   "xiamen"
+  ]
+ },
+ {
+  "id": "佛山",
+  "name": "佛山",
+  "country": "CN",
+  "aliases": [
+   "佛山市",
+   "foshan"
+  ]
+ },
+ {
+  "id": "东莞",
+  "name": "东莞",
+  "country": "CN",
+  "aliases": [
+   "东莞市",
+   "dongguan"
+  ]
+ },
+ {
+  "id": "烟台",
+  "name": "烟台",
+  "country": "CN",
+  "aliases": [
+   "烟台市",
+   "yantai"
+  ]
+ },
+ {
+  "id": "柳州",
+  "name": "柳州",
+  "country": "CN",
+  "aliases": [
+   "柳州市",
+   "liuzhou"
+  ]
+ },
+ {
+  "id": "香港",
+  "name": "香港",
+  "country": "HK",
+  "aliases": [
+   "hong kong",
+   "hk"
+  ]
+ },
+ {
+  "id": "台北",
+  "name": "台北",
+  "country": "TW",
+  "aliases": [
+   "taipei"
+  ]
+ },
+ {
+  "id": "新加坡",
+  "name": "新加坡",
+  "country": "SG",
+  "aliases": [
+   "singapore"
+  ]
+ },
+ {
+  "id": "东京",
+  "name": "东京",
+  "country": "JP",
+  "aliases": [
+   "tokyo"
+  ]
+ },
+ {
+  "id": "首尔",
+  "name": "首尔",
+  "country": "KR",
+  "aliases": [
+   "seoul"
+  ]
+ },
+ {
+  "id": "曼谷",
+  "name": "曼谷",
+  "country": "TH",
+  "aliases": [
+   "bangkok"
+  ]
+ },
+ {
+  "id": "胡志明",
+  "name": "胡志明",
+  "country": "VN",
+  "aliases": [
+   "ho chi minh",
+   "西贡"
+  ]
+ },
+ {
+  "id": "雅加达",
+  "name": "雅加达",
+  "country": "ID",
+  "aliases": [
+   "jakarta"
+  ]
+ },
+ {
+  "id": "吉隆坡",
+  "name": "吉隆坡",
+  "country": "MY",
+  "aliases": [
+   "kuala lumpur"
+  ]
+ },
+ {
+  "id": "斯图加特",
+  "name": "斯图加特",
+  "country": "DE",
+  "aliases": [
+   "stuttgart"
+  ]
+ },
+ {
+  "id": "慕尼黑",
+  "name": "慕尼黑",
+  "country": "DE",
+  "aliases": [
+   "munich",
+   "münchen",
+   "munchen"
+  ]
+ },
+ {
+  "id": "柏林",
+  "name": "柏林",
+  "country": "DE",
+  "aliases": [
+   "berlin"
+  ]
+ },
+ {
+  "id": "法兰克福",
+  "name": "法兰克福",
+  "country": "DE",
+  "aliases": [
+   "frankfurt"
+  ]
+ },
+ {
+  "id": "沃尔夫斯堡",
+  "name": "沃尔夫斯堡",
+  "country": "DE",
+  "aliases": [
+   "wolfsburg"
+  ]
+ },
+ {
+  "id": "巴黎",
+  "name": "巴黎",
+  "country": "FR",
+  "aliases": [
+   "paris"
+  ]
+ },
+ {
+  "id": "伦敦",
+  "name": "伦敦",
+  "country": "GB",
+  "aliases": [
+   "london"
+  ]
+ },
+ {
+  "id": "米兰",
+  "name": "米兰",
+  "country": "IT",
+  "aliases": [
+   "milan",
+   "milano"
+  ]
+ },
+ {
+  "id": "都灵",
+  "name": "都灵",
+  "country": "IT",
+  "aliases": [
+   "turin",
+   "torino"
+  ]
+ },
+ {
+  "id": "马德里",
+  "name": "马德里",
+  "country": "ES",
+  "aliases": [
+   "madrid"
+  ]
+ },
+ {
+  "id": "巴塞罗那",
+  "name": "巴塞罗那",
+  "country": "ES",
+  "aliases": [
+   "barcelona"
+  ]
+ },
+ {
+  "id": "阿姆斯特丹",
+  "name": "阿姆斯特丹",
+  "country": "NL",
+  "aliases": [
+   "amsterdam"
+  ]
+ },
+ {
+  "id": "布鲁塞尔",
+  "name": "布鲁塞尔",
+  "country": "BE",
+  "aliases": [
+   "brussels"
+  ]
+ },
+ {
+  "id": "苏黎世",
+  "name": "苏黎世",
+  "country": "CH",
+  "aliases": [
+   "zurich"
+  ]
+ },
+ {
+  "id": "维也纳",
+  "name": "维也纳",
+  "country": "AT",
+  "aliases": [
+   "vienna"
+  ]
+ },
+ {
+  "id": "华沙",
+  "name": "华沙",
+  "country": "PL",
+  "aliases": [
+   "warsaw"
+  ]
+ },
+ {
+  "id": "布拉格",
+  "name": "布拉格",
+  "country": "CZ",
+  "aliases": [
+   "prague"
+  ]
+ },
+ {
+  "id": "布达佩斯",
+  "name": "布达佩斯",
+  "country": "HU",
+  "aliases": [
+   "budapest"
+  ]
+ },
+ {
+  "id": "斯德哥尔摩",
+  "name": "斯德哥尔摩",
+  "country": "SE",
+  "aliases": [
+   "stockholm"
+  ]
+ },
+ {
+  "id": "哥德堡",
+  "name": "哥德堡",
+  "country": "SE",
+  "aliases": [
+   "gothenburg",
+   "göteborg"
+  ]
+ },
+ {
+  "id": "哥本哈根",
+  "name": "哥本哈根",
+  "country": "DK",
+  "aliases": [
+   "copenhagen"
+  ]
+ },
+ {
+  "id": "奥斯陆",
+  "name": "奥斯陆",
+  "country": "NO",
+  "aliases": [
+   "oslo"
+  ]
+ },
+ {
+  "id": "迪拜",
+  "name": "迪拜",
+  "country": "AE",
+  "aliases": [
+   "dubai"
+  ]
+ },
+ {
+  "id": "阿布扎比",
+  "name": "阿布扎比",
+  "country": "AE",
+  "aliases": [
+   "abu dhabi"
+  ]
+ },
+ {
+  "id": "利雅得",
+  "name": "利雅得",
+  "country": "SA",
+  "aliases": [
+   "riyadh"
+  ]
+ },
+ {
+  "id": "特拉维夫",
+  "name": "特拉维夫",
+  "country": "IL",
+  "aliases": [
+   "tel aviv"
+  ]
+ },
+ {
+  "id": "伊斯坦布尔",
+  "name": "伊斯坦布尔",
+  "country": "TR",
+  "aliases": [
+   "istanbul"
+  ]
+ },
+ {
+  "id": "纽约",
+  "name": "纽约",
+  "country": "US",
+  "aliases": [
+   "new york",
+   "nyc"
+  ]
+ },
+ {
+  "id": "洛杉矶",
+  "name": "洛杉矶",
+  "country": "US",
+  "aliases": [
+   "los angeles",
+   "la"
+  ]
+ },
+ {
+  "id": "旧金山",
+  "name": "旧金山",
+  "country": "US",
+  "aliases": [
+   "san francisco",
+   "湾区",
+   "bay area",
+   "硅谷"
+  ]
+ },
+ {
+  "id": "底特律",
+  "name": "底特律",
+  "country": "US",
+  "aliases": [
+   "detroit"
+  ]
+ },
+ {
+  "id": "西雅图",
+  "name": "西雅图",
+  "country": "US",
+  "aliases": [
+   "seattle"
+  ]
+ },
+ {
+  "id": "芝加哥",
+  "name": "芝加哥",
+  "country": "US",
+  "aliases": [
+   "chicago"
+  ]
+ },
+ {
+  "id": "多伦多",
+  "name": "多伦多",
+  "country": "CA",
+  "aliases": [
+   "toronto"
+  ]
+ },
+ {
+  "id": "温哥华",
+  "name": "温哥华",
+  "country": "CA",
+  "aliases": [
+   "vancouver"
+  ]
+ },
+ {
+  "id": "墨西哥城",
+  "name": "墨西哥城",
+  "country": "MX",
+  "aliases": [
+   "mexico city"
+  ]
+ },
+ {
+  "id": "圣保罗",
+  "name": "圣保罗",
+  "country": "BR",
+  "aliases": [
+   "sao paulo",
+   "são paulo"
+  ]
+ },
+ {
+  "id": "悉尼",
+  "name": "悉尼",
+  "country": "AU",
+  "aliases": [
+   "sydney"
+  ]
+ },
+ {
+  "id": "墨尔本",
+  "name": "墨尔本",
+  "country": "AU",
+  "aliases": [
+   "melbourne"
+  ]
+ },
+ {
+  "id": "孟买",
+  "name": "孟买",
+  "country": "IN",
+  "aliases": [
+   "mumbai"
+  ]
+ },
+ {
+  "id": "班加罗尔",
+  "name": "班加罗尔",
+  "country": "IN",
+  "aliases": [
+   "bangalore",
+   "bengaluru"
+  ]
+ },
+ {
+  "id": "约翰内斯堡",
+  "name": "约翰内斯堡",
+  "country": "ZA",
+  "aliases": [
+   "johannesburg"
+  ]
+ }
+]

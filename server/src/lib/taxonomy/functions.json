@@ -1,0 +1,291 @@
+[
+ {
+  "id": "quality",
+  "name": "质量",
+  "aliases": [
+   "质量",
+   "质量工程师",
+   "qa",
+   "qc",
+   "sqe",
+   "质量管理",
+   "quality",
+   "品质",
+   "品保",
+   "qe"
+  ]
+ },
+ {
+  "id": "rnd",
+  "name": "研发",
+  "aliases": [
+   "研发",
+   "研发工程师",
+   "r&d",
+   "开发",
+   "engineering",
+   "设计工程师",
+   "软件开发",
+   "硬件开发"
+  ]
+ },
+ {
+  "id": "rnd.software",
+  "name": "软件研发",
+  "parent": "rnd",
+  "aliases": [
+   "软件",
+   "软件工程师",
+   "程序员",
+   "developer",
+   "前端",
+   "后端",
+   "算法工程师",
+   "嵌入式"
+  ]
+ },
+ {
+  "id": "rnd.hardware",
+  "name": "硬件/结构研发",
+  "parent": "rnd",
+  "aliases": [
+   "硬件",
+   "结构",
+   "机械设计",
+   "电气",
+   "电子工程师",
+   "hardware"
+  ]
+ },
+ {
+  "id": "test",
+  "name": "测试/验证",
+  "aliases": [
+   "测试",
+   "验证",
+   "test",
+   "validation",
+   "dv",
+   "pv",
+   "试验"
+  ]
+ },
+ {
+  "id": "pm",
+  "name": "项目管理",
+  "aliases": [
+   "项目管理",
+   "项目经理",
+   "pm",
+   "pmo",
+   "project manager",
+   "项目主管"
+  ]
+ },
+ {
+  "id": "product",
+  "name": "产品",
+  "aliases": [
+   "产品经理",
+   "产品",
+   "product manager",
+   "产品规划",
+   "产品定义"
+  ]
+ },
+ {
+  "id": "manufacturing",
+  "name": "生产/制造",
+  "aliases": [
+   "生产",
+   "制造",
+   "工艺",
+   "me",
+   "ie",
+   "工业工程",
+   "制造工程",
+   "产线"
+  ]
+ },
+ {
+  "id": "supply_chain",
+  "name": "供应链/采购",
+  "aliases": [
+   "供应链",
+   "采购",
+   "sourcing",
+   "procurement",
+   "物流",
+   "计划",
+   "sqm",
+   "供应商管理"
+  ]
+ },
+ {
+  "id": "sales",
+  "name": "销售/商务",
+  "aliases": [
+   "销售",
+   "商务",
+   "bd",
+   "sales",
+   "客户经理",
+   "大客户",
+   "account manager"
+  ]
+ },
+ {
+  "id": "marketing",
+  "name": "市场/品牌",
+  "aliases": [
+   "市场",
+   "品牌",
+   "marketing",
+   "市场营销",
+   "公关"
+  ]
+ },
+ {
+  "id": "hr",
+  "name": "人力资源",
+  "aliases": [
+   "人力资源",
+   "hr",
+   "人事",
+   "招聘",
+   "培训",
+   "薪酬",
+   "human resources"
+  ]
+ },
+ {
+  "id": "hr.bp",
+  "name": "HRBP",
+  "parent": "hr",
+  "aliases": [
+   "hrbp",
+   "业务伙伴",
+   "人力资源业务伙伴"
+  ]
+ },
+ {
+  "id": "hr.recruiting",
+  "name": "招聘",
+  "parent": "hr",
+  "aliases": [
+   "招聘",
+   "recruiter",
+   "ta",
+   "talent acquisition",
+   "猎头顾问"
+  ]
+ },
+ {
+  "id": "finance",
+  "name": "财务",
+  "aliases": [
+   "财务",
+   "会计",
+   "审计",
+   "finance",
+   "accounting",
+   "税务",
+   "fp&a"
+  ]
+ },
+ {
+  "id": "legal",
+  "name": "法务/合规",
+  "aliases": [
+   "法务",
+   "合规",
+   "legal",
+   "知识产权",
+   "ipr"
+  ]
+ },
+ {
+  "id": "ops",
+  "name": "运营",
+  "aliases": [
+   "运营",
+   "operations",
+   "用户运营",
+   "内容运营"
+  ]
+ },
+ {
+  "id": "admin",
+  "name": "行政/后勤",
+  "aliases": [
+   "行政",
+   "后勤",
+   "admin",
+   "总务",
+   "前台"
+  ]
+ },
+ {
+  "id": "customer_service",
+  "name": "客服/客户成功",
+  "aliases": [
+   "客服",
+   "客户成功",
+   "customer success",
+   "售后服务"
+  ]
+ },
+ {
+  "id": "data",
+  "name": "数据/分析",
+  "aliases": [
+   "数据分析",
+   "数据",
+   "bi",
+   "data analyst",
+   "数据科学"
+  ]
+ },
+ {
+  "id": "design",
+  "name": "设计",
+  "aliases": [
+   "设计师",
+   "ui",
+   "ux",
+   "工业设计",
+   "造型设计",
+   "designer"
+  ]
+ },
+ {
+  "id": "management",
+  "name": "高级管理",
+  "aliases": [
+   "总经理",
+   "总监",
+   "ceo",
+   "cto",
+   "coo",
+   "vp",
+   "负责人",
+   "部门经理"
+  ]
+ },
+ {
+  "id": "research",
+  "name": "研究/学术",
+  "aliases": [
+   "研究员",
+   "科研",
+   "博士后",
+   "researcher",
+   "实验室"
+  ]
+ },
+ {
+  "id": "other",
+  "name": "其他职能",
+  "aliases": []
+ }
+]

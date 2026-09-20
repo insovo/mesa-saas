@@ -18,6 +18,24 @@
       "backend": 3001,
       "frontend": 5173,
       "since": "2026-05-25"
+    },
+    {
+      "slot": 1,
+      "name": "interview-eval-score-slider",
+      "path": ".worktrees/fix/interview-eval-score-slider",
+      "branch": "fix/interview-eval-score-slider",
+      "backend": 3011,
+      "frontend": 5183,
+      "since": "2026-07-18"
+    },
+    {
+      "slot": 2,
+      "name": "textin-kimi-jev",
+      "path": ".worktrees/feature/textin-kimi-jev",
+      "branch": "feature/textin-kimi-jev",
+      "backend": 3021,
+      "frontend": 5193,
+      "since": "2026-09-20"
     }
   ]
 }

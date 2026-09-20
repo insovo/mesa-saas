@@ -1,0 +1,308 @@
+[
+ {
+  "id": "auto",
+  "name": "汽车",
+  "aliases": [
+   "汽车",
+   "汽车行业",
+   "automotive",
+   "automobile",
+   "车企",
+   "整车",
+   "汽车制造"
+  ]
+ },
+ {
+  "id": "auto.oem",
+  "name": "整车厂/主机厂",
+  "parent": "auto",
+  "aliases": [
+   "主机厂",
+   "整车厂",
+   "oem",
+   "car maker",
+   "汽车集团",
+   "乘用车",
+   "商用车"
+  ]
+ },
+ {
+  "id": "auto.parts",
+  "name": "汽车零部件",
+  "parent": "auto",
+  "aliases": [
+   "零部件",
+   "tier1",
+   "tier 1",
+   "tier2",
+   "汽车零件",
+   "供应商",
+   "auto parts",
+   "automotive supplier"
+  ]
+ },
+ {
+  "id": "auto.nev",
+  "name": "新能源汽车",
+  "parent": "auto",
+  "aliases": [
+   "新能源",
+   "新能源汽车",
+   "电动车",
+   "ev",
+   "nev",
+   "电动汽车",
+   "三电",
+   "电池包",
+   "bev",
+   "phev"
+  ]
+ },
+ {
+  "id": "auto.smart_cabin",
+  "name": "智能座舱",
+  "parent": "auto",
+  "aliases": [
+   "智能座舱",
+   "座舱",
+   "车机",
+   "hmi",
+   "infotainment",
+   "ivi"
+  ]
+ },
+ {
+  "id": "auto.adas",
+  "name": "智能驾驶",
+  "parent": "auto",
+  "aliases": [
+   "智能驾驶",
+   "自动驾驶",
+   "adas",
+   "ad",
+   "辅助驾驶",
+   "autonomous driving"
+  ]
+ },
+ {
+  "id": "auto.electronics",
+  "name": "汽车电子",
+  "parent": "auto",
+  "aliases": [
+   "汽车电子",
+   "车载电子",
+   "ecu",
+   "域控制器",
+   "automotive electronics"
+  ]
+ },
+ {
+  "id": "auto.aftersales",
+  "name": "汽车售后/经销",
+  "parent": "auto",
+  "aliases": [
+   "售后",
+   "经销商",
+   "4s",
+   "dealer",
+   "汽车服务"
+  ]
+ },
+ {
+  "id": "semi",
+  "name": "半导体",
+  "aliases": [
+   "半导体",
+   "芯片",
+   "集成电路",
+   "ic",
+   "semiconductor",
+   "晶圆",
+   "封测"
+  ]
+ },
+ {
+  "id": "consumer_elec",
+  "name": "消费电子",
+  "aliases": [
+   "消费电子",
+   "手机",
+   "3c",
+   "consumer electronics",
+   "智能硬件"
+  ]
+ },
+ {
+  "id": "internet",
+  "name": "互联网",
+  "aliases": [
+   "互联网",
+   "internet",
+   "移动互联网",
+   "saas",
+   "软件",
+   "it",
+   "科技公司"
+  ]
+ },
+ {
+  "id": "ai",
+  "name": "人工智能",
+  "aliases": [
+   "人工智能",
+   "ai",
+   "大模型",
+   "机器学习",
+   "llm",
+   "算法公司"
+  ]
+ },
+ {
+  "id": "manufacturing",
+  "name": "制造业",
+  "aliases": [
+   "制造",
+   "制造业",
+   "工厂",
+   "manufacturing",
+   "装备制造",
+   "机械制造"
+  ]
+ },
+ {
+  "id": "energy",
+  "name": "能源/电力",
+  "aliases": [
+   "能源",
+   "电力",
+   "光伏",
+   "储能",
+   "风电",
+   "新能源电力",
+   "energy"
+  ]
+ },
+ {
+  "id": "finance",
+  "name": "金融",
+  "aliases": [
+   "金融",
+   "银行",
+   "证券",
+   "保险",
+   "基金",
+   "finance",
+   "fintech"
+  ]
+ },
+ {
+  "id": "consulting",
+  "name": "咨询",
+  "aliases": [
+   "咨询",
+   "consulting",
+   "四大",
+   "会计师事务所",
+   "猎头",
+   "人力资源服务"
+  ]
+ },
+ {
+  "id": "education",
+  "name": "教育/科研",
+  "aliases": [
+   "教育",
+   "高校",
+   "大学",
+   "研究所",
+   "科研院所",
+   "education",
+   "university"
+  ]
+ },
+ {
+  "id": "healthcare",
+  "name": "医疗/医药",
+  "aliases": [
+   "医疗",
+   "医药",
+   "生物",
+   "制药",
+   "医疗器械",
+   "healthcare",
+   "pharma"
+  ]
+ },
+ {
+  "id": "logistics",
+  "name": "物流/供应链",
+  "aliases": [
+   "物流",
+   "供应链",
+   "仓储",
+   "logistics",
+   "supply chain"
+  ]
+ },
+ {
+  "id": "retail",
+  "name": "零售/快消",
+  "aliases": [
+   "零售",
+   "快消",
+   "fmcg",
+   "电商",
+   "retail"
+  ]
+ },
+ {
+  "id": "realestate",
+  "name": "房地产/建筑",
+  "aliases": [
+   "房地产",
+   "地产",
+   "建筑",
+   "工程建设",
+   "real estate",
+   "construction"
+  ]
+ },
+ {
+  "id": "public",
+  "name": "政府/事业单位",
+  "aliases": [
+   "政府",
+   "事业单位",
+   "公务员",
+   "国企机关",
+   "public sector"
+  ]
+ },
+ {
+  "id": "aerospace",
+  "name": "航空航天",
+  "aliases": [
+   "航空",
+   "航天",
+   "aerospace",
+   "飞机",
+   "卫星"
+  ]
+ },
+ {
+  "id": "telecom",
+  "name": "通信",
+  "aliases": [
+   "通信",
+   "电信",
+   "telecom",
+   "5g",
+   "运营商"
+  ]
+ },
+ {
+  "id": "other",
+  "name": "其他行业",
+  "aliases": []
+ }
+]

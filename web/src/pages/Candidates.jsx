@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, resources, LONG_TIMEOUT } from "../lib/api.js";
 import {
@@ -32,6 +32,40 @@ function fmtSource(s) {
   return t || "未提供";
 }
 
+// AI 评估分类 chip(A 高匹配 / B 较匹配 / C 待复核 / D 低匹配),分类为空不渲染
+const CLASS_META = {
+  A: { label: "高匹配", cls: "bg-green-100 text-green-700" },
+  B: { label: "较匹配", cls: "bg-blue-100 text-blue-700" },
+  C: { label: "待复核", cls: "bg-amber-100 text-amber-700" },
+  D: { label: "低匹配", cls: "bg-gray-100 text-gray-600" },
+};
+function ClassChip({ classification, reviewPriority }) {
+  const m = CLASS_META[classification];
+  if (!m) return null;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold shrink-0 whitespace-nowrap ${m.cls}`}
+      title={`AI 评估分类 ${classification} · ${m.label}${reviewPriority === "REVIEW" ? " · 建议人工复核" : ""}`}
+    >
+      {classification} {m.label}
+      {reviewPriority === "REVIEW" && <span className="opacity-80">⚑ 复核</span>}
+    </span>
+  );
+}
+
+// 批量评估任务持久化(切页/刷新后继续轮询),形状 { jobId, jobTitle, startedAt, tasks:[{candidateId,taskId}], results:{[candidateId]: "A"|"B"|"C"|"D"|"failed"} }
+const BATCH_EVAL_SS_KEY = "mesa.candidates.batcheval.v1";
+const BATCH_EVAL_TTL_MS = 30 * 60 * 1000;
+function loadBatchEvalFromSession() {
+  try {
+    const raw = sessionStorage.getItem(BATCH_EVAL_SS_KEY);
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    if (!obj || !Array.isArray(obj.tasks) || Date.now() - (obj.startedAt || 0) > BATCH_EVAL_TTL_MS) return null;
+    return obj;
+  } catch { return null; }
+}
+
 const EMPTY_FORM = {
   name: "",
   appliedFor: "",
@@ -59,6 +93,13 @@ export default function Candidates() {
   const [bulkAssigning, setBulkAssigning] = useState(false);
   const [reparsingIds, setReparsingIds] = useState(() => new Set()); // 批量解析进行中
   const [llmStatus, setLlmStatus] = useState(null);
+  // 三层评估:分类 / 优先级筛选 + 批量评估到 JD
+  const [classFilter, setClassFilter] = useState("");
+  const [priorityFilter, setPriorityFilter] = useState("");
+  const [batchEvalOpen, setBatchEvalOpen] = useState(false);
+  const [batchEvalJobId, setBatchEvalJobId] = useState("");
+  const [batchEval, setBatchEval] = useState(loadBatchEvalFromSession);
+  const batchEvalRef = useRef(null);
 
   async function load() {
     setLoading(true);
@@ -66,6 +107,8 @@ export default function Candidates() {
       const params = {};
       if (q) params.q = q;
       if (statusFilter) params.status = statusFilter;
+      if (classFilter) params.classification = classFilter;
+      if (priorityFilter) params.reviewPriority = priorityFilter;
       const { items } = await resources.candidates.list(params);
       setItems(items);
     } catch (e) {
@@ -78,7 +121,65 @@ export default function Candidates() {
   useEffect(() => {
     load();
     // eslint-disable-next-line
-  }, [statusFilter]);
+  }, [statusFilter, classFilter, priorityFilter]);
+
+  // ─── 批量评估:POST /resumes/evaluate-batch → 每个 task 轮询,进度持久化到 sessionStorage ───
+  useEffect(() => { batchEvalRef.current = batchEval; try { if (batchEval) sessionStorage.setItem(BATCH_EVAL_SS_KEY, JSON.stringify(batchEval)); else sessionStorage.removeItem(BATCH_EVAL_SS_KEY); } catch {} }, [batchEval]);
+  useEffect(() => {
+    const b = loadBatchEvalFromSession();
+    if (b) for (const t of b.tasks) if (!b.results?.[t.candidateId]) pollBatchTask(t.candidateId, t.taskId);
+    // eslint-disable-next-line
+  }, []);
+  function recordBatchResult(candidateId, result) {
+    setBatchEval((prev) => {
+      if (!prev) return prev;
+      const results = { ...(prev.results || {}), [candidateId]: result };
+      const next = { ...prev, results };
+      const done = Object.keys(results).length;
+      if (done >= prev.tasks.length) {
+        const counts = { A: 0, B: 0, C: 0, D: 0, failed: 0 };
+        for (const v of Object.values(results)) counts[v in counts ? v : "failed"]++;
+        toast(`批量评估完成 · A ${counts.A} / B ${counts.B} / C ${counts.C} / D ${counts.D}${counts.failed ? ` / 失败 ${counts.failed}` : ""}`, counts.failed ? "error" : "success");
+        setTimeout(() => { load(); setBatchEval(null); }, 800);
+      }
+      return next;
+    });
+  }
+  function pollBatchTask(candidateId, taskId) {
+    const tick = async () => {
+      const b = batchEvalRef.current;
+      if (!b || b.results?.[candidateId]) return;
+      if (Date.now() - (b.startedAt || 0) > BATCH_EVAL_TTL_MS) { recordBatchResult(candidateId, "failed"); return; }
+      try {
+        const { data: { task } } = await api.get(`/resumes/parse-tasks/${taskId}`);
+        if (task.status === "done") recordBatchResult(candidateId, task.evaluation?.classification || task.candidate?.classification || "C");
+        else if (task.status === "failed") recordBatchResult(candidateId, "failed");
+        else setTimeout(tick, 2000);
+      } catch (e) {
+        if (e.response?.status === 404) recordBatchResult(candidateId, "failed");
+        else setTimeout(tick, 5000);
+      }
+    };
+    tick();
+  }
+  async function onBatchEvaluate() {
+    if (!batchEvalJobId || selectedIds.size === 0) return;
+    const ids = Array.from(selectedIds);
+    try {
+      const { data } = await api.post("/resumes/evaluate-batch", { jobId: batchEvalJobId, candidateIds: ids });
+      const job = jobs.find((j) => j.id === batchEvalJobId);
+      const b = { jobId: batchEvalJobId, jobTitle: job?.title || "", startedAt: Date.now(), tasks: data.tasks || [], results: {} };
+      setBatchEval(b);
+      batchEvalRef.current = b;
+      setBatchEvalOpen(false);
+      setSelectedIds(new Set());
+      toast(`已提交 ${data.count} 份到「${job?.title || "JD"}」评估${data.skipped ? `,${data.skipped} 份无权限跳过` : ""}`, "success");
+      for (const t of b.tasks) pollBatchTask(t.candidateId, t.taskId);
+      if (!b.tasks.length) setBatchEval(null);
+    } catch (e) {
+      toast(e.response?.data?.message || "批量评估提交失败", "error");
+    }
+  }
 
   // jobs 列表只 load 一次,给 ReparseConfirmModal 的 select 用 + inline 关联 JD 下拉用
   useEffect(() => {
@@ -185,12 +286,14 @@ export default function Candidates() {
     setReparseTarget(c);
   }
 
-  async function onReparse(jobId) {
+  async function onReparse(jobId, mode) {
     const c = reparseTarget;
     if (!c?.id) return;
     setReparsingId(c.id);
     try {
-      const { data: { task: initialTask } } = await api.post("/resumes/parse", { candidateId: c.id, jobId });
+      const body = { candidateId: c.id, jobId };
+      if (mode) body.mode = mode; // reevaluate | reextract | full(ReparseConfirmModal 三档粒度)
+      const { data: { task: initialTask } } = await api.post("/resumes/parse", body);
       const taskId = initialTask.id;
       const startedAt = Date.now();
       const MAX_WAIT_MS = 5 * 60 * 1000;
@@ -329,6 +432,29 @@ export default function Candidates() {
               className="flex-1 ml-3 bg-transparent outline-none text-sm text-navy-700 placeholder:text-gray-400"
             />
           </div>
+          <select
+            value={classFilter}
+            onChange={(e) => setClassFilter(e.target.value)}
+            className="h-11 rounded-xl border border-gray-200 px-3 text-sm text-navy-700 outline-none focus:border-brand bg-white"
+            title="AI 评估分类"
+          >
+            <option value="">分类:全部</option>
+            <option value="A">A 高匹配</option>
+            <option value="B">B 较匹配</option>
+            <option value="C">C 待复核</option>
+            <option value="D">D 低匹配</option>
+          </select>
+          <select
+            value={priorityFilter}
+            onChange={(e) => setPriorityFilter(e.target.value)}
+            className="h-11 rounded-xl border border-gray-200 px-3 text-sm text-navy-700 outline-none focus:border-brand bg-white"
+            title="查看优先级"
+          >
+            <option value="">优先级:全部</option>
+            <option value="HIGH">HIGH 优先</option>
+            <option value="REVIEW">REVIEW 待复核</option>
+            <option value="LOW">LOW</option>
+          </select>
           <Button variant="ghost" onClick={load} icon={<I name="refresh-cw" size={14} />}>
             <span className="hidden sm:inline">刷新</span>
           </Button>
@@ -389,10 +515,33 @@ export default function Candidates() {
                   >
                     <I name="sparkles" size={11} /> 批量解析 ({selectedIds.size})
                   </button>
+                  <button
+                    onClick={() => { setBatchEvalJobId(""); setBatchEvalOpen(true); }}
+                    disabled={bulkAssigning || !!batchEval || !(llmStatus?.providers?.jev?.enabled || llmStatus?.configured)}
+                    className="inline-flex items-center gap-1 h-8 px-3 rounded-lg border border-brand text-brand text-xs font-bold hover:bg-brand/5 active:scale-95 transition-all disabled:opacity-50"
+                    title={batchEval ? "上一批评估仍在进行" : "把选中的候选人批量评估到同一个 JD"}
+                  >
+                    <I name="scale" size={11} /> 批量评估 ({selectedIds.size})
+                  </button>
                   <button onClick={() => setSelectedIds(new Set())} className="text-[11px] text-gray-500 hover:text-navy-700">取消</button>
                 </div>
               )}
             </div>
+            {/* 批量评估进度条 */}
+            {batchEval && (() => {
+              const done = Object.keys(batchEval.results || {}).length;
+              const total = batchEval.tasks.length || 1;
+              return (
+                <div className="mb-3 p-3 rounded-xl bg-lightPrimary flex items-center gap-3">
+                  <I name="loader" size={12} className="animate-spin text-brand shrink-0" />
+                  <span className="text-[11px] text-navy-700 font-bold whitespace-nowrap">评估到「{batchEval.jobTitle}」 · 已完成 {done} / {total}</span>
+                  <div className="flex-1 h-2 rounded-full bg-white overflow-hidden">
+                    <div className="h-full bg-brand-gradient transition-all duration-500" style={{ width: `${Math.round((done / total) * 100)}%` }} />
+                  </div>
+                  <button onClick={() => setBatchEval(null)} className="text-[11px] text-gray-500 hover:text-navy-700 shrink-0" title="隐藏进度(后台仍会继续)">隐藏</button>
+                </div>
+              );
+            })()}
 
           <ul className="divide-y divide-gray-200">
             {items.map((c) => {
@@ -463,12 +612,13 @@ export default function Candidates() {
                         onClick={() => openReparse(c)}
                         disabled={isReparsing}
                         className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg bg-brand-gradient text-white text-[11px] font-bold shadow-button hover:shadow-button-hover active:scale-95 transition-all disabled:opacity-60 shrink-0"
-                        title={c.parser ? "用 Kimi 重新解析" : "用 Kimi 解析这份简历"}
+                        title={c.parser ? "重新解析(AI)" : "AI 解析这份简历"}
                       >
                         <I name={isReparsing ? "loader" : (c.parser ? "refresh-cw" : "sparkles")} size={10} className={isReparsing ? "animate-spin" : ""} />
                         {isReparsing ? "解析中" : (c.parser ? "重新解析" : "解析")}
                       </button>
                     )}
+                    <ClassChip classification={c.classification} reviewPriority={c.reviewPriority} />
                     {c.jdMatch != null ? (
                       <div className="shrink-0 pr-0.5">
                         <LiquidLoader size={40} level={c.jdMatch} label={c.jdMatch} />
@@ -529,6 +679,7 @@ export default function Candidates() {
                       </span>
                     )}
                     {c.parser && <AiBadge parser={c.parser} confidence={c.parserConfidence} />}
+                    <ClassChip classification={c.classification} reviewPriority={c.reviewPriority} />
                   </div>
                 </Link>
               </li>
@@ -588,6 +739,28 @@ export default function Candidates() {
             </Button>
           </div>
         </form>
+      </Modal>
+      <Modal open={batchEvalOpen} onClose={() => setBatchEvalOpen(false)} maxWidth="max-w-md">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-bold text-navy-700 flex items-center gap-2"><I name="scale" size={18} className="text-brand" /> 批量评估到 JD</h3>
+            <button onClick={() => setBatchEvalOpen(false)} className="text-gray-400 hover:text-navy-700"><I name="x" size={20} /></button>
+          </div>
+          <p className="text-sm text-gray-700 mb-4">已选 <span className="font-bold text-navy-700">{selectedIds.size}</span> 位候选人,将按所选 JD 的评估标准做硬筛 + AI 逐项判定,生成 A/B/C/D 分类(秒级,报告按策略生成)。</p>
+          <label className="text-[11px] font-bold uppercase tracking-wide text-gray-500 mb-1.5 block">目标岗位</label>
+          <select
+            value={batchEvalJobId}
+            onChange={(e) => setBatchEvalJobId(e.target.value)}
+            className="w-full h-10 px-3 rounded-xl border border-gray-200 text-sm text-navy-700 bg-white outline-none focus:border-brand"
+          >
+            <option value="">— 请选择 JD —</option>
+            {jobs.map((j) => (<option key={j.id} value={j.id}>{j.title}{j.dept ? ` · ${j.dept}` : ""}</option>))}
+          </select>
+          <div className="flex justify-end gap-2 mt-6">
+            <Button variant="ghost" onClick={() => setBatchEvalOpen(false)}>取消</Button>
+            <Button onClick={onBatchEvaluate} disabled={!batchEvalJobId} icon={<I name="zap" size={12} />}>开始评估</Button>
+          </div>
+        </div>
       </Modal>
       <ReparseConfirmModal
         open={!!reparseTarget}

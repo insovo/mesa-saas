@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 949.7250000000001 1378.75" width="949.7250000000001" height="1378.75" style="--bg:#ffffff;--fg:#1f2328;--line:#d1d9e0;--accent:#0969da;--muted:#59636e;background:var(--bg)">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap');
+  text { font-family: 'Inter', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 30%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="arrowhead" markerWidth="8" markerHeight="4.8" refX="8" refY="2.4" orient="auto">
+    <polygon points="0 0, 8 2.4, 0 4.8" fill="var(--_arrow)" />
+  </marker>
+  <marker id="arrowhead-start" markerWidth="8" markerHeight="4.8" refX="0" refY="2.4" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.4, 8 4.8" fill="var(--_arrow)" />
+  </marker>
+</defs>
+<polyline points="464.1375000000001,76 464.1375000000001,116" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="464.1375000000001,152 464.1375000000001,180.5 533.1875000000001,180.5 533.1875000000001,209" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="464.1375000000001,152 464.1375000000001,180.5 395.0875000000001,180.5 395.0875000000001,308.5 301.5625000000001,308.5" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="533.1875000000001,245 533.1875000000001,308.5 626.7125000000001,308.5" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="464.1375000000001,332 464.1375000000001,352 159.67500000000007,352 159.67500000000007,372" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="159.67500000000007,408 159.67500000000007,448" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="159.67500000000007,484 159.67500000000007,529.5" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="505.2500000000001,408 505.2500000000001,448" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="505.2500000000001,484 505.2500000000001,524" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="159.67500000000007,565.5 159.67500000000007,629 177.03750000000008,629" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="505.2500000000001,571 505.2500000000001,629 487.8875000000001,629" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="332.4625000000001,647 332.4625000000001,687" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="464.1375000000001,332 464.1375000000001,352 768.6000000000001,352 768.6000000000001,372" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="332.4625000000001,723 332.4625000000001,781 344.4625000000001,781" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="768.6000000000001,408 768.6000000000001,781 583.8125000000001,781" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="464.1375000000001,799 464.1375000000001,839" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="464.1375000000001,875 464.1375000000001,895 554.6375,895 554.6375,915" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="554.6375,1006.75 554.6375,1063.75" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="554.6375,1099.75 554.6375,1139.75" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="464.1375000000001,875 464.1375000000001,895 373.6375000000001,895 373.6375000000001,1239.25 312.2875000000001,1239.25" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="554.6375,1175.75 554.6375,1239.25 615.9875000000002,1239.25" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="464.1375000000001,1262.75 464.1375000000001,1302.75" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<rect x="508.0275000000001" y="167" width="50.32" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="533.1875000000001" y="180.5" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">失败或未启用</text>
+<rect x="515.1775" y="1021.75" width="78.92" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="554.6375" y="1035.25" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">A/B 或 HR 打开</text>
+<rect x="312.2875000000001" y="40" width="303.70000000000005" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="337.3125000000001" y="116" width="253.65" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="417.0875000000001" y="209" width="232.20000000000002" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="301.5625000000001" y="292" width="325.15000000000003" height="33" fill="var(--_node-fill)" stroke="none" />
+<line x1="301.5625000000001" y1="292" x2="301.5625000000001" y2="325" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<line x1="626.7125000000001" y1="292" x2="626.7125000000001" y2="325" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<ellipse cx="464.13750000000016" cy="325" rx="162.57500000000002" ry="7" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<ellipse cx="464.13750000000016" cy="292" rx="162.57500000000002" ry="7" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="40.00000000000006" y="372" width="239.35000000000002" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="54.300000000000054" y="448" width="210.75000000000003" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="40.00000000000006" y="529.5" width="239.35000000000002" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="407.0250000000001" y="372" width="196.45000000000002" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="385.5750000000001" y="448" width="239.35000000000002" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="303.35000000000014" y="531" width="403.8" height="33" fill="var(--_node-fill)" stroke="none" />
+<line x1="303.35000000000014" y1="531" x2="303.35000000000014" y2="564" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<line x1="707.1500000000001" y1="531" x2="707.1500000000001" y2="564" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<ellipse cx="505.2500000000001" cy="564" rx="201.9" ry="7" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<ellipse cx="505.2500000000001" cy="531" rx="201.9" ry="7" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="177.03750000000008" y="611" width="310.85" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="191.3375000000001" y="687" width="282.25" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="627.4750000000001" y="372" width="282.25" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="344.4625000000001" y="763" width="239.35000000000002" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="280.11250000000007" y="839" width="368.05" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<polygon points="554.6375,915 600.5125,960.875 554.6375,1006.75 508.76250000000005,960.875" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="395.63750000000005" y="1063.75" width="318" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="456.4125" y="1139.75" width="196.45000000000002" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="312.2875000000001" y="1222.75" width="303.70000000000005" height="33" fill="var(--_node-fill)" stroke="none" />
+<line x1="312.2875000000001" y1="1222.75" x2="312.2875000000001" y2="1255.75" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<line x1="615.9875000000002" y1="1222.75" x2="615.9875000000002" y2="1255.75" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<ellipse cx="464.1375000000001" cy="1255.75" rx="151.85000000000002" ry="7" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<ellipse cx="464.1375000000001" cy="1222.75" rx="151.85000000000002" ry="7" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="315.86250000000007" y="1302.75" width="296.55" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<text x="464.1375000000001" y="58" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">R2 简历文件 · pdf / doc / docx / jpg / png</text>
+<text x="464.1375000000001" y="134" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">TextIn xParse · Markdown · 按页计费</text>
+<text x="533.1875000000001" y="227" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">回退链 · pdftotext → Kimi Files</text>
+<text x="464.13750000000016" y="308.5" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">ResumeParse · markdown + raw key + sha256</text>
+<text x="159.67500000000007" y="390" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Kimi parseResume · 结构化事实 JSON</text>
+<text x="159.67500000000007" y="466" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">确定性闸门 · 日期 / 学历 / 年限 / 语言</text>
+<text x="159.67500000000007" y="547.5" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Candidate 事实字段 + aiSummary 简报</text>
+<text x="505.2500000000001" y="390" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Job.description / JD 文件</text>
+<text x="505.2500000000001" y="466" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Kimi structureJobRequirements</text>
+<text x="505.2500000000001" y="547.5" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Job.requirementSchema · hard / core / preferred + 权重</text>
+<text x="332.4625000000001" y="629" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">代码硬筛 hardFilter · PASS / FAIL / UNKNOWN</text>
+<text x="332.4625000000001" y="705" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">题目生成器 · schema → noul / score + 通用题</text>
+<text x="768.6000000000001" y="390" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">state = 脱敏 markdown + profile + job</text>
+<text x="464.1375000000001" y="781" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Jev jev-latest · 一次调用并行判定 &lt;1s</text>
+<text x="464.13750000000005" y="857" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">代码加权 composite · overall + 维度分 + A/B/C/D + 置信门控</text>
+<text x="554.6375" y="960.875" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">需要报告?</text>
+<text x="554.6375" y="1081.75" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Kimi buildReport · 只解释不改分 · 引用证据 · 面试验证点</text>
+<text x="554.6375" y="1157.75" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">证据校验 · 引文必须存在于 markdown</text>
+<text x="464.1375000000001" y="1239.25" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">CandidateEvaluation · 逐次快照 + 模型 / 判据版本</text>
+<text x="464.13750000000005" y="1320.75" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Candidate.jdMatch 等快照字段 · 现有 UI 零改动可跑</text>
+</svg>

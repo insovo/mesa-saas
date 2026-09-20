@@ -2,6 +2,7 @@
 // 所有路由都需 JWT 鉴权。
 
 import { whereByIdOrExternal } from "../lib/idLookup.js";
+import { writeLog } from "../lib/audit.js";
 import { withDerivedCandidate as withDerived } from "../lib/derived.js";
 import { toDisplayName, resolveNoteAuthorNames } from "../lib/displayName.js";
 import {
@@ -101,6 +102,10 @@ const LIST_QUERY = {
     // ownerId: 传 "me" 会自动替换为当前 user 的 id;传 uuid 直接 filter;不传 = 不过滤
     // 用于 Upload 页拉"我接收到的"候选人(本地手动上传 + 公开链接上传都会 ownerId=me)
     ownerId: { type: "string", maxLength: 50 },
+    // 三层评估分类快照筛选(A/B/C/D)与查看优先级(HIGH/REVIEW/LOW)
+    classification: { type: "string", enum: ["A", "B", "C", "D"] },
+    reviewPriority: { type: "string", enum: ["HIGH", "REVIEW", "LOW"] },
+    jobId: { type: "string", format: "uuid" },
     // orderBy: createdAt | updatedAt(默认 updatedAt 保持向后兼容)
     orderBy: { type: "string", enum: ["createdAt", "updatedAt"], default: "updatedAt" },
     skip: { type: "integer", minimum: 0, default: 0 },
@@ -114,10 +119,13 @@ export default async function candidatesRoutes(app) {
   // List + filter + search — 接入数据范围
   app.get("/", { schema: { querystring: LIST_QUERY } }, async (req) => {
     const access = await loadUserAccess(req);
-    const { q, status, appliedFor, ownerId, orderBy = "updatedAt", skip = 0, take = 50 } = req.query;
+    const { q, status, appliedFor, ownerId, classification, reviewPriority, jobId, orderBy = "updatedAt", skip = 0, take = 50 } = req.query;
     const where = {};
     if (status) where.status = status;
     if (appliedFor) where.appliedFor = appliedFor;
+    if (classification) where.classification = classification;
+    if (reviewPriority) where.reviewPriority = reviewPriority;
+    if (jobId) where.jobId = jobId;
     if (ownerId === "me") where.ownerId = req.user.sub;
     else if (ownerId) where.ownerId = ownerId;
     if (q) {
@@ -323,5 +331,58 @@ export default async function candidatesRoutes(app) {
       if (err.code === "P2025") return reply.code(404).send({ error: "not_found" });
       throw err;
     }
+  });
+
+  // ─── 三层架构:结构化档案 / 评估记录 ───
+  // 结构化档案(profile resume.v1 + 派生指标 + 警告)
+  app.get("/:id/profile", async (req, reply) => {
+    const ok = await assertCandidateAccess(req, reply, req.params.id);
+    if (!ok) return;
+    const c = await app.prisma.candidate.findUnique({ where: { id: req.params.id }, select: { id: true, profile: true, derived: true, profileVersion: true, profileWarnings: true, parser: true } });
+    if (!c) return reply.code(404).send({ error: "not_found" });
+    const lastParse = await app.prisma.resumeParse.findFirst({ where: { candidateId: c.id }, orderBy: { createdAt: "desc" }, select: { id: true, provider: true, providerVersion: true, pageCount: true, createdAt: true, charCount: true } });
+    return { profile: c.profile, derived: c.derived, profileVersion: c.profileVersion, warnings: c.profileWarnings, parser: c.parser, lastParse };
+  });
+
+  // 评估记录(当前 + 历史);jevRequest/jevAnswers 仅 admin 返回
+  app.get("/:id/evaluations", async (req, reply) => {
+    const ok = await assertCandidateAccess(req, reply, req.params.id);
+    if (!ok) return;
+    const isAdmin = req.user?.role === "ADMIN";
+    const rows = await app.prisma.candidateEvaluation.findMany({
+      where: { candidateId: req.params.id },
+      orderBy: { evaluatedAt: "desc" },
+      take: 20,
+      include: { job: { select: { id: true, title: true, dept: true, evaluationModelVersion: true } } },
+    });
+    const items = rows.map((e) => ({
+      id: e.id, jobId: e.jobId, job: e.job, engine: e.engine, isCurrent: e.isCurrent, shadow: e.shadow,
+      hardFilter: e.hardFilter, dimensions: e.dimensions, items: e.items, overallScore: e.overallScore, classification: e.classification, reviewPriority: e.reviewPriority,
+      reasons: e.reasons, flags: e.flags, minConfidence: e.minConfidence, report: e.report, reportStatus: e.reportStatus, manualOverride: e.manualOverride,
+      versions: e.versions, costs: e.costs, evaluatedAt: e.evaluatedAt,
+      ...(isAdmin ? { jevRequest: e.jevRequest, jevAnswers: e.jevAnswers } : {}),
+    }));
+    return { items, current: items.find((i) => i.isCurrent) || null };
+  });
+
+  // HR 人工覆盖分类(不改 AI 原始分;写审计)
+  app.patch("/:id/evaluations/current/override", {
+    schema: { body: { type: "object", required: ["classification"], properties: { classification: { type: "string", enum: ["A", "B", "C", "D"] }, note: { type: "string", maxLength: 500 } }, additionalProperties: false } },
+  }, async (req, reply) => {
+    const access = await loadUserAccess(req);
+    if (!hasModule(access, "candidate.edit")) return reply.code(403).send({ error: "forbidden", message: "无编辑权限" });
+    const ok = await assertCandidateAccess(req, reply, req.params.id);
+    if (!ok) return;
+    const current = await app.prisma.candidateEvaluation.findFirst({ where: { candidateId: req.params.id, isCurrent: true } });
+    if (!current) return reply.code(404).send({ error: "evaluation_not_found", message: "该候选人尚无评估记录" });
+    const { classification, note } = req.body;
+    const reviewPriority = classification === "A" || classification === "B" ? "HIGH" : classification === "C" ? "REVIEW" : "LOW";
+    const manualOverride = { classification, note: note || null, by: req.user.sub, at: new Date().toISOString(), previous: current.manualOverride?.previous || current.classification };
+    const [evalRow, cand] = await app.prisma.$transaction([
+      app.prisma.candidateEvaluation.update({ where: { id: current.id }, data: { manualOverride } }),
+      app.prisma.candidate.update({ where: { id: req.params.id }, data: { classification, reviewPriority } }),
+    ]);
+    writeLog(app.prisma, { actorId: req.user.sub, action: "candidate.evaluation.override", entityType: "candidate", entityId: req.params.id, detail: { from: current.classification, to: classification, note: note || null } }).catch(() => {});
+    return { evaluation: { id: evalRow.id, manualOverride }, candidate: filterCandidateByModules(withDerived(cand), access) };
   });
 }

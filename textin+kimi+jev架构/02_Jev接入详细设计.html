@@ -1,0 +1,1016 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jev 接入详细设计 — api.typesafe.ai 直连</title>
+<meta name="description" content="评估层落地细则:jev.js 客户端(鉴权 /
+超时 / 退避 / 缓存 / 并发 / 成本)、state
+构造与脱敏、题目生成器、答案归一与加权、错误矩阵与 legacy 回退、shadow
+灰度、可观测性、安全、测试与校准、运维。消费 03 号文档定义的 profile /
+derived / jdFacts / evaluationModel。">
+<style>
+:root{--bg:#ffffff;--fg:#1B254B;--muted:#707EAE;--faint:#A0AEC0;--line:#E2E8F0;--accent:#422AFB;--accent-soft:#EEF0FF;--code-bg:#F4F7FE;--card:#ffffff;--shadow:0 18px 40px rgba(112,144,176,.12);--warn-bg:#FFF7E6;--warn-fg:#B7791F}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0B1437;--fg:#E9EDF7;--muted:#A3AED0;--faint:#707EAE;--line:#1F2A5A;--accent:#7551FF;--accent-soft:#1B2559;--code-bg:#111C44;--card:#111C44;--shadow:0 18px 40px rgba(0,0,0,.35);--warn-bg:#2B2411;--warn-fg:#F6C177}}
+:root[data-theme=dark]{--bg:#0B1437;--fg:#E9EDF7;--muted:#A3AED0;--faint:#707EAE;--line:#1F2A5A;--accent:#7551FF;--accent-soft:#1B2559;--code-bg:#111C44;--card:#111C44;--shadow:0 18px 40px rgba(0,0,0,.35);--warn-bg:#2B2411;--warn-fg:#F6C177}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Segoe UI",Roboto,sans-serif}
+.layout{display:grid;grid-template-columns:280px minmax(0,1fr);gap:0;min-height:100vh}
+nav.toc{position:sticky;top:0;height:100vh;overflow-y:auto;padding:24px 16px 40px 20px;border-right:1px solid var(--line);font-size:13px}
+nav.toc .brand{font-weight:700;color:var(--accent);letter-spacing:.02em;margin-bottom:4px}
+nav.toc .sub{color:var(--muted);font-size:12px;margin-bottom:14px}
+nav.toc ul{list-style:none;margin:0;padding-left:0}
+nav.toc ul ul{padding-left:12px;border-left:1px solid var(--line);margin-left:4px}
+nav.toc li{margin:2px 0}
+nav.toc a{color:var(--muted);text-decoration:none;display:block;padding:3px 6px;border-radius:8px;line-height:1.4}
+nav.toc a:hover{color:var(--accent);background:var(--accent-soft)}
+main{padding:40px 48px 120px;max-width:1080px;width:100%}
+header.doc{margin-bottom:28px;padding-bottom:20px;border-bottom:1px solid var(--line)}
+header.doc h1{font-size:30px;line-height:1.25;margin:0 0 10px}
+header.doc .meta{color:var(--muted);font-size:13px;display:flex;flex-wrap:wrap;gap:14px}
+header.doc .meta span::before{content:"◦ ";color:var(--faint)}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h2{font-size:22px;margin:44px 0 14px;padding-top:14px;border-top:1px solid var(--line)}
+h3{font-size:17px;margin:28px 0 10px}
+h4{font-size:15px;margin:20px 0 8px;color:var(--muted)}
+a{color:var(--accent)}
+p{margin:10px 0}
+blockquote{margin:14px 0;padding:10px 16px;border-left:4px solid var(--accent);background:var(--accent-soft);border-radius:0 12px 12px 0;color:var(--fg)}
+blockquote p{margin:4px 0}
+code{font-family:"JetBrains Mono","SF Mono",Menlo,Consolas,monospace;font-size:12.5px;background:var(--code-bg);padding:2px 6px;border-radius:6px}
+pre{background:var(--code-bg);border:1px solid var(--line);border-radius:14px;padding:14px 16px;overflow-x:auto;line-height:1.55}
+pre code{background:none;padding:0;font-size:12.5px}
+table{border-collapse:separate;border-spacing:0;width:100%;margin:14px 0;font-size:13.5px;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+th,td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}
+th{background:var(--code-bg);font-weight:600;color:var(--fg)}
+tr:last-child td{border-bottom:none}
+td code{white-space:nowrap}
+ul,ol{padding-left:22px}
+li{margin:3px 0}
+hr{border:none;border-top:1px solid var(--line);margin:32px 0}
+.diagram{margin:18px 0;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--card);overflow-x:auto}
+.diagram svg{max-width:100%;height:auto;display:block;margin:0 auto;--bg:transparent;--fg:var(--fg);--line:var(--faint);--accent:var(--accent);--muted:var(--muted);--surface:var(--code-bg);--border:var(--line)}
+.diagram svg text{font-family:inherit}
+.callout{margin:14px 0;padding:12px 16px;border-radius:12px;background:var(--warn-bg);color:var(--warn-fg);border:1px solid rgba(183,121,31,.25)}
+.task-list{list-style:none;padding-left:4px}
+input[type=checkbox]{margin-right:6px}
+kbd{font-family:inherit;font-size:12px;border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;padding:1px 6px;background:var(--code-bg)}
+footer.doc{margin-top:60px;padding-top:16px;border-top:1px solid var(--line);color:var(--faint);font-size:12px}
+@media (max-width:960px){.layout{grid-template-columns:1fr}nav.toc{position:static;height:auto;border-right:none;border-bottom:1px solid var(--line);padding:16px}main{padding:24px 16px 80px}header.doc h1{font-size:24px}}
+@media print{nav.toc{display:none}.layout{display:block}main{padding:0;max-width:none}pre,table,.diagram{break-inside:avoid}}
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="toc">
+<div class="brand">MESA Recruit · 设计文档</div>
+<div class="sub">2026-09-20</div>
+<ul>
+<li><a href="#结论与边界" id="toc-结论与边界">0. 结论与边界</a></li>
+<li><a href="#api-契约核实于-docs.typesafe.ai2026-09-20"
+id="toc-api-契约核实于-docs.typesafe.ai2026-09-20">1. API 契约(核实于
+docs.typesafe.ai,2026-09-20)</a>
+<ul>
+<li><a href="#请求" id="toc-请求">1.1 请求</a></li>
+<li><a href="#响应" id="toc-响应">1.2 响应</a></li>
+<li><a href="#限制与错误" id="toc-限制与错误">1.3 限制与错误</a></li>
+</ul></li>
+<li><a href="#客户端-serversrclibjev.js"
+id="toc-客户端-serversrclibjev.js">2. 客户端
+<code>server/src/lib/jev.js</code></a>
+<ul>
+<li><a href="#配置读取" id="toc-配置读取">2.1 配置读取</a></li>
+<li><a href="#请求流程" id="toc-请求流程">2.2 请求流程</a></li>
+<li><a href="#探活-ping" id="toc-探活-ping">2.3 探活
+<code>ping</code></a></li>
+</ul></li>
+<li><a href="#state-构造-libevaluationquestions.js-buildstate"
+id="toc-state-构造-libevaluationquestions.js-buildstate">3. state 构造
+<code>lib/evaluation/questions.js</code> → <code>buildState()</code></a>
+<ul>
+<li><a href="#结构" id="toc-结构">3.1 结构</a></li>
+<li><a href="#脱敏-strippiimarkdown-profile"
+id="toc-脱敏-strippiimarkdown-profile">3.2 脱敏
+<code>stripPii(markdown, profile)</code></a></li>
+<li><a href="#token-预算与截断" id="toc-token-预算与截断">3.3 token
+预算与截断</a></li>
+</ul></li>
+<li><a
+href="#题目生成-buildquestionsevaluationmodel-hardfilterresult-options"
+id="toc-题目生成-buildquestionsevaluationmodel-hardfilterresult-options">4.
+题目生成
+<code>buildQuestions(evaluationModel, hardFilterResult, options)</code></a>
+<ul>
+<li><a href="#生成规则" id="toc-生成规则">4.1 生成规则</a></li>
+<li><a href="#措辞规范校验器-lintquestion-在保存-evaluationmodel-时执行"
+id="toc-措辞规范校验器-lintquestion-在保存-evaluationmodel-时执行">4.2
+措辞规范(校验器 <code>lintQuestion()</code> 在保存 evaluationModel
+时执行)</a></li>
+<li><a href="#固定通用题模板" id="toc-固定通用题模板">4.3
+固定通用题(模板)</a></li>
+<li><a href="#完整示例海外产品质量工程师硬筛后"
+id="toc-完整示例海外产品质量工程师硬筛后">4.4
+完整示例(海外产品质量工程师,硬筛后)</a></li>
+</ul></li>
+<li><a href="#答案归一与加权-libevaluationcomposite.js"
+id="toc-答案归一与加权-libevaluationcomposite.js">5. 答案归一与加权
+<code>lib/evaluation/composite.js</code></a>
+<ul>
+<li><a href="#逐题归一" id="toc-逐题归一">5.1 逐题归一</a></li>
+<li><a href="#分数" id="toc-分数">5.2 分数</a></li>
+<li><a href="#分类顺序判定先命中先出"
+id="toc-分类顺序判定先命中先出">5.3 分类(顺序判定,先命中先出)</a></li>
+<li><a href="#输出结构写入-candidateevaluation"
+id="toc-输出结构写入-candidateevaluation">5.4 输出结构(写入
+<code>CandidateEvaluation</code>)</a></li>
+</ul></li>
+<li><a href="#错误矩阵与回退" id="toc-错误矩阵与回退">6.
+错误矩阵与回退</a></li>
+<li><a href="#shadow-灰度与切换" id="toc-shadow-灰度与切换">7. shadow
+灰度与切换</a></li>
+<li><a href="#安全与隐私" id="toc-安全与隐私">8. 安全与隐私</a></li>
+<li><a href="#可观测性与运维" id="toc-可观测性与运维">9.
+可观测性与运维</a></li>
+<li><a href="#测试与校准" id="toc-测试与校准">10. 测试与校准</a>
+<ul>
+<li><a href="#单测node---test" id="toc-单测node---test">10.1
+单测(<code>node --test</code>)</a></li>
+<li><a href="#契约测试" id="toc-契约测试">10.2 契约测试</a></li>
+<li><a href="#golden-set-校准00-号-p0"
+id="toc-golden-set-校准00-号-p0">10.3 golden set 校准(00 号 P0)</a></li>
+</ul></li>
+<li><a href="#文件与配置清单" id="toc-文件与配置清单">11.
+文件与配置清单</a></li>
+<li><a href="#未决事项实施前确认" id="toc-未决事项实施前确认">12.
+未决事项(实施前确认)</a></li>
+</ul>
+</nav>
+<main>
+<header class="doc">
+<h1>Jev 接入详细设计 — api.typesafe.ai 直连</h1>
+<div class="meta"><span>详细设计稿(未实施)</span><span>2026-09-20</span><span>基于 main
+0c1df05</span></div>
+<p>评估层落地细则:jev.js 客户端(鉴权 / 超时 / 退避 / 缓存 / 并发 /
+成本)、state 构造与脱敏、题目生成器、答案归一与加权、错误矩阵与 legacy
+回退、shadow 灰度、可观测性、安全、测试与校准、运维。消费 03
+号文档定义的 profile / derived / jdFacts / evaluationModel。</p>
+</header>
+<h2 id="结论与边界">0. 结论与边界</h2>
+<ul>
+<li><strong>接入方式</strong>:直连
+<code>POST https://api.typesafe.ai/v1/systemone</code>,<code>Authorization: Bearer &lt;key&gt;</code>,<code>model: "jev-latest"</code>。不引入官方
+SDK,用 Node 20 原生 <code>fetch</code> 复刻 <code>kimiRequest</code>
+的退避 / AbortController 模式(零新依赖,与项目风格一致)。</li>
+<li><strong>Jev 只做判定</strong>:每个评价模型条目 → 一道
+<code>noul</code> 或 <code>score</code>
+题;分类、加权、算数、日期比较全部在代码;报告文字由 Kimi 生成。</li>
+<li><strong>默认脱敏</strong>:发给 Jev 的 state 不含姓名 / 电话 / 邮箱 /
+链接 / 照片,判定不需要身份。</li>
+<li><strong>可回退</strong>:<code>jev.enabled=false</code> 或调用失败 →
+legacy <code>matchAgainstJob</code>,评估记录
+<code>engine="legacy"</code>。</li>
+<li><strong>可复现</strong>:同一 <code>(model, state, questions)</code>
+的答案缓存 7 天(Jev 输出确定,第三方测评 3
+次跑完全一致);评估记录存题目与答案原文 + 版本号。</li>
+</ul>
+<div class="diagram"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 994.45 620">
+<style>
+  
+  text { font-family: 'Inter', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 30%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="seq-arrow" markerWidth="8" markerHeight="4.8" refX="8" refY="2.4" orient="auto-start-reverse">
+    <polygon points="0 0, 8 2.4, 0 4.8" fill="var(--_arrow)" />
+  </marker>
+  <marker id="seq-arrow-open" markerWidth="8" markerHeight="4.8" refX="8" refY="2.4" orient="auto-start-reverse">
+    <polyline points="0 0, 8 2.4, 0 4.8" fill="none" stroke="var(--_arrow)" stroke-width="1" />
+  </marker>
+</defs>
+<line x1="85.325" y1="70" x2="85.325" y2="590" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line x1="239.55" y1="70" x2="239.55" y2="590" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line x1="379.55" y1="70" x2="379.55" y2="590" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line x1="529.175" y1="70" x2="529.175" y2="590" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line x1="697.6999999999999" y1="70" x2="697.6999999999999" y2="590" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line x1="880.525" y1="70" x2="880.525" y2="590" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line x1="85.325" y1="90" x2="239.55" y2="90" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="162.4375" y="84" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">buildState(profile, derived, markdown, jdFacts) + buildQuestions(evaluationModel, hardFilter)</text>
+<line x1="239.55" y1="130" x2="85.325" y2="130" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+<text x="162.4375" y="124" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">{ state, questions, budget }</text>
+<line x1="85.325" y1="170" x2="379.55" y2="170" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="232.4375" y="164" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">evaluate({ state, questions })</text>
+<polyline points="379.55,210 409.55,210 409.55,230 379.55,230" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="415.55" y="220" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">cache lookup sha256(model+state+questions)</text>
+<line x1="379.55" y1="280" x2="529.175" y2="280" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="454.36249999999995" y="274" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">POST /v1/systemone (timeout 20s)</text>
+<line x1="529.175" y1="320" x2="379.55" y2="320" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+<text x="454.36249999999995" y="314" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">{ model, answers, usage }</text>
+<polyline points="379.55,360 409.55,360 409.55,380 379.55,380" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="415.55" y="370" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">validate answers ⊇ questions · cache set · cost</text>
+<line x1="379.55" y1="430" x2="85.325" y2="430" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+<text x="232.4375" y="424" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">{ answers, model, usage, cached }</text>
+<line x1="85.325" y1="470" x2="697.6999999999999" y2="470" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="391.5125" y="464" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">normalize(answers) + hardFilter → items / dimensions / overall / classification</text>
+<line x1="697.6999999999999" y1="510" x2="85.325" y2="510" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+<text x="391.5125" y="504" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">evaluation</text>
+<line x1="85.325" y1="550" x2="880.525" y2="550" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="482.925" y="544" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">insert (isCurrent) + Candidate 快照</text>
+<rect x="30" y="30" width="110.65" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="85.325" y="50" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">pipeline.js</text>
+<rect x="180.65" y="30" width="117.80000000000001" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="239.55" y="50" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">questions.js</text>
+<rect x="339.55" y="30" width="80" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="379.55" y="50" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">jev.js</text>
+<rect x="459.54999999999995" y="30" width="139.25" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="529.175" y="50" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">api.typesafe.ai</text>
+<rect x="638.8" y="30" width="117.80000000000001" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="697.6999999999999" y="50" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">composite.js</text>
+<rect x="796.5999999999999" y="30" width="167.85000000000002" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="880.525" y="50" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">CandidateEvaluation</text>
+</svg></div>
+<hr />
+<h2 id="api-契约核实于-docs.typesafe.ai2026-09-20">1. API 契约(核实于
+docs.typesafe.ai,2026-09-20)</h2>
+<h3 id="请求">1.1 请求</h3>
+<pre class="jsonc"><code>POST https://api.typesafe.ai/v1/systemone
+Authorization: Bearer &lt;JEV_API_KEY&gt;
+Content-Type: application/json
+{
+  &quot;model&quot;: &quot;jev-latest&quot;,
+  &quot;state&quot;: &lt;string | object | array&gt;,          // 评估对象;对象字段可在 instructions 里用反引号引用
+  &quot;questions&quot;: {
+    &quot;&lt;id&gt;&quot;: { &quot;type&quot;: &quot;noul&quot;,   &quot;instructions&quot;: &quot;string|object|array&quot;, &quot;criteria&quot;: { &quot;true&quot;: &quot;…&quot;, &quot;false&quot;: &quot;…&quot; } },
+    &quot;&lt;id&gt;&quot;: { &quot;type&quot;: &quot;choice&quot;, &quot;instructions&quot;: &quot;…&quot;, &quot;criteria&quot;: { &quot;optA&quot;: &quot;…&quot;, &quot;optB&quot;: &quot;…&quot;, &quot;other&quot;: &quot;以上皆非&quot; } },
+    &quot;&lt;id&gt;&quot;: { &quot;type&quot;: &quot;score&quot;,  &quot;instructions&quot;: &quot;…&quot;, &quot;criteria&quot;: [ &quot;level0 情境&quot;, &quot;level1 情境&quot;, &quot;…&quot; ] }
+  }
+}</code></pre>
+<h3 id="响应">1.2 响应</h3>
+<pre class="jsonc"><code>{
+  &quot;model&quot;: &quot;jev-1.13.0&quot;,                       // 实际模型版本,入库
+  &quot;answers&quot;: {
+    &quot;&lt;id&gt;&quot;: { &quot;type&quot;: &quot;noul&quot;,   &quot;noul&quot;: 0.93 },
+    &quot;&lt;id&gt;&quot;: { &quot;type&quot;: &quot;choice&quot;, &quot;choice&quot;: &quot;optA&quot;, &quot;probabilities&quot;: { &quot;optA&quot;: 0.84, &quot;optB&quot;: 0.15, &quot;other&quot;: 0.01 }, &quot;confidence&quot;: 0.71 },
+    &quot;&lt;id&gt;&quot;: { &quot;type&quot;: &quot;score&quot;,  &quot;score&quot;: 1.7, &quot;legend&quot;: { &quot;0&quot;: &quot;…&quot;, &quot;1&quot;: &quot;…&quot;, &quot;2&quot;: &quot;…&quot; }, &quot;probabilities&quot;: { &quot;0&quot;: 0.0, &quot;1&quot;: 0.3, &quot;2&quot;: 0.7 }, &quot;confidence&quot;: 0.88 }
+  },
+  &quot;usage&quot;: { &quot;input_tokens&quot;: 4210, &quot;output_tokens&quot;: 31 }
+}</code></pre>
+<h3 id="限制与错误">1.3 限制与错误</h3>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>项</th>
+<th>值</th>
+<th>设计响应</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>choice 选项</td>
+<td>≤255</td>
+<td>本方案不用 choice 出分类;仅固定题「稳定性」可选 score</td>
+</tr>
+<tr>
+<td>score 等级</td>
+<td>2-10</td>
+<td>统一 4-5 级,level 0 = 未提及</td>
+</tr>
+<tr>
+<td>单题 + state</td>
+<td>≈32K token(≈150K 字符)</td>
+<td>state 预算 12K token(§3.3)</td>
+</tr>
+<tr>
+<td>整请求</td>
+<td>≈64K token</td>
+<td>题目 8-25 道,预算 6K token</td>
+</tr>
+<tr>
+<td>限流</td>
+<td>≈1200 req/min · 250K token/s</td>
+<td>进程内并发信号量 5;批量按 task 串行化</td>
+</tr>
+<tr>
+<td>延迟</td>
+<td>70-500ms 典型</td>
+<td>超时 20s(远超,留给网络抖动)</td>
+</tr>
+<tr>
+<td>401</td>
+<td>key 无效</td>
+<td>不重试;抛 <code>jev_unauthorized</code>(424)</td>
+</tr>
+<tr>
+<td>422</td>
+<td>请求校验失败</td>
+<td>不重试;记录 body(不含 state)+ 抛
+<code>jev_bad_request</code>(422)</td>
+</tr>
+<tr>
+<td>429 / 529</td>
+<td>限流 / 过载</td>
+<td>指数退避 1s → 2.5s → 6s,最多 3 次</td>
+</tr>
+<tr>
+<td>5xx / 网络</td>
+<td></td>
+<td>同上退避</td>
+</tr>
+<tr>
+<td>定价</td>
+<td>$0.042 / 1M 输入 token,输出免费</td>
+<td><code>usage.input_tokens × 0.042 / 1e6</code> 记
+<code>costs.jevUsd</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="客户端-serversrclibjev.js">2. 客户端
+<code>server/src/lib/jev.js</code></h2>
+<pre class="js"><code>// 对外 API(与 kimi.js 同风格)
+export async function isJevConfigured();                       // key 非空且 jev.enabled
+export async function evaluate({ state, questions, meta });    // → { answers, model, usage, cached, latencyMs }
+export async function ping(apiKey?);                           // 1 道 noul 探活,给 /api/system/settings/jev/test
+export const JEV_ERROR_CODES = { unauthorized:&quot;jev_unauthorized&quot;, badRequest:&quot;jev_bad_request&quot;, rateLimited:&quot;jev_rate_limited&quot;, timeout:&quot;jev_timeout&quot;, upstream:&quot;jev_upstream_error&quot;, notConfigured:&quot;jev_not_configured&quot; };</code></pre>
+<h3 id="配置读取">2.1 配置读取</h3>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>key</th>
+<th>来源优先级</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>jev.api_key</code></td>
+<td>DB(AES)&gt; <code>JEV_API_KEY</code></td>
+<td><code>ENCRYPTED_KEYS</code> 加入;<code>adminOnlyForApiKey</code>
+扩展为匹配
+<code>/\.(api_key|secret_code|app_id)$/</code>;<code>/settings/:key/full</code>
+拒回显</td>
+</tr>
+<tr>
+<td><code>jev.base_url</code></td>
+<td>DB &gt; <code>JEV_BASE_URL</code> &gt;
+<code>https://api.typesafe.ai/v1</code></td>
+<td>仅用于测试环境 mock</td>
+</tr>
+<tr>
+<td><code>jev.model</code></td>
+<td>DB &gt; <code>JEV_MODEL</code> &gt; <code>jev-latest</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>jev.enabled</code></td>
+<td>DB &gt; <code>JEV_ENABLED</code> &gt; <code>false</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>jev.mode</code></td>
+<td>DB &gt; <code>shadow</code></td>
+<td><code>shadow / primary</code></td>
+</tr>
+<tr>
+<td><code>jev.timeout_ms</code></td>
+<td>默认 20000</td>
+<td></td>
+</tr>
+<tr>
+<td><code>jev.concurrency</code></td>
+<td>默认 5</td>
+<td></td>
+</tr>
+<tr>
+<td><code>jev.cache_ttl_s</code></td>
+<td>默认 604800(7 天)</td>
+<td>0 = 关缓存</td>
+</tr>
+<tr>
+<td><code>eval.pii_strip</code></td>
+<td>默认 <code>true</code></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="请求流程">2.2 请求流程</h3>
+<ol type="1">
+<li><code>assertConfigured()</code> → 无 key 抛
+<code>jev_not_configured</code>(424,CF 透传 JSON,坑 #20 口径)。</li>
+<li>构造 body;<code>JSON.stringify</code> 后估算 token(中文 ≈ 1 token /
+1.5 字,英文 ≈ 1 / 4 字符,取保守 <code>chars/1.5</code>),超 60K 抛
+<code>jev_bad_request</code>(在发出前失败,不计费)。</li>
+<li>缓存键 <code>sha256(model + JSON(state) + JSON(questions))</code> →
+Redis <code>mesa:jev:ans:&lt;hash&gt;</code>(无 Redis 时内存 LRU 500
+条);命中直接返回 <code>cached:true</code>(shadow
+双跑、重试、报告重生成都不重复计费)。</li>
+<li>信号量获取(并发 5)→ <code>fetch</code> + AbortController 20s。</li>
+<li>状态码矩阵(§1.3);退避重试仅 429 / 529 / 5xx /
+网络错误;<code>Retry-After</code> 头存在时优先。</li>
+<li>响应校验:<code>answers</code> 的 key 必须 ⊇ <code>questions</code>
+的 key,类型一致,数值在 [0,1] / [0, levels-1];缺题 → 抛
+<code>jev_upstream_error</code> 并记录缺失 key(不重试,交调用方决定
+legacy 回退)。</li>
+<li>记录
+<code>usage</code>、<code>latencyMs</code>、<code>model</code>;写缓存;返回。</li>
+<li>日志(pino):<code>{ taskId, questionCount, inputTokens, latencyMs, cached, model }</code>,<strong>永不打印
+state</strong>。</li>
+</ol>
+<h3 id="探活-ping">2.3 探活 <code>ping</code></h3>
+<pre class="jsonc"><code>{ &quot;model&quot;: &quot;jev-latest&quot;, &quot;state&quot;: &quot;候选人:硕士,汽车行业 6 年。&quot;, &quot;questions&quot;: { &quot;ok&quot;: { &quot;type&quot;: &quot;noul&quot;, &quot;instructions&quot;: &quot;state 是否提到汽车行业?&quot; } } }</code></pre>
+<p>期望 <code>answers.ok.noul &gt; 0.8</code>;用于 admin 「测试连接」与
+Uptime Kuma 定时探活(经 <code>/api/health/providers</code>,见 §9)。</p>
+<hr />
+<h2 id="state-构造-libevaluationquestions.js-buildstate">3. state 构造
+<code>lib/evaluation/questions.js</code> →
+<code>buildState()</code></h2>
+<h3 id="结构">3.1 结构</h3>
+<pre class="jsonc"><code>{
+  &quot;resume&quot;: &quot;&lt;脱敏后的 TextIn markdown,按 §3.3 预算截断&gt;&quot;,
+  &quot;profile&quot;: {
+    &quot;education&quot;: [ { &quot;school&quot;: &quot;…&quot;, &quot;degree&quot;: &quot;硕士&quot;, &quot;major&quot;: &quot;车辆工程&quot;, &quot;period&quot;: &quot;2016-09 ~ 2019-06&quot; } ],
+    &quot;experience&quot;: [ { &quot;company&quot;: &quot;…&quot;, &quot;title&quot;: &quot;海外产品质量工程师&quot;, &quot;period&quot;: &quot;2021-03 ~ 至今&quot;, &quot;isOverseas&quot;: true, &quot;teamSize&quot;: 4,
+                      &quot;duties&quot;: [&quot;…&quot;], &quot;achievements&quot;: [&quot;…&quot;], &quot;domainTags&quot;: [&quot;quality.product&quot;], &quot;industryTags&quot;: [&quot;auto.nev&quot;] } ],
+    &quot;projects&quot;: [ { &quot;name&quot;: &quot;…&quot;, &quot;role&quot;: &quot;…&quot;, &quot;stage&quot;: &quot;mass_production&quot;, &quot;region&quot;: [&quot;europe&quot;], &quot;contributions&quot;: [&quot;…&quot;] } ],
+    &quot;skills&quot;: { &quot;professional&quot;: [&quot;海外质量问题分析&quot;, &quot;…&quot;], &quot;tools&quot;: [&quot;8D&quot;, &quot;SPC&quot;], &quot;soft&quot;: [{ &quot;name&quot;: &quot;跨部门协作&quot;, &quot;behaviors&quot;: [&quot;…&quot;] }] },
+    &quot;languages&quot;: [ { &quot;name&quot;: &quot;英语&quot;, &quot;level&quot;: &quot;working&quot;, &quot;exams&quot;: [&quot;IELTS 7.0&quot;] } ],
+    &quot;certificates&quot;: [&quot;PMP&quot;]
+  },
+  &quot;derived&quot;: { &quot;totalYears&quot;: 6.2, &quot;industryYears&quot;: { &quot;auto&quot;: 6.2, &quot;auto.nev&quot;: 3.1 }, &quot;overseasYears&quot;: 2.8, &quot;managementYears&quot;: 1.5, &quot;maxTeamSize&quot;: 4,
+               &quot;jobHopping&quot;: { &quot;segmentsLast5y&quot;: 2, &quot;shortSegmentsLast5y&quot;: 0 }, &quot;languageLevels&quot;: { &quot;en&quot;: &quot;working&quot; }, &quot;isFreshGraduate&quot;: false },
+  &quot;job&quot;: { &quot;title&quot;: &quot;海外产品质量工程师&quot;, &quot;responsibilities&quot;: [&quot;…&quot;], &quot;requirements&quot;: [&quot;…&quot;], &quot;locations&quot;: [&quot;上海&quot;, &quot;斯图加特&quot;], &quot;travel&quot;: &quot;每年 ≥150 天海外出差&quot; }
+}</code></pre>
+<ul>
+<li><code>profile</code> 是 03 号 Schema 的<strong>投影</strong>(去掉
+identity / intent 联系方式 / evidenceRefs /
+meta),字段名保持,题目里用反引号引用如
+<code>`profile.experience`</code>、<code>`derived.overseasYears`</code>;</li>
+<li><code>derived</code> 让 Jev
+<strong>不必算数</strong>:题目直接说”结合
+<code>derived.industryYears.auto</code>=6.2”;</li>
+<li><code>job</code> 只放判定需要的原文要点,不放福利 / 薪资。</li>
+</ul>
+<h3 id="脱敏-strippiimarkdown-profile">3.2 脱敏
+<code>stripPii(markdown, profile)</code></h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>项</th>
+<th>处理</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>姓名</td>
+<td><code>identity.name</code> 及其无空格 / 拼音变体 →
+<code>[候选人]</code></td>
+</tr>
+<tr>
+<td>手机 / 邮箱</td>
+<td>正则(国际格式兼容,沿用 <code>pickPhone</code> 的模式)→
+<code>[已隐藏]</code></td>
+</tr>
+<tr>
+<td>URL / 邮箱域名</td>
+<td>→ <code>[链接]</code></td>
+</tr>
+<tr>
+<td>图片 markdown <code>![](…)</code></td>
+<td>删除</td>
+</tr>
+<tr>
+<td>身份证 / 出生日期 / 住址行</td>
+<td>关键词行删除(<code>身份证|出生|住址|籍贯|民族|婚姻|政治面貌</code>)</td>
+</tr>
+<tr>
+<td>年龄 / 性别</td>
+<td>保留(INFO 展示需要;评估题不引用)— 可由
+<code>eval.pii_strip_demographics=true</code> 一并抹除</td>
+</tr>
+</tbody>
+</table>
+<p>脱敏后文本只存在于内存与 Jev 请求,不入库(<code>jevRequest</code>
+列只存 questions)。</p>
+<h3 id="token-预算与截断">3.3 token 预算与截断</h3>
+<p>总预算 18K token:<code>resume</code> ≤
+10K,<code>profile+derived</code> ≤ 4K,<code>job</code> ≤ 1K,questions ≤
+3K。<code>resume</code> 超预算时按段落优先级截断:工作经历 &gt; 项目 &gt;
+技能 &gt; 教育 &gt; 语言 / 证书 &gt; 校园 &gt; 其他(用 TextIn
+的标题层级切段;无标题时按 <code>profile</code> 段落文本反查定位)。截断记
+<code>budget.truncated=true</code> 入
+<code>CandidateEvaluation.jevRequest.meta</code>。</p>
+<hr />
+<h2
+id="题目生成-buildquestionsevaluationmodel-hardfilterresult-options">4.
+题目生成
+<code>buildQuestions(evaluationModel, hardFilterResult, options)</code></h2>
+<h3 id="生成规则">4.1 生成规则</h3>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>evaluationModel 条目</th>
+<th>生成</th>
+<th>备注</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>method=code</code> 且硬筛已出 PASS/FAIL</td>
+<td><strong>不出题</strong></td>
+<td>已确定</td>
+</tr>
+<tr>
+<td><code>method=code_then_jev</code> 且硬筛 UNKNOWN</td>
+<td>出 <code>jev.type</code> 指定的题</td>
+<td>只为缺信息的项花 token</td>
+</tr>
+<tr>
+<td><code>method=jev_noul</code></td>
+<td><code>noul</code></td>
+<td>用 <code>jev.instructions / criteria</code></td>
+</tr>
+<tr>
+<td><code>method=jev_score</code></td>
+<td><code>score</code></td>
+<td><code>criteria = jev.levels</code>,强制 level 0
+为「简历未提及相关信息」(缺则代码插入)</td>
+</tr>
+<tr>
+<td><code>tier=INFO</code> / <code>method=none</code></td>
+<td>不出题</td>
+<td></td>
+</tr>
+<tr>
+<td>固定题(<code>fixedQuestions</code>)</td>
+<td>§4.3</td>
+<td>受 evaluationModel 开关</td>
+</tr>
+</tbody>
+</table>
+<p>题目 id 命名:<code>req_&lt;key&gt;</code>(评价模型条目)/
+<code>meta_&lt;name&gt;</code>(固定题),响应按 id 回填。</p>
+<h3 id="措辞规范校验器-lintquestion-在保存-evaluationmodel-时执行">4.2
+措辞规范(校验器 <code>lintQuestion()</code> 在保存 evaluationModel
+时执行)</h3>
+<ol type="1">
+<li>一题一判:<code>instructions</code> 不含「且 / 并且 /
+同时」连接两个判断(启发式 lint,warning);</li>
+<li>情境描述:<code>levels</code> 不得只含「一般 / 良好 /
+优秀」等程度词(lint error);</li>
+<li>引用字段:建议至少引用一个反引号字段(warning);</li>
+<li>禁止算数:<code>instructions</code> 含「共 / 合计 / 超过 N 年 /
+是否大于」且未引用 <code>derived.*</code> →
+warning,并提示改为引用派生指标;</li>
+<li>逃生口:noul 的 <code>criteria.false</code> 必须覆盖「未提及」;score
+level 0 必须是「未提及」;</li>
+<li>长度:单题 ≤ 600 字符。</li>
+</ol>
+<h3 id="固定通用题模板">4.3 固定通用题(模板)</h3>
+<pre class="jsonc"><code>{
+  &quot;meta_stability&quot;: { &quot;type&quot;: &quot;score&quot;, &quot;instructions&quot;: &quot;结合 `derived.jobHopping` 与 `profile.experience`,判断候选人任职稳定性。&quot;,
+    &quot;criteria&quot;: [&quot;近 5 年 4 段以上经历且多数不足 1 年&quot;, &quot;有 1-2 段不足 1 年的短任职&quot;, &quot;任职稳定,每段 2 年以上&quot;, &quot;长期稳定且在同一公司有晋升&quot;] },
+  &quot;meta_sufficiency&quot;: { &quot;type&quot;: &quot;noul&quot;, &quot;instructions&quot;: &quot;`resume` 的信息是否不足以判断与 `job.requirements` 的匹配?&quot;,
+    &quot;criteria&quot;: { &quot;true&quot;: &quot;经历只有公司和职位没有内容、大段空白、或与岗位相关的经历完全缺失&quot;, &quot;false&quot;: &quot;工作/项目内容有具体职责与成果,可据此判断&quot; } },
+  &quot;meta_inflation&quot;: { &quot;type&quot;: &quot;noul&quot;, &quot;instructions&quot;: &quot;`resume` 是否存在关键词堆砌而无具体事例支撑的技能声明?&quot;,
+    &quot;criteria&quot;: { &quot;true&quot;: &quot;技能栏罗列大量工具/能力,但工作与项目描述中找不到对应使用场景&quot;, &quot;false&quot;: &quot;声明的技能在经历中有具体使用案例&quot; } },
+  &quot;meta_relocation&quot;: { &quot;type&quot;: &quot;noul&quot;, &quot;instructions&quot;: &quot;候选人当前所在地或求职意向是否与 `job.locations` 一致,或明确表示可搬迁/派驻?&quot;,
+    &quot;criteria&quot;: { &quot;true&quot;: &quot;现居地在岗位城市,或简历写明接受异地/海外/派驻&quot;, &quot;false&quot;: &quot;现居地不同且未提及搬迁意愿,或明确只考虑本地&quot; } }
+}</code></pre>
+<p><code>meta_relocation</code> 仅在硬筛 <code>location</code> 为
+MISMATCH 或 UNKNOWN 时出题。</p>
+<h3 id="完整示例海外产品质量工程师硬筛后">4.4
+完整示例(海外产品质量工程师,硬筛后)</h3>
+<p>硬筛结果:<code>edu_min PASS</code>,<code>years_auto PASS(6.2≥5)</code>,<code>major_rel PASS(major.vehicle)</code>,<code>lang_en UNKNOWN(简历只写"英语良好")</code>,<code>tool_8d_spc PASS(词表命中)</code>,<code>years_oq UNKNOWN(无 quality.overseas 标签)</code>,<code>cond_travel UNKNOWN</code>。生成
+8 题:</p>
+<pre class="jsonc"><code>{
+  &quot;req_lang_en&quot;:     { &quot;type&quot;: &quot;noul&quot;,  &quot;instructions&quot;: &quot;根据 `resume` 与 `profile.experience`,候选人是否有英语可作为工作语言的证据?&quot;, &quot;criteria&quot;: { &quot;true&quot;: &quot;海外常驻工作、英文授课学历、雅思≥7/托福≥100、或明确写英语工作语言&quot;, &quot;false&quot;: &quot;无上述证据,或仅写英语良好/CET-4;简历未提及也算 false&quot; } },
+  &quot;req_years_oq&quot;:    { &quot;type&quot;: &quot;score&quot;, &quot;instructions&quot;: &quot;候选人海外质量相关工作的深度(参考 `derived.overseasYears`=2.8)。&quot;, &quot;criteria&quot;: [&quot;简历未提及海外或质量相关工作&quot;, &quot;仅有海外出差或短期项目支持&quot;, &quot;1-3 年负责海外市场质量问题处理&quot;, &quot;3 年以上常驻或独立负责海外区域质量&quot;] },
+  &quot;req_cap_pq&quot;:      { &quot;type&quot;: &quot;score&quot;, &quot;instructions&quot;: &quot;候选人产品质量管理能力,以 `profile.experience[].duties` 与 `achievements` 为准。&quot;, &quot;criteria&quot;: [&quot;未提及&quot;, &quot;参与质量相关工作但无独立负责内容&quot;, &quot;独立负责某产品线质量问题分析与闭环&quot;, &quot;主导质量体系或跨产品线质量改进并有量化成果&quot;] },
+  &quot;req_cap_project&quot;: { &quot;type&quot;: &quot;score&quot;, &quot;instructions&quot;: &quot;候选人海外项目管理经验。&quot;, &quot;criteria&quot;: [&quot;未提及&quot;, &quot;作为成员参与海外项目&quot;, &quot;负责海外项目中的某个模块并对接客户/供应商&quot;, &quot;作为负责人推动海外项目按期交付&quot;] },
+  &quot;req_tool_8d_spc&quot;: { &quot;type&quot;: &quot;score&quot;, &quot;instructions&quot;: &quot;8D / SPC 的实际使用深度(词表已命中,请判断证据强度)。&quot;, &quot;criteria&quot;: [&quot;仅列在技能栏&quot;, &quot;有具体使用案例&quot;, &quot;主导过基于 8D/SPC 的质量改进并有结果&quot;] },
+  &quot;req_pref_europe&quot;: { &quot;type&quot;: &quot;score&quot;, &quot;instructions&quot;: &quot;欧洲市场项目经验。&quot;, &quot;criteria&quot;: [&quot;未提及&quot;, &quot;有欧洲客户对接或出差&quot;, &quot;参与欧洲项目并有明确职责&quot;, &quot;负责欧洲项目认证/上市并有成果&quot;] },
+  &quot;req_cond_travel&quot;: { &quot;type&quot;: &quot;noul&quot;,  &quot;instructions&quot;: &quot;简历是否显示候选人接受或已适应高频海外出差/派驻?&quot;, &quot;criteria&quot;: { &quot;true&quot;: &quot;有海外常驻/高频出差经历,或意向写明接受出差/海外&quot;, &quot;false&quot;: &quot;无相关经历且未表态,或明确不接受&quot; } },
+  &quot;meta_stability&quot;:  { &quot;…&quot;: &quot;见 4.3&quot; }, &quot;meta_sufficiency&quot;: { &quot;…&quot;: &quot;&quot; }, &quot;meta_inflation&quot;: { &quot;…&quot;: &quot;&quot; }
+}</code></pre>
+<p>预计 state 5-7K token + 题目 1.2K token ≈ $0.0003,延迟 &lt;1s。</p>
+<hr />
+<h2 id="答案归一与加权-libevaluationcomposite.js">5. 答案归一与加权
+<code>lib/evaluation/composite.js</code></h2>
+<h3 id="逐题归一">5.1 逐题归一</h3>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr>
+<th>来源</th>
+<th>normalized n</th>
+<th>verdict</th>
+<th>confidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>硬筛 PASS / FAIL</td>
+<td>1 / 0</td>
+<td>满足 / 不满足</td>
+<td>1.0(代码确定)</td>
+</tr>
+<tr>
+<td>硬筛 UNKNOWN(未出 Jev 题,<code>unknownPolicy=ignore</code>)</td>
+<td>不计入</td>
+<td>未提及</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>noul</code> p</td>
+<td>p</td>
+<td>p≥0.7 满足 · 0.3-0.7 部分 · &lt;0.3 不满足</td>
+<td><code>abs(p-0.5)*2</code>(自定义,noul 无官方 confidence)</td>
+</tr>
+<tr>
+<td><code>score</code> s,L 级</td>
+<td><code>s/(L-1)</code>;argmax=0 → n=0</td>
+<td>level≥0.75L 满足 · 0.4-0.75 部分 · &lt;0.4 不满足 · argmax 0
+未提及</td>
+<td>官方 <code>confidence</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="分数">5.2 分数</h3>
+<pre><code>维度 k ∈ {MUST, CORE, PREFERRED}:dim_k = 100 × Σ(w_i·n_i) / Σ w_i(该 tier 内,UNKNOWN-ignore 项不入分母)
+STABILITY 维度 = 100 × meta_stability 归一
+overall_base = Σ_k tierWeights[k]·dim_k / Σ tierWeights
+bonus = min(bonusCap, Σ_{BONUS 项} bonus_i × n_i)
+overall = round(min(100, overall_base + bonus))</code></pre>
+<h3 id="分类顺序判定先命中先出">5.3 分类(顺序判定,先命中先出)</h3>
+<ol type="1">
+<li>任一 MUST 项 verdict=不满足(代码 FAIL,或 Jev noul p&lt;0.3) →
+<strong>D ·
+LOW</strong>(<code>reason: "hard_fail:&lt;key&gt;"</code>)</li>
+<li><code>meta_sufficiency</code> p&gt;0.6 → <strong>C ·
+REVIEW</strong>(<code>reason: "insufficient_info"</code>)</li>
+<li>任一 CORE 项 confidence &lt; <code>confidenceGate</code>(0.5) →
+<strong>C ·
+REVIEW</strong>(<code>reason: "low_confidence:&lt;key&gt;"</code>)</li>
+<li>任一 MUST 项 UNKNOWN 且 <code>unknownPolicy=review</code> → 上限
+<strong>C ·
+REVIEW</strong>(<code>reason: "must_unknown:&lt;key&gt;"</code>)</li>
+<li><code>meta_inflation</code> p&gt;0.7 →
+分类降一级(A→B,B→C),<code>flags += "inflation"</code></li>
+<li>按 thresholds:≥A → A · HIGH;≥B → B · HIGH;≥C → C · REVIEW;否则 D ·
+LOW</li>
+<li><code>unknownPolicy=interview</code> 的 UNKNOWN 项 →
+<code>interviewProbes</code> 候选(交报告层)</li>
+</ol>
+<p><code>minConfidence = min(CORE/PREFERRED 题 confidence)</code> →
+<code>Candidate.parserConfidence = round(minConfidence×100)</code>(与 03
+号 <code>profileQuality</code>
+二选一展示:评估存在时显示评估置信度)。</p>
+<h3 id="输出结构写入-candidateevaluation">5.4 输出结构(写入
+<code>CandidateEvaluation</code>)</h3>
+<pre class="jsonc"><code>{
+  &quot;engine&quot;: &quot;jev&quot;, &quot;hardFilter&quot;: { &quot;result&quot;: &quot;UNKNOWN&quot;, &quot;items&quot;: [ … ] },
+  &quot;items&quot;: [ { &quot;key&quot;: &quot;lang_en&quot;, &quot;label&quot;: &quot;英语工作语言&quot;, &quot;tier&quot;: &quot;MUST&quot;, &quot;method&quot;: &quot;code_then_jev&quot;, &quot;source&quot;: &quot;jev&quot;, &quot;normalized&quot;: 0.91, &quot;verdict&quot;: &quot;满足&quot;, &quot;confidence&quot;: 0.82, &quot;raw&quot;: { &quot;noul&quot;: 0.91 } }, … ],
+  &quot;dimensions&quot;: [ { &quot;key&quot;: &quot;MUST&quot;, &quot;score&quot;: 96, &quot;weight&quot;: 25 }, { &quot;key&quot;: &quot;CORE&quot;, &quot;score&quot;: 78, &quot;weight&quot;: 45 }, { &quot;key&quot;: &quot;PREFERRED&quot;, &quot;score&quot;: 50, &quot;weight&quot;: 15 }, { &quot;key&quot;: &quot;STABILITY&quot;, &quot;score&quot;: 67, &quot;weight&quot;: 15 } ],
+  &quot;overallScore&quot;: 81, &quot;bonus&quot;: 3, &quot;classification&quot;: &quot;B&quot;, &quot;reviewPriority&quot;: &quot;HIGH&quot;, &quot;reasons&quot;: [], &quot;flags&quot;: [],
+  &quot;minConfidence&quot;: 0.71,
+  &quot;jevRequest&quot;:  { &quot;questions&quot;: { … }, &quot;meta&quot;: { &quot;stateTokensEst&quot;: 6100, &quot;truncated&quot;: false, &quot;piiStripped&quot;: true } },
+  &quot;jevAnswers&quot;:  { … 原样 … },
+  &quot;versions&quot;: { &quot;schema&quot;: &quot;eval.v1&quot;, &quot;questionTemplate&quot;: &quot;qt.v1&quot;, &quot;evaluationModel&quot;: 3, &quot;jevModel&quot;: &quot;jev-1.13.0&quot;, &quot;kimiModel&quot;: &quot;moonshot-v1-32k&quot;, &quot;kimiPromptHash&quot;: &quot;…&quot;, &quot;textinVersion&quot;: &quot;3.17.12&quot; },
+  &quot;costs&quot;: { &quot;jevInputTokens&quot;: 7300, &quot;jevUsd&quot;: 0.00031, &quot;cached&quot;: false, &quot;latencyMs&quot;: 640 }
+}</code></pre>
+<hr />
+<h2 id="错误矩阵与回退">6. 错误矩阵与回退</h2>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>场景</th>
+<th>处理</th>
+<th>用户可见</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>jev.enabled=false</code></td>
+<td>直接 legacy</td>
+<td>「基础评估」标签</td>
+</tr>
+<tr>
+<td>无 evaluationModel</td>
+<td>只出固定题 + STABILITY;<code>items=[]</code>;分类只可能
+C(信息不足)或按 overall;UI 提示补评估标准</td>
+<td>「未配置评估标准」</td>
+</tr>
+<tr>
+<td><code>jev_not_configured / unauthorized</code></td>
+<td>legacy;<code>app.log.error</code> 一次/10 分钟去重</td>
+<td>「AI 评估暂不可用,已用基础评估」</td>
+</tr>
+<tr>
+<td><code>jev_rate_limited / timeout / upstream</code>(退避后仍失败)</td>
+<td>legacy;task.stages.evaluate =
+<code>{ status:"fallback", error }</code></td>
+<td>同上</td>
+</tr>
+<tr>
+<td><code>jev_bad_request</code>(422)</td>
+<td><strong>不回退</strong>,标 failed(多半是题目模板问题,回退会掩盖
+bug);告警</td>
+<td>「评估失败,请联系管理员」</td>
+</tr>
+<tr>
+<td>答案缺题</td>
+<td>视为 upstream 错误 → legacy</td>
+<td></td>
+</tr>
+<tr>
+<td>Kimi 报告失败</td>
+<td>分数入库,<code>reportStatus=failed</code>,可重试</td>
+<td>「报告生成失败,重试」</td>
+</tr>
+<tr>
+<td>Redis 不可用</td>
+<td>缓存旁路,内存 LRU</td>
+<td>无</td>
+</tr>
+</tbody>
+</table>
+<p>legacy 适配器把 <code>matchAgainstJob</code>
+输出映射成同形:<code>overallScore=jdMatch</code>,<code>classification</code>
+按
+thresholds,<code>items=[]</code>,<code>dimensions=[{CORE: jdMatch}]</code>,<code>engine="legacy"</code>。</p>
+<hr />
+<h2 id="shadow-灰度与切换">7. shadow 灰度与切换</h2>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>阶段</th>
+<th>行为</th>
+<th>观察指标(Reports 页新增「AI 评估」卡,或先 SQL)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>jev.mode=shadow</code></td>
+<td>每次评估同时跑 legacy(主,写 Candidate 快照)与 Jev(副,只写
+CandidateEvaluation
+<code>engine=jev, isCurrent=false, shadow=true</code>)</td>
+<td>分类分布对比;<code>overall</code> 与 <code>jdMatch</code> 的
+Spearman 相关;D 类中 legacy ≥70 的比例(潜在误杀);C 类占比(应
+&lt;30%);缓存命中率;P95 延迟;失败率</td>
+</tr>
+<tr>
+<td>切 <code>primary</code> 条件</td>
+<td>连续 2 周:失败率 &lt;2%、误杀候选 HR 抽检认可、C 类占比合理</td>
+<td></td>
+</tr>
+<tr>
+<td><code>jev.mode=primary</code></td>
+<td>Jev 主;legacy 仅回退</td>
+<td></td>
+</tr>
+<tr>
+<td>回滚</td>
+<td>改 setting 即时生效(30s 缓存),无需部署</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="安全与隐私">8. 安全与隐私</h2>
+<ul>
+<li>key:仅 DB(AES-256-GCM,HKDF 自 JWT_SECRET)或 VPS
+<code>.env</code>;<code>.env.example</code> 占位
+<code>__SET_BY_OPS__</code>;CLAUDE.md §4 表增行;</li>
+<li>state 不入库、不入日志;<code>jevRequest</code> 只存 questions +
+meta;</li>
+<li>脱敏默认开;关闭需 admin 且写审计日志(<code>lib/audit.js</code>
+现有);</li>
+<li>出站仅 <code>api.typesafe.ai:443</code>;VPS UFW
+出站不限,无需改;</li>
+<li>交付文档 04 增「第三方处理者:TypeSafe AI(美国)—
+处理内容:脱敏简历文本与岗位要求;不含身份信息」;</li>
+<li>Jev 结果定位为「查看优先级」,UI 文案不用「淘汰 / 拒绝」;HR
+人工覆盖走 <code>manualOverride</code> + 审计。</li>
+</ul>
+<hr />
+<h2 id="可观测性与运维">9. 可观测性与运维</h2>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>项</th>
+<th>实现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>健康</td>
+<td><code>GET /api/health/providers</code>(登录态,admin)→
+<code>{ kimi, textin, jev: { configured, enabled, mode, lastOkAt, lastError } }</code>;Uptime
+Kuma 用 admin token 的 HTTP 监控(或公开只读 <code>/api/health</code> 增
+<code>providers.jev.ok</code> 布尔)</td>
+</tr>
+<tr>
+<td>成本</td>
+<td><code>CandidateEvaluation.costs</code> 聚合:Reports 页「本月 Jev
+花费 / 次数 / 缓存命中」;超阈值(setting
+<code>jev.monthly_budget_usd</code>)时 admin 顶部 banner,不阻断</td>
+</tr>
+<tr>
+<td>延迟 / 失败</td>
+<td>pino 结构化日志 + 任务
+<code>stages.evaluate.ms</code>;<code>docker logs mesa-server | grep jev</code>
+可查</td>
+</tr>
+<tr>
+<td>配额告警</td>
+<td>429 连续 3 次 → log error + 飞书 bot 通知(复用
+<code>feishuNotify</code>,可选)</td>
+</tr>
+<tr>
+<td>缓存清理</td>
+<td>评估模型版本变更不需要清缓存(questions 变则 hash
+变);模板措辞热修后同理</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="测试与校准">10. 测试与校准</h2>
+<h3 id="单测node---test">10.1 单测(<code>node --test</code>)</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>文件</th>
+<th>覆盖</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>jev.test.js</code></td>
+<td>mock <code>fetch</code>:401 不重试;429 退避 3 次后抛;529 同;超时
+abort;答案缺题抛;缓存命中不发请求;token 预估超限先抛;日志不含 state</td>
+</tr>
+<tr>
+<td><code>questions.test.js</code></td>
+<td>硬筛 PASS 不出题;UNKNOWN 出题;level 0
+自动插入;<code>lintQuestion</code>
+规则;脱敏正则(中英文姓名、国际手机号、邮箱、链接)</td>
+</tr>
+<tr>
+<td><code>composite.test.js</code></td>
+<td>§5 全部分支:hard_fail 优先;sufficiency;low_confidence;must_unknown
+上限 C;inflation 降级;bonus 封顶;UNKNOWN-ignore 不入分母;阈值边界</td>
+</tr>
+<tr>
+<td><code>legacyAdapter.test.js</code></td>
+<td>同形映射</td>
+</tr>
+</tbody>
+</table>
+<h3 id="契约测试">10.2 契约测试</h3>
+<p>固定 <code>fixtures/jev/*.json</code>(录制的真实响应,脱敏)→ 校验解析
+/ 归一稳定;CI 不访问外网。</p>
+<h3 id="golden-set-校准00-号-p0">10.3 golden set 校准(00 号 P0)</h3>
+<p>脚本 <code>server/scripts/jev-golden.mjs</code>(读本地目录,不入库):
+1. 输入:30-50 份脱敏简历 markdown + 2-3 个 JD 的 evaluationModel + HR
+标注(A/B/C/D + 每条 MUST 的人工 PASS/FAIL); 2. 跑硬筛 + Jev +
+composite,输出 CSV:每份的 items / overall / 分类 / 置信 / 成本; 3.
+指标:分类一致率(目标 ≥80%)、MUST 零误杀(FAIL 中无人工 PASS)、事实型 noul
+平均 confidence ≥0.9、C 类占比、每份成本; 4. 迭代:按 nanami
+项目经验改判据措辞(加「不仅是参与 / 需具体事例 /
+归属本人贡献」),每轮记录 <code>questionTemplate</code> 版本与指标,保留在
+<code>textin+kimi+jev架构/calibration/</code>(HTML 报告,由 md2html
+生成); 5. 中英文一致性:同一候选人中英两版简历分差 ≤0.05。</p>
+<hr />
+<h2 id="文件与配置清单">11. 文件与配置清单</h2>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>文件</th>
+<th>动作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>server/src/lib/jev.js</code></td>
+<td>新</td>
+</tr>
+<tr>
+<td><code>server/src/lib/evaluation/questions.js</code> /
+<code>composite.js</code> / <code>legacyAdapter.js</code> /
+<code>hardFilter.js</code> / <code>pipeline.js</code> /
+<code>report.js</code></td>
+<td>新(00 号 §5.10)</td>
+</tr>
+<tr>
+<td><code>server/src/lib/evaluation/templates/*.json</code> /
+<code>taxonomy/*.json</code></td>
+<td>新(03 号)</td>
+</tr>
+<tr>
+<td><code>server/src/lib/settings.js</code></td>
+<td><code>jev.* / eval.*</code> keys、加密集合、env fallback</td>
+</tr>
+<tr>
+<td><code>server/src/routes/system.js</code></td>
+<td><code>POST /settings/jev/test</code>;敏感 key 门禁扩展</td>
+</tr>
+<tr>
+<td><code>server/src/routes/resumes.js</code></td>
+<td>评估阶段接入;<code>/match</code>
+异步化;<code>/evaluate-batch</code>;<code>/evaluations/:id/report</code></td>
+</tr>
+<tr>
+<td><code>server/src/routes/health.js</code>(或 index.js)</td>
+<td><code>/api/health/providers</code></td>
+</tr>
+<tr>
+<td><code>docker-compose.yml</code> / <code>.env.example</code></td>
+<td><code>JEV_API_KEY / JEV_BASE_URL / JEV_MODEL / JEV_ENABLED / JEV_MODE</code></td>
+</tr>
+<tr>
+<td><code>web/src/components/Sidebar.jsx</code>(LLM 配置弹窗)</td>
+<td>Jev 组:key(mask)/ 启用 / 模式 / 测试连接 / 月预算</td>
+</tr>
+<tr>
+<td><code>CLAUDE.md</code></td>
+<td>§4 密钥表、§8 坑、§10 数据模型、§1.1 子系统表</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="未决事项实施前确认">12. 未决事项(实施前确认)</h2>
+<ol type="1">
+<li>TypeSafe key 申请是否有 waitlist
+与企业协议;定价「补贴」是否有截止;</li>
+<li><code>noul</code> 无官方 confidence,§5.1 自定义
+<code>abs(p-0.5)*2</code> 需在 golden set 上验证与人工判断的一致性;</li>
+<li>state 的 token 估算系数(中文)需用真实
+<code>usage.input_tokens</code> 回归校正;</li>
+<li>是否把脱敏后的 state 哈希入库以便审计复现(当前只存 questions +
+answers)。</li>
+</ol>
+<footer class="doc">单文件 HTML · 由 tools/md2html 从 Markdown 生成 · 无外部依赖,可离线打开与打印</footer>
+</main>
+</div>
+</body>
+</html>

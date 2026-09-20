@@ -6,6 +6,7 @@ import AlertCircle from "lucide-react/dist/esm/icons/alert-circle.mjs";
 import AlertOctagon from "lucide-react/dist/esm/icons/alert-octagon.mjs";
 import AlertTriangle from "lucide-react/dist/esm/icons/alert-triangle.mjs";
 import ArrowLeft from "lucide-react/dist/esm/icons/arrow-left.mjs";
+import ArrowLeftRight from "lucide-react/dist/esm/icons/arrow-left-right.mjs";
 import ArrowRight from "lucide-react/dist/esm/icons/arrow-right.mjs";
 import BadgeCheck from "lucide-react/dist/esm/icons/badge-check.mjs";
 import Ban from "lucide-react/dist/esm/icons/ban.mjs";
@@ -15,6 +16,7 @@ import BookOpen from "lucide-react/dist/esm/icons/book-open.mjs";
 import Bot from "lucide-react/dist/esm/icons/bot.mjs";
 import Briefcase from "lucide-react/dist/esm/icons/briefcase.mjs";
 import Building2 from "lucide-react/dist/esm/icons/building-2.mjs";
+import Calculator from "lucide-react/dist/esm/icons/calculator.mjs";
 import Calendar from "lucide-react/dist/esm/icons/calendar.mjs";
 import CalendarCheck from "lucide-react/dist/esm/icons/calendar-check.mjs";
 import CalendarDays from "lucide-react/dist/esm/icons/calendar-days.mjs";
@@ -30,6 +32,7 @@ import ChevronRight from "lucide-react/dist/esm/icons/chevron-right.mjs";
 import ChevronUp from "lucide-react/dist/esm/icons/chevron-up.mjs";
 import ChevronsDownUp from "lucide-react/dist/esm/icons/chevrons-down-up.mjs";
 import ChevronsUpDown from "lucide-react/dist/esm/icons/chevrons-up-down.mjs";
+import CircleDashed from "lucide-react/dist/esm/icons/circle-dashed.mjs";
 import ClipboardCheck from "lucide-react/dist/esm/icons/clipboard-check.mjs";
 import ClipboardPlus from "lucide-react/dist/esm/icons/clipboard-plus.mjs";
 import ClipboardX from "lucide-react/dist/esm/icons/clipboard-x.mjs";
@@ -38,6 +41,7 @@ import Cloud from "lucide-react/dist/esm/icons/cloud.mjs";
 import Copy from "lucide-react/dist/esm/icons/copy.mjs";
 import CornerDownRight from "lucide-react/dist/esm/icons/corner-down-right.mjs";
 import CornerUpLeft from "lucide-react/dist/esm/icons/corner-up-left.mjs";
+import Cpu from "lucide-react/dist/esm/icons/cpu.mjs";
 import DollarSign from "lucide-react/dist/esm/icons/dollar-sign.mjs";
 import Dot from "lucide-react/dist/esm/icons/dot.mjs";
 import Download from "lucide-react/dist/esm/icons/download.mjs";
@@ -47,6 +51,7 @@ import ExternalLink from "lucide-react/dist/esm/icons/external-link.mjs";
 import Eye from "lucide-react/dist/esm/icons/eye.mjs";
 import EyeOff from "lucide-react/dist/esm/icons/eye-off.mjs";
 import File from "lucide-react/dist/esm/icons/file.mjs";
+import FileScan from "lucide-react/dist/esm/icons/file-scan.mjs";
 import FileSignature from "lucide-react/dist/esm/icons/file-signature.mjs";
 import FileText from "lucide-react/dist/esm/icons/file-text.mjs";
 import FileUp from "lucide-react/dist/esm/icons/file-up.mjs";
@@ -56,17 +61,22 @@ import Flame from "lucide-react/dist/esm/icons/flame.mjs";
 import Folder from "lucide-react/dist/esm/icons/folder.mjs";
 import FolderKanban from "lucide-react/dist/esm/icons/folder-kanban.mjs";
 import Gift from "lucide-react/dist/esm/icons/gift.mjs";
+import GitBranch from "lucide-react/dist/esm/icons/git-branch.mjs";
 import Globe from "lucide-react/dist/esm/icons/globe.mjs";
 import GraduationCap from "lucide-react/dist/esm/icons/graduation-cap.mjs";
 import GripVertical from "lucide-react/dist/esm/icons/grip-vertical.mjs";
 import HeartPulse from "lucide-react/dist/esm/icons/heart-pulse.mjs";
+import HelpCircle from "lucide-react/dist/esm/icons/help-circle.mjs";
+import History from "lucide-react/dist/esm/icons/history.mjs";
 import Hourglass from "lucide-react/dist/esm/icons/hourglass.mjs";
 import Image from "lucide-react/dist/esm/icons/image.mjs";
 import Inbox from "lucide-react/dist/esm/icons/inbox.mjs";
 import Info from "lucide-react/dist/esm/icons/info.mjs";
 import KeyRound from "lucide-react/dist/esm/icons/key-round.mjs";
 import Laptop from "lucide-react/dist/esm/icons/laptop.mjs";
+import Layers from "lucide-react/dist/esm/icons/layers.mjs";
 import LayoutDashboard from "lucide-react/dist/esm/icons/layout-dashboard.mjs";
+import LayoutList from "lucide-react/dist/esm/icons/layout-list.mjs";
 import LayoutTemplate from "lucide-react/dist/esm/icons/layout-template.mjs";
 import LineChart from "lucide-react/dist/esm/icons/line-chart.mjs";
 import Link from "lucide-react/dist/esm/icons/link.mjs";
@@ -81,6 +91,7 @@ import LogOut from "lucide-react/dist/esm/icons/log-out.mjs";
 import Mail from "lucide-react/dist/esm/icons/mail.mjs";
 import MapPin from "lucide-react/dist/esm/icons/map-pin.mjs";
 import MessageCircle from "lucide-react/dist/esm/icons/message-circle.mjs";
+import MessageCircleQuestion from "lucide-react/dist/esm/icons/message-circle-question.mjs";
 import MessageSquare from "lucide-react/dist/esm/icons/message-square.mjs";
 import MessageSquarePlus from "lucide-react/dist/esm/icons/message-square-plus.mjs";
 import Minus from "lucide-react/dist/esm/icons/minus.mjs";
@@ -103,6 +114,8 @@ import Reply from "lucide-react/dist/esm/icons/reply.mjs";
 import RotateCcw from "lucide-react/dist/esm/icons/rotate-ccw.mjs";
 import Route from "lucide-react/dist/esm/icons/route.mjs";
 import Save from "lucide-react/dist/esm/icons/save.mjs";
+import Scale from "lucide-react/dist/esm/icons/scale.mjs";
+import ScanSearch from "lucide-react/dist/esm/icons/scan-search.mjs";
 import ScrollText from "lucide-react/dist/esm/icons/scroll-text.mjs";
 import Search from "lucide-react/dist/esm/icons/search.mjs";
 import SearchCheck from "lucide-react/dist/esm/icons/search-check.mjs";
@@ -112,6 +125,7 @@ import Share2 from "lucide-react/dist/esm/icons/share-2.mjs";
 import Shield from "lucide-react/dist/esm/icons/shield.mjs";
 import ShieldCheck from "lucide-react/dist/esm/icons/shield-check.mjs";
 import ShieldOff from "lucide-react/dist/esm/icons/shield-off.mjs";
+import SlidersHorizontal from "lucide-react/dist/esm/icons/sliders-horizontal.mjs";
 import Smartphone from "lucide-react/dist/esm/icons/smartphone.mjs";
 import Sparkles from "lucide-react/dist/esm/icons/sparkles.mjs";
 import Star from "lucide-react/dist/esm/icons/star.mjs";
@@ -135,6 +149,7 @@ import Users from "lucide-react/dist/esm/icons/users.mjs";
 import UsersRound from "lucide-react/dist/esm/icons/users-round.mjs";
 import Video from "lucide-react/dist/esm/icons/video.mjs";
 import Vote from "lucide-react/dist/esm/icons/vote.mjs";
+import Wand2 from "lucide-react/dist/esm/icons/wand-2.mjs";
 import X from "lucide-react/dist/esm/icons/x.mjs";
 import XCircle from "lucide-react/dist/esm/icons/x-circle.mjs";
 import Zap from "lucide-react/dist/esm/icons/zap.mjs";
@@ -145,6 +160,7 @@ export const ICON_MAP = {
   "alert-octagon": AlertOctagon,
   "alert-triangle": AlertTriangle,
   "arrow-left": ArrowLeft,
+  "arrow-left-right": ArrowLeftRight,
   "arrow-right": ArrowRight,
   "badge-check": BadgeCheck,
   "ban": Ban,
@@ -154,6 +170,7 @@ export const ICON_MAP = {
   "bot": Bot,
   "briefcase": Briefcase,
   "building-2": Building2,
+  "calculator": Calculator,
   "calendar": Calendar,
   "calendar-check": CalendarCheck,
   "calendar-days": CalendarDays,
@@ -169,6 +186,7 @@ export const ICON_MAP = {
   "chevron-up": ChevronUp,
   "chevrons-down-up": ChevronsDownUp,
   "chevrons-up-down": ChevronsUpDown,
+  "circle-dashed": CircleDashed,
   "clipboard-check": ClipboardCheck,
   "clipboard-plus": ClipboardPlus,
   "clipboard-x": ClipboardX,
@@ -177,6 +195,7 @@ export const ICON_MAP = {
   "copy": Copy,
   "corner-down-right": CornerDownRight,
   "corner-up-left": CornerUpLeft,
+  "cpu": Cpu,
   "dollar-sign": DollarSign,
   "dot": Dot,
   "download": Download,
@@ -186,6 +205,7 @@ export const ICON_MAP = {
   "eye": Eye,
   "eye-off": EyeOff,
   "file": File,
+  "file-scan": FileScan,
   "file-signature": FileSignature,
   "file-text": FileText,
   "file-up": FileUp,
@@ -195,17 +215,22 @@ export const ICON_MAP = {
   "folder": Folder,
   "folder-kanban": FolderKanban,
   "gift": Gift,
+  "git-branch": GitBranch,
   "globe": Globe,
   "graduation-cap": GraduationCap,
   "grip-vertical": GripVertical,
   "heart-pulse": HeartPulse,
+  "help-circle": HelpCircle,
+  "history": History,
   "hourglass": Hourglass,
   "image": Image,
   "inbox": Inbox,
   "info": Info,
   "key-round": KeyRound,
   "laptop": Laptop,
+  "layers": Layers,
   "layout-dashboard": LayoutDashboard,
+  "layout-list": LayoutList,
   "layout-template": LayoutTemplate,
   "line-chart": LineChart,
   "link": Link,
@@ -220,6 +245,7 @@ export const ICON_MAP = {
   "mail": Mail,
   "map-pin": MapPin,
   "message-circle": MessageCircle,
+  "message-circle-question": MessageCircleQuestion,
   "message-square": MessageSquare,
   "message-square-plus": MessageSquarePlus,
   "minus": Minus,
@@ -242,6 +268,8 @@ export const ICON_MAP = {
   "rotate-ccw": RotateCcw,
   "route": Route,
   "save": Save,
+  "scale": Scale,
+  "scan-search": ScanSearch,
   "scroll-text": ScrollText,
   "search": Search,
   "search-check": SearchCheck,
@@ -251,6 +279,7 @@ export const ICON_MAP = {
   "shield": Shield,
   "shield-check": ShieldCheck,
   "shield-off": ShieldOff,
+  "sliders-horizontal": SlidersHorizontal,
   "smartphone": Smartphone,
   "sparkles": Sparkles,
   "star": Star,
@@ -274,6 +303,7 @@ export const ICON_MAP = {
   "users-round": UsersRound,
   "video": Video,
   "vote": Vote,
+  "wand-2": Wand2,
   "x": X,
   "x-circle": XCircle,
   "zap": Zap,

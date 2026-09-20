@@ -1,0 +1,138 @@
+[
+ {
+  "id": "soft.cross_team",
+  "name": "跨部门协作",
+  "aliases": [
+   "跨部门",
+   "跨团队",
+   "协作",
+   "协调"
+  ]
+ },
+ {
+  "id": "soft.communication",
+  "name": "沟通表达",
+  "aliases": [
+   "沟通",
+   "表达",
+   "汇报"
+  ]
+ },
+ {
+  "id": "soft.problem_solving",
+  "name": "问题解决",
+  "aliases": [
+   "问题解决",
+   "解决问题",
+   "分析解决"
+  ]
+ },
+ {
+  "id": "soft.leadership",
+  "name": "领导力",
+  "aliases": [
+   "领导",
+   "带领",
+   "leadership"
+  ]
+ },
+ {
+  "id": "soft.team_mgmt",
+  "name": "团队管理",
+  "aliases": [
+   "团队管理",
+   "管理团队",
+   "带团队"
+  ]
+ },
+ {
+  "id": "soft.project_mgmt",
+  "name": "项目推动",
+  "aliases": [
+   "项目管理",
+   "推动",
+   "推进"
+  ]
+ },
+ {
+  "id": "soft.analytical",
+  "name": "逻辑分析",
+  "aliases": [
+   "逻辑",
+   "分析能力",
+   "数据分析能力"
+  ]
+ },
+ {
+  "id": "soft.stress",
+  "name": "抗压",
+  "aliases": [
+   "抗压",
+   "高压",
+   "压力"
+  ]
+ },
+ {
+  "id": "soft.learning",
+  "name": "学习能力",
+  "aliases": [
+   "学习能力",
+   "快速学习"
+  ]
+ },
+ {
+  "id": "soft.customer",
+  "name": "客户沟通",
+  "aliases": [
+   "客户沟通",
+   "客户导向",
+   "客户关系"
+  ]
+ },
+ {
+  "id": "soft.negotiation",
+  "name": "谈判",
+  "aliases": [
+   "谈判",
+   "商务谈判"
+  ]
+ },
+ {
+  "id": "soft.ownership",
+  "name": "责任心/主动性",
+  "aliases": [
+   "责任心",
+   "主动",
+   "owner",
+   "自驱"
+  ]
+ },
+ {
+  "id": "soft.detail",
+  "name": "细致严谨",
+  "aliases": [
+   "细致",
+   "严谨",
+   "细心"
+  ]
+ },
+ {
+  "id": "soft.adaptability",
+  "name": "适应能力",
+  "aliases": [
+   "适应",
+   "灵活",
+   "跨文化",
+   "文化适应"
+  ]
+ },
+ {
+  "id": "soft.english_comm",
+  "name": "英文沟通",
+  "aliases": [
+   "英文沟通",
+   "英语沟通",
+   "跨国沟通"
+  ]
+ }
+]

@@ -33,7 +33,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import HelpCircle from "lucide-react/dist/esm/icons/help-circle.mjs";
 import { ICON_MAP } from "../lib/iconMap.js";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { api, resources, LONG_TIMEOUT } from "../lib/api.js";
+import { api, resources } from "../lib/api.js";
 import { getUser } from "../lib/auth.js";
 import { useHasModule } from "../lib/authContext.jsx";
 import { LiquidLoader } from "../components/Primitives.jsx";
@@ -43,6 +43,8 @@ import InterviewEvalCard from "../components/InterviewEvalCard.jsx";
 import JdDescModal from "../components/JdDescModal.jsx";
 import { candidateExpText, hasWorkExperience } from "../lib/constants.js";
 import { DurationPicker, MaxViewsPicker, BotShareSettings } from "../components/ShareDefaultsPanel.jsx";
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "../components/ui/chart.jsx";
+import { Bar as RBar, BarChart, XAxis, YAxis } from "recharts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1) 设计常量 (内联自 web/src/lib/constants.js)
@@ -539,6 +541,502 @@ function JdMatchCard({ candidate, jobs, matchingJobId, setMatchingJobId, matchin
         </div>
       )}
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 6.5) 三层评估(TextIn → Kimi → Jev)UI:分类 chip / 维度图 / 硬筛 / 逐项判定 / 报告 / 历史 / 人工覆盖 + 结构化档案
+// ─────────────────────────────────────────────────────────────────────────────
+
+const CLASS_TONE = {
+  A: { label: "高匹配", bg: "#DCFCE7", fg: "#15803D" },
+  B: { label: "较匹配", bg: "#DBEAFE", fg: "#1D4ED8" },
+  C: { label: "待复核", bg: "#FEF3C7", fg: "#854D0E" },
+  D: { label: "低匹配", bg: "#F4F7FE", fg: "#707EAE" },
+};
+const TIER_LABEL = { MUST: "硬性", CORE: "核心", PREFERRED: "加分", BONUS: "额外", STABILITY: "稳定性", INFO: "记录" };
+const VERDICT_TONE = {
+  满足: { bg: "#DCFCE7", fg: "#15803D" },
+  部分满足: { bg: "#FEF3C7", fg: "#854D0E" },
+  不满足: { bg: "#FEE2E2", fg: "#B91C1C" },
+  未提及: { bg: "#F4F7FE", fg: "#707EAE" },
+  待确认: { bg: "#DBEAFE", fg: "#1D4ED8" },
+};
+const HF_TONE = {
+  PASS: { icon: "check", cls: "bg-green-50 text-green-700", label: "通过" },
+  FAIL: { icon: "x", cls: "bg-red-50 text-red-600", label: "不满足" },
+  UNKNOWN: { icon: "help-circle", cls: "bg-[#F4F7FE] text-[#707EAE]", label: "未提及" },
+  MISMATCH: { icon: "arrow-left-right", cls: "bg-blue-50 text-blue-700", label: "待确认" },
+  IGNORED: { icon: "minus", cls: "bg-[#F4F7FE] text-[#A3AED0]", label: "忽略" },
+};
+
+function ClassChip({ cls, manual, size = "sm" }) {
+  const tone = CLASS_TONE[cls];
+  if (!tone) return null;
+  const sz = size === "lg" ? "px-3 py-1 text-sm" : "px-2 py-0.5 text-[11px]";
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full font-bold whitespace-nowrap ${sz}`} style={{ background: tone.bg, color: tone.fg }} title={manual ? "HR 人工调整过分类" : undefined}>
+      {cls} · {tone.label}
+      {manual && <I name="user-check" size={11} />}
+    </span>
+  );
+}
+function EngineChip({ engine }) {
+  if (!engine) return null;
+  const jev = engine === "jev";
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${jev ? "bg-[#E9E3FF] text-[#2111A5]" : "bg-[#F4F7FE] text-[#707EAE]"}`}>
+      <I name={jev ? "cpu" : "sparkles"} size={10} />
+      {jev ? "Jev 三层评估" : "基础评估"}
+    </span>
+  );
+}
+function TierChip({ tier }) {
+  return <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#F4F7FE] text-[#707EAE] whitespace-nowrap">{TIER_LABEL[tier] || tier}</span>;
+}
+function VerdictChip({ verdict }) {
+  const tone = VERDICT_TONE[verdict] || VERDICT_TONE.未提及;
+  return <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap" style={{ background: tone.bg, color: tone.fg }}>{verdict || "—"}</span>;
+}
+
+// 词表 id → 中文名(模块级缓存,跨候选人复用;失败时原样显示 id)
+const TAXONOMY_KINDS = ["industries", "functions", "domains", "tools", "soft", "languages", "certificates", "majors"];
+let taxonomyCache = null;
+let taxonomyPromise = null;
+function loadTaxonomy() {
+  if (taxonomyCache) return Promise.resolve(taxonomyCache);
+  if (!taxonomyPromise) {
+    taxonomyPromise = Promise.all(TAXONOMY_KINDS.map((k) => api.get(`/jobs/taxonomy/${k}`).then((r) => [k, r.data.items || []]).catch(() => [k, []])))
+      .then((pairs) => {
+        taxonomyCache = {};
+        for (const [k, items] of pairs) taxonomyCache[k] = Object.fromEntries(items.map((it) => [it.id, it.name]));
+        return taxonomyCache;
+      });
+  }
+  return taxonomyPromise;
+}
+function useTaxonomy() {
+  const [tax, setTax] = useState(taxonomyCache);
+  useEffect(() => { let alive = true; loadTaxonomy().then((t) => { if (alive) setTax(t); }); return () => { alive = false; }; }, []);
+  return (kind, id) => {
+    if (id == null || id === "") return "";
+    const s = String(id);
+    if (s.startsWith("other:")) return s.slice(6);
+    return tax?.[kind]?.[s] || s;
+  };
+}
+
+function DimensionChart({ dimensions }) {
+  const dims = Array.isArray(dimensions) ? dimensions : [];
+  const data = dims.map((d) => ({ name: TIER_LABEL[d.key] || d.key, score: d.score == null ? 0 : d.score, display: d.score == null ? "—" : `${d.score}`, weight: d.weight }));
+  if (!data.length) return null;
+  const config = { score: { label: "维度分", color: "var(--chart-1)" } };
+  return (
+    <div className="flex items-center gap-3">
+      <ChartContainer config={config} className="!aspect-auto h-28 flex-1 min-w-0">
+        <BarChart data={data} layout="vertical" margin={{ top: 2, right: 8, left: 0, bottom: 2 }}>
+          <XAxis type="number" domain={[0, 100]} hide />
+          <YAxis type="category" dataKey="name" tickLine={false} axisLine={false} width={44} tick={{ fill: "#707EAE", fontSize: 11 }} />
+          <ChartTooltip content={<ChartTooltipContent indicator="dot" />} />
+          <RBar dataKey="score" fill="var(--chart-1)" radius={[0, 4, 4, 0]} barSize={12} />
+        </BarChart>
+      </ChartContainer>
+      <ul className="text-[11px] text-[#707EAE] space-y-1 shrink-0 w-[92px]">
+        {data.map((d) => (
+          <li key={d.name} className="flex items-center justify-between gap-2">
+            <span>{d.name}</span>
+            <span className="font-bold text-[#1B254B]">{d.display}<span className="text-[#A3AED0] font-medium"> /{d.weight}%</span></span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function EvidenceQuote({ evidence }) {
+  const [open, setOpen] = useState(false);
+  if (!evidence?.quote) return null;
+  return (
+    <div className="mt-1">
+      <button type="button" onClick={() => setOpen((v) => !v)} className="text-[10px] text-[#422AFB] hover:underline inline-flex items-center gap-1">
+        <I name="quote" size={10} /> 原文证据{evidence.page ? ` · 第 ${evidence.page} 页` : ""}
+      </button>
+      {open && <p className="mt-1 text-[11px] text-[#1B254B] bg-[#F4F7FE] rounded-lg px-2.5 py-1.5 leading-relaxed">「{evidence.quote}」</p>}
+    </div>
+  );
+}
+
+function EvaluationCard({ evaluation, history, candidate, jobs, matching, reportBusy, onRunMatch, onReport, onOverride, canEdit }) {
+  const [showHistory, setShowHistory] = useState(false);
+  const [overrideOpen, setOverrideOpen] = useState(false);
+  const [overrideCls, setOverrideCls] = useState("B");
+  const [overrideNote, setOverrideNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  const job = jobs.find((j) => j.id === (evaluation?.jobId || candidate.jobId));
+  const ev = evaluation;
+  const report = ev?.report || {};
+  const evidenceByKey = useMemo(() => {
+    const m = {};
+    for (const e of Array.isArray(report.evidence) ? report.evidence : []) if (e?.reqKey && !m[e.reqKey]) m[e.reqKey] = e;
+    for (const list of [report.highlights, report.risks]) for (const x of Array.isArray(list) ? list : []) if (x?.reqKey && x.evidence?.quote && !m[x.reqKey]) m[x.reqKey] = x.evidence;
+    return m;
+  }, [ev?.id]);
+  const effectiveCls = ev?.manualOverride?.classification || ev?.classification || candidate.classification;
+  const hfItems = Array.isArray(ev?.hardFilter?.items) ? ev.hardFilter.items : [];
+  const items = Array.isArray(ev?.items) ? ev.items : [];
+  const probes = Array.isArray(report.interviewProbes) ? report.interviewProbes : [];
+  const needReport = ev && ev.engine === "jev" && ["pending", "failed", "skipped"].includes(ev.reportStatus);
+  const past = (history || []).filter((h) => !h.isCurrent && !h.shadow);
+
+  async function submitOverride() {
+    setSaving(true);
+    try { await onOverride(overrideCls, overrideNote); setOverrideOpen(false); setOverrideNote(""); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <Card className="p-5 md:p-6">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <h3 className="text-base font-bold text-[#1B254B] flex items-center gap-2">
+          <I name="scan-search" size={16} className="text-[#422AFB]" />
+          AI 三层评估
+          {job && <span className="text-[11px] text-[#707EAE] font-medium">· {job.title}</span>}
+        </h3>
+        <div className="flex items-center gap-2 flex-wrap">
+          {ev && <EngineChip engine={ev.engine} />}
+          {effectiveCls && <ClassChip cls={effectiveCls} manual={!!ev?.manualOverride} />}
+        </div>
+      </div>
+
+      {!ev ? (
+        <div className="mt-4 flex flex-col items-center justify-center py-6 text-center">
+          <div className="w-12 h-12 rounded-full bg-[#E9E3FF] flex items-center justify-center mb-3">
+            <I name="scan-search" size={20} className="text-[#422AFB]" />
+          </div>
+          <p className="text-sm font-bold text-[#1B254B]">尚未评估</p>
+          <p className="text-[11px] text-[#A3AED0] mt-1 mb-3">{candidate.jobId ? "对当前 JD 跑一次硬筛 + Jev 逐项判定" : "先在左侧选择 JD,再进行 AI 评估"}</p>
+          {candidate.jobId && canEdit && (
+            <Button size="sm" onClick={onRunMatch} disabled={matching} icon={<I name={matching ? "loader" : "sparkles"} size={12} className={matching ? "animate-spin" : ""} />}>
+              {matching ? "评估中" : "AI 评估"}
+            </Button>
+          )}
+        </div>
+      ) : (
+        <>
+          <div className="mt-4 flex items-start gap-4">
+            <div className="shrink-0 flex flex-col items-center">
+              <LiquidLoader size={64} level={matching ? 52 : (ev.overallScore ?? 0)} label={matching ? "—" : (ev.overallScore ?? "—")} loading={matching} />
+              <p className="text-[10px] text-[#707EAE] mt-1">综合匹配</p>
+            </div>
+            <div className="flex-1 min-w-0">
+              <DimensionChart dimensions={ev.dimensions} />
+            </div>
+          </div>
+          {report.matchReason && <p className="mt-3 text-xs text-[#1B254B] bg-[#F4F7FE] rounded-xl px-3 py-2 leading-relaxed">{report.matchReason}</p>}
+          {ev.manualOverride && (
+            <p className="mt-2 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 flex items-start gap-1.5">
+              <I name="user-check" size={12} className="mt-0.5 shrink-0" />
+              <span>HR 已将分类由 {ev.manualOverride.previous || ev.classification} 调整为 {ev.manualOverride.classification}{ev.manualOverride.note ? `:${ev.manualOverride.note}` : ""}(AI 原始分类 {ev.classification} 保留)</span>
+            </p>
+          )}
+          {Array.isArray(ev.flags) && ev.flags.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {ev.flags.map((f, i) => <span key={i} className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 text-[10px] font-bold">{{ inflation: "疑似关键词堆砌", insufficient_info: "简历信息不足", legacy: "基础评估" }[f] || f}</span>)}
+            </div>
+          )}
+
+          {hfItems.length > 0 && (
+            <div className="mt-4">
+              <h4 className="text-[11px] font-bold uppercase tracking-wide text-[#A3AED0] flex items-center gap-1.5 mb-2">
+                <I name="shield-check" size={12} className="text-[#422AFB]" /> 硬筛清单
+                <span className={`ml-1 px-1.5 py-0.5 rounded text-[10px] ${HF_TONE[ev.hardFilter?.result]?.cls || ""}`}>{HF_TONE[ev.hardFilter?.result]?.label || ev.hardFilter?.result}</span>
+              </h4>
+              <ul className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                {hfItems.map((h) => {
+                  const t = HF_TONE[h.result] || HF_TONE.UNKNOWN;
+                  return (
+                    <li key={h.key} className="flex items-start gap-2 text-xs" title={h.reason || ""}>
+                      <span className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${t.cls}`}><I name={t.icon} size={11} strokeWidth={3} /></span>
+                      <span className="min-w-0">
+                        <span className="text-[#1B254B] font-medium">{h.label}</span>
+                        {h.reason && <span className="block text-[10px] text-[#A3AED0] truncate">{h.reason}</span>}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+
+          {items.length > 0 && (
+            <div className="mt-4">
+              <h4 className="text-[11px] font-bold uppercase tracking-wide text-[#A3AED0] flex items-center gap-1.5 mb-2">
+                <I name="list-checks" size={12} className="text-[#422AFB]" /> 逐项判定
+              </h4>
+              <ul className="divide-y divide-[#F4F7FE]">
+                {items.map((it) => (
+                  <li key={it.key} className="py-2 flex items-start gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <TierChip tier={it.tier} />
+                        <span className="text-xs font-medium text-[#1B254B]">{it.label}</span>
+                      </div>
+                      <EvidenceQuote evidence={evidenceByKey[it.key]} />
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <VerdictChip verdict={it.verdict} />
+                      <span className="text-[10px] text-[#A3AED0] w-9 text-right" title={it.source === "code" ? "规则判定" : it.source === "jev" ? "Jev 判定置信度" : "未判定"}>
+                        {it.source === "jev" && typeof it.confidence === "number" ? `${Math.round(it.confidence * 100)}%` : it.source === "code" ? "规则" : "—"}
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {probes.length > 0 && (
+            <div className="mt-4">
+              <h4 className="text-[11px] font-bold uppercase tracking-wide text-[#A3AED0] flex items-center gap-1.5 mb-2">
+                <I name="message-circle-question" size={12} className="text-[#422AFB]" /> 重点验证问题
+              </h4>
+              <ol className="space-y-1.5">
+                {probes.map((p, i) => (
+                  <li key={i} className="text-xs text-[#1B254B] flex items-start gap-2 leading-relaxed">
+                    <span className="w-4 h-4 rounded bg-[#F4F7FE] text-[#422AFB] text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">{i + 1}</span>
+                    <span>{p.question}{p.why && <span className="block text-[10px] text-[#A3AED0]">{p.why}</span>}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+
+          <div className="mt-4 pt-3 border-t border-[#E9ECEF] flex items-center gap-2 flex-wrap">
+            {needReport && canEdit && (
+              <Button variant="ghost" size="sm" onClick={onReport} disabled={reportBusy} icon={<I name={reportBusy ? "loader" : "file-text"} size={12} className={reportBusy ? "animate-spin" : ""} />}>
+                {reportBusy ? "生成中" : ev.reportStatus === "pending" ? "生成报告" : "重试报告"}
+              </Button>
+            )}
+            {canEdit && (
+              <Button variant="ghost" size="sm" onClick={() => { setOverrideCls(effectiveCls || "B"); setOverrideOpen((v) => !v); }} icon={<I name="user-check" size={12} />}>
+                人工调整分类
+              </Button>
+            )}
+            {past.length > 0 && (
+              <button type="button" onClick={() => setShowHistory((v) => !v)} className="text-[11px] text-[#422AFB] hover:underline inline-flex items-center gap-1">
+                <I name="history" size={11} /> {showHistory ? "收起历史" : `查看历史评估(${past.length})`}
+              </button>
+            )}
+            <div className="flex-1" />
+            <span className="text-[10px] text-[#A3AED0]">
+              {fmtDate(ev.evaluatedAt)}{ev.versions?.jevModel ? ` · ${ev.versions.jevModel}` : ""}{ev.costs?.jevUsd != null ? ` · $${Number(ev.costs.jevUsd).toFixed(4)}${ev.costs.cached ? "(缓存)" : ""}` : ""}
+            </span>
+          </div>
+
+          {overrideOpen && (
+            <div className="mt-3 rounded-xl border border-[#E9ECEF] p-3 flex flex-col sm:flex-row gap-2 sm:items-center">
+              <select value={overrideCls} onChange={(e) => setOverrideCls(e.target.value)} className="h-9 px-2 rounded-xl border border-[#E9ECEF] text-sm text-[#1B254B] bg-white outline-none focus:border-[#422AFB]">
+                {["A", "B", "C", "D"].map((k) => <option key={k} value={k}>{k} · {CLASS_TONE[k].label}</option>)}
+              </select>
+              <input value={overrideNote} onChange={(e) => setOverrideNote(e.target.value)} maxLength={500} placeholder="调整原因(可选)" className="flex-1 h-9 px-3 rounded-xl border border-[#E9ECEF] text-sm text-[#1B254B] outline-none focus:border-[#422AFB]" />
+              <div className="flex gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setOverrideOpen(false)} disabled={saving}>取消</Button>
+                <Button size="sm" onClick={submitOverride} disabled={saving} icon={<I name={saving ? "loader" : "check"} size={12} className={saving ? "animate-spin" : ""} />}>保存</Button>
+              </div>
+            </div>
+          )}
+
+          {showHistory && past.length > 0 && (
+            <ul className="mt-3 space-y-1.5">
+              {past.map((h) => (
+                <li key={h.id} className="flex items-center gap-2 text-[11px] text-[#707EAE] rounded-lg bg-[#F4F7FE] px-3 py-1.5">
+                  <span className="shrink-0">{fmtDate(h.evaluatedAt)}</span>
+                  <span className="flex-1 min-w-0 truncate text-[#1B254B]">{h.job?.title || "—"}</span>
+                  <EngineChip engine={h.engine} />
+                  <ClassChip cls={h.manualOverride?.classification || h.classification} manual={!!h.manualOverride} />
+                  <span className="font-bold text-[#1B254B] w-8 text-right">{h.overallScore}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+    </Card>
+  );
+}
+
+// ─── 结构化档案(resume.v1 profile + 派生指标)───
+const PROFILE_TABS = [
+  { key: "education", label: "教育" }, { key: "experience", label: "工作" }, { key: "internships", label: "实习" }, { key: "projects", label: "项目" },
+  { key: "skills", label: "技能" }, { key: "certificates", label: "证书" }, { key: "languages", label: "语言" }, { key: "campus", label: "校园" }, { key: "research", label: "科研" },
+];
+const period = (x) => `${x?.startDate || "?"} ~ ${x?.current ? "至今" : (x?.endDate || "?")}`;
+const LEVEL_LABEL = { native: "母语", working: "工作语言", fluent: "流利", intermediate: "中等", basic: "基础" };
+
+function CollapsibleList({ items, render, limit = 3, empty = "简历未提及" }) {
+  const [open, setOpen] = useState(false);
+  const arr = Array.isArray(items) ? items : [];
+  if (!arr.length) return <p className="text-xs text-[#A3AED0] py-3">{empty}</p>;
+  const shown = open ? arr : arr.slice(0, limit);
+  return (
+    <div>
+      <ul className="space-y-2.5 mt-2">{shown.map((it, i) => <li key={i}>{render(it, i)}</li>)}</ul>
+      {arr.length > limit && (
+        <button type="button" onClick={() => setOpen((v) => !v)} className="mt-2 text-[11px] text-[#422AFB] hover:underline inline-flex items-center gap-1">
+          <I name={open ? "chevron-up" : "chevron-down"} size={11} /> {open ? "收起" : `展开全部(${arr.length})`}
+        </button>
+      )}
+    </div>
+  );
+}
+function TagRow({ tags, kind, tagName }) {
+  const arr = Array.isArray(tags) ? tags.filter(Boolean) : [];
+  if (!arr.length) return null;
+  return <div className="flex flex-wrap gap-1 mt-1">{arr.map((t, i) => <Tag key={i}>{tagName(kind, t)}</Tag>)}</div>;
+}
+function Bullets({ items, className = "" }) {
+  const arr = Array.isArray(items) ? items.filter(Boolean) : [];
+  if (!arr.length) return null;
+  return <ul className={`mt-1 space-y-0.5 ${className}`}>{arr.map((d, i) => <li key={i} className="text-[11px] text-[#707EAE] flex gap-1.5"><span className="text-[#A3AED0]">•</span><span>{d}</span></li>)}</ul>;
+}
+
+function ProfileCard({ profile, derived, warnings, tagName }) {
+  const [tab, setTab] = useState("experience");
+  const p = profile || {};
+  const d = derived || {};
+  const topIndustries = Object.entries(d.industryYears || {}).filter(([k]) => !k.includes(".")).sort((a, b) => b[1] - a[1]).slice(0, 2);
+  const chips = [
+    d.totalYears != null && `总年限 ${d.totalYears} 年`,
+    ...topIndustries.map(([k, v]) => `${tagName("industries", k)} ${v} 年`),
+    d.overseasYears > 0 && `海外 ${d.overseasYears} 年`,
+    d.managementYears > 0 && `管理 ${d.managementYears} 年${d.maxTeamSize ? `(${d.maxTeamSize} 人)` : ""}`,
+    d.jobHopping && `近 5 年 ${d.jobHopping.segmentsLast5y} 段${d.jobHopping.shortSegmentsLast5y ? ` · ${d.jobHopping.shortSegmentsLast5y} 段短任职` : ""}`,
+    d.isFreshGraduate && "应届生",
+    d.profileQuality != null && `资料质量 ${d.profileQuality}`,
+  ].filter(Boolean);
+  const counts = {
+    education: (p.education || []).length, experience: (p.experience || []).length, internships: (p.internships || []).length, projects: (p.projects || []).length,
+    skills: ["professional", "tools", "industry", "soft"].reduce((n, k) => n + ((p.skills?.[k] || []).length), 0), certificates: (p.certificates || []).length,
+    languages: (p.languages || []).length, campus: p.campus ? ["roles", "clubs", "competitions", "research", "volunteer", "scholarships", "honors"].reduce((n, k) => n + ((p.campus[k] || []).length), 0) : 0,
+    research: p.research ? ["papers", "patents", "projects", "labs"].reduce((n, k) => n + ((p.research[k] || []).length), 0) : 0,
+  };
+  const seg = (e) => (
+    <div className="border-l-2 border-[#E9ECEF] pl-3">
+      <p className="text-[10px] text-[#A3AED0]">{period(e)}{e.location ? ` · ${e.location}` : ""}{e.isOverseas ? " · 海外" : ""}</p>
+      <p className="text-sm font-bold text-[#1B254B]">{e.company || "—"}<span className="text-xs font-medium text-[#707EAE]"> · {e.title || "—"}</span></p>
+      {(e.teamSize > 0 || e.isManagement) && <p className="text-[10px] text-[#707EAE]">管理{e.teamSize ? ` · 下属 ${e.teamSize} 人` : ""}</p>}
+      <Bullets items={e.duties} />
+      {Array.isArray(e.achievements) && e.achievements.length > 0 && <p className="text-[10px] font-bold text-[#1B254B] mt-1">成果</p>}
+      <Bullets items={e.achievements} />
+      <TagRow tags={[...(e.companyIndustryTags || []).map((t) => `industries:${t}`), ...(e.domainTags || []).map((t) => `domains:${t}`)]} kind="" tagName={(_, v) => { const [k, ...rest] = String(v).split(":"); return tagName(k, rest.join(":")); }} />
+    </div>
+  );
+  const body = {
+    education: <CollapsibleList items={p.education} render={(e) => (
+      <div className="border-l-2 border-[#E9ECEF] pl-3">
+        <p className="text-[10px] text-[#A3AED0]">{period(e)}{e.overseas ? " · 海外学历" : ""}</p>
+        <p className="text-sm font-bold text-[#1B254B]">{e.school || "—"}<span className="text-xs font-medium text-[#707EAE]"> · {e.degree || "—"} · {e.major || "—"}</span></p>
+        {(e.gpa?.value || e.ranking) && <p className="text-[10px] text-[#707EAE]">{e.gpa?.value ? `GPA ${e.gpa.value}${e.gpa.scale ? `/${e.gpa.scale}` : ""}` : ""}{e.ranking ? ` · 排名 ${e.ranking}` : ""}</p>}
+        {Array.isArray(e.courses) && e.courses.length > 0 && <p className="text-[11px] text-[#707EAE] mt-1"><span className="font-bold text-[#1B254B]">专业课程:</span>{e.courses.join("、")}</p>}
+        {e.researchDirection && <p className="text-[11px] text-[#707EAE]"><span className="font-bold text-[#1B254B]">研究方向:</span>{e.researchDirection}</p>}
+        <Bullets items={[...(e.scholarships || []), ...(e.honors || [])]} />
+      </div>
+    )} />,
+    experience: <CollapsibleList items={p.experience} render={seg} />,
+    internships: <CollapsibleList items={p.internships} render={seg} empty="简历未提及实习经历" />,
+    projects: <CollapsibleList items={p.projects} render={(x) => (
+      <div className="border-l-2 border-[#E9ECEF] pl-3">
+        <p className="text-[10px] text-[#A3AED0]">{period(x)}{x.role ? ` · ${x.role}` : ""}</p>
+        <p className="text-sm font-bold text-[#1B254B]">{x.name || "未命名项目"}</p>
+        <Bullets items={[...(x.duties || []), ...(x.contributions || [])]} />
+        {Array.isArray(x.outcomes) && x.outcomes.length > 0 && <p className="text-[10px] font-bold text-[#1B254B] mt-1">成果</p>}
+        <Bullets items={x.outcomes} />
+        <TagRow tags={x.domainTags} kind="domains" tagName={tagName} />
+      </div>
+    )} />,
+    skills: (
+      <div className="mt-2 space-y-2.5">
+        {[["professional", "专业能力", "domains"], ["tools", "工具 / 技术", "tools"], ["industry", "行业能力", "industries"], ["soft", "通用能力", "soft"]].map(([k, label]) => {
+          const arr = p.skills?.[k] || [];
+          if (!arr.length) return null;
+          return (
+            <div key={k}>
+              <p className="text-[10px] font-bold text-[#A3AED0] uppercase tracking-wide">{label}</p>
+              <div className="flex flex-wrap gap-1 mt-1">
+                {arr.map((s, i) => <Tag key={i}>{s.name}{s.level ? ` · ${{ expert: "精通", proficient: "熟练", familiar: "了解" }[s.level] || s.level}` : ""}</Tag>)}
+              </div>
+              {k === "soft" && <Bullets items={arr.flatMap((s) => (s.behaviors || []).map((b) => `${s.name}:${b}`))} />}
+            </div>
+          );
+        })}
+        {counts.skills === 0 && <p className="text-xs text-[#A3AED0] py-3">简历未提及</p>}
+      </div>
+    ),
+    certificates: <CollapsibleList items={p.certificates} limit={6} render={(cert) => (
+      <p className="text-xs text-[#1B254B]"><span className="font-bold">{cert.name}</span>{cert.obtainedAt ? <span className="text-[#A3AED0]"> · {cert.obtainedAt}</span> : null}{cert.issuer ? <span className="text-[#707EAE]"> · {cert.issuer}</span> : null}</p>
+    )} />,
+    languages: <CollapsibleList items={p.languages} limit={6} render={(l) => (
+      <p className="text-xs text-[#1B254B]"><span className="font-bold">{l.raw || tagName("languages", l.name)}</span>{l.level ? <span className="text-[#707EAE]"> · {LEVEL_LABEL[l.level] || l.level}</span> : l.levelRaw ? <span className="text-[#707EAE]"> · {l.levelRaw}</span> : null}{Array.isArray(l.exams) && l.exams.length > 0 && <span className="text-[#A3AED0]"> · {l.exams.map((e) => `${e.name} ${e.score || ""}`.trim()).join("、")}</span>}</p>
+    )} />,
+    campus: (
+      <div className="mt-2 space-y-2">
+        {[["roles", "学生干部 / 班干部"], ["clubs", "社团"], ["scholarships", "奖学金"], ["honors", "荣誉"], ["research", "科研 / 实验室"], ["volunteer", "志愿活动"]].map(([k, label]) => {
+          const arr = p.campus?.[k] || [];
+          if (!arr.length) return null;
+          return <p key={k} className="text-xs text-[#1B254B]"><span className="font-bold">{label}:</span><span className="text-[#707EAE]"> {arr.join("、")}</span></p>;
+        })}
+        {Array.isArray(p.campus?.competitions) && p.campus.competitions.length > 0 && (
+          <div>
+            <p className="text-xs font-bold text-[#1B254B]">竞赛</p>
+            <Bullets items={p.campus.competitions.map((cp) => [cp.name, { school: "校级", city: "市级", province: "省级", national: "国家级", international: "国际级" }[cp.level], cp.award, cp.role, cp.contribution].filter(Boolean).join(" · "))} />
+          </div>
+        )}
+        {counts.campus === 0 && <p className="text-xs text-[#A3AED0] py-3">简历未提及</p>}
+      </div>
+    ),
+    research: (
+      <div className="mt-2 space-y-2">
+        {Array.isArray(p.research?.papers) && p.research.papers.length > 0 && <div><p className="text-xs font-bold text-[#1B254B]">论文</p><Bullets items={p.research.papers.map((x) => [x.title, x.venue, x.year, { first: "第一作者", "co-first": "共同一作", corresponding: "通讯作者", "co-author": "合作者" }[x.authorRole]].filter(Boolean).join(" · "))} /></div>}
+        {Array.isArray(p.research?.patents) && p.research.patents.length > 0 && <div><p className="text-xs font-bold text-[#1B254B]">专利</p><Bullets items={p.research.patents.map((x) => [x.title, { invention: "发明", utility: "实用新型", design: "外观" }[x.type], { granted: "已授权", pending: "申请中" }[x.status]].filter(Boolean).join(" · "))} /></div>}
+        {Array.isArray(p.research?.projects) && p.research.projects.length > 0 && <div><p className="text-xs font-bold text-[#1B254B]">科研项目</p><Bullets items={p.research.projects.map((x) => [x.name, x.funder, x.role].filter(Boolean).join(" · "))} /></div>}
+        {Array.isArray(p.research?.labs) && p.research.labs.length > 0 && <p className="text-xs text-[#1B254B]"><span className="font-bold">实验室:</span><span className="text-[#707EAE]"> {p.research.labs.join("、")}</span></p>}
+        {counts.research === 0 && <p className="text-xs text-[#A3AED0] py-3">简历未提及</p>}
+      </div>
+    ),
+  };
+  const warns = Array.isArray(warnings) ? warnings : [];
+
+  return (
+    <Card className="p-5 md:p-6">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <h3 className="text-base font-bold text-[#1B254B] flex items-center gap-2">
+          <I name="layers" size={16} className="text-[#422AFB]" />
+          结构化档案
+          <span className="text-[10px] text-[#A3AED0] font-medium">{p.schemaVersion || "resume.v1"}</span>
+        </h3>
+      </div>
+      {chips.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-3">
+          {chips.map((t, i) => <span key={i} className="px-2 py-0.5 rounded-full bg-[#F4F7FE] text-[11px] font-bold text-[#1B254B]">{t}</span>)}
+        </div>
+      )}
+      {Array.isArray(d.capabilityTags) && d.capabilityTags.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-2">{d.capabilityTags.slice(0, 10).map((t, i) => <Tag key={i}>{tagName("domains", t) === t ? tagName("tools", t) === t ? tagName("soft", t) : tagName("tools", t) : tagName("domains", t)}</Tag>)}</div>
+      )}
+      {warns.length > 0 && (
+        <div className="mt-3 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-[11px] text-amber-800 space-y-0.5">
+          {warns.slice(0, 4).map((w, i) => <p key={i} className="flex items-start gap-1.5"><I name="alert-triangle" size={11} className="mt-0.5 shrink-0" />{w.message || (w.code === "unmapped_tags" ? `有 ${w.count} 个标签未能归入词表(${(w.samples || []).join("、")})` : w.code)}</p>)}
+        </div>
+      )}
+      <div className="mt-3 -mx-1 flex gap-1 overflow-x-auto pb-1">
+        {PROFILE_TABS.map((t) => (
+          <button key={t.key} type="button" onClick={() => setTab(t.key)} className={`px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap transition ${tab === t.key ? "bg-[#422AFB] text-white" : "text-[#707EAE] hover:bg-[#F4F7FE]"}`}>
+            {t.label}{counts[t.key] ? <span className={`ml-1 ${tab === t.key ? "opacity-80" : "text-[#A3AED0]"}`}>{counts[t.key]}</span> : null}
+          </button>
+        ))}
+      </div>
+      <div>{body[tab]}</div>
+    </Card>
   );
 }
 
@@ -2705,6 +3203,11 @@ function CandidateDetail() {
   const [jobs, setJobs] = useState([]);
   const [matchingJobId, setMatchingJobId] = useState("");
   const [matching, setMatching] = useState(false);
+  // 三层评估:评估记录(当前 + 历史)/ 结构化档案元信息 / 按需报告
+  const [evals, setEvals] = useState({ items: [], current: null });
+  const [profileMeta, setProfileMeta] = useState({ warnings: [], lastParse: null });
+  const [reportBusy, setReportBusy] = useState(false);
+  const tagName = useTaxonomy();
   const [notes, setNotes] = useState([]);
   const [noteOpen, setNoteOpen] = useState(false);
   const [interviewOpen, setInterviewOpen] = useState(false);
@@ -2746,6 +3249,41 @@ function CandidateDetail() {
     resources.jobs.list({ take: 200 }).then((d) => setJobs(d.items || [])).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  async function loadEvaluations(cid = c?.id) {
+    if (!cid) return;
+    try {
+      const { data } = await api.get(`/candidates/${cid}/evaluations`);
+      setEvals({ items: data.items || [], current: data.current || null });
+    } catch { /* 无权限或无记录:保持空 */ }
+  }
+  async function loadProfileMeta(cid = c?.id) {
+    if (!cid) return;
+    try {
+      const { data } = await api.get(`/candidates/${cid}/profile`);
+      setProfileMeta({ warnings: data.warnings || [], lastParse: data.lastParse || null });
+    } catch { /* ignore */ }
+  }
+
+  // 轮询异步任务(parse / match / report 共用):每 2s 一次,最长 maxWaitMs;返回最终 task 或 null(超时)
+  async function pollTask(taskId, maxWaitMs = 5 * 60 * 1000) {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < maxWaitMs) {
+      await new Promise((r) => setTimeout(r, 2000));
+      const { data: { task } } = await api.get(`/resumes/parse-tasks/${taskId}`);
+      if (task.status === "done" || task.status === "failed") return task;
+    }
+    return null;
+  }
+
+  useEffect(() => {
+    if (!c?.id) return;
+    setEvals({ items: [], current: null });
+    setProfileMeta({ warnings: [], lastParse: null });
+    loadEvaluations(c.id);
+    loadProfileMeta(c.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [c?.id]);
 
   useEffect(() => {
     if (!c?.id) return;
@@ -2790,22 +3328,16 @@ function CandidateDetail() {
   }
 
   // jobId: uuid = 切换到该 JD; null = 取消 JD 关联(只刷简历字段)
-  async function doReparse(jobId) {
+  // mode: reevaluate(只重评)/ reextract(默认,复用已识别文本重新结构化)/ full(重新识别文档,TextIn 计费)
+  async function doReparse(jobId, mode = "reextract") {
     if (!c?.id) return;
     setReparsing(true);
     try {
       // 1) 立即 POST 拿 taskId(透传 jobId 给后端决定是否跑 match)
-      const { data: { task: initialTask } } = await api.post("/resumes/parse", { candidateId: c.id, jobId });
+      const { data: { task: initialTask } } = await api.post("/resumes/parse", { candidateId: c.id, jobId, mode });
       // 2) 轮询(每 2s 一次,最长 5 分钟)
       const taskId = initialTask.id;
-      const startedAt = Date.now();
-      const MAX_WAIT_MS = 5 * 60 * 1000;
-      let finalTask = null;
-      while (Date.now() - startedAt < MAX_WAIT_MS) {
-        await new Promise((r) => setTimeout(r, 2000));
-        const { data: { task } } = await api.get(`/resumes/parse-tasks/${taskId}`);
-        if (task.status === "done" || task.status === "failed") { finalTask = task; break; }
-      }
+      const finalTask = await pollTask(taskId);
       if (!finalTask) {
         toast(`重新解析超时(>5 分钟未完成,task ${taskId.slice(0, 8)})`, "error");
         return;
@@ -2813,7 +3345,10 @@ function CandidateDetail() {
       if (finalTask.status === "done") {
         setC(finalTask.candidate);
         setReparseOpen(false);
-        toast(`✓ 已重新解析: ${finalTask.candidate.name}${finalTask.match ? ` · JD 匹配度 ${finalTask.candidate.jdMatch ?? "—"}` : ""}`, "success");
+        loadEvaluations(c.id);
+        loadProfileMeta(c.id);
+        const cls = finalTask.evaluation?.classification || finalTask.candidate.classification;
+        toast(`✓ ${mode === "reevaluate" ? "已重新评估" : "已重新解析"}: ${finalTask.candidate.name}${finalTask.match ? ` · 匹配度 ${finalTask.candidate.jdMatch ?? "—"}${cls ? ` · ${cls} 类` : ""}` : ""}`, "success");
       } else {
         // failed — 完整错误信息复制到剪贴板 + console.error 完整 task 便于排查
         reportReparseError(finalTask, c?.name);
@@ -2866,13 +3401,48 @@ function CandidateDetail() {
     setMatching(true);
     setPendingJobId("");
     try {
-      const { data } = await api.post("/resumes/match", { candidateId: c.id, jobId: id }, { timeout: LONG_TIMEOUT });
-      setC({ ...data.candidate, jobId: id });
-      // 评估完顺手把 jobId 持久化(忽略失败,不阻塞 UI)
-      api.patch(`/candidates/${c.id}`, { jobId: id }).catch(() => {});
-      toast(`已切换 JD + 重新评估 (匹配度 ${data.candidate.jdMatch ?? "—"})`, "success");
-    } catch (err) { toast(err.message || "评估失败", "error"); }
+      const finalTask = await runMatchTask(id);
+      if (finalTask) toast(`已切换 JD + 重新评估 (匹配度 ${finalTask.candidate.jdMatch ?? "—"}${finalTask.evaluation?.classification ? ` · ${finalTask.evaluation.classification} 类` : ""})`, "success");
+    } catch (err) { toast(err.response?.data?.message || err.message || "评估失败", "error"); }
     finally { setMatching(false); }
+  }
+
+  // 评估异步化:POST /resumes/match → 202 task → 轮询;后端在 done 时已把 jobId / 快照写入 candidate
+  async function runMatchTask(jobId) {
+    const { data: { task: initialTask } } = await api.post("/resumes/match", { candidateId: c.id, jobId });
+    const finalTask = await pollTask(initialTask.id);
+    if (!finalTask) { toast(`评估超时(>5 分钟未完成,task ${initialTask.id.slice(0, 8)})`, "error"); return null; }
+    if (finalTask.status === "failed") { reportReparseError(finalTask, c?.name); return null; }
+    setC({ ...finalTask.candidate, jobId });
+    loadEvaluations(c.id);
+    return finalTask;
+  }
+
+  // 按需生成 / 重试评估报告(C/D 类默认不自动写报告)
+  async function runReport() {
+    if (!c?.id) return;
+    setReportBusy(true);
+    try {
+      const { data: { task: initialTask } } = await api.post(`/resumes/candidates/${c.id}/report`);
+      const finalTask = await pollTask(initialTask.id, 3 * 60 * 1000);
+      if (!finalTask) { toast("报告生成超时", "error"); return; }
+      if (finalTask.status === "failed") { reportReparseError(finalTask, c?.name); return; }
+      setC(finalTask.candidate);
+      loadEvaluations(c.id);
+      toast("✓ 报告已生成", "success");
+    } catch (e) { toast(e.response?.data?.message || e.message || "报告生成失败", "error"); }
+    finally { setReportBusy(false); }
+  }
+
+  // HR 人工调整分类(AI 原始分类保留,写审计)
+  async function overrideClassification(classification, note) {
+    if (!c?.id) return;
+    try {
+      const { data } = await api.patch(`/candidates/${c.id}/evaluations/current/override`, { classification, note: note || undefined });
+      if (data.candidate) setC((prev) => (prev ? { ...prev, classification: data.candidate.classification, reviewPriority: data.candidate.reviewPriority } : prev));
+      await loadEvaluations(c.id);
+      toast(`分类已调整为 ${classification}`, "success");
+    } catch (e) { toast(e.response?.data?.message || e.message || "调整失败", "error"); throw e; }
   }
 
   async function changeStatus(newStatus) {
@@ -2905,11 +3475,9 @@ function CandidateDetail() {
     if (!jobId || !c?.id) return toast("请选 JD", "error");
     setMatching(true);
     try {
-      const { data } = await api.post("/resumes/match", { candidateId: c.id, jobId }, { timeout: LONG_TIMEOUT });
-      setC({ ...data.candidate, jobId });
-      api.patch(`/candidates/${c.id}`, { jobId }).catch(() => {});
-      toast(`✓ 评估完成: JD 匹配度 ${data.candidate.jdMatch ?? "—"}`, "success");
-    } catch (e) { toast(e.message || "评估失败", "error"); }
+      const finalTask = await runMatchTask(jobId);
+      if (finalTask) toast(`✓ 评估完成: JD 匹配度 ${finalTask.candidate.jdMatch ?? "—"}${finalTask.evaluation?.classification ? ` · ${finalTask.evaluation.classification} 类` : ""}`, "success");
+    } catch (e) { toast(e.response?.data?.message || e.message || "评估失败", "error"); }
     finally { setMatching(false); }
   }
 
@@ -2993,6 +3561,13 @@ function CandidateDetail() {
                 {reparsing ? "解析中..." : "重新解析"}
               </button>
             </div>
+          )}
+          {/* 已用旧流水线解析、尚无结构化档案:提示重新解析可生成 */}
+          {c.parser && !c.profile && !c.parsing && c.attachment && (
+            <p className="mb-3 -mt-1 text-[10px] text-[#A3AED0] flex items-center gap-1">
+              <I name="layers" size={10} /> 重新解析后生成结构化档案
+              {canEdit && <button type="button" onClick={openReparse} disabled={reparsing} className="text-[#422AFB] hover:underline font-bold disabled:opacity-50">去解析</button>}
+            </p>
           )}
           <div className="flex items-start gap-3.5">
             <Avatar name={c.name} animal={c.animal} src={c.avatar} size={64} />
@@ -3104,6 +3679,9 @@ function CandidateDetail() {
                 )}
               </div>
               <p className="text-[10px] text-[#707EAE] text-center mt-1.5 leading-tight w-[72px]">JD 匹配度</p>
+              {(evals.current?.manualOverride?.classification || c.classification) && (
+                <div className="mt-1"><ClassChip cls={evals.current?.manualOverride?.classification || c.classification} manual={!!evals.current?.manualOverride} /></div>
+              )}
             </div>
           </div>
         </Card>
@@ -3364,6 +3942,20 @@ function CandidateDetail() {
           </Card>
         )}
 
+        {/* === 三层评估(硬筛 + Jev 逐项判定 + 报告)=== */}
+        <EvaluationCard
+          evaluation={evals.current}
+          history={evals.items}
+          candidate={c}
+          jobs={jobs}
+          matching={matching}
+          reportBusy={reportBusy}
+          canEdit={canEdit}
+          onRunMatch={runJdMatch}
+          onReport={runReport}
+          onOverride={overrideClassification}
+        />
+
         {/* === Interviews moved to left aside (above Documents) === */}
 
         {/* === Job Overview === */}
@@ -3528,6 +4120,11 @@ function CandidateDetail() {
           })()}
         </Card>
 
+        {/* === 结构化档案(resume.v1:教育/工作/实习/项目/技能/证书/语言/校园/科研 + 派生指标)=== */}
+        {c.profile && (
+          <ProfileCard profile={c.profile} derived={c.derived} warnings={profileMeta.warnings} tagName={tagName} />
+        )}
+
         {/* === Education === */}
         <Card className="p-5 md:p-6">
           <h3 className="text-base font-bold text-[#1B254B] flex items-center gap-2">
@@ -3625,11 +4222,12 @@ function CandidateDetail() {
     <ReparseConfirmModal
       open={reparseOpen}
       onClose={() => setReparseOpen(false)}
-      onConfirm={doReparse}
+      onConfirm={(jobId, mode) => doReparse(jobId, mode)}
       currentJob={jobs.find(j => j.id === c.jobId)}
       jobs={jobs}
       candidateName={c.name}
       reparsing={reparsing}
+      hasProfile={!!c.profile}
     />
     <ReviewModal
       open={reviewOpen}

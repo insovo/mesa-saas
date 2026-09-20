@@ -1,0 +1,291 @@
+[
+ {
+  "id": "cert.pmp",
+  "name": "PMP",
+  "aliases": [
+   "pmp",
+   "项目管理专业人士"
+  ]
+ },
+ {
+  "id": "cert.prince2",
+  "name": "PRINCE2",
+  "aliases": [
+   "prince2"
+  ]
+ },
+ {
+  "id": "cert.six_sigma_gb",
+  "name": "六西格玛绿带",
+  "aliases": [
+   "六西格玛绿带",
+   "绿带",
+   "green belt"
+  ]
+ },
+ {
+  "id": "cert.six_sigma_bb",
+  "name": "六西格玛黑带",
+  "aliases": [
+   "六西格玛黑带",
+   "黑带",
+   "black belt"
+  ]
+ },
+ {
+  "id": "cert.iatf16949_auditor",
+  "name": "IATF16949 内审员",
+  "aliases": [
+   "iatf16949内审员",
+   "iatf 16949",
+   "iatf16949",
+   "16949内审"
+  ]
+ },
+ {
+  "id": "cert.iso9001_auditor",
+  "name": "ISO9001 审核员",
+  "aliases": [
+   "iso9001",
+   "iso 9001",
+   "质量管理体系审核员"
+  ]
+ },
+ {
+  "id": "cert.vda63",
+  "name": "VDA6.3 审核员",
+  "aliases": [
+   "vda6.3",
+   "vda 6.3",
+   "过程审核员"
+  ]
+ },
+ {
+  "id": "cert.iso14001",
+  "name": "ISO14001",
+  "aliases": [
+   "iso14001",
+   "环境管理体系"
+  ]
+ },
+ {
+  "id": "cert.iso45001",
+  "name": "ISO45001",
+  "aliases": [
+   "iso45001",
+   "职业健康"
+  ]
+ },
+ {
+  "id": "cert.cqe",
+  "name": "CQE 质量工程师",
+  "aliases": [
+   "cqe",
+   "注册质量工程师"
+  ]
+ },
+ {
+  "id": "cert.asq",
+  "name": "ASQ 认证",
+  "aliases": [
+   "asq"
+  ]
+ },
+ {
+  "id": "cert.cpa",
+  "name": "CPA",
+  "aliases": [
+   "cpa",
+   "注册会计师"
+  ]
+ },
+ {
+  "id": "cert.cfa",
+  "name": "CFA",
+  "aliases": [
+   "cfa"
+  ]
+ },
+ {
+  "id": "cert.acca",
+  "name": "ACCA",
+  "aliases": [
+   "acca"
+  ]
+ },
+ {
+  "id": "cert.cma",
+  "name": "CMA",
+  "aliases": [
+   "cma"
+  ]
+ },
+ {
+  "id": "cert.lawyer",
+  "name": "法律职业资格",
+  "aliases": [
+   "法律职业资格",
+   "律师资格",
+   "司法考试"
+  ]
+ },
+ {
+  "id": "cert.hr_mgr",
+  "name": "人力资源管理师",
+  "aliases": [
+   "人力资源管理师",
+   "企业人力资源管理师"
+  ]
+ },
+ {
+  "id": "cert.shrm",
+  "name": "SHRM",
+  "aliases": [
+   "shrm",
+   "shrm-cp",
+   "shrm-scp"
+  ]
+ },
+ {
+  "id": "cert.teacher",
+  "name": "教师资格证",
+  "aliases": [
+   "教师资格"
+  ]
+ },
+ {
+  "id": "cert.driver",
+  "name": "驾驶证",
+  "aliases": [
+   "驾驶证",
+   "驾照",
+   "c1",
+   "c2",
+   "driver license"
+  ]
+ },
+ {
+  "id": "cert.cet4",
+  "name": "CET-4",
+  "aliases": [
+   "cet4",
+   "cet-4",
+   "四级",
+   "英语四级"
+  ]
+ },
+ {
+  "id": "cert.cet6",
+  "name": "CET-6",
+  "aliases": [
+   "cet6",
+   "cet-6",
+   "六级",
+   "英语六级"
+  ]
+ },
+ {
+  "id": "cert.tem8",
+  "name": "专业八级",
+  "aliases": [
+   "专八",
+   "tem8",
+   "tem-8"
+  ]
+ },
+ {
+  "id": "cert.ielts",
+  "name": "雅思",
+  "aliases": [
+   "雅思",
+   "ielts"
+  ]
+ },
+ {
+  "id": "cert.toefl",
+  "name": "托福",
+  "aliases": [
+   "托福",
+   "toefl"
+  ]
+ },
+ {
+  "id": "cert.jlpt",
+  "name": "JLPT",
+  "aliases": [
+   "jlpt",
+   "n1",
+   "n2",
+   "日语能力考试"
+  ]
+ },
+ {
+  "id": "cert.aws",
+  "name": "AWS 认证",
+  "aliases": [
+   "aws certified"
+  ]
+ },
+ {
+  "id": "cert.pmi_acp",
+  "name": "PMI-ACP",
+  "aliases": [
+   "pmi-acp"
+  ]
+ },
+ {
+  "id": "cert.scrum",
+  "name": "Scrum Master",
+  "aliases": [
+   "scrum master",
+   "csm",
+   "psm"
+  ]
+ },
+ {
+  "id": "cert.itil",
+  "name": "ITIL",
+  "aliases": [
+   "itil"
+  ]
+ },
+ {
+  "id": "cert.cissp",
+  "name": "CISSP",
+  "aliases": [
+   "cissp"
+  ]
+ },
+ {
+  "id": "cert.cpsm",
+  "name": "CPSM 采购",
+  "aliases": [
+   "cpsm"
+  ]
+ },
+ {
+  "id": "cert.functional_safety",
+  "name": "功能安全 ISO26262",
+  "aliases": [
+   "iso26262",
+   "功能安全",
+   "fusa"
+  ]
+ },
+ {
+  "id": "cert.engineer_title",
+  "name": "工程师职称",
+  "aliases": [
+   "工程师职称",
+   "中级职称",
+   "高级工程师",
+   "高级职称",
+   "副高"
+  ]
+ },
+ {
+  "id": "cert.other",
+  "name": "其他证书",
+  "aliases": []
+ }
+]

@@ -17,6 +17,28 @@ import {
 } from "../components/Primitives.jsx";
 import { URGENCY_TONE, STATUS_TONE, HIRE_STAGE_TONE } from "../lib/constants.js";
 
+// AI 评估分类 chip(A 高匹配 / B 较匹配 / C 待复核 / D 低匹配),分类为空不渲染
+const CLASS_META = {
+  A: { label: "高匹配", cls: "bg-green-100 text-green-700" },
+  B: { label: "较匹配", cls: "bg-blue-100 text-blue-700" },
+  C: { label: "待复核", cls: "bg-amber-100 text-amber-700" },
+  D: { label: "低匹配", cls: "bg-gray-100 text-gray-600" },
+};
+function ClassChip({ classification, reviewPriority }) {
+  const m = CLASS_META[classification];
+  if (!m) return null;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold shrink-0 whitespace-nowrap ${m.cls}`}
+      title={`AI 评估分类 ${classification} · ${m.label}${reviewPriority === "REVIEW" ? " · 建议人工复核" : ""}`}
+    >
+      {classification} {m.label}
+      {reviewPriority === "REVIEW" && <span className="opacity-80">⚑ 复核</span>}
+    </span>
+  );
+}
+
+
 // 分布列表行 — pill + 数值 + 比例迷你条(占满 maxCount 时满格),给纯列表加数据可视化感
 function DistRow({ pill, count, max, color }) {
   const pct = max > 0 ? Math.max(4, Math.round((count / max) * 100)) : 0;
@@ -227,6 +249,7 @@ function DashboardView({ data, tilePalette, jobs, departments, llmStatus, repars
                           {isReparsing ? "解析中" : (c.parser ? "重新解析" : "解析")}
                         </button>
                       )}
+                      <ClassChip classification={c.classification} reviewPriority={c.reviewPriority} />
                       {c.jdMatch != null && (
                         <div className="shrink-0">
                           <LiquidLoader size={40} level={c.jdMatch} label={c.jdMatch} />

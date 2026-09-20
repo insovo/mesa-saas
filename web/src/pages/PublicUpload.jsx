@@ -95,6 +95,8 @@ export default function PublicUpload() {
   async function onSubmit() {
     if (!file) return toast("请先选择简历文件", "error");
     if (file.size > 20 * 1024 * 1024) return toast("文件超过 20MB", "error");
+    const isImage = /^image\/(jpeg|png)$/.test(file.type || "") || /\.(jpe?g|png)$/i.test(file.name);
+    if (isImage && file.size > 10 * 1024 * 1024) return toast("图片超过 10MB,请压缩后再传", "error");
     setState(STATE_SUBMITTING);
     try {
       // 1) 拿 presigned URL
@@ -188,12 +190,12 @@ export default function PublicUpload() {
               {file ? file.name : "点击选择简历文件"}
             </p>
             <p className="text-xs text-gray-700 mt-1">
-              {file ? `${(file.size / 1024).toFixed(1)} KB · 点击重选` : "PDF / DOCX / DOC · ≤ 20MB"}
+              {file ? `${(file.size / 1024).toFixed(1)} KB · 点击重选` : "支持 PDF / Word / 手机拍照 JPG·PNG · 文档 ≤ 20MB,图片 ≤ 10MB"}
             </p>
             <input
               id="public-upload-file"
               type="file"
-              accept=".pdf,.docx,.doc,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              accept=".pdf,.docx,.doc,.jpg,.jpeg,.png,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png"
               className="hidden"
               disabled={submitting}
               onChange={(e) => setFile(e.target.files?.[0] || null)}

@@ -40,7 +40,7 @@ const LARK_CLI = process.env.LARK_CLI || "lark-cli";
 const MESA_BASE_URL = (process.env.MESA_BASE_URL || "").replace(/\/$/, "");
 const UPLOAD_TOKEN = process.env.UPLOAD_TOKEN || "";
 const ALLOWED_EXT = new Set(
-  (process.env.ALLOWED_EXT || "pdf,doc,docx").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)
+  (process.env.ALLOWED_EXT || "pdf,doc,docx,jpg,jpeg,png").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)
 );
 const MAX_SIZE = Number(process.env.MAX_SIZE || 20 * 1024 * 1024);
 // 回执开关:机器人在群里回复上传结果。需飞书应用已开「发送消息」权限;未开时设 false 不影响入库。
@@ -56,6 +56,9 @@ const MIME = {
   pdf: "application/pdf",
   doc: "application/msword",
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
 };
 
 if (!MESA_BASE_URL || !UPLOAD_TOKEN || UPLOAD_TOKEN.startsWith("__")) {

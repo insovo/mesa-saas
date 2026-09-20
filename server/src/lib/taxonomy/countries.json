@@ -1,0 +1,420 @@
+[
+ {
+  "id": "CN",
+  "name": "中国",
+  "aliases": [
+   "中国",
+   "china",
+   "prc",
+   "大陆"
+  ],
+  "region": "china"
+ },
+ {
+  "id": "HK",
+  "name": "中国香港",
+  "aliases": [
+   "香港",
+   "hong kong"
+  ],
+  "region": "china"
+ },
+ {
+  "id": "TW",
+  "name": "中国台湾",
+  "aliases": [
+   "台湾",
+   "taiwan"
+  ],
+  "region": "china"
+ },
+ {
+  "id": "DE",
+  "name": "德国",
+  "aliases": [
+   "德国",
+   "germany",
+   "deutschland"
+  ],
+  "region": "europe"
+ },
+ {
+  "id": "FR",
+  "name": "法国",
+  "aliases": [
+   "法国",
+   "france"
+  ],
+  "region": "europe"
+ },
+ {
+  "id": "GB",
+  "name": "英国",
+  "aliases": [
+   "英国",
+   "uk",
+   "united kingdom",
+   "britain",
+   "england"
+  ],
+  "region": "europe"
+ },
+ {
+  "id": "IT",
+  "name": "意大利",
+  "aliases": [
+   "意大利",
+   "italy"
+  ],
+  "region": "europe"
+ },
+ {
+  "id": "ES",
+  "name": "西班牙",
+  "aliases": [
+   "西班牙",
+   "spain"
+  ],
+  "region": "europe"
+ },
+ {
+  "id": "NL",
+  "name": "荷兰",
+  "aliases": [
+   "荷兰",
+   "netherlands"
+  ],
+  "region": "europe"
+ },
+ {
+  "id": "BE",
+  "name": "比利时",
+  "aliases": [
+   "比利时",
+   "belgium"
+  ],
+  "region": "europe"
+ },
+ {
+  "id": "CH",
+  "name": "瑞士",
+  "aliases": [
+   "瑞士",
+   "switzerland"
+  ],
+  "region": "europe"
+ },
+ {
+  "id": "AT",
+  "name": "奥地利",
+  "aliases": [
+   "奥地利",
+   "austria"
+  ],
+  "region": "europe"
+ },
+ {
+  "id": "PL",
+  "name": "波兰",
+  "aliases": [
+   "波兰",
+   "poland"
+  ],
+  "region": "europe"
+ },
+ {
+  "id": "CZ",
+  "name": "捷克",
+  "aliases": [
+   "捷克",
+   "czech"
+  ],
+  "region": "europe"
+ },
+ {
+  "id": "HU",
+  "name": "匈牙利",
+  "aliases": [
+   "匈牙利",
+   "hungary"
+  ],
+  "region": "europe"
+ },
+ {
+  "id": "SE",
+  "name": "瑞典",
+  "aliases": [
+   "瑞典",
+   "sweden"
+  ],
+  "region": "europe"
+ },
+ {
+  "id": "DK",
+  "name": "丹麦",
+  "aliases": [
+   "丹麦",
+   "denmark"
+  ],
+  "region": "europe"
+ },
+ {
+  "id": "NO",
+  "name": "挪威",
+  "aliases": [
+   "挪威",
+   "norway"
+  ],
+  "region": "europe"
+ },
+ {
+  "id": "FI",
+  "name": "芬兰",
+  "aliases": [
+   "芬兰",
+   "finland"
+  ],
+  "region": "europe"
+ },
+ {
+  "id": "PT",
+  "name": "葡萄牙",
+  "aliases": [
+   "葡萄牙",
+   "portugal"
+  ],
+  "region": "europe"
+ },
+ {
+  "id": "IE",
+  "name": "爱尔兰",
+  "aliases": [
+   "爱尔兰",
+   "ireland"
+  ],
+  "region": "europe"
+ },
+ {
+  "id": "TR",
+  "name": "土耳其",
+  "aliases": [
+   "土耳其",
+   "turkey",
+   "türkiye"
+  ],
+  "region": "mideast"
+ },
+ {
+  "id": "RU",
+  "name": "俄罗斯",
+  "aliases": [
+   "俄罗斯",
+   "russia"
+  ],
+  "region": "europe"
+ },
+ {
+  "id": "US",
+  "name": "美国",
+  "aliases": [
+   "美国",
+   "usa",
+   "united states",
+   "america"
+  ],
+  "region": "north_america"
+ },
+ {
+  "id": "CA",
+  "name": "加拿大",
+  "aliases": [
+   "加拿大",
+   "canada"
+  ],
+  "region": "north_america"
+ },
+ {
+  "id": "MX",
+  "name": "墨西哥",
+  "aliases": [
+   "墨西哥",
+   "mexico"
+  ],
+  "region": "latam"
+ },
+ {
+  "id": "BR",
+  "name": "巴西",
+  "aliases": [
+   "巴西",
+   "brazil"
+  ],
+  "region": "latam"
+ },
+ {
+  "id": "CL",
+  "name": "智利",
+  "aliases": [
+   "智利",
+   "chile"
+  ],
+  "region": "latam"
+ },
+ {
+  "id": "AR",
+  "name": "阿根廷",
+  "aliases": [
+   "阿根廷",
+   "argentina"
+  ],
+  "region": "latam"
+ },
+ {
+  "id": "JP",
+  "name": "日本",
+  "aliases": [
+   "日本",
+   "japan"
+  ],
+  "region": "east_asia"
+ },
+ {
+  "id": "KR",
+  "name": "韩国",
+  "aliases": [
+   "韩国",
+   "korea"
+  ],
+  "region": "east_asia"
+ },
+ {
+  "id": "SG",
+  "name": "新加坡",
+  "aliases": [
+   "新加坡",
+   "singapore"
+  ],
+  "region": "sea"
+ },
+ {
+  "id": "TH",
+  "name": "泰国",
+  "aliases": [
+   "泰国",
+   "thailand"
+  ],
+  "region": "sea"
+ },
+ {
+  "id": "VN",
+  "name": "越南",
+  "aliases": [
+   "越南",
+   "vietnam"
+  ],
+  "region": "sea"
+ },
+ {
+  "id": "ID",
+  "name": "印尼",
+  "aliases": [
+   "印尼",
+   "印度尼西亚",
+   "indonesia"
+  ],
+  "region": "sea"
+ },
+ {
+  "id": "MY",
+  "name": "马来西亚",
+  "aliases": [
+   "马来西亚",
+   "malaysia"
+  ],
+  "region": "sea"
+ },
+ {
+  "id": "PH",
+  "name": "菲律宾",
+  "aliases": [
+   "菲律宾",
+   "philippines"
+  ],
+  "region": "sea"
+ },
+ {
+  "id": "IN",
+  "name": "印度",
+  "aliases": [
+   "印度",
+   "india"
+  ],
+  "region": "south_asia"
+ },
+ {
+  "id": "AE",
+  "name": "阿联酋",
+  "aliases": [
+   "阿联酋",
+   "uae",
+   "dubai",
+   "迪拜"
+  ],
+  "region": "mideast"
+ },
+ {
+  "id": "SA",
+  "name": "沙特",
+  "aliases": [
+   "沙特",
+   "saudi"
+  ],
+  "region": "mideast"
+ },
+ {
+  "id": "IL",
+  "name": "以色列",
+  "aliases": [
+   "以色列",
+   "israel"
+  ],
+  "region": "mideast"
+ },
+ {
+  "id": "AU",
+  "name": "澳大利亚",
+  "aliases": [
+   "澳大利亚",
+   "澳洲",
+   "australia"
+  ],
+  "region": "oceania"
+ },
+ {
+  "id": "NZ",
+  "name": "新西兰",
+  "aliases": [
+   "新西兰",
+   "new zealand"
+  ],
+  "region": "oceania"
+ },
+ {
+  "id": "ZA",
+  "name": "南非",
+  "aliases": [
+   "南非",
+   "south africa"
+  ],
+  "region": "africa"
+ },
+ {
+  "id": "EG",
+  "name": "埃及",
+  "aliases": [
+   "埃及",
+   "egypt"
+  ],
+  "region": "africa"
+ }
+]

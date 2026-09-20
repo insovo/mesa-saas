@@ -1,0 +1,259 @@
+[
+ {
+  "id": "major.vehicle",
+  "name": "车辆工程",
+  "aliases": [
+   "车辆工程",
+   "汽车工程",
+   "汽车服务工程",
+   "automotive engineering",
+   "vehicle engineering",
+   "车辆"
+  ]
+ },
+ {
+  "id": "major.mech",
+  "name": "机械类",
+  "aliases": [
+   "机械工程",
+   "机械设计",
+   "机械设计制造及其自动化",
+   "机械电子",
+   "机械制造",
+   "机电一体化",
+   "mechanical engineering",
+   "mechatronics",
+   "机械"
+  ]
+ },
+ {
+  "id": "major.ee",
+  "name": "电气/电子类",
+  "aliases": [
+   "电气工程",
+   "电子信息",
+   "电子工程",
+   "自动化",
+   "电气自动化",
+   "electrical engineering",
+   "electronics",
+   "自动化"
+  ]
+ },
+ {
+  "id": "major.cs",
+  "name": "计算机类",
+  "aliases": [
+   "计算机",
+   "软件工程",
+   "计算机科学与技术",
+   "信息工程",
+   "computer science",
+   "software engineering",
+   "人工智能",
+   "数据科学"
+  ]
+ },
+ {
+  "id": "major.materials",
+  "name": "材料类",
+  "aliases": [
+   "材料",
+   "材料科学",
+   "材料成型",
+   "高分子",
+   "金属材料",
+   "materials science"
+  ]
+ },
+ {
+  "id": "major.chem",
+  "name": "化学/化工",
+  "aliases": [
+   "化学",
+   "化工",
+   "应用化学",
+   "chemistry",
+   "chemical engineering"
+  ]
+ },
+ {
+  "id": "major.physics",
+  "name": "物理",
+  "aliases": [
+   "物理",
+   "应用物理",
+   "physics"
+  ]
+ },
+ {
+  "id": "major.math",
+  "name": "数学/统计",
+  "aliases": [
+   "数学",
+   "统计",
+   "应用数学",
+   "mathematics",
+   "statistics"
+  ]
+ },
+ {
+  "id": "major.industrial",
+  "name": "工业工程",
+  "aliases": [
+   "工业工程",
+   "industrial engineering",
+   "质量管理工程",
+   "物流工程"
+  ]
+ },
+ {
+  "id": "major.energy",
+  "name": "能源与动力",
+  "aliases": [
+   "能源与动力",
+   "热能",
+   "动力工程",
+   "新能源科学与工程",
+   "energy"
+  ]
+ },
+ {
+  "id": "major.civil",
+  "name": "土木/建筑",
+  "aliases": [
+   "土木",
+   "建筑",
+   "civil engineering",
+   "architecture"
+  ]
+ },
+ {
+  "id": "major.hr",
+  "name": "人力资源管理",
+  "aliases": [
+   "人力资源",
+   "人力资源管理",
+   "human resource"
+  ]
+ },
+ {
+  "id": "major.business",
+  "name": "工商管理类",
+  "aliases": [
+   "工商管理",
+   "企业管理",
+   "市场营销",
+   "管理学",
+   "mba",
+   "business administration",
+   "management"
+  ]
+ },
+ {
+  "id": "major.economics",
+  "name": "经济/金融",
+  "aliases": [
+   "经济",
+   "金融",
+   "国际贸易",
+   "economics",
+   "finance"
+  ]
+ },
+ {
+  "id": "major.accounting",
+  "name": "会计/财务",
+  "aliases": [
+   "会计",
+   "财务管理",
+   "审计",
+   "accounting"
+  ]
+ },
+ {
+  "id": "major.law",
+  "name": "法学",
+  "aliases": [
+   "法学",
+   "法律",
+   "law"
+  ]
+ },
+ {
+  "id": "major.language",
+  "name": "外语类",
+  "aliases": [
+   "英语",
+   "日语",
+   "德语",
+   "法语",
+   "翻译",
+   "外国语",
+   "english",
+   "语言文学"
+  ]
+ },
+ {
+  "id": "major.psychology",
+  "name": "心理学",
+  "aliases": [
+   "心理学",
+   "psychology"
+  ]
+ },
+ {
+  "id": "major.education",
+  "name": "教育学",
+  "aliases": [
+   "教育学",
+   "education"
+  ]
+ },
+ {
+  "id": "major.media",
+  "name": "新闻传播/设计",
+  "aliases": [
+   "新闻",
+   "传播",
+   "广告",
+   "视觉传达",
+   "工业设计",
+   "设计学"
+  ]
+ },
+ {
+  "id": "major.medicine",
+  "name": "医学/药学",
+  "aliases": [
+   "临床医学",
+   "药学",
+   "医学",
+   "生物医学"
+  ]
+ },
+ {
+  "id": "major.bio",
+  "name": "生物类",
+  "aliases": [
+   "生物",
+   "生物工程",
+   "生物技术",
+   "biology"
+  ]
+ },
+ {
+  "id": "major.environment",
+  "name": "环境类",
+  "aliases": [
+   "环境工程",
+   "环境科学",
+   "environmental"
+  ]
+ },
+ {
+  "id": "major.other",
+  "name": "其他专业",
+  "aliases": []
+ }
+]

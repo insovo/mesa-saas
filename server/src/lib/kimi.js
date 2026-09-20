@@ -6,8 +6,12 @@
 // API key / model / prompt 三者都走 settings: DB(admin 改) > env > hardcoded
 
 import { getEffective, SETTING_KEYS } from "./settings.js";
+import { buildResumePromptV2, buildJdFactsPrompt, buildWordingPrompt, buildReportPrompt } from "./prompts/index.js";
+import { isProfileShape, sanitizeProfile, legacyToProfile, profileToLegacy } from "./profile/normalize.js";
+import { sanitizeJdFacts } from "./jd/normalize.js";
 import { jsonrepair } from "jsonrepair";
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -29,98 +33,9 @@ async function effectiveModel() {
 // ─── 默认 PROMPT (admin 可在 UI 改) ─────────────────────────────
 // 方案 B: LLM 只输出结构化 JSON(简历事实抽取),HR 简报 txt 由后端 assembleSummary
 // 确定性拼装 → 格式 100% 稳定、结构字段与简报永远一致,根治 LLM 简报格式漂移。
-export const DEFAULT_PROMPT = `# Role: 简历信息提取专家
-
-你是一个专业的简历解析器。先对简历内容进行噪声清洗,再从清洗后的正文中提取信息,**只输出一个 JSON 对象**。系统会用这个 JSON 确定性地拼装 HR 简报,所以你**绝对不要**输出任何简报纯文本、引导语或解释。
-
-## 一、噪声清洗
-
-剔除以下非简历正文内容:
-
-1. 平台水印: 智联招聘 / BOSS直聘 / 前程无忧 / 猎聘 / 拉勾 / 脉脉 / 领英 等平台名称的重复出现或对角线水印
-2. 来源标注: "简历来源:XX平台" "来自XX网" "Downloaded from XX"
-3. 平台页眉页脚: 第X页/共X页、页码、打印时间戳、"该简历来自XX"
-4. 平台附加信息: "最近活跃:X天内" "简历更新时间:XX" "简历编号:XX"
-5. 广告与推荐: "升级VIP查看联系方式" "立即沟通" "推荐职位"
-6. 系统生成标签: "人才标签:XX" "简历完整度:XX%" "活跃度:高"
-7. 格式伪影: OCR 乱码、重复分隔线、连续空行、HTML/XML 残留标签
-8. 免责声明: 版权声明、"未经允许不得转发"
-9. 猎头/HR 批注: "HR备注:XX" "推荐理由:XX"、手写批注 OCR
-
-清洗原则: 只保留候选人本人填写的内容,不确定时保留(宁多勿删)。清洗过程不输出。
-
-## 二、提取规则
-
-1. 只忠于简历原文,不推测、不编造。**任何字段(姓名/公司/学校/证书/职位/专业/成果/技能)在原文找不到就填 null(数组就填 []),严禁编造、脑补、凑数**。公司名、学校名、证书名等**专有名词必须照抄原文**(英文简历保持英文原名,不要自行翻译或改写,以便核对);专业、职责可适度归纳但必须忠于原文,不得添加原文没有的内容。
-2. 时间统一 YYYY.MM,"至今"保留。**只输出简历明确写出的时间**:简历只给一个日期(如教育的毕业/完成时间、只有入职没有离职)时,**只填这一个日期, 严禁补全或推算另一端**(尤其严禁给教育编造"入学时间"凑成区间);缺失的一端不写。每条记录的 学校/学历/专业 或 公司/职位/时间 必须取自原文**同一条**记录,严禁把不同记录的日期、学历、专业交叉拼接或错配。
-3. PDF / 表格 / 多栏简历的正文可能有抽取顺序噪音。遇到 Work History / Education / Languages 这类表格时,必须按表头与视觉行关系重建记录:同一行的日期、公司、职位、国家、专业才可以组合;不要把相邻行、页眉页脚、栏目标题或下一页内容错配进同一条经历/教育。
-4. 工作经历、项目经验按时间倒序(最近的在前)
-5. 相同技能、证书、奖项去重
-6. 从工作和项目经历中提炼隐含技能放进 skills
-7. 联系电话、邮箱**可以有多个**,分别放进 phones / emails 数组;平台打码(如 138****1234)保留打码格式,不猜测补全
-8. 学历(degree)只能取这几个值之一: 函授 / 专科 / 大专 / 本科 / 硕士 / 博士 / 博士后 / 教授 / Other;读不准就用 Other
-9. 工作经历每段拆成 核心职责(duties[]) 与 关键成果(achievements[]),忠于原文,无则空数组;下属人数(reports)读不到填 null
-10. 姓名读不到填 null,**严禁**用 张三/李四 等占位名
-
-## 三、输出格式 — 一个 JSON 对象
-
-**严格要求**:
-- 不要 Markdown 代码块包裹
-- 不要在 JSON 前后加任何文字、引导语、说明、简报正文
-- 顶层是对象,不是数组
-- 字段缺失用 null / [] 而非省略 key
-- 所有 JSON 结构标点必须 ASCII 半角(英文 , : " 等),不能用中文全角
-
-\`\`\`
-{
-  "name": "候选人真实姓名; 读不到填 null, 严禁编造或占位",
-  "currentTitle": "当前职位 或 null",
-  "location": "所在地区/现居城市 或 null",
-  "gender": "male | female | unknown",
-  "age": 整数 0-120 或 null,
-  "phones": ["可多个, 保留原打码格式"],
-  "emails": ["可多个"],
-  "languages": [
-    { "name": "中文", "level": "母语" },
-    { "name": "英语", "level": "CEFR C1 / TOEFL 105 / 流利, 简历未写具体级别用 一般|流利|精通" }
-  ],
-  "skills": ["关键技能短句, 已去重"],
-  "awards": ["奖项 / 证书, 已去重, 照抄原文名称"],
-  "appliedFor": "应聘岗位(没明确写就空字符串)",
-  "tags": ["3-6 个亮点关键词"],
-  "yearsExp": 整数 或 null (= 各段工作经历时长之和、重叠不重复; 没汇总句也要按 experience 各段 period 推算),
-  "educationHistory": [
-    {
-      "school": "学校名称(照抄原文)",
-      "degree": "函授|专科|大专|本科|硕士|博士|博士后|教授|Other",
-      "major": "专业",
-      "period": "只填简历明确写的时间; 教育常只有毕业/完成时间, 就只填那一个(如 \"2022.06\"); 严禁编造入学时间凑区间; 完全没有就填 null"
-    }
-  ],
-  "experience": [
-    {
-      "company": "公司全称",
-      "title": "职位",
-      "period": "2023.01 – 至今 (照抄原文; 只有单边时间就只填那一端)",
-      "location": "工作地点 或 null",
-      "reports": "下属人数 或 null",
-      "duties": ["核心职责, 忠于原文"],
-      "achievements": ["关键成果, 量化优先"]
-    }
-  ],
-  "projects": [
-    { "responsibility": "负责内容", "output": "关键产出" }
-  ]
-}
-\`\`\`
-
-## 四、最终自检
-
-- 输出是否为**合法 JSON 对象**、所有 key 都在(缺失用 null/[])
-- 是否**误输出了简报纯文本 / 解释 / markdown**(都不应有,只要 JSON)
-- 日期是否只来自原文、未补全单边时间、未给教育编造入学时间
-- 姓名/公司/学校/证书等专有名词是否照抄原文未翻译改写
-- 学历是否落在允许枚举内`;
+// v2(2026-09-20):输出 profile(resume.v1)— 校园经历(学生干部/竞赛/奖学金)、证书、专业课程、分层技能、词表 tag。
+// 旧形状(生产 DB 自定义 prompt 可能仍是旧版)由 profile/normalize.js legacyToProfile 兼容。
+export const DEFAULT_PROMPT = buildResumePromptV2();
 
 async function effectivePrompt() {
   return (await getEffective(SETTING_KEYS.KIMI_PROMPT)) || DEFAULT_PROMPT;
@@ -371,28 +286,35 @@ function parseLlmJson(raw, context = "kimi") {
   }
 }
 
-async function pickModel(requested) {
-  if (!requested) return effectiveModel();
-  try {
-    const allowed = await listModels();
-    if (allowed.includes(requested)) return requested;
-  } catch { /* ignore */ }
-  return requested;
+// ─── 模型解析:配置 / 请求的模型必须在账号可用列表里,否则按偏好回退 ──────
+// 2026-09:Moonshot 已下线 moonshot-v1-* 系列,账号列表只剩 kimi-k2.6 / kimi-k2.7-code(-highspeed) / kimi-k3。
+// 旧逻辑硬编码回退 "moonshot-v1-32k" 会直接 404,这里改为「以 /v1/models 实际列表为准」。
+const REASONING_RE = /thinking|reasoner/i;
+async function availableModels() {
+  try { return await listModels(); } catch { return []; }
 }
-
-// 简历解析专用 model 选择:推理模型(kimi-k* / *-thinking)解析长简历常超 90s timeout,
-// 又被 Cloudflare 100s 硬上限封死。简历是「长输入 + 抽取式输出」,根本不需要 reasoning,
-// 用 moonshot-v1-32k(普通 chat,10-20s)反而稳定。
-// 用户显式传 model 仍然尊重(/upload 页 admin 自己选什么用什么)。
-async function pickParseModel(requested) {
-  if (requested) return pickModel(requested);
-  const adminConfigured = await effectiveModel();
-  if (!adminConfigured) return "moonshot-v1-32k";
-  // 推理模型 (kimi-k*, *-thinking, *-reasoner) 简历解析超时风险高, fallback 到 v1-32k
-  if (/^kimi-k/i.test(adminConfigured) || /thinking|reasoner/i.test(adminConfigured)) {
-    return "moonshot-v1-32k";
+function preferFromList(ids) {
+  const prefs = [/highspeed/i, /^kimi-k2\.6/i, /^kimi-k2\.7-code$/i, /^moonshot-v1-32k$/i, /^moonshot-v1/i, /^kimi-k2/i, /^kimi-k3/i];
+  for (const re of prefs) {
+    const m = ids.find((id) => re.test(id) && !REASONING_RE.test(id));
+    if (m) return m;
   }
-  return adminConfigured;
+  return ids.find((id) => !REASONING_RE.test(id)) || ids[0] || null;
+}
+async function resolveModel(requested, { avoidReasoning = false } = {}) {
+  const ids = await availableModels();
+  const avail = (m) => !!m && (!ids.length || ids.includes(m));
+  if (requested && avail(requested) && !(avoidReasoning && REASONING_RE.test(requested))) return requested;
+  const configured = await effectiveModel();
+  if (avail(configured) && !(avoidReasoning && REASONING_RE.test(configured))) return configured;
+  return preferFromList(ids) || configured || "moonshot-v1-32k";
+}
+async function pickModel(requested) {
+  return resolveModel(requested);
+}
+// 简历解析专用:长输入抽取式任务不需要 reasoning,推理模型超时风险高 → 优先非推理模型
+async function pickParseModel(requested) {
+  return resolveModel(requested, { avoidReasoning: true });
 }
 
 // ─── 工作年限确定性计算 ──────────────────────────────────────────
@@ -782,8 +704,11 @@ function indentBullets(items) {
 }
 
 // ─── 解析: 一次 chat, LLM 出结构化 JSON → 后端拼装 summary ──────
-export async function parseResume({ buffer, filename, contentType, model }) {
-  const { extractedText, meta: extractionMeta } = await extractResumeTextForLlm({ buffer, filename, contentType });
+export async function parseResume({ buffer, filename, contentType, model, preExtractedText = null, extractionMeta: preMeta = null }) {
+  // 文档层已由 TextIn 抽好 markdown 时直接用(documents.js),否则走旧回退链
+  const { extractedText, meta: extractionMeta } = preExtractedText
+    ? { extractedText: preExtractedText, meta: { extractionSource: preMeta?.provider || "pre-extracted", ...(preMeta || {}) } }
+    : await extractResumeTextForLlm({ buffer, filename, contentType });
   // 简历解析强制走 non-reasoning model — 见 pickParseModel 注释
   const useModel = await pickParseModel(model);
   const prompt = await effectivePrompt();
@@ -824,7 +749,12 @@ export async function parseResume({ buffer, filename, contentType, model }) {
   }
 
   // 方案 B: LLM 只出结构化 JSON, summary 由后端确定性拼装(下面 assembleSummary)
-  const parsed = (result.json && typeof result.json === "object") ? result.json : {};
+  const rawJson = (result.json && typeof result.json === "object") ? result.json : {};
+  // v2:LLM 输出 profile(resume.v1)→ 闸门(PII 白名单 / 词表归一 / 日期反幻觉)→ 映射成旧 16 键 parsed,
+  //     下游 assembleSummary / buildResumeDisplayFields / 旧列写入全部不变;旧 prompt 输出则反向升成最小 profile。
+  const v2 = isProfileShape(rawJson);
+  const { profile, warnings: profileWarnings } = v2 ? sanitizeProfile(rawJson, extractedText) : legacyToProfile(rawJson, extractedText);
+  const parsed = v2 ? profileToLegacy(profile) : rawJson;
 
   // 反幻觉: 校验经历/教育的 period(确定性闸门, 清 LLM 凭空生造/补全的日期)
   if (Array.isArray(parsed.experience)) {
@@ -871,8 +801,16 @@ export async function parseResume({ buffer, filename, contentType, model }) {
   return {
     summary,
     parsed,
-    meta: { ...extractionMeta, model: useModel, usage: result.meta.usage },
+    profile,
+    profileWarnings,
+    extractedText,
+    meta: { ...extractionMeta, model: useModel, usage: result.meta.usage, promptHash: promptHashOf(prompt), profileShape: v2 ? "resume.v1" : "legacy" },
   };
+}
+
+// prompt 内容哈希(评估记录里存,便于追溯"上月 A 这月 B"是否因 prompt 改动)
+function promptHashOf(prompt) {
+  return createHash("sha256").update(String(prompt || "")).digest("hex").slice(0, 16);
 }
 
 // ─── 二次评估: 给已有候选人匹配某个 JD ─────────────────────────
@@ -952,37 +890,16 @@ ${jobDescription || "(未提供)"}`;
 // 输出: { title 候选, description 整段, responsibilities[], requirements[], nice[], benefits[],
 //        employment, salary, levelRange, yearsExpRange, educationRequirement, languageRequirement, meta }
 // 不存 DB — 前端拿到后展示给用户在新建 JD 弹窗里编辑确认,再 POST /jobs 落库
-export async function parseJobDescription({ buffer, filename, contentType, model }) {
-  const file = await uploadFile({ buffer, filename, contentType });
-  const extractedText = await getFileContent(file.id);
+export async function parseJobDescription({ buffer, filename, contentType, model, preExtractedText = null }) {
+  let extractedText = preExtractedText;
+  if (!extractedText) {
+    const file = await uploadFile({ buffer, filename, contentType });
+    extractedText = await getFileContent(file.id);
+  }
   const useModel = await pickModel(model);
 
-  const systemPrompt = `你是 MESA Recruit 的「JD 文件结构化抽取」专家。
-基于下面给出的岗位描述(JD)文件原文,输出严格 JSON,不要 Markdown 包裹,不要额外文字。
-
-JSON 结构(所有字段都必须出现,JD 没明确写的字段返回 null 或 [] 不要省略 key):
-{
-  "title": "岗位标题(短,不超过 30 字)",
-  "description": "JD 完整描述(整段,可包含岗位介绍/职责/要求/福利,2000-8000 字符;直接复用原文要点,允许轻度整理标点)",
-  "responsibilities": ["职责条目, 5-10 条"],
-  "requirements": ["硬性要求条目, 5-10 条"],
-  "nice": ["加分项条目, 0-6 条"],
-  "benefits": ["福利条目, 0-8 条"],
-  "employment": "雇佣类型: 全职 / 兼职 / 实习 / 合同制(JD 没说就 null)",
-  "salary": "薪资范围 如 30K-40K · 16薪(JD 没说就 null)",
-  "levelRange": "职级范围 如 P6-P7(JD 没说就 null)",
-  "yearsExpRange": "工作年限要求 如 5-7 年(JD 没说就 null)",
-  "educationRequirement": "学历要求 如 本科及以上(JD 没说就 null)",
-  "languageRequirement": "语言要求 如 英语 CEFR B2+(JD 没说就 null)"
-}
-
-抽取规则:
-1. 严禁虚构 — JD 原文没明确给出的字段,返回 null(字符串字段)或 [](数组字段),不要凭空补全
-2. title: 优先用 JD 原文的岗位名称;若 JD 标题含公司名前缀(如「字节跳动 - 高级前端工程师」),只保留岗位部分
-3. description: 必须保留 JD 的关键信息,可以重新组织段落让可读性更好,但不要删减实质内容
-4. 列表类字段(responsibilities/requirements/nice/benefits): 每条独立成句,去掉编号前缀("1." "•" "-"),不要 trailing 标点
-5. salary/levelRange/yearsExpRange 等结构化字段: 严格按格式样例返回,不要变体
-6. 全角符号硬要求: 所有 JSON 结构符号必须 ASCII 半角(英文 , : " 等),不能用中文全角(,,:" 等)`;
+  // v2(2026-09-20):同时输出旧展示字段 + jdFacts(jd.v1);admin 可用 kimi.jd_schema_prompt 覆盖
+  const systemPrompt = (await getEffective(SETTING_KEYS.KIMI_JD_PROMPT)) || buildJdFactsPrompt();
 
   const userMsg = `# JD 文件原文(可能含 OCR 噪音)
 
@@ -1036,7 +953,10 @@ ${extractedText}`;
       educationRequirement: typeof j.educationRequirement === "string" ? j.educationRequirement.slice(0, 60) : null,
       languageRequirement: typeof j.languageRequirement === "string" ? j.languageRequirement.slice(0, 100) : null,
     },
-    meta: { fileId: file.id, model: useModel, usage: result.meta.usage, bytesProcessed: file.bytes },
+    jdFacts: sanitizeJdFacts(j.jdFacts, extractedText).facts,
+    jdFactsWarnings: sanitizeJdFacts(j.jdFacts, extractedText).warnings,
+    extractedText,
+    meta: { model: useModel, usage: result.meta.usage, preExtracted: !!preExtractedText },
   };
 }
 
@@ -1058,4 +978,70 @@ export async function ping(apiKey) {
   }
   const data = await res.json();
   return { ok: true, modelsCount: Array.isArray(data?.data) ? data.data.length : 0 };
+}
+
+// ─── 评价模型:Jev 题目措辞补全(只补 instructions / criteria,不动 tier / weight / method)───
+// draft = lib/evaluation/templates.js 生成的 evaluationModel 草稿;返回 { wording: { key: {type, instructions, criteria} } }
+export async function suggestEvaluationWording({ draft, jdFacts, model }) {
+  const useModel = await pickModel(model);
+  const needs = (draft?.requirements || []).filter((r) => r.method && r.method !== "code" && r.method !== "none" && r.tier !== "INFO");
+  if (!needs.length) return { wording: {}, meta: { model: useModel, skipped: true } };
+  const res = await kimiRequest("/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: useModel,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: buildWordingPrompt() },
+        { role: "system", content: `岗位事实(jdFacts):\n${JSON.stringify(jdFacts || {}, null, 0).slice(0, 12000)}` },
+        { role: "user", content: `请为以下条目补写题目措辞(type 已给定):\n${JSON.stringify(needs.map((r) => ({ key: r.key, label: r.label, tier: r.tier, type: r.method === "jev_noul" ? "noul" : r.method === "jev_score" ? "score" : (r.jev?.type || "score"), source: r.source, hint: r.hint || null })), null, 0)}` },
+      ],
+    }),
+  });
+  const data = await res.json();
+  const json = parseLlmJson(data?.choices?.[0]?.message?.content || "", "kimi suggestEvaluationWording");
+  return { wording: json?.wording && typeof json.wording === "object" ? json.wording : {}, meta: { model: useModel, usage: data?.usage } };
+}
+
+// ─── 评估报告:只解释不改分。输入 = 系统已定的 items / hardFilter / dimensions / 分类 + 简历文本 ───
+// 返回 LLM 原始 JSON,引文校验在 lib/evaluation/report.js 做
+export async function generateReport({ evaluation, candidateSummary, resumeText, jobTitle, model }) {
+  const useModel = await pickModel(model);
+  const custom = await getEffective(SETTING_KEYS.KIMI_REPORT_PROMPT);
+  const systemPrompt = custom || buildReportPrompt();
+  const payload = {
+    job: jobTitle,
+    classification: evaluation.classification,
+    overallScore: evaluation.overallScore,
+    reviewPriority: evaluation.reviewPriority,
+    reasons: evaluation.reasons,
+    hardFilter: evaluation.hardFilter,
+    dimensions: evaluation.dimensions,
+    items: (evaluation.items || []).map((i) => ({ reqKey: i.key, label: i.label, tier: i.tier, verdict: i.verdict, normalized: i.normalized, confidence: i.confidence })),
+  };
+  const res = await kimiRequest("/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: useModel,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "system", content: `系统评估结果(已确定,不可更改):\n${JSON.stringify(payload, null, 0)}` },
+        { role: "system", content: `候选人简报:\n${String(candidateSummary || "").slice(0, 6000)}\n\n简历原文(引用证据只能逐字来自这里):\n${String(resumeText || "").slice(0, 14000)}` },
+        { role: "user", content: "请按要求输出 JSON 报告。所有标点 ASCII 半角,不要 trailing comma,不要 markdown code fence。" },
+      ],
+    }),
+  });
+  const data = await res.json();
+  const json = parseLlmJson(data?.choices?.[0]?.message?.content || "", "kimi generateReport");
+  return { report: json, meta: { model: useModel, usage: data?.usage, promptHash: createHash("sha256").update(systemPrompt).digest("hex").slice(0, 16) } };
+}
+
+// ─── JD 文本入口:已有 JD(description/requirements 等拼接文本)→ jdFacts + 旧展示字段 ───
+export async function extractJdFacts({ text, model }) {
+  if (!text || String(text).trim().length < 10) throw Object.assign(new Error("JD 文本过短"), { statusCode: 400, code: "jd_text_too_short" });
+  const r = await parseJobDescription({ preExtractedText: String(text).slice(0, 30000), model });
+  return { jdFacts: r.jdFacts, jdFactsWarnings: r.jdFactsWarnings, job: r.job, meta: r.meta };
 }

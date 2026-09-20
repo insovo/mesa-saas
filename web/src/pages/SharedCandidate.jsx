@@ -24,6 +24,109 @@ import BrandLogo from "../components/BrandLogo.jsx";
 import JdDescModal from "../components/JdDescModal.jsx";
 import { candidateExpText, hasWorkExperience } from "../lib/constants.js";
 
+// ─── 三层评估只读块(公开页):分类 / 维度 / 硬筛 / 逐项 / 面试验证点。evaluation 为空时不渲染 ───
+const PUB_CLASS_TONE = {
+  A: { label: "高匹配", bg: "#DCFCE7", fg: "#15803D" },
+  B: { label: "较匹配", bg: "#DBEAFE", fg: "#1D4ED8" },
+  C: { label: "待复核", bg: "#FEF3C7", fg: "#854D0E" },
+  D: { label: "低匹配", bg: "#F4F7FE", fg: "#707EAE" },
+};
+const PUB_TIER_LABEL = { MUST: "硬性", CORE: "核心", PREFERRED: "加分", BONUS: "额外", STABILITY: "稳定性", INFO: "记录" };
+const PUB_VERDICT_TONE = {
+  满足: { bg: "#DCFCE7", fg: "#15803D" }, 部分满足: { bg: "#FEF3C7", fg: "#854D0E" }, 不满足: { bg: "#FEE2E2", fg: "#B91C1C" },
+  未提及: { bg: "#F4F7FE", fg: "#707EAE" }, 待确认: { bg: "#DBEAFE", fg: "#1D4ED8" },
+};
+const PUB_HF = {
+  PASS: { icon: "check", cls: "bg-green-50 text-green-700" }, FAIL: { icon: "x", cls: "bg-red-50 text-red-600" },
+  UNKNOWN: { icon: "help-circle", cls: "bg-lightPrimary text-gray-600" }, MISMATCH: { icon: "arrow-left-right", cls: "bg-blue-50 text-blue-700" }, IGNORED: { icon: "minus", cls: "bg-lightPrimary text-gray-400" },
+};
+function PublicEvaluation({ evaluation, classification }) {
+  const ev = evaluation && typeof evaluation === "object" ? evaluation : null;
+  if (!ev) return null;
+  const cls = ev.classification || classification;
+  const tone = PUB_CLASS_TONE[cls];
+  const dims = Array.isArray(ev.dimensions) ? ev.dimensions : [];
+  const hf = Array.isArray(ev.hardFilter?.items) ? ev.hardFilter.items : [];
+  const items = Array.isArray(ev.items) ? ev.items : [];
+  const probes = Array.isArray(ev.interviewProbes) ? ev.interviewProbes : [];
+  return (
+    <Card className="p-5 md:p-6">
+      <div className="flex items-center justify-between gap-2 flex-wrap mb-4">
+        <h3 className="title-card flex items-center gap-2">
+          <I name="scan-search" size={18} className="text-brand" />
+          AI 三层评估
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${ev.engine === "jev" ? "bg-brand/10 text-brand" : "bg-lightPrimary text-gray-600"}`}>{ev.engine === "jev" ? "Jev 逐项判定" : "基础评估"}</span>
+        </h3>
+        {tone && <span className="px-3 py-1 rounded-full text-sm font-bold" style={{ background: tone.bg, color: tone.fg }}>{cls} · {tone.label}</span>}
+      </div>
+
+      {dims.length > 0 && (
+        <ul className="space-y-2">
+          {dims.map((d) => (
+            <li key={d.key} className="flex items-center gap-3 text-xs">
+              <span className="w-12 text-gray-600 shrink-0">{PUB_TIER_LABEL[d.key] || d.key}</span>
+              <div className="flex-1 h-2 rounded-full bg-lightPrimary overflow-hidden">
+                <div className="h-full rounded-full" style={{ width: `${d.score == null ? 0 : Math.max(0, Math.min(100, d.score))}%`, background: "linear-gradient(90deg, #868CFF 0%, #422AFB 100%)" }} />
+              </div>
+              <span className="w-10 text-right font-bold text-navy-700">{d.score == null ? "—" : d.score}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {hf.length > 0 && (
+        <div className="mt-5">
+          <h4 className="text-[11px] font-bold uppercase tracking-wide text-gray-500 flex items-center gap-1.5 mb-2"><I name="shield-check" size={12} className="text-brand" /> 硬筛清单</h4>
+          <ul className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+            {hf.map((h, i) => {
+              const t = PUB_HF[h?.result] || PUB_HF.UNKNOWN;
+              return (
+                <li key={h?.key || i} className="flex items-center gap-2 text-xs text-navy-700">
+                  <span className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${t.cls}`}><I name={t.icon} size={11} strokeWidth={3} /></span>
+                  <span className="truncate">{h?.label || "—"}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
+      {items.length > 0 && (
+        <div className="mt-5">
+          <h4 className="text-[11px] font-bold uppercase tracking-wide text-gray-500 flex items-center gap-1.5 mb-2"><I name="list-checks" size={12} className="text-brand" /> 逐项判定</h4>
+          <ul className="divide-y divide-lightPrimary">
+            {items.map((it, i) => {
+              const vt = PUB_VERDICT_TONE[it?.verdict] || PUB_VERDICT_TONE.未提及;
+              return (
+                <li key={it?.key || i} className="py-2 flex items-center gap-2 text-xs">
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-lightPrimary text-gray-600 shrink-0">{PUB_TIER_LABEL[it?.tier] || it?.tier || "—"}</span>
+                  <span className="flex-1 min-w-0 text-navy-700">{it?.label || "—"}</span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0" style={{ background: vt.bg, color: vt.fg }}>{it?.verdict || "—"}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
+      {probes.length > 0 && (
+        <div className="mt-5">
+          <h4 className="text-[11px] font-bold uppercase tracking-wide text-gray-500 flex items-center gap-1.5 mb-2"><I name="message-circle-question" size={12} className="text-brand" /> 重点验证问题</h4>
+          <ol className="space-y-1.5">
+            {probes.map((p, i) => (
+              <li key={i} className="text-xs text-navy-700 flex items-start gap-2 leading-relaxed">
+                <span className="w-4 h-4 rounded bg-lightPrimary text-brand text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">{i + 1}</span>
+                <span>{p?.question || ""}{p?.why && <span className="block text-[10px] text-gray-500">{p.why}</span>}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+      {ev.evaluatedAt && <p className="mt-4 text-[10px] text-gray-500">评估时间 {new Date(ev.evaluatedAt).toLocaleString("zh-CN")}</p>}
+    </Card>
+  );
+}
+
 function fmtExpiresHint(iso) {
   if (!iso) return "永久有效";
   const d = new Date(iso);
@@ -182,10 +285,18 @@ export default function SharedCandidate() {
               <div className="flex flex-col items-center gap-2 px-4 py-3 rounded-2xl bg-lightPrimary">
                 <LiquidLoader size={80} level={c.jdMatch} label={c.jdMatch} />
                 <p className="text-xs text-gray-700 font-bold">JD 匹配度</p>
+                {c.classification && PUB_CLASS_TONE[c.classification] && (
+                  <span className="px-2 py-0.5 rounded-full text-[11px] font-bold" style={{ background: PUB_CLASS_TONE[c.classification].bg, color: PUB_CLASS_TONE[c.classification].fg }}>
+                    {c.classification} · {PUB_CLASS_TONE[c.classification].label}
+                  </span>
+                )}
               </div>
             )}
           </div>
         </Card>
+
+        {/* === 三层评估(只读;evaluation 为空 / jdMatch 模块关闭时不渲染)=== */}
+        <PublicEvaluation evaluation={c.evaluation} classification={c.classification} />
 
         {/* === AI 简报 === */}
         {c.aiSummary && (
