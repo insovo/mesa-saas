@@ -240,7 +240,11 @@ export default function LlmConfig({ className = "", onOpenChange }) {
       <p className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-1.5">{PROMPT_META[settingKey].label}</p>
       <div className="flex items-center gap-2 p-3 bg-white rounded-lg">
         <I name="file-text" size={16} className="text-gray-400" />
-        <span className="text-xs text-gray-700 flex-1">{row(settingKey)?.source === "db" ? "已自定义" : "内置默认"}</span>
+        <span className="text-xs text-gray-700 flex-1">
+          {settingKey === "kimi.prompt" && llm?.promptStatus === "legacy_ignored"
+            ? <span className="text-red-600 font-bold">旧版自定义,已被忽略(请「回退默认」后再自定义)</span>
+            : row(settingKey)?.source === "db" ? "已自定义" : "内置默认"}
+        </span>
         <Button size="sm" variant="ghost" onClick={() => openPromptEditor(settingKey)} icon={<I name="pencil" size={12} />}>查看 / 编辑</Button>
       </div>
     </div>

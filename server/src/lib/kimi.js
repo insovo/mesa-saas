@@ -37,8 +37,25 @@ async function effectiveModel() {
 // 旧形状(生产 DB 自定义 prompt 可能仍是旧版)由 profile/normalize.js legacyToProfile 兼容。
 export const DEFAULT_PROMPT = buildResumePromptV2();
 
+// admin 自定义 prompt 只有在 v2 形状(输出 resume.v1 profile)时才生效;旧版自定义 prompt(生产 DB 曾有 2026-05 版本)
+// 会让 Kimi 按旧 schema 输出 → 项目 / 校园经历 / 证书 / 课程 全部丢失(坑 #56)。旧版一律忽略并告警,UI 通过 promptStatus 提示。
+export function isPromptV2(text) {
+  return typeof text === "string" && text.includes("resume.v1") && /campus/.test(text) && /projects/.test(text);
+}
+let legacyPromptWarned = false;
+export async function promptStatus() {
+  const custom = await getEffective(SETTING_KEYS.KIMI_PROMPT);
+  if (!custom) return "builtin";
+  return isPromptV2(custom) ? "custom" : "legacy_ignored";
+}
 async function effectivePrompt() {
-  return (await getEffective(SETTING_KEYS.KIMI_PROMPT)) || DEFAULT_PROMPT;
+  const custom = await getEffective(SETTING_KEYS.KIMI_PROMPT);
+  if (custom && isPromptV2(custom)) return custom;
+  if (custom && !legacyPromptWarned) {
+    legacyPromptWarned = true;
+    console.warn("[kimi] kimi.prompt 自定义版本不是 v2(缺 resume.v1/campus/projects),已忽略并使用内置 prompt;请在 LLM 配置页回退默认后再自定义");
+  }
+  return DEFAULT_PROMPT;
 }
 
 // Node fetch 默认无 timeout,Kimi 慢时会阻塞 backend 直到上游 nginx 掐断 → 前端看到 502 + 空 body。

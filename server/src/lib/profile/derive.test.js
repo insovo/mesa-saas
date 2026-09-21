@@ -158,3 +158,17 @@ test("profileToLegacy 兼容旧 16 键 + legacyToProfile 反向", () => {
   assert.equal(back.experience[0].current, true);
   assert.equal(back.education[0].endDate, "2019-06");
 });
+
+test("legacyToProfile 兼容更早版本项目键 + 占位串归 null", () => {
+  const { profile } = legacyToProfile({
+    name: "郑凯戈", location: "未提供",
+    projects: [{ name: "国家重点研发计划项目", role: "核心成员", period: "2021.09 – 2023.06", description: "负责护理床硬件电路", achievements: ["完成项目验收"] }],
+  }, "2021.09 2023.06");
+  assert.equal(profile.identity.currentCity, null);
+  assert.equal(profile.projects.length, 1);
+  assert.equal(profile.projects[0].name, "国家重点研发计划项目");
+  assert.equal(profile.projects[0].role, "核心成员");
+  assert.equal(profile.projects[0].startDate, "2021-09");
+  assert.deepEqual(profile.projects[0].duties, ["负责护理床硬件电路"]);
+  assert.deepEqual(profile.projects[0].outcomes, ["完成项目验收"]);
+});

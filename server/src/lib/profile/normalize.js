@@ -14,7 +14,12 @@ export function isProfileShape(json) {
 }
 
 // ─── 基础工具 ───
-const str = (v, max = 300) => (v == null ? null : String(v).trim().slice(0, max) || null);
+const PLACEHOLDER_RE = /^(未提供|未解析到|未提供或未解析到|未知|无|暂无|null|none|n\/a|-)$/i;
+const str = (v, max = 300) => {
+  if (v == null) return null;
+  const t = String(v).trim().slice(0, max);
+  return !t || PLACEHOLDER_RE.test(t) ? null : t;
+};
 const arrStr = (v, max = 200, limit = 40) => (Array.isArray(v) ? v.map((x) => str(x, max)).filter(Boolean).slice(0, limit) : []);
 const bool = (v) => (v === true ? true : v === false ? false : null);
 const int = (v, lo = 0, hi = 100000) => {
@@ -318,7 +323,14 @@ export function legacyToProfile(parsed, sourceText = "") {
     intent: { targetTitles: p.appliedFor ? [p.appliedFor] : [] },
     education: arrObj(p.educationHistory).map((e) => ({ school: e.school, degree: e.degree, major: e.major, startDate: splitPeriod(e.period)[0], endDate: splitPeriod(e.period)[1] })),
     experience: arrObj(p.experience).map((e) => ({ company: e.company, title: e.title, location: e.location, startDate: splitPeriod(e.period)[0], endDate: splitPeriod(e.period)[1], teamSize: e.reports, duties: e.duties, achievements: e.achievements })),
-    projects: arrObj(p.projects).map((x) => ({ name: null, duties: x.responsibility ? [x.responsibility] : [], outcomes: x.output ? [x.output] : [] })),
+    // 旧 prompt 各版本的项目键不一:方案 B {responsibility,output};更早版本 {name/title, role, description/content/summary, achievements/result}
+    projects: arrObj(p.projects).map((x) => ({
+      name: x.name ?? x.title ?? x.project ?? null,
+      role: x.role ?? null,
+      startDate: splitPeriod(x.period)[0], endDate: splitPeriod(x.period)[1],
+      duties: [x.responsibility, x.description, x.content, x.summary, ...(Array.isArray(x.duties) ? x.duties : []), ...(Array.isArray(x.responsibilities) ? x.responsibilities : [])].filter(Boolean),
+      outcomes: [x.output, x.result, x.achievement, ...(Array.isArray(x.achievements) ? x.achievements : []), ...(Array.isArray(x.outcomes) ? x.outcomes : [])].filter(Boolean),
+    })),
     skills: { professional: arrStr(p.skills).map((s) => ({ name: s })) },
     languages: arrObj(p.languages).map((l) => ({ name: l.name, levelRaw: l.level, level: null })),
     awards: p.awards,

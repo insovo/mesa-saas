@@ -8,7 +8,7 @@
 //   4. 评估明细在 CandidateEvaluation;Candidate 旧列(jdMatch/risks/...)是当前评估的快照,旧页面零改动
 
 import { GetObjectCommand } from "@aws-sdk/client-s3";
-import { parseJobDescription, isKimiConfigured, listModels } from "../lib/kimi.js";
+import { parseJobDescription, isKimiConfigured, listModels, promptStatus } from "../lib/kimi.js";
 import { createTask, getTask } from "../lib/parseTaskStore.js";
 import { runPipeline, streamToBuffer } from "../lib/evaluation/pipeline.js";
 import { extractDocument } from "../lib/documents.js";
@@ -103,6 +103,7 @@ export default async function resumesRoutes(app) {
       configured,
       mode: "system",
       availableModels,
+      promptStatus: await promptStatus(), // builtin | custom | legacy_ignored(旧版自定义已被忽略)
       providers: {
         kimi: { configured },
         textin: { configured: textinConfigured, enabled: textinEnabled },

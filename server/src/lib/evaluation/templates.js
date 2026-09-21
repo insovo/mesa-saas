@@ -123,7 +123,8 @@ export function draftEvaluationModel(jdFacts, { templateId = null, defaultWeight
   }
   for (const [i, x] of (f.experienceYears?.industry || []).entries()) {
     const c = cfg(tpl, "yearsIndustry");
-    const label = `${x.raw || displayName("industries", x.industryTag)}行业${x.min != null ? ` ≥${x.min} 年` : "经验"}`;
+    const base = x.raw || displayName("industries", x.industryTag);
+    const label = `${/行业$/.test(base) ? base : `${base}行业`}${x.min != null ? ` ≥${x.min} 年` : "经验"}`;
     push({ key: `years_ind_${slug(x.industryTag || x.raw)}`, label, tier: c.tier, method: x.industryTag ? "code_then_jev" : "jev_score", source: `experienceYears.industry[${i}]`, weight: c.weight,
       code: x.industryTag ? { field: `derived.industryYears.${x.industryTag}`, op: ">=", value: x.min ?? 0.5 } : undefined,
       jev: defaultScore(`${x.raw || displayName("industries", x.industryTag)}行业经验`) });
