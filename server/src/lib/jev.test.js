@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { validateAnswers, estimateTokens, cacheKey } from "./jev.js";
 import { cleanMarkdown } from "./textin.js";
-import { isPromptV2, DEFAULT_PROMPT } from "./kimi.js";
+import { isPromptV2, DEFAULT_PROMPT, canDisableThinking } from "./kimi.js";
 import { deepStripNul } from "./evaluation/pipeline.js";
 
 test("validateAnswers 校验题目覆盖与数值范围", () => {
@@ -56,4 +56,11 @@ test("NUL 字节剥离:cleanMarkdown 与 deepStripNul(Postgres 22021 防护)", (
   const out = deepStripNul({ a: "x\u0000y", b: ["\u0000z", 1, null], c: { d: "ok", e: "\u0000" }, f: new Date(0) });
   assert.deepEqual({ ...out, f: undefined }, { a: "xy", b: ["z", 1, null], c: { d: "ok", e: "" }, f: undefined });
   assert.ok(out.f instanceof Date);
+});
+
+test("canDisableThinking:素 k2.x 模型可关思考,-code/-highspeed 变体不可", () => {
+  assert.equal(canDisableThinking("kimi-k2.6"), true);
+  assert.equal(canDisableThinking("kimi-k2.7-code-highspeed"), false);
+  assert.equal(canDisableThinking("kimi-k2.7-code"), false);
+  assert.equal(canDisableThinking("moonshot-v1-32k"), false);
 });

@@ -70,7 +70,27 @@ function pickTimeout(path) {
 // 应该重试的 Kimi 上游错误:429 速率限制 + 5xx 服务端临时故障(包括 engine_overloaded)
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 
+// ─── 思考模式控制(2026-09-21,坑 #57)────────────────────────────
+// Kimi K2.x 默认开启 thinking,推理 token 按输出计费且占 70-90%(实测 k2.7-code-highspeed 一份简历 5.2K 输出中 3.9K 是 reasoning,
+// k2.6 开启思考 8.6K 输出 / 235s;关闭后 1.0K / 25s,抽取结果一致)。简历 / JD / 报告都是抽取式任务,不需要 reasoning。
+// 规则:形如 kimi-k2.6 这类"素"模型可传 thinking:{type:"disabled"};-code / -highspeed / -thinking 变体不接受(400 invalid thinking),
+// 首次被拒即记入 noThinkingParam 并重试,之后不再注入;resolveModel 对这类模型按"推理模型"对待。
+const THINKING_TOGGLE_RE = /^kimi-k2\.\d+$/i;
+const noThinkingParam = new Set();
+export function canDisableThinking(model) {
+  return THINKING_TOGGLE_RE.test(String(model || "")) && !noThinkingParam.has(model);
+}
+function injectThinkingOff(options) {
+  if (typeof options.body !== "string") return options;
+  try {
+    const body = JSON.parse(options.body);
+    if (!body || body.thinking || !canDisableThinking(body.model)) return options;
+    return { ...options, body: JSON.stringify({ ...body, thinking: { type: "disabled" } }), _thinkingOff: body.model };
+  } catch { return options; }
+}
+
 async function kimiRequest(path, options = {}, attempt = 0) {
+  if (path.includes("/chat/completions") && !options._thinkingChecked) options = { ...injectThinkingOff(options), _thinkingChecked: true };
   const apiKey = await effectiveApiKey();
   if (!apiKey || apiKey.startsWith("__")) {
     // 424 Failed Dependency 而非 503 — Cloudflare 替换 5xx HTML 错误页,4xx 透传 JSON body
@@ -88,6 +108,13 @@ async function kimiRequest(path, options = {}, attempt = 0) {
     });
     if (!res.ok) {
       const body = await res.text().catch(() => "");
+      // 模型不接受 thinking 参数 → 记住并去掉参数重试一次(不计入退避次数)
+      if (res.status === 400 && options._thinkingOff && /invalid thinking/i.test(body)) {
+        noThinkingParam.add(options._thinkingOff);
+        console.warn(`[kimi] model ${options._thinkingOff} rejects thinking=disabled, retrying without (reasoning tokens will be billed)`);
+        const stripped = JSON.parse(options.body); delete stripped.thinking;
+        return kimiRequest(path, { ...options, body: JSON.stringify(stripped), _thinkingOff: undefined }, attempt);
+      }
       // 上游过载 → 自动重试(指数 backoff: 1.5s, 4s, 9s, 总 ~15s, 不超 backend AbortController 90s)
       if (RETRYABLE_STATUS.has(res.status) && attempt < 3) {
         const delayMs = Math.round(1500 * Math.pow(2.4, attempt));
@@ -306,24 +333,26 @@ function parseLlmJson(raw, context = "kimi") {
 // ─── 模型解析:配置 / 请求的模型必须在账号可用列表里,否则按偏好回退 ──────
 // 2026-09:Moonshot 已下线 moonshot-v1-* 系列,账号列表只剩 kimi-k2.6 / kimi-k2.7-code(-highspeed) / kimi-k3。
 // 旧逻辑硬编码回退 "moonshot-v1-32k" 会直接 404,这里改为「以 /v1/models 实际列表为准」。
-const REASONING_RE = /thinking|reasoner/i;
+const REASONING_RE = /thinking|reasoner|highspeed|-code/i; // -code / -highspeed 变体不能关思考,抽取任务视为推理模型
+const isReasoningModel = (m) => REASONING_RE.test(String(m || "")) || (THINKING_TOGGLE_RE.test(String(m || "")) && noThinkingParam.has(m));
 async function availableModels() {
   try { return await listModels(); } catch { return []; }
 }
 function preferFromList(ids) {
-  const prefs = [/highspeed/i, /^kimi-k2\.6/i, /^kimi-k2\.7-code$/i, /^moonshot-v1-32k$/i, /^moonshot-v1/i, /^kimi-k2/i, /^kimi-k3/i];
+  // 可关闭思考的素模型(kimi-k2.6 等)> moonshot-v1 > 其它;-highspeed / -code 只在别无选择时用
+  const prefs = [/^kimi-k2\.\d+$/i, /^moonshot-v1-32k$/i, /^moonshot-v1/i, /highspeed/i, /^kimi-k2\.\d+-code$/i, /^kimi-k2/i, /^kimi-k3/i];
   for (const re of prefs) {
-    const m = ids.find((id) => re.test(id) && !REASONING_RE.test(id));
+    const m = ids.find((id) => re.test(id) && !isReasoningModel(id));
     if (m) return m;
   }
-  return ids.find((id) => !REASONING_RE.test(id)) || ids[0] || null;
+  return ids.find((id) => /highspeed/i.test(id)) || ids[0] || null;
 }
 async function resolveModel(requested, { avoidReasoning = false } = {}) {
   const ids = await availableModels();
   const avail = (m) => !!m && (!ids.length || ids.includes(m));
-  if (requested && avail(requested) && !(avoidReasoning && REASONING_RE.test(requested))) return requested;
+  if (requested && avail(requested) && !(avoidReasoning && isReasoningModel(requested))) return requested;
   const configured = await effectiveModel();
-  if (avail(configured) && !(avoidReasoning && REASONING_RE.test(configured))) return configured;
+  if (avail(configured) && !(avoidReasoning && isReasoningModel(configured))) return configured;
   return preferFromList(ids) || configured || "moonshot-v1-32k";
 }
 async function pickModel(requested) {

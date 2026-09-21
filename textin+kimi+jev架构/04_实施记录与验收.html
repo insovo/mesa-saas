@@ -486,8 +486,16 @@ legacy)→ 用 SQL 对比分类分布 → 改 <code>jev.mode=primary</code>(sett
 </ol>
 <h2 id="成本与限制">6. 成本与限制</h2>
 <ul>
-<li>每份简历:TextIn ≈ 0.05-0.25 T币;Kimi 结构化 ≈ 8-12K token;Jev ≈ 5K
-token ≈ $0.0002;报告 ≈ 6K token(仅 A/B 自动)。</li>
+<li>每份简历:TextIn ≈ 0.05-0.25 T币;Kimi 结构化 ≈ 4.7K
+输入(前缀缓存命中约 4.1K)+ <strong>1.0K
+输出</strong>(<code>kimi-k2.6</code> 关闭思考;若落到不能关思考的
+<code>-highspeed</code> 变体则输出 5K+,其中 75% 是 reasoning,坑 #57);Jev
+≈ 5K token ≈ $0.0002;报告 ≈ 6K 输入 + 1-2K 输出(仅 A/B 自动);JD 事实抽取
++ 措辞每岗位一次 ≈ 8K 输入。</li>
+<li>与旧流水线对比:旧 = 1 次抽取(约 2.7K prompt)+ 1 次 JD 联评;新 = 1
+次抽取(11K prompt,但缓存命中后增量很小)+ Jev(不走 Kimi)+ 报告(A/B
+时)。关闭思考后 Kimi 输出 token
+与旧流水线同量级;真正的增量是首次评估某岗位时的 JD 建模两次调用。</li>
 <li>Jev state
 默认脱敏(姓名/电话/邮箱/链接/身份证行),<code>eval.pii_strip=false</code>
 需 admin;TextIn 必须收原文件 → 隐私政策与交付文档需补第三方处理者。</li>
