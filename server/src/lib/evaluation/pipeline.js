@@ -74,6 +74,19 @@ export async function streamToBuffer(stream) {
 }
 const E = (message, statusCode, code) => Object.assign(new Error(message), { statusCode, code });
 
+// Postgres text / jsonb 都拒收 \u0000(22021 invalid byte sequence)。TextIn / Kimi 输出偶带 NUL,
+// 落库前对所有字符串(含 JSON 深层)统一剥离。纯函数,导出供单测。
+export function deepStripNul(v) {
+  if (typeof v === "string") return v.includes("\u0000") ? v.replace(/\u0000/g, "") : v;
+  if (Array.isArray(v)) return v.map(deepStripNul);
+  if (v && typeof v === "object" && !(v instanceof Date)) {
+    const out = {};
+    for (const [k, x] of Object.entries(v)) out[k] = deepStripNul(x);
+    return out;
+  }
+  return v;
+}
+
 async function stage(app, taskId, name, patch) {
   const t = await updateTask(app, taskId, {});
   const stages = { ...(t?.stages || {}), [name]: { ...((t?.stages || {})[name] || {}), ...patch } };
@@ -208,7 +221,7 @@ async function ensureEvaluationModel(app, job) {
   }
   const updated = await app.prisma.job.update({
     where: { id: job.id },
-    data: { jdFacts, jdFactsVersion: jdFacts.schemaVersion || "jd.v1", evaluationModel: model, evaluationModelVersion: { increment: 1 }, evaluationModelUpdatedAt: new Date(), evaluationModelSource: source },
+    data: { jdFacts: deepStripNul(jdFacts), jdFactsVersion: jdFacts.schemaVersion || "jd.v1", evaluationModel: deepStripNul(model), evaluationModelVersion: { increment: 1 }, evaluationModelUpdatedAt: new Date(), evaluationModelSource: source },
   });
   return { model: updated.evaluationModel, job: updated };
 }
@@ -416,6 +429,7 @@ export async function runPipeline(app, taskId, opts) {
           evaluation = { ...current, reportPolicy: "auto_all" };
           const rep = await reportStage(app, taskId, { evaluation, summary, markdown: ext.markdown, detail: ext.detail, jobTitle: job.title, model, force: true });
           report = rep.report; reportStatus = rep.reportStatus;
+          report = deepStripNul(report);
           const updatedEval = await app.prisma.candidateEvaluation.update({ where: { id: current.id }, data: { report, reportStatus } });
           const updatedCand = await app.prisma.candidate.update({ where: { id: candidateId }, data: { ...snapshotFields(evaluation, report), parsingStartedAt: null } });
           await markDone(app, taskId, { candidate: withDerivedCandidate(updatedCand), match: matchShape(evaluation, report), evaluation: { id: updatedEval.id, classification: evaluation.classification, overallScore: evaluation.overallScore, engine: evaluation.engine, reportStatus } });
@@ -433,7 +447,11 @@ export async function runPipeline(app, taskId, opts) {
       }
     }
 
-    // 5) 落库(事务)
+    // 5) 落库(事务)— 先剥离 NUL(坑 #54)
+    if (fields) fields = deepStripNul(fields);
+    if (evaluation) evaluation = deepStripNul(evaluation);
+    if (shadowEval) shadowEval = deepStripNul(shadowEval);
+    if (report) report = deepStripNul(report);
     const now = new Date();
     const result = await app.prisma.$transaction(async (tx) => {
       let row;
@@ -485,7 +503,7 @@ export async function runPipeline(app, taskId, opts) {
 // 事务内版本的 ResumeParse 持久化(raw JSON 上传 R2 在事务外已不可行,这里先传再写行)
 async function persistResumeParseTx(tx, app, candidateId, attachmentKey, ext) {
   const rawKey = ext.raw ? await putRawToR2(app, `parses/${candidateId}/${ext.sha}.json`, ext.raw) : null;
-  const md = String(ext.markdown || "");
+  const md = String(ext.markdown || "").replace(/\u0000/g, "");
   const row = await tx.resumeParse.upsert({
     where: { candidateId_fileSha256_provider: { candidateId, fileSha256: ext.sha, provider: ext.provider } },
     update: { markdown: md.slice(0, MARKDOWN_MAX), truncated: md.length > MARKDOWN_MAX, rawResultKey: rawKey, providerVersion: ext.providerVersion, pageCount: ext.pageCount ?? null, durationMs: ext.durationMs ?? null, charCount: md.length, attachmentKey },

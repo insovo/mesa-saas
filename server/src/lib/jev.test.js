@@ -4,6 +4,7 @@ import test from "node:test";
 import { validateAnswers, estimateTokens, cacheKey } from "./jev.js";
 import { cleanMarkdown } from "./textin.js";
 import { isPromptV2, DEFAULT_PROMPT } from "./kimi.js";
+import { deepStripNul } from "./evaluation/pipeline.js";
 
 test("validateAnswers 校验题目覆盖与数值范围", () => {
   const questions = {
@@ -48,4 +49,11 @@ test("isPromptV2:内置 prompt 为 v2,旧版自定义 prompt 被识别为非 v2"
   assert.equal(isPromptV2(DEFAULT_PROMPT), true);
   assert.equal(isPromptV2("# Role: 简历信息提取专家\n用 JSON 输出 name/skills/educationHistory"), false);
   assert.equal(isPromptV2(null), false);
+});
+
+test("NUL 字节剥离:cleanMarkdown 与 deepStripNul(Postgres 22021 防护)", () => {
+  assert.equal(cleanMarkdown("李明\u0000工程师"), "李明工程师");
+  const out = deepStripNul({ a: "x\u0000y", b: ["\u0000z", 1, null], c: { d: "ok", e: "\u0000" }, f: new Date(0) });
+  assert.deepEqual({ ...out, f: undefined }, { a: "xy", b: ["z", 1, null], c: { d: "ok", e: "" }, f: undefined });
+  assert.ok(out.f instanceof Date);
 });

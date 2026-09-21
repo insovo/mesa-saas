@@ -724,7 +724,7 @@ function indentBullets(items) {
 export async function parseResume({ buffer, filename, contentType, model, preExtractedText = null, extractionMeta: preMeta = null }) {
   // 文档层已由 TextIn 抽好 markdown 时直接用(documents.js),否则走旧回退链
   const { extractedText, meta: extractionMeta } = preExtractedText
-    ? { extractedText: preExtractedText, meta: { extractionSource: preMeta?.provider || "pre-extracted", ...(preMeta || {}) } }
+    ? { extractedText: String(preExtractedText).replace(/\u0000/g, ""), meta: { extractionSource: preMeta?.provider || "pre-extracted", ...(preMeta || {}) } }
     : await extractResumeTextForLlm({ buffer, filename, contentType });
   // 简历解析强制走 non-reasoning model — 见 pickParseModel 注释
   const useModel = await pickParseModel(model);
