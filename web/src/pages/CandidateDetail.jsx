@@ -773,24 +773,27 @@ function EvaluationCard({ evaluation, history, candidate, jobs, matching, report
               <h4 className="text-[11px] font-bold uppercase tracking-wide text-[#A3AED0] flex items-center gap-1.5 mb-2">
                 <I name="list-checks" size={12} className="text-[#422AFB]" /> 逐项判定
               </h4>
-              <ul className="divide-y divide-[#F4F7FE]">
-                {items.map((it) => (
-                  <li key={it.key} className="py-2 flex items-start gap-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
+              {/* 宽表防串行:行号 + 斑马纹 + 悬停整行高亮 + 判定色左边条 + 标签→结果点线引导(目录页式) */}
+              <ul className="space-y-0.5">
+                {items.map((it, i) => {
+                  const tone = VERDICT_TONE[it.verdict] || VERDICT_TONE.未提及;
+                  const ev = evidenceByKey[it.key];
+                  return (
+                    <li key={it.key} className="group rounded-lg px-2 py-1.5 odd:bg-[#F8F9FF] hover:bg-[#EEF0FF] transition-colors" style={{ boxShadow: `inset 3px 0 0 ${tone.fg}` }}>
+                      <div className="flex items-center gap-2">
+                        <span className="w-5 shrink-0 text-right text-[10px] tabular-nums text-[#A3AED0] group-hover:text-[#422AFB]">{i + 1}</span>
                         <TierChip tier={it.tier} />
-                        <span className="text-xs font-medium text-[#1B254B]">{it.label}</span>
+                        <span className="text-xs font-medium text-[#1B254B] shrink min-w-0 truncate" title={it.label}>{it.label}</span>
+                        <span aria-hidden className="flex-1 min-w-[16px] border-b border-dotted border-[#C9D0E6] group-hover:border-[#422AFB]/40 translate-y-[1px]" />
+                        <VerdictChip verdict={it.verdict} />
+                        <span className="text-[10px] text-[#A3AED0] w-9 text-right shrink-0 tabular-nums" title={it.source === "code" ? "规则判定" : it.source === "jev" ? "Jev 判定置信度" : "未判定"}>
+                          {it.source === "jev" && typeof it.confidence === "number" ? `${Math.round(it.confidence * 100)}%` : it.source === "code" ? "规则" : "—"}
+                        </span>
                       </div>
-                      <EvidenceQuote evidence={evidenceByKey[it.key]} />
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <VerdictChip verdict={it.verdict} />
-                      <span className="text-[10px] text-[#A3AED0] w-9 text-right" title={it.source === "code" ? "规则判定" : it.source === "jev" ? "Jev 判定置信度" : "未判定"}>
-                        {it.source === "jev" && typeof it.confidence === "number" ? `${Math.round(it.confidence * 100)}%` : it.source === "code" ? "规则" : "—"}
-                      </span>
-                    </div>
-                  </li>
-                ))}
+                      {ev && <div className="pl-7"><EvidenceQuote evidence={ev} /></div>}
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           )}
