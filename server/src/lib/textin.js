@@ -83,6 +83,7 @@ async function retry(url, opts, reason) {
 export function cleanMarkdown(md) {
   if (typeof md !== "string") return "";
   return md
+    .replace(/\u0000/g, "")                   // NUL 字节:Postgres text/jsonb 拒收(生产首例即触发 22021)
     .replace(/!\[[^\]]*]\([^)]*\)/g, "")     // 图片引用(get_image=none 一般不会有,兜底)
     .replace(/\r\n?/g, "\n")
     .replace(/[ \t]+\n/g, "\n")
