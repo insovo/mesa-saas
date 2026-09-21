@@ -425,11 +425,11 @@ export default function Upload() {
       source: trimmedSource || "自动上传",
       attachment: r2Key || file.name,
       tags: ["待解析"],
-      skills: [],
+      skills: "",
       risks: [],
       highlights: [],
-      experience: [],
-      educationHistory: [],
+      experience: "",
+      educationHistory: "",
     };
     return resources.candidates.create(fallbackPayload);
   }

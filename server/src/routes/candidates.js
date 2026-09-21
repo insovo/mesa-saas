@@ -42,11 +42,13 @@ const CANDIDATE_BODY = {
     parser: { type: "string", maxLength: 50, nullable: true },
     parserConfidence: { type: "integer", minimum: 0, maximum: 100, nullable: true },
     tags: { type: "array", items: { type: "string" } },
-    skills: { type: "array", items: { type: "string" } },
+    // skills/experience/educationHistory 列自 resume_fields_to_markdown 起是 markdown 字符串;
+    // 兼容旧客户端仍传数组(Upload 降级入库曾传 []),handler 里统一转 bullet 字符串,避免 Prisma "Expected String" 500
+    skills: { type: ["string", "array", "null"], items: { type: "string" } },
     risks: { type: "array", items: { type: "string" } },
     highlights: { type: "array", items: { type: "string" } },
-    experience: { type: "array" },
-    educationHistory: { type: "array" },
+    experience: { type: ["string", "array", "null"] },
+    educationHistory: { type: ["string", "array", "null"] },
     attachment: { type: "string", maxLength: 500, nullable: true },
     aiSummary: { type: "string", maxLength: 50000, nullable: true },
     jobId: { type: "string", format: "uuid", nullable: true },
@@ -112,6 +114,19 @@ const LIST_QUERY = {
     take: { type: "integer", minimum: 1, maximum: 200, default: 50 },
   },
 };
+
+
+// 数组 → markdown bullet 字符串(列类型为 text);字符串原样;null/undefined 保持
+function normalizeMarkdownFields(data) {
+  for (const k of ["skills", "experience", "educationHistory"]) {
+    if (!Object.prototype.hasOwnProperty.call(data, k)) continue;
+    const v = data[k];
+    if (Array.isArray(v)) {
+      data[k] = v.map((x) => (x && typeof x === "object" ? Object.values(x).filter((y) => typeof y === "string" && y.trim()).join(" ") : String(x ?? ""))).map((x) => x.trim()).filter(Boolean).map((x) => `- ${x}`).join("\n").slice(0, 5000);
+    }
+  }
+  return data;
+}
 
 export default async function candidatesRoutes(app) {
   app.addHook("preHandler", app.authenticate);
@@ -181,6 +196,7 @@ export default async function candidatesRoutes(app) {
   app.post("/", { schema: { body: { ...CANDIDATE_BODY, required: ["name"] } } }, async (req, reply) => {
     const ownerId = req.user.sub;
     const data = { ...req.body, ownerId };
+    normalizeMarkdownFields(data);
     if (data.pushedAt) data.pushedAt = new Date(data.pushedAt);
     delete data.profileCompletion;
     const created = await app.prisma.candidate.create({ data });
@@ -198,6 +214,7 @@ export default async function candidatesRoutes(app) {
 
     const { id } = req.params;
     const data = { ...req.body };
+    normalizeMarkdownFields(data);
     if (data.pushedAt) data.pushedAt = new Date(data.pushedAt);
     delete data.profileCompletion;
 

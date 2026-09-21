@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { validateAnswers, estimateTokens, cacheKey } from "./jev.js";
 import { cleanMarkdown } from "./textin.js";
+import { deepStripNul } from "./evaluation/pipeline.js";
 
 test("validateAnswers 校验题目覆盖与数值范围", () => {
   const questions = {
@@ -41,4 +42,11 @@ test("cleanMarkdown 去图片引用与多余空行", () => {
   assert.ok(!out.includes("\r"));
   assert.ok(!out.includes("\n\n\n\n"));
   assert.ok(out.endsWith("工作经历"));
+});
+
+test("NUL 字节剥离:cleanMarkdown 与 deepStripNul(Postgres 22021 防护)", () => {
+  assert.equal(cleanMarkdown("李明\u0000工程师"), "李明工程师");
+  const out = deepStripNul({ a: "x\u0000y", b: ["\u0000z", 1, null], c: { d: "ok", e: "\u0000" }, f: new Date(0) });
+  assert.deepEqual({ ...out, f: undefined }, { a: "xy", b: ["z", 1, null], c: { d: "ok", e: "" }, f: undefined });
+  assert.ok(out.f instanceof Date);
 });
