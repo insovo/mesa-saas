@@ -94,13 +94,16 @@ function PublicEvaluation({ evaluation, classification }) {
       {items.length > 0 && (
         <div className="mt-5">
           <h4 className="text-[11px] font-bold uppercase tracking-wide text-gray-500 flex items-center gap-1.5 mb-2"><I name="list-checks" size={12} className="text-brand" /> 逐项判定</h4>
-          <ul className="divide-y divide-lightPrimary">
+          {/* 宽表防串行:行号 + 斑马纹 + 悬停高亮 + 判定色左边条 + 点线引导(与详情页一致) */}
+          <ul className="space-y-0.5">
             {items.map((it, i) => {
               const vt = PUB_VERDICT_TONE[it?.verdict] || PUB_VERDICT_TONE.未提及;
               return (
-                <li key={it?.key || i} className="py-2 flex items-center gap-2 text-xs">
+                <li key={it?.key || i} className="group rounded-lg px-2 py-1.5 flex items-center gap-2 text-xs odd:bg-[#F8F9FF] hover:bg-[#EEF0FF] transition-colors" style={{ boxShadow: `inset 3px 0 0 ${vt.fg}` }}>
+                  <span className="w-5 shrink-0 text-right text-[10px] tabular-nums text-gray-400 group-hover:text-brand">{i + 1}</span>
                   <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-lightPrimary text-gray-600 shrink-0">{PUB_TIER_LABEL[it?.tier] || it?.tier || "—"}</span>
-                  <span className="flex-1 min-w-0 text-navy-700">{it?.label || "—"}</span>
+                  <span className="shrink min-w-0 truncate text-navy-700" title={it?.label || ""}>{it?.label || "—"}</span>
+                  <span aria-hidden className="flex-1 min-w-[16px] border-b border-dotted border-[#C9D0E6] group-hover:border-brand/40 translate-y-[1px]" />
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0" style={{ background: vt.bg, color: vt.fg }}>{it?.verdict || "—"}</span>
                 </li>
               );
