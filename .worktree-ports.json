@@ -36,6 +36,15 @@
       "backend": 3021,
       "frontend": 5193,
       "since": "2026-09-20"
+    },
+    {
+      "slot": 3,
+      "name": "claude-md-trim",
+      "path": ".worktrees/docs/claude-md-trim",
+      "branch": "docs/claude-md-trim",
+      "backend": 3031,
+      "frontend": 5203,
+      "since": "2026-10-07"
     }
   ]
 }
