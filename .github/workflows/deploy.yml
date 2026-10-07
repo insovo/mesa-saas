@@ -133,6 +133,12 @@ jobs:
               docker compose build backend frontend lark-ingest
             fi
 
+            # 一次性修复(hotfix for #221):校招迁移 20261007161233_campus_module 曾在生产失败并被 Prisma 记为 failed,
+            # 不先标记 rolled-back 任何镜像的 `migrate deploy` 都会被 P3009 挡住。已成功上线一次后请删除本段。
+            echo "[deploy] resolving failed campus migration (one-off)..."
+            docker compose run --rm --no-deps backend npx prisma migrate resolve --rolled-back 20261007161233_campus_module \
+              || echo "[deploy] migrate resolve skipped (no failed migration to roll back)"
+
             echo "[deploy] applying compose (--pull missing 保留 postgres/redis 现有镜像不重拉)..."
             # backend Dockerfile CMD 启动时会自动跑 `prisma migrate deploy`,无需额外 exec
             docker compose up -d --remove-orphans --pull missing
