@@ -184,6 +184,9 @@ export const resources = {
     updateSessionJob: (id, sjId, body) => api.patch(`/campus/sessions/${id}/jobs/${sjId}`, body).then((r) => r.data.item),
     removeSessionJob: (id, sjId) => api.delete(`/campus/sessions/${id}/jobs/${sjId}`),
     reorderSessionJobs: (id, ids) => api.post(`/campus/sessions/${id}/jobs/reorder`, { ids }).then((r) => r.data),
+    createSessionJob: (id, body) => api.post(`/campus/sessions/${id}/jobs/new`, body).then((r) => r.data.item), // 新建 JD + 挂到专场
+    updateSessionJobJd: (id, sjId, body) => api.patch(`/campus/sessions/${id}/jobs/${sjId}/job`, body).then((r) => r.data.item), // 编辑 Job 的 JD 字段
+    generateSessionJobModel: (id, sjId) => api.post(`/campus/sessions/${id}/jobs/${sjId}/evaluation-model`, {}, { timeout: LONG_TIMEOUT }).then((r) => r.data.item),
     ledger: (id, params) => api.get(`/campus/sessions/${id}/ledger`, { params }).then((r) => r.data),
     exportLedger: (id, params) => api.get(`/campus/sessions/${id}/ledger/export.xlsx`, { params, responseType: "blob" }),
     createApplicant: (id, body) => api.post(`/campus/sessions/${id}/applicants`, body).then((r) => r.data.applicant),

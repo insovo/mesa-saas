@@ -7,6 +7,7 @@ import {
   hasModule,
 } from "../lib/permissions.js";
 import { sanitizeJdFacts } from "../lib/jd/normalize.js";
+import { jobText } from "../lib/jd/jobText.js";
 import { draftEvaluationModel, validateEvaluationModel, listTemplates, EVAL_SCHEMA_VERSION } from "../lib/evaluation/templates.js";
 import { extractJdFacts, suggestEvaluationWording, isKimiConfigured } from "../lib/kimi.js";
 import { lintQuestion } from "../lib/evaluation/questions.js";
@@ -192,10 +193,6 @@ export default async function jobsRoutes(app) {
     const job = await app.prisma.job.findFirst({ where: scopeWhere ? { AND: [idWhere, scopeWhere] } : idWhere });
     if (!job) { reply.code(404).send({ error: "not_found" }); return null; }
     return job;
-  }
-  function jobText(job) {
-    return [job.title, job.description, ...(job.responsibilities || []).map((r) => `职责:${r}`), ...(job.requirements || []).map((r) => `要求:${r}`), ...(job.nice || []).map((r) => `优先:${r}`),
-      job.educationRequirement && `学历:${job.educationRequirement}`, job.yearsExpRange && `年限:${job.yearsExpRange}`, job.languageRequirement && `语言:${job.languageRequirement}`, job.location && `地点:${job.location}`, job.level && `职级:${job.level}`].filter(Boolean).join("\n");
   }
 
   // 已有 JD 文本 → jdFacts 草稿(不落库,前端确认后 PATCH)

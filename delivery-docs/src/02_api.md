@@ -1101,11 +1101,18 @@ Header 必填:`X-Perf-Access-Key: <明文密钥>`
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET / POST | `/sessions/:id/jobs` | 列表 / 加入 `{ jobId, kind: onsite\|referral, matchEnabled, sortOrder }`;重复 409 `campus_job_exists` |
+| GET / POST | `/sessions/:id/jobs` | 列表 / 加入 `{ jobId, kind: onsite\|referral, matchEnabled, sortOrder }`;已有岗位须在当前账号的岗位数据范围内;重复 409 `campus_job_exists` |
 | PATCH / DELETE | `/sessions/:id/jobs/:sjId` | 改 kind / matchEnabled / sortOrder(不允许改 jobId)/ 移除(已有投递 409 `campus_job_has_applications`)|
 | POST | `/sessions/:id/jobs/reorder` | `{ ids[] }` 按顺序写 sortOrder |
+| POST | `/sessions/:id/jobs/new` | 新建 Job 并事务内加入专场;`title` 必填,另收 JD 字段与 `kind / matchEnabled`;返回 201 `{ item }` |
+| PATCH | `/sessions/:id/jobs/:sjId/job` | 编辑共享 Job 的 JD 字段,同步所有引用它的专场与系统岗位页;返回 `{ item }` |
+| POST | `/sessions/:id/jobs/:sjId/evaluation-model` | body `{}`;从当前 JD 重新抽取事实并生成校园招聘模板,一次落库;仅需 `campus.manage`,不需 `job.edit` |
 
-返回的 `job` 带 `hasJdFacts / hasEvaluationModel`;前端「生成评价模型」= `POST /jobs/:id/extract-facts` → `POST /jobs/:id/evaluation-model/suggest { jdFacts, templateId:"tpl.campus.general" }` → `PATCH /jobs/:id`。
+返回的 `job` 含 JD 编辑字段、`hasJdFacts / hasEvaluationModel / evaluationModelUpdatedAt / updatedAt / sessionsCount`。JD 字段为 `title dept owner location employment salary educationRequirement languageRequirement openings deadline description responsibilities requirements nice benefits`。标题不可全空白;职责 / 要求 / 加分项最多 20 条、每条 500 字;福利最多 20 条、每条 200 字。前端超限时提示,不截断内容。
+
+新建、编辑与生成均要求页面 `campus` + 模块 `campus.manage`。新建 Job 时给非管理员创建者增加该岗位的数据范围,因此移除专场绑定后仍可从已有岗位重新加入。已有岗位的加入遵循原岗位数据范围;查看与编辑已绑定专场岗位遵循校招权限。
+
+模型生成使用 `tpl.campus.general`,递增 `evaluationModelVersion`。Kimi 调用期间若岗位被修改,返回 409 `campus_job_changed`,不覆盖新 JD;上游失败返回结构化 4xx 并保留原模型。共享岗位重新生成模型也同步影响所有引用方。编辑 JD 不自动重新调用 AI,内容有变时应点击「重新生成评价模型」。
 
 ## 19.3 台账
 

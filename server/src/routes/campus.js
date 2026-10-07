@@ -9,7 +9,8 @@
 import ExcelJS from "exceljs";
 import { createHash } from "node:crypto";
 import { whereByIdOrExternal } from "../lib/idLookup.js";
-import { assertPage, loadUserAccess, hasModule } from "../lib/permissions.js";
+import { assertPage, loadUserAccess, hasModule, buildJobScopeWhere } from "../lib/permissions.js";
+import { buildCampusJobModel } from "../lib/campus/jobModel.js";
 import { writeLog } from "../lib/audit.js";
 import { attachmentHeaderForFilename } from "../lib/interviewEvalExport.js";
 import { SETTING_KEYS, getEffective, getEffectiveNumber, getEffectiveJson, setOne } from "../lib/settings.js";
@@ -56,6 +57,39 @@ const SESSION_JOB_BODY = {
   },
   additionalProperties: false,
 };
+
+// 校招 JD 字段:岗位 tab 新建 / 编辑用,是 routes/jobs.js JOB_BODY 的校招子集(不开放 jdFacts / evaluationModel / urgency 等)
+const CAMPUS_JOB_FIELDS = {
+  title: { type: "string", minLength: 1, maxLength: 200, pattern: "\\S" },
+  dept: { type: ["string", "null"], maxLength: 100 },
+  owner: { type: ["string", "null"], maxLength: 100 },
+  location: { type: ["string", "null"], maxLength: 100 },
+  employment: { type: ["string", "null"], maxLength: 50 },
+  salary: { type: ["string", "null"], maxLength: 200 },
+  educationRequirement: { type: ["string", "null"], maxLength: 100 },
+  languageRequirement: { type: ["string", "null"], maxLength: 200 },
+  openings: { type: "integer", minimum: 0, maximum: 999 },
+  deadline: { type: ["string", "null"], format: "date-time" },
+  description: { type: ["string", "null"], maxLength: 20000 },
+  responsibilities: { type: "array", items: { type: "string", maxLength: 500 }, maxItems: 20 },
+  requirements: { type: "array", items: { type: "string", maxLength: 500 }, maxItems: 20 },
+  nice: { type: "array", items: { type: "string", maxLength: 500 }, maxItems: 20 },
+  benefits: { type: "array", items: { type: "string", maxLength: 200 }, maxItems: 20 },
+};
+const CAMPUS_JOB_CREATE_BODY = {
+  type: "object",
+  required: ["title"],
+  properties: { ...CAMPUS_JOB_FIELDS, kind: { type: "string", enum: JOB_KINDS }, matchEnabled: { type: "boolean" } },
+  additionalProperties: false,
+};
+const CAMPUS_JOB_PATCH_BODY = { type: "object", minProperties: 1, properties: CAMPUS_JOB_FIELDS, additionalProperties: false };
+function jobData(body) {
+  const data = Object.fromEntries(Object.entries(body).map(([key, value]) => [key,
+    typeof value === "string" ? value.trim() : Array.isArray(value) ? value.map((item) => item.trim()).filter(Boolean) : value,
+  ]));
+  if (data.deadline) data.deadline = new Date(data.deadline);
+  return data;
+}
 
 const RESUME_BODY = {
   type: "object",
@@ -124,10 +158,23 @@ const SETTINGS_BODY = {
   additionalProperties: false,
 };
 
-const jobSelect = { id: true, title: true, dept: true, location: true, employment: true, salary: true, status: true, jdFacts: true, evaluationModel: true };
+// JD 全字段随专场岗位一起下发(岗位 tab 编辑 / 预览用);sessionsCount = 该 Job 被多少个专场引用
+const jobSelect = {
+  id: true, title: true, dept: true, owner: true, location: true, employment: true, salary: true, status: true, openings: true,
+  educationRequirement: true, languageRequirement: true, yearsExpRange: true, deadline: true,
+  description: true, responsibilities: true, requirements: true, nice: true, benefits: true,
+  jdFacts: true, evaluationModel: true, evaluationModelUpdatedAt: true, updatedAt: true,
+  _count: { select: { campusSessionJobs: true } },
+};
 function jobShape(j) {
   if (!j) return null;
-  return { id: j.id, title: j.title, dept: j.dept, location: j.location, employment: j.employment, salary: j.salary, status: j.status, hasJdFacts: !!j.jdFacts, hasEvaluationModel: !!j.evaluationModel };
+  return {
+    id: j.id, title: j.title, dept: j.dept, owner: j.owner, location: j.location, employment: j.employment, salary: j.salary, status: j.status, openings: j.openings,
+    educationRequirement: j.educationRequirement, languageRequirement: j.languageRequirement, yearsExpRange: j.yearsExpRange, deadline: j.deadline,
+    description: j.description, responsibilities: j.responsibilities || [], requirements: j.requirements || [], nice: j.nice || [], benefits: j.benefits || [],
+    hasJdFacts: !!j.jdFacts, hasEvaluationModel: !!j.evaluationModel, evaluationModelUpdatedAt: j.evaluationModelUpdatedAt, updatedAt: j.updatedAt,
+    sessionsCount: j._count?.campusSessionJobs ?? undefined,
+  };
 }
 function sessionJobShape(sj) {
   return { id: sj.id, sessionId: sj.sessionId, jobId: sj.jobId, kind: sj.kind, matchEnabled: sj.matchEnabled, sortOrder: sj.sortOrder, job: jobShape(sj.job), applications: sj._count?.applications ?? undefined };
@@ -169,7 +216,7 @@ const applicantInclude = {
   applications: { include: { sessionJob: { include: { job: { select: { id: true, title: true, dept: true } } } } }, orderBy: { createdAt: "asc" } },
 };
 
-export default async function campusRoutes(app) {
+export default async function campusRoutes(app, { generateJobModel = buildCampusJobModel } = {}) {
   app.addHook("preHandler", app.authenticate);
   app.addHook("preHandler", async (req, reply) => {
     const access = await assertPage(req, reply, "campus");
@@ -324,7 +371,8 @@ export default async function campusRoutes(app) {
     if (!(await requireManage(req, reply))) return;
     const s = await loadSession(req, reply, req.params.id);
     if (!s) return;
-    const job = await app.prisma.job.findUnique({ where: { id: req.body.jobId }, select: { id: true } });
+    const scopeWhere = await buildJobScopeWhere(req);
+    const job = await app.prisma.job.findFirst({ where: scopeWhere ? { AND: [{ id: req.body.jobId }, scopeWhere] } : { id: req.body.jobId }, select: { id: true } });
     if (!job) return reply.code(404).send({ error: "job_not_found", message: "岗位不存在" });
     const dup = await app.prisma.campusSessionJob.findUnique({ where: { sessionId_jobId: { sessionId: s.id, jobId: job.id } } });
     if (dup) return reply.code(409).send({ error: "campus_job_exists", message: "该岗位已在专场中" });
@@ -360,6 +408,59 @@ export default async function campusRoutes(app) {
     if (!s) return;
     await app.prisma.$transaction(req.body.ids.map((id, i) => app.prisma.campusSessionJob.updateMany({ where: { id, sessionId: s.id }, data: { sortOrder: i } })));
     return { ok: true };
+  });
+
+  // 新建校招 JD:创建 Job 并挂到专场(事务)。走 campus.manage 而不是 job.create,校招负责人不必拿社招岗位权限
+  app.post("/sessions/:id/jobs/new", { schema: { body: CAMPUS_JOB_CREATE_BODY } }, async (req, reply) => {
+    const access = await requireManage(req, reply);
+    if (!access) return;
+    const s = await loadSession(req, reply, req.params.id);
+    if (!s) return;
+    const { kind, matchEnabled, ...jd } = req.body;
+    const created = await app.prisma.$transaction(async (tx) => {
+      const job = await tx.job.create({ data: { ...jobData(jd), status: "招聘中" } });
+      // 创建者须能从已有岗位中再次找到自己新建的 JD(含移除后重新加入)。
+      if (!access.isAdmin) await tx.userJobScope.create({ data: { userId: req.user.sub, jobId: job.id } });
+      const max = await tx.campusSessionJob.aggregate({ where: { sessionId: s.id }, _max: { sortOrder: true } });
+      return tx.campusSessionJob.create({
+        data: { sessionId: s.id, jobId: job.id, kind: kind || "onsite", matchEnabled: matchEnabled ?? true, sortOrder: (max._max.sortOrder ?? -1) + 1 },
+        include: { job: { select: jobSelect }, _count: { select: { applications: true } } },
+      });
+    });
+    await writeLog(app.prisma, { req, action: "campus.job.create", entityType: "Job", entityId: created.jobId, diff: { sessionId: s.id, title: created.job.title, kind: created.kind } });
+    return reply.code(201).send({ item: sessionJobShape(created) });
+  });
+
+  // 编辑校招 JD:改的是 Job 本身,其它专场 / 社招共用该岗位时同步生效(前端按 sessionsCount 提示)
+  app.patch("/sessions/:id/jobs/:sjId/job", { schema: { body: CAMPUS_JOB_PATCH_BODY } }, async (req, reply) => {
+    if (!(await requireManage(req, reply))) return;
+    const sj = await app.prisma.campusSessionJob.findFirst({ where: { id: req.params.sjId, session: whereByIdOrExternal(req.params.id) } });
+    if (!sj) return reply.code(404).send({ error: "not_found" });
+    await app.prisma.job.update({ where: { id: sj.jobId }, data: jobData(req.body) });
+    const updated = await app.prisma.campusSessionJob.findUnique({ where: { id: sj.id }, include: { job: { select: jobSelect }, _count: { select: { applications: true } } } });
+    await writeLog(app.prisma, { req, action: "campus.job.update", entityType: "Job", entityId: sj.jobId, diff: { sessionId: sj.sessionId, fields: Object.keys(req.body) } });
+    return { item: sessionJobShape(updated) };
+  });
+
+  app.post("/sessions/:id/jobs/:sjId/evaluation-model", { schema: { body: { type: "object", additionalProperties: false } } }, async (req, reply) => {
+    if (!(await requireManage(req, reply))) return;
+    const sj = await app.prisma.campusSessionJob.findFirst({ where: { id: req.params.sjId, session: whereByIdOrExternal(req.params.id) }, include: { job: true } });
+    if (!sj) return reply.code(404).send({ error: "not_found" });
+    let data;
+    try {
+      data = await generateJobModel(sj.job);
+    } catch (err) {
+      req.log.error({ code: err.code, jobId: sj.jobId }, "campus job model generation failed");
+      const status = err.statusCode >= 400 && err.statusCode < 500 ? err.statusCode : 422;
+      return reply.code(status).send({ error: err.code || "campus_job_model_failed", message: status === 424 ? "请先配置 Kimi 服务" : "评价模型生成失败,请稍后重试" });
+    }
+    // Kimi 调用期间可能有同事改 JD,不能把旧原文生成的模型覆盖到新版岗位。
+    const saved = await app.prisma.job.updateMany({ where: { id: sj.jobId, updatedAt: sj.job.updatedAt }, data });
+    if (!saved.count) return reply.code(409).send({ error: "campus_job_changed", message: "JD 已被修改,请刷新后重新生成评价模型" });
+    const updated = await app.prisma.campusSessionJob.findUnique({ where: { id: sj.id }, include: { job: { select: jobSelect }, _count: { select: { applications: true } } } });
+    if (!updated) return reply.code(404).send({ error: "not_found", message: "岗位已从专场移除" });
+    await writeLog(app.prisma, { req, action: "campus.job.model", entityType: "Job", entityId: sj.jobId, diff: { sessionId: sj.sessionId } });
+    return { item: sessionJobShape(updated) };
   });
 
   // ─── 台账 ────────────────────────────────────────────────────────
