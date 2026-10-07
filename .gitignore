@@ -38,7 +38,9 @@ web/certs/
 .worktrees/
 
 # Claude Code 私域(会话状态 / 工具默认 worktree 等,不入库)
-.claude/
+# .claude/ 本机配置(settings.local.json / worktrees 等)不入库;但项目 skills(按需加载的说明文件)要入库
+.claude/*
+!.claude/skills/
 
 # 根目录临时媒体(勿入库)
 /*.mp4
