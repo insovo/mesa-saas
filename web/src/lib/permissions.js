@@ -16,6 +16,7 @@ export const PAGE_KEYS = Object.freeze([
   "system.llm",
   "share.settings",
   "audit",
+  "campus",
 ]);
 
 export const MODULE_KEYS = Object.freeze([
@@ -57,6 +58,7 @@ export const PAGE_LABELS = Object.freeze({
   "system.llm": "LLM 系统配置",
   "share.settings": "飞书 Bot 分享设置",
   "audit": "审计日志",
+  "campus": "校招",
 });
 
 export const MODULE_LABELS = Object.freeze({

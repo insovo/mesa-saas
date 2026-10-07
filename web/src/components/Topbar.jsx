@@ -32,6 +32,7 @@ const PAGE_TITLES = {
   "/performance": "绩效评价",
   "/reports": "数据报表",
   "/users": "用户与权限管理",
+  "/campus": "校招",
 };
 
 const ROLE_LABEL = { ADMIN: "管理员", RECRUITER: "招聘官", VIEWER: "只读" };

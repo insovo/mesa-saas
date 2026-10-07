@@ -29,6 +29,7 @@ const AuditLog = lazy(() => import("./pages/AuditLog.jsx"));
 const PublicInterviewEval = lazy(() => import("./pages/PublicInterviewEval.jsx"));
 const PublicPerformanceEval = lazy(() => import("./pages/PublicPerformanceEval.jsx"));
 const ShareSettings = lazy(() => import("./pages/ShareSettings.jsx"));
+const Campus = lazy(() => import("./pages/Campus.jsx"));
 
 // 路由 → 所需 pageKey 映射
 const PAGE = {
@@ -45,6 +46,7 @@ const PAGE = {
   reports: "reports",
   users: "users",
   shareSettings: "share.settings",
+  campus: "campus",
 };
 
 function Page({ pageKey, element }) {
@@ -93,6 +95,7 @@ export default function App() {
         <Route path="/share-settings" element={<Page pageKey={PAGE.shareSettings} element={<ShareSettings />} />} />
         <Route path="/users" element={<RequirePermission pageKey={PAGE.users} adminOnly><Users /></RequirePermission>} />
         <Route path="/audit" element={<RequirePermission adminOnly><AuditLog /></RequirePermission>} />
+        <Route path="/campus" element={<Page pageKey={PAGE.campus} element={<Campus />} />} />
         <Route path="/forbidden" element={<Forbidden />} />
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
       </Route>

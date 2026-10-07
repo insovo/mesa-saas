@@ -13,4 +13,5 @@ export const NAV_ITEMS = [
   { to: "/share-settings", label: "分享设置",   icon: "share-2",          pageKey: "share.settings" },
   { to: "/users",          label: "用户管理",   icon: "shield-check",     pageKey: "users", adminOnly: true },
   { to: "/audit",          label: "审计日志",   icon: "scroll-text",      pageKey: "audit", adminOnly: true },
+  { to: "/campus",         label: "校招",       icon: "graduation-cap",   pageKey: "campus" },
 ];

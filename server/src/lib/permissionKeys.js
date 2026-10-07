@@ -18,6 +18,7 @@ export const PAGE_KEYS = Object.freeze([
   "system.llm",
   "share.settings",
   "audit",
+  "campus",
 ]);
 
 // 模块 key — 控制候选人详情 / share / 操作按钮等粒度
