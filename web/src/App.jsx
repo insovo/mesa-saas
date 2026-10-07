@@ -30,6 +30,7 @@ const PublicInterviewEval = lazy(() => import("./pages/PublicInterviewEval.jsx")
 const PublicPerformanceEval = lazy(() => import("./pages/PublicPerformanceEval.jsx"));
 const ShareSettings = lazy(() => import("./pages/ShareSettings.jsx"));
 const Campus = lazy(() => import("./pages/Campus.jsx"));
+const CampusPublic = lazy(() => import("./pages/campus/public/index.jsx"));
 
 // 路由 → 所需 pageKey 映射
 const PAGE = {
@@ -72,6 +73,8 @@ export default function App() {
       {/* 公开面试评价页 — 不在 AuthGuard 内,面试官通过 token 直接填写 */}
       <Route path="/interview-eval/:token" element={<PublicInterviewEval />} />
       <Route path="/performance-eval/:token" element={<PublicPerformanceEval />} />
+      {/* 校招学生端 — 不在 AuthGuard 内,手机号 + 邮箱验证码会话;后台 /campus 仍在下方 Layout 内 */}
+      <Route path="/campus/:slug/*" element={<CampusPublic />} />
       <Route
         element={
           <AuthGuard>

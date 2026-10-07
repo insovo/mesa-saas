@@ -15,7 +15,7 @@ import { parseResume, matchAgainstJob, isKimiConfigured, buildResumeDisplayField
 import { extractDocument, sha256 } from "../documents.js";
 import { deriveProfile } from "../profile/derive.js";
 import { withDerivedCandidate } from "../derived.js";
-import { markRunning, markDone, markFailed, updateTask } from "../parseTaskStore.js";
+import { markRunning, markDone, markFailed, updateTask, isCancelRequested, markCancelled } from "../parseTaskStore.js";
 import { cleanupEmployeeOnJobChange } from "../candidateToEmployee.js";
 import { notifyCandidateReady } from "../feishuNotify.js";
 import { isJevEnabled, jevMode, evaluate as jevEvaluate } from "../jev.js";
@@ -85,6 +85,11 @@ export function deepStripNul(v) {
     return out;
   }
   return v;
+}
+
+// 取消检查点:阶段之间调用;被取消则抛 code=cancelled,由 runPipeline 统一收尾(不落库)
+async function assertNotCancelled(app, taskId) {
+  if (await isCancelRequested(app, taskId)) throw E("任务已取消", 499, "cancelled");
 }
 
 async function stage(app, taskId, name, patch) {
@@ -345,11 +350,11 @@ async function reportStage(app, taskId, { evaluation, summary, markdown, detail,
 }
 
 // ─── 评估落库(事务内调用)───
-async function persistEvaluation(tx, { candidateId, jobId, resumeParseId, evaluation, report, reportStatus, shadow }) {
-  if (!shadow) await tx.candidateEvaluation.updateMany({ where: { candidateId, isCurrent: true }, data: { isCurrent: false } });
+async function persistEvaluation(tx, { candidateId, jobId, resumeParseId, evaluation, report, reportStatus, shadow, detached = false }) {
+  if (!shadow && !detached) await tx.candidateEvaluation.updateMany({ where: { candidateId, isCurrent: true }, data: { isCurrent: false } });
   return tx.candidateEvaluation.create({
     data: {
-      candidateId, jobId, resumeParseId: resumeParseId || null, engine: evaluation.engine, isCurrent: !shadow, shadow: !!shadow,
+      candidateId, jobId, resumeParseId: resumeParseId || null, engine: evaluation.engine, isCurrent: !shadow && !detached, shadow: !!shadow,
       hardFilter: evaluation.hardFilter || { result: "UNKNOWN", items: [] },
       jevRequest: evaluation.jevRequest || null, jevAnswers: evaluation.jevAnswers || null,
       dimensions: evaluation.dimensions || [], items: evaluation.items || [],
@@ -382,7 +387,10 @@ function matchShape(evaluation, report) {
 // 主入口
 // ═══════════════════════════════════════════════════════════════
 export async function runPipeline(app, taskId, opts) {
-  const { mode, candidateId = null, create = null, jobIdOverride, model, notifyChatId, forceEngine = null } = opts;
+  // skipEvaluate:只跑文档层 + 理解层(校招「上传即抽取」),保留候选人现有 jobId 与评估快照不动
+  // skipReport:不跑报告层(reportStatus=skipped);detached:对 jobIdOverride 指定岗位「只评估」,不改候选人 jobId / 状态 / 快照,
+  //   评估行 isCurrent=false(校招智能匹配逐岗位评估用,结果快照由 lib/campus/match.js 另存)
+  const { mode, candidateId = null, create = null, jobIdOverride, model, notifyChatId, forceEngine = null, skipEvaluate = false, skipReport = false, detached = false } = opts;
   let candidate = null;
   try {
     await markRunning(app, taskId);
@@ -397,13 +405,15 @@ export async function runPipeline(app, taskId, opts) {
     const key = create?.key || candidate?.attachment || null;
     const filename = create?.filename || (key ? key.split("/").pop() : "resume.pdf") || "resume.pdf";
     const contentType = create?.contentType || "application/octet-stream";
-    const jobIdChanged = candidate ? (jobIdOverride !== undefined && jobIdOverride !== candidate.jobId) : false;
+    const jobIdChanged = candidate && !detached ? (jobIdOverride !== undefined && jobIdOverride !== candidate.jobId) : false;
     const jobId = candidate ? (jobIdOverride === undefined ? candidate.jobId : jobIdOverride) : (create?.jobId || null);
 
     // 1) 文档层
+    await assertNotCancelled(app, taskId);
     let ext = null;
     if (mode === "create" || mode === "full" || mode === "reextract") ext = await extractStage(app, taskId, { mode, candidate, key, filename, contentType });
     else ext = await extractStage(app, taskId, { mode, candidate, key, filename, contentType });
+    await assertNotCancelled(app, taskId);
 
     // 2) 理解层
     let fields = null, summary = candidate?.aiSummary || "", profile = candidate?.profile || null, derived = candidate?.derived || null, structured = null;
@@ -418,8 +428,9 @@ export async function runPipeline(app, taskId, opts) {
     }
 
     // 3) 评估层 + 4) 报告层
+    await assertNotCancelled(app, taskId);
     let job = null, evaluation = null, shadowEval = null, report = null, reportStatus = "pending", legacyMatch = null;
-    if (jobId) {
+    if (jobId && !skipEvaluate) {
       job = await app.prisma.job.findUnique({ where: { id: jobId } });
       if (job) {
         const candView = { id: candidate?.id || null, name: fields?.name || candidate?.name, profile, derived };
@@ -438,8 +449,8 @@ export async function runPipeline(app, taskId, opts) {
         try {
           const r = await evaluateStage(app, taskId, { cand: candView, job, markdown: ext.markdown, detail: ext.detail, summary, model, force: forceEngine });
           evaluation = r.primary; shadowEval = r.shadow; legacyMatch = r.match; job = r.job;
-          const rep = await reportStage(app, taskId, { evaluation, summary, markdown: ext.markdown, detail: ext.detail, jobTitle: job.title, model });
-          report = rep.report; reportStatus = rep.reportStatus;
+          if (skipReport) { report = null; reportStatus = "skipped"; await stage(app, taskId, "report", { status: "skipped" }); }
+          else { const rep = await reportStage(app, taskId, { evaluation, summary, markdown: ext.markdown, detail: ext.detail, jobTitle: job.title, model }); report = rep.report; reportStatus = rep.reportStatus; }
         } catch (err) {
           app.log.warn({ err: err.message, code: err.code, jobId, taskId }, "[pipeline] 评估失败,候选人仍写入(无 JD 字段)");
           await stage(app, taskId, "evaluate", { status: "failed", error: err.code || err.message });
@@ -447,7 +458,8 @@ export async function runPipeline(app, taskId, opts) {
       }
     }
 
-    // 5) 落库(事务)— 先剥离 NUL(坑 #54)
+    // 5) 落库(事务)— 先剥离 NUL(坑 #54);落库前最后一次取消检查
+    await assertNotCancelled(app, taskId);
     if (fields) fields = deepStripNul(fields);
     if (evaluation) evaluation = deepStripNul(evaluation);
     if (shadowEval) shadowEval = deepStripNul(shadowEval);
@@ -468,6 +480,8 @@ export async function runPipeline(app, taskId, opts) {
           parsingStartedAt: null,
         };
         row = await tx.candidate.create({ data });
+      } else if (detached) {
+        row = await tx.candidate.update({ where: { id: candidate.id }, data: { parsingStartedAt: null } });
       } else {
         const data = { ...(fields || {}), parsingStartedAt: null };
         if (jobIdChanged) { data.jobId = jobId; data.status = "待筛选"; if (job) data.appliedFor = job.title; }
@@ -479,7 +493,7 @@ export async function runPipeline(app, taskId, opts) {
       const resumeParseId = ext && !ext.reused && ext.sha ? await persistResumeParseTx(tx, app, row.id, key, ext) : (ext?.resumeParseId || null);
       let evalRow = null;
       if (evaluation && job) {
-        evalRow = await persistEvaluation(tx, { candidateId: row.id, jobId: job.id, resumeParseId, evaluation, report, reportStatus, shadow: false });
+        evalRow = await persistEvaluation(tx, { candidateId: row.id, jobId: job.id, resumeParseId, evaluation, report, reportStatus, shadow: false, detached });
         if (shadowEval) await persistEvaluation(tx, { candidateId: row.id, jobId: job.id, resumeParseId, evaluation: shadowEval, report: null, reportStatus: "skipped", shadow: true });
       }
       return { row, evalRow };
@@ -494,8 +508,13 @@ export async function runPipeline(app, taskId, opts) {
     app.log.info({ taskId, mode, candidateId: result.row.id, classification: evaluation?.classification, engine: evaluation?.engine }, "pipeline done");
     if (notifyChatId) await notifyCandidateReady(app, result.row, notifyChatId);
   } catch (err) {
-    app.log.error({ err, taskId, mode, candidateId }, "pipeline failed");
     if (candidateId) await app.prisma.candidate.updateMany({ where: { id: candidateId }, data: { parsingStartedAt: null } }).catch(() => {});
+    if (err?.code === "cancelled") {
+      app.log.info({ taskId, mode, candidateId }, "pipeline cancelled");
+      await markCancelled(app, taskId);
+      return;
+    }
+    app.log.error({ err, taskId, mode, candidateId }, "pipeline failed");
     await markFailed(app, taskId, err);
   }
 }

@@ -16,7 +16,8 @@ const RESEND_INTERVAL_MS = 60 * 1000; // 60 秒重发间隔
 const HOURLY_LIMIT = 5;               // 每邮箱每 purpose 每小时上限
 const MAX_ATTEMPTS = 5;               // 单条 code 最多 5 次尝试
 
-const VALID_PURPOSES = new Set(["CHANGE_EMAIL", "CHANGE_EMAIL_NEW", "CHANGE_PASSWORD", "RESET_PASSWORD"]);
+// CAMPUS_RECOVER:校招学生端「找回记录」(免登录,换设备后用 手机号 + 邮箱验证码 接回会话),无 userId
+const VALID_PURPOSES = new Set(["CHANGE_EMAIL", "CHANGE_EMAIL_NEW", "CHANGE_PASSWORD", "RESET_PASSWORD", "CAMPUS_RECOVER"]);
 
 function gen6() {
   // 6 位数字,首位不为 0 不重要,均匀分布即可

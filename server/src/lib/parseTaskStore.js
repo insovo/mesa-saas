@@ -108,6 +108,23 @@ export async function markDone(app, taskId, { candidate, match, reparsed, ...ext
   });
 }
 
+// ─── 协作式取消 ───
+// 调用方(学生 / HR 点「取消」)只置 cancelRequested;流水线在阶段边界检查并以 code=cancelled 退出。
+// 不中断进行中的单次 LLM 调用(最多等一次调用结束,通常 <30s),但结果不落库。
+export async function requestCancel(app, taskId) {
+  const t = await getTask(app, taskId);
+  if (!t) return null;
+  if (t.status === "done" || t.status === "failed" || t.status === "cancelled") return t;
+  return updateTask(app, taskId, { cancelRequested: true, cancelRequestedAt: new Date().toISOString() });
+}
+export async function isCancelRequested(app, taskId) {
+  const t = await getTask(app, taskId);
+  return !!t?.cancelRequested;
+}
+export async function markCancelled(app, taskId) {
+  return updateTask(app, taskId, { status: "cancelled", finishedAt: new Date().toISOString() });
+}
+
 // 标记任务为 failed
 export async function markFailed(app, taskId, err) {
   return updateTask(app, taskId, {

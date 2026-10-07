@@ -1083,3 +1083,96 @@ Header 必填:`X-Perf-Access-Key: <明文密钥>`
 | 429 | `edit_quota_exceeded` | 绩效公开编辑次数用尽(§18) |
 | 403 | `eval_export_disabled` | 公开端口尝试导出未提交的评价(§17.10) |
 | 503 | `kimi_not_configured` / `r2_not_configured` | 后端依赖未配置 |
+
+# 19. 校招模块(Phase 0 后台,2026-10-08)
+
+前缀 `/api/campus`,全部登录态 + pageKey `campus`;写专场 / 岗位 / 设置需模块 `campus.manage`;导出需 `campus.export`;联系方式字段无 `candidate.contact` 时打码。设计文档见 `校招模块/校招模块设计规划.html`,学生端公开端点 `/api/campus/public/*` 随 Phase 1 补充。
+
+## 19.1 专场
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/sessions` | 全部专场(live 置顶),含 `jobsCount / applicantsCount / applicationsCount` |
+| POST | `/sessions` | 新建;body `name`(必填)`slug school location startsAt endsAt heroTitle heroSubtitle maxApplyJobs maxResumeUploads scoreFloor matchEnabled showSalaryOnsite showSalaryReferral`;slug 为空自动生成,重复 409 `campus_slug_taken` |
+| GET / PATCH / DELETE | `/sessions/:id` | 详情(含 `jobs[]`)/ 更新 / 删除(已有学生 409 `campus_session_not_empty`)|
+| POST | `/sessions/:id/live` · `/close` · `/draft` | 上线(事务内把其它 live 改 closed)/ 结束 / 退回草稿 |
+
+## 19.2 专场岗位
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET / POST | `/sessions/:id/jobs` | 列表 / 加入 `{ jobId, kind: onsite\|referral, matchEnabled, sortOrder }`;重复 409 `campus_job_exists` |
+| PATCH / DELETE | `/sessions/:id/jobs/:sjId` | 改 kind / matchEnabled / sortOrder(不允许改 jobId)/ 移除(已有投递 409 `campus_job_has_applications`)|
+| POST | `/sessions/:id/jobs/reorder` | `{ ids[] }` 按顺序写 sortOrder |
+
+返回的 `job` 带 `hasJdFacts / hasEvaluationModel`;前端「生成评价模型」= `POST /jobs/:id/extract-facts` → `POST /jobs/:id/evaluation-model/suggest { jdFacts, templateId:"tpl.campus.general" }` → `PATCH /jobs/:id`。
+
+## 19.3 台账
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/sessions/:id/ledger` | query `q jobId kind source status school degree gradYear parse(done\|running\|pending\|failed\|none) contact(confirmed\|unconfirmed) skip take`;返回 `{ items[], total, stats{ applicants withResume confirmed applications byStatus onsiteInterview passed }, showContact, gate{ running queued } }` |
+| GET | `/sessions/:id/ledger/export.xlsx` | 同筛选,≤500 行,含联系方式与原始分;公式注入前缀 `'` |
+
+## 19.4 学生 / 简历版本 / 投递
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | `/sessions/:id/applicants` | HR 登记:`phone`(必填)`name email wechat school major degree gradYear contactConfirmed jobIds[] resume{ key filename size contentType sha256 }`;事务内建 / 复用 Candidate(同手机号跨专场复用)+ 学生 + 版本 v1 + 投递(source=hr),成功后 `setImmediate` 起抽取;同专场同手机 409 `campus_applicant_exists` |
+| GET / PATCH / DELETE | `/applicants/:id` | 详情(版本 / 投递 / 近 10 次匹配)/ 更新(同步 Candidate 姓名 / 联系方式 / 学校;`extraUploads` 加次数;`contactConfirmed`)/ 删除登记(需 `campus.manage`,Candidate 保留)|
+| POST | `/applicants/:id/resumes` | HR 代传新版:次数超限 410 `campus_resume_quota_exceeded`;非 PDF/Word 415 `campus_file_unsupported`;返回 `{ version, taskId }`,旧匹配结果标 stale |
+| POST | `/applicants/:id/resumes/:versionId/reparse` | 重试解析(仅当前版;running 时 409 `campus_parse_in_progress`;Kimi 未配置 424;cancelled 可重试)|
+| POST | `/applicants/:id/resumes/:versionId/cancel` | 取消进行中的抽取(协作式,写审计 `campus.resume.cancel_parse`)|
+| POST | `/applicants/:id/match-runs` | HR 代跑智能匹配(规则同学生端);`GET /applicants/:id` 的 `matchRuns[]` 带原始分 / 分类 / 成本 |
+| POST | `/applicants/:id/match-runs/:runId/cancel` | 取消匹配 |
+| GET | `/by-candidate/:candidateId` | 候选人详情「校招」卡:`{ applicant, session, latestMatchRun }`,非校招候选人 `{ applicant: null }` |
+| POST | `/applicants/:id/merge` | `{ candidateId }` 合并电脑端上传:源候选人须有附件、未绑定学生、未合并过(409 `campus_merge_self / campus_merge_linked / campus_merge_no_attachment / campus_merge_done`);作为新版本并触发抽取,次数不足自动 `extraUploads+1`,补空字段,源候选人 tags+`已合并到校招` 且置已淘汰,写 CandidateNote |
+| POST | `/applications/:id/interview` | `{ scheduledAt, location?, interviewer?, round?, notes? }` 安排现场面试:建 `Interview`(mode 线下 / category 校招 / link=地点)+ 投递→`onsite_interview` + 候选人→面试中;内推岗位 409 `campus_not_onsite` |
+| POST | `/applications/bulk-interview` | 同上 + `ids[]`,跳过内推投递,返回 `{ created, skipped }` |
+| PATCH / bulk-status | `advance: true` | 与 `status=passed` 同用:候选人置「待入职」并把主投递设为该岗位,自动创建 employee(已存在不动 stage)|
+| POST | `/sessions/:id/pc-upload-link` | `{ regenerate? }`(需 `campus.manage`)按需创建并绑定公开上传链接(永久 / 不限份数,`defaultSource=校招·<专场>·电脑上传`),返回 `{ token, path }`;学生端 `session/current.pcUpload.path` 下发 |
+| GET | `/sessions/:id/stats` | 数据看板:`totals / funnel[] / bySource / bySchool[] / byDegree[] / byJob[] / daily[] / parse / matchRuns` |
+| GET | `/applicants/:id/resumes/:versionId/download` | 需 `candidate.attachments`;302 到 R2 短时 URL |
+| POST | `/applicants/:id/applications` | `{ jobId }` 补投递(source=hr);岗位不在专场 404 `campus_job_not_in_session`;重复 409 `campus_duplicate_application`;额度 409 `campus_apply_quota_exceeded` |
+| PATCH | `/applications/:id` | `{ status, note }`;status ∈ applied/screening/onsite_interview/referred/passed/rejected/withdrawn,变更写 `statusChangedAt` 与审计 |
+| POST | `/applications/bulk-status` | `{ ids[], status }` |
+| DELETE | `/applications/:id` | 移除投递记录 |
+
+## 19.5 设置
+
+`GET /settings`(admin 或 `campus.manage`)/ `PUT /settings`(仅 admin):`matchConcurrency authJwtTtl codeCooldownS codePerHour contactHints[] pcUploadEnabled`,落 `SystemSetting` 键 `campus.match.concurrency / campus.auth.jwt_ttl / campus.auth.code_rate / campus.contact_hints / campus.pc_upload_enabled`。
+
+## 19.6 流水线扩展
+
+`runPipeline(app, taskId, { mode:"reextract", candidateId, skipEvaluate:true })`:只跑文档层 + 理解层,不碰候选人 `jobId` 与评估快照。校招「上传即抽取」与后续 Phase 2 匹配(先抽取后逐岗位评估)均依赖此开关。
+
+**detached / skipReport**(校招匹配):`runPipeline({ mode:"reevaluate", candidateId, jobIdOverride, detached:true, skipReport:true })` 对指定岗位只评估:复用最近 `ResumeParse` 与 `candidate.profile`,写 `CandidateEvaluation(isCurrent=false, shadow=false)`,不改候选人 jobId / 状态 / 快照,不跑报告层。
+
+**协作式取消**(2026-10-08):`parseTaskStore.requestCancel(app, taskId)` 置 `cancelRequested`;`runPipeline` 在 抽取前 / 抽取后 / 评估前 / 落库前 四个检查点调用 `assertNotCancelled`,命中则抛 `code=cancelled`,统一收尾为 `status=cancelled`(不落库、清 `parsingStartedAt`)。进行中的单次 LLM 调用不会被打断,最多多等一次调用。任务与页面无关,关闭浏览器不影响。
+
+## 19.7 学生端公开端点 `/api/campus/public/*`(Phase 1,2026-10-08,免登录)
+
+AuthGuard 外,学生**不注册不登录**。会话:首次上传前 `POST /auth/start`(勾选告知)匿名建档并签发学生 JWT `{ sub: applicantId, aud: "campus-public", sid, tv }`(有效期 `campus.auth.jwt_ttl`,默认 30d),前端存 localStorage 并以 `Authorization: Bearer` 携带;后台 `authenticate` 拒绝该 aud(401 `bad_audience`),这里只收该 aud。限流档 90 次 / 分钟(含 2s 轮询)。学生入口链接:首页 `/campus/:slug`、直接投递 `/campus/:slug/jobs`、智能匹配 `/campus/:slug/match`(后台专场二维码弹窗三选一)。
+
+| 方法 | 路径 | 鉴权 | 说明 |
+| --- | --- | --- | --- |
+| GET | `/session/current?slug=` | 可选 | 当前上线专场(或 slug 指定专场);返回 `session{ …, open, preview }`、`me` 摘要(有会话时)、`contactHints[]`、`pcUploadEnabled`;`?preview=1` + 后台 JWT 可看草稿 |
+| GET | `/session/current/jobs?slug=` | 可选 | `{ onsite[], referral[] }`;薪资按专场 `showSalaryOnsite / showSalaryReferral` 决定是否下发;有会话时带 `applied` |
+| GET | `/jobs/:id?slug=` | 可选 | JD 白名单字段;不在专场 404 `campus_job_not_in_session` |
+| POST | `/auth/start` | 可选 | `{ slug?, consent: true }` → `201 { token, me, session, reused:false }` 匿名建档(占位 Candidate + 学生,phone 空);已持本专场有效 token 时 `{ token: null, reused: true }`;422 `campus_consent_required`;专场未开放 410 |
+| POST | `/auth/recover/send-code` | — | 找回记录(免登录):`{ slug?, phone, email }` 匹配本专场 `contactConfirmedAt` 非空的记录 → 邮箱验证码(purpose `CAMPUS_RECOVER`,60s 冷却 / 每小时 5 次);404 `campus_record_not_found`;429 `campus_code_rate_limited`;424 `campus_email_send_failed`;未配 Resend 时回 `devCode`(仅开发)|
+| POST | `/auth/recover/verify` | — | `{ slug?, phone, email, code }` → `{ token, me, session }`,签新学生 JWT 接回原记录并写 `emailVerifiedAt`;400 `campus_code_invalid` |
+| GET / PATCH | `/me` | 学生 | 档案 + 版本 + 投递;PATCH `name wechat school major degree gradYear`(同步 Candidate)|
+| POST | `/me/contact-confirm` | 学生 | `{ phone, email, wechat?, name? }`(手机 / 邮箱必填,格式校验)→ 写 `contactConfirmedAt` 并同步 Candidate;422 `campus_phone_invalid / campus_email_invalid` |
+| POST | `/resumes/presigned-url` | 学生 | `{ filename, contentType, size }` → `{ uploadUrl, key }`;key `campus/<sessionId>/<applicantId>/v<n>-<ts>.<ext>`;415 / 410 `campus_resume_quota_exceeded` / 503 `r2_not_configured` |
+| POST | `/resumes/submit` | 学生 | `{ key, filename, size, contentType, sha256 }`;key 必须本人前缀(403 `campus_key_forbidden`);同 sha256 回 `duplicate:true` 不计次;成功 201 `{ version, remaining, parseTaskId }` 并起抽取 |
+| GET | `/resumes` · `/resumes/:versionId/parse-status` | 学生 | 版本列表 / 抽取状态 `{ status: pending\|running\|done\|failed\|cancelled\|skipped, error, prefill{ name school major degree gradYear } }` |
+| POST | `/resumes/:versionId/cancel-parse` | 学生 | 取消进行中的抽取:置任务 `cancelRequested`,流水线在阶段边界退出不落库;版本立即 `cancelled`;已结束的原样返回 |
+| POST | `/resumes/:versionId/reparse` | 学生 | 取消 / 失败 / 未解析后重跑当前版本(不计上传次数);非当前版 409 `campus_not_current_version`;running 409 `campus_parse_in_progress`;Kimi 未配置 424 |
+| POST | `/match-runs` | 学生 | 发起智能匹配(门禁同投递;专场 `matchEnabled`;同学生同时只允许 1 个 409 `campus_match_in_progress`;无可匹配岗位 409 `campus_no_match_jobs`;Kimi 未配置 424)→ `202 { run }` |
+| GET | `/match-runs/latest` · `/match-runs/:id` | 学生 | `{ run: { id, status(queued\|running\|done\|failed\|cancelled), stale, progress(0–100), stage, done, total, queuePosition, results?[{ jobId, kind, title, dept, location, scoreShown, excluded, reasons[], error }] } }`;results 仅 done 时返回,只含展示分 |
+| POST | `/match-runs/:id/cancel` | 学生 | 协作式取消(岗位之间检查),run 立即 `cancelled` |
+| POST | `/applications` | 学生 | `{ jobId, source: direct\|match, matchRunId? }`;`source=match` 时从 run.results 取分数写入投递;门禁 428 `campus_resume_required` → 428 `campus_contact_unconfirmed`;409 额度 / 重复;专场未开放 410 |
+| GET | `/applications` | 学生 | 我的投递 |
+| DELETE | `/applications/:id` | 学生 | 撤回(仅 applied / screening,否则 409 `campus_cannot_withdraw`)|
+| GET | `/health` | — | `{ ok, r2 }` |

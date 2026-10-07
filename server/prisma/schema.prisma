@@ -207,6 +207,7 @@ model Candidate {
   resumeParses           ResumeParse[]
   evaluations            CandidateEvaluation[]
   performanceEvaluations PerformanceEvaluation[]
+  campusApplicant        CampusApplicant?
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -263,6 +264,7 @@ model Job {
   userScopes           UserJobScope[]
   interviewEvaluations InterviewEvaluation[]
   evaluations          CandidateEvaluation[]
+  campusSessionJobs    CampusSessionJob[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -813,4 +815,167 @@ model CandidateEvaluation {
   @@index([candidateId, jobId, evaluatedAt])
   @@index([jobId, isCurrent, classification])
   @@map("candidate_evaluations")
+}
+
+// ─── 校招模块(2026-10-08)─────────────────────────────────────────────────
+// 设计:校招模块/校招模块设计规划.html §7。Candidate / Job 不加列,校招实体全部在此。
+// 专场:一次校招活动;status=live 的专场同一时刻只允许一个(上线接口事务内把其它 live 改 closed)
+model CampusSession {
+  id                 String    @id @default(uuid()) @db.Uuid
+  name               String
+  slug               String    @unique // 学生端 URL /campus/:slug
+  school             String?
+  location           String?   // 现场面试地点
+  startsAt           DateTime? @map("starts_at")
+  endsAt             DateTime? @map("ends_at")
+  status             String    @default("draft") // draft | live | closed
+  heroTitle          String?   @map("hero_title")
+  heroSubtitle       String?   @map("hero_subtitle")
+  bannerKey          String?   @map("banner_key") // R2 campus/banners/
+  maxApplyJobs       Int       @default(3) @map("max_apply_jobs")
+  maxResumeUploads   Int       @default(3) @map("max_resume_uploads")
+  scoreFloor         Int       @default(60) @map("score_floor") // 对学生的展示分下限
+  matchEnabled       Boolean   @default(true) @map("match_enabled")
+  showSalaryOnsite   Boolean   @default(true) @map("show_salary_onsite")
+  showSalaryReferral Boolean   @default(false) @map("show_salary_referral")
+  createdBy          String?   @map("created_by") @db.Uuid // 学生对应 Candidate.ownerId 归属此人
+  pcUploadToken      String?   @map("pc_upload_token") // 「电脑端上传」兜底:绑定的 UploadShareLink.token(按需创建)
+
+  jobs       CampusSessionJob[]
+  applicants CampusApplicant[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@map("campus_sessions")
+}
+
+// 专场岗位:专场 × Job,kind 区分现场面试 / 内推
+model CampusSessionJob {
+  id           String        @id @default(uuid()) @db.Uuid
+  sessionId    String        @map("session_id") @db.Uuid
+  session      CampusSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  jobId        String        @map("job_id") @db.Uuid
+  job          Job           @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  kind         String        @default("onsite") // onsite | referral
+  matchEnabled Boolean       @default(true) @map("match_enabled") // 参与智能匹配
+  sortOrder    Int           @default(0) @map("sort_order")
+
+  applications CampusApplication[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([sessionId, jobId])
+  @@map("campus_session_jobs")
+}
+
+// 学生:以 (专场, 手机号) 唯一;绑定一条 Candidate(跨专场同手机号复用同一 Candidate)
+model CampusApplicant {
+  id                     String        @id @default(uuid()) @db.Uuid
+  sessionId              String        @map("session_id") @db.Uuid
+  session                CampusSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  candidateId            String        @unique @map("candidate_id") @db.Uuid
+  candidate              Candidate     @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  // 学生免登录:首次上传时匿名建档(phone 为空),联系方式确认页再填;同手机号可能出现多条(换设备 / 清缓存),台账按手机号提示重复
+  phone                  String?
+  email                  String?
+  emailVerifiedAt        DateTime?     @map("email_verified_at")
+  name                   String?
+  wechat                 String?
+  school                 String?
+  major                  String?
+  degree                 String?
+  gradYear               Int?          @map("grad_year")
+  contactConfirmedAt     DateTime?     @map("contact_confirmed_at")
+  consentAt              DateTime?     @map("consent_at")
+  consentVersion         String?       @map("consent_version")
+  resumeUploadCount      Int           @default(0) @map("resume_upload_count")
+  extraUploads           Int           @default(0) @map("extra_uploads") // HR 单独加的上传次数
+  currentResumeVersionId String?       @map("current_resume_version_id") @db.Uuid
+  tokenVersion           Int           @default(0) @map("token_version") // 学生 JWT 强制下线
+  lastSeenAt             DateTime?     @map("last_seen_at")
+  registeredBy           String?       @map("registered_by") @db.Uuid // HR 手工登记的操作者;学生自助为 null
+
+  resumeVersions CampusResumeVersion[]
+  applications   CampusApplication[]
+  matchRuns      CampusMatchRun[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([sessionId, phone])
+  @@index([sessionId])
+  @@map("campus_applicants")
+}
+
+// 简历版本:每次上传一版,最新版为当前版;上传成功即后台抽取(parseStatus)
+model CampusResumeVersion {
+  id            String          @id @default(uuid()) @db.Uuid
+  applicantId   String          @map("applicant_id") @db.Uuid
+  applicant     CampusApplicant @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+  version       Int
+  attachmentKey String          @map("attachment_key") // R2 key
+  fileSha256    String?         @map("file_sha256")
+  filename      String?
+  size          Int?
+  contentType   String?         @map("content_type")
+  resumeParseId String?         @map("resume_parse_id") @db.Uuid
+  parseStatus   String          @default("pending") @map("parse_status") // pending | running | done | failed | skipped
+  parseError    String?         @map("parse_error")
+  parseTaskId   String?         @map("parse_task_id")
+  uploadedBy    String?         @map("uploaded_by") @db.Uuid // HR 代传时记录;学生自传为 null
+  uploadedAt    DateTime        @default(now()) @map("uploaded_at")
+
+  matchRuns CampusMatchRun[]
+
+  @@unique([applicantId, version])
+  @@map("campus_resume_versions")
+}
+
+// 投递:学生 × 岗位;status 状态机见设计 §7.1
+model CampusApplication {
+  id              String           @id @default(uuid()) @db.Uuid
+  applicantId     String           @map("applicant_id") @db.Uuid
+  applicant       CampusApplicant  @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+  sessionJobId    String           @map("session_job_id") @db.Uuid
+  sessionJob      CampusSessionJob @relation(fields: [sessionJobId], references: [id], onDelete: Cascade)
+  jobId           String           @map("job_id") @db.Uuid // 冗余自 sessionJob,用于 unique 与按岗位统计
+  source          String           @default("direct") // direct | match | hr
+  matchRunId      String?          @map("match_run_id") @db.Uuid
+  resumeVersionId String?          @map("resume_version_id") @db.Uuid // 投递时的简历版本
+  scoreRaw        Int?             @map("score_raw")
+  scoreShown      Int?             @map("score_shown")
+  evaluationId    String?          @map("evaluation_id") @db.Uuid
+  status          String           @default("applied") // applied | screening | onsite_interview | referred | passed | rejected | withdrawn
+  statusChangedAt DateTime         @default(now()) @map("status_changed_at")
+  note            String?          @db.Text
+  withdrawnAt     DateTime?        @map("withdrawn_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([applicantId, jobId])
+  @@index([sessionJobId, status])
+  @@map("campus_applications")
+}
+
+// 智能匹配任务:一版简历 × 全部参与匹配岗位;results 为结果快照
+model CampusMatchRun {
+  id              String              @id @default(uuid()) @db.Uuid
+  applicantId     String              @map("applicant_id") @db.Uuid
+  applicant       CampusApplicant     @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+  resumeVersionId String              @map("resume_version_id") @db.Uuid
+  resumeVersion   CampusResumeVersion @relation(fields: [resumeVersionId], references: [id], onDelete: Cascade)
+  taskId          String?             @map("task_id")
+  status          String              @default("queued") // queued | running | done | failed
+  results         Json                @default("[]") // [{ jobId, kind, scoreRaw, scoreShown, classification, hardFilter, reasons[], evaluationId }]
+  stale           Boolean             @default(false) // 之后又传了新版简历
+  error           String?
+  costs           Json?
+  startedAt       DateTime            @default(now()) @map("started_at")
+  finishedAt      DateTime?           @map("finished_at")
+
+  @@index([applicantId, startedAt])
+  @@map("campus_match_runs")
 }

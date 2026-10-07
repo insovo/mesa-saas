@@ -40,6 +40,7 @@ import { LiquidLoader } from "../components/Primitives.jsx";
 import ReparseConfirmModal from "../components/ReparseConfirmModal.jsx";
 import MarkdownBullets from "../components/MarkdownBullets.jsx";
 import InterviewEvalCard from "../components/InterviewEvalCard.jsx";
+import CampusCandidateCard from "../components/campus/CampusCandidateCard.jsx";
 import JdDescModal from "../components/JdDescModal.jsx";
 import { candidateExpText, hasWorkExperience } from "../lib/constants.js";
 import { DurationPicker, MaxViewsPicker, BotShareSettings } from "../components/ShareDefaultsPanel.jsx";
@@ -3765,6 +3766,9 @@ function CandidateDetail() {
 
         {/* === 面试评价 (新增, 嵌入「面试安排」与「附件」之间) === */}
         <InterviewEvalCard candidate={c} currentUser={me} />
+
+        {/* === 校招(仅校招来源候选人显示) === */}
+        <CampusCandidateCard candidateId={c.id} />
 
         {/* === Documents ===
             把 c.attachment(LLM 解析时上传的原始简历 R2 key)虚拟同步到「简历」分类首位,

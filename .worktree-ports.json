@@ -20,13 +20,13 @@
       "since": "2026-05-25"
     },
     {
-      "slot": 1,
-      "name": "interview-eval-score-slider",
-      "path": ".worktrees/fix/interview-eval-score-slider",
-      "branch": "fix/interview-eval-score-slider",
-      "backend": 3011,
-      "frontend": 5183,
-      "since": "2026-07-18"
+      "slot": 2,
+      "name": "campus-module",
+      "path": ".worktrees/feature/campus-module",
+      "branch": "feature/campus-module",
+      "backend": 3021,
+      "frontend": 5193,
+      "since": "2026-10-08"
     }
   ]
 }

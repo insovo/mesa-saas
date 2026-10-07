@@ -44,6 +44,12 @@ export const SETTING_KEYS = {
   EVAL_CONFIDENCE_GATE: "eval.confidence_gate", // "0.5"
   EVAL_REPORT_POLICY: "eval.report_policy",     // auto_ab | auto_all | on_demand
   EVAL_PII_STRIP: "eval.pii_strip",             // "true" | "false"
+
+  // 校招模块(2026-10-08,无 env fallback,代码默认)
+  CAMPUS_MATCH_CONCURRENCY: "campus.match.concurrency", // 抽取 / 匹配任务进程内并发闸
+  CAMPUS_AUTH_JWT_TTL: "campus.auth.jwt_ttl",           // 学生端匿名会话有效期(浏览器保存),如 "30d"
+  CAMPUS_CONTACT_HINTS: "campus.contact_hints",         // JSON string[] 联系方式确认页提示语
+  CAMPUS_PC_UPLOAD_ENABLED: "campus.pc_upload_enabled", // "true" | "false" 学生端首页电脑上传兜底
 };
 
 function boolEnv(name, dflt) {
@@ -79,6 +85,11 @@ const ENV_FALLBACK = {
   "eval.confidence_gate": () => "0.5",
   "eval.report_policy":   () => "auto_ab",
   "eval.pii_strip":       () => "true",
+
+  "campus.match.concurrency": () => "3",
+  "campus.auth.jwt_ttl":      () => "30d",
+  "campus.contact_hints":     () => JSON.stringify(["请务必保持电话、邮箱、微信畅通", "最好电话或微信能直接联系到本人", "面试与录用通知将通过以上渠道发出"]),
+  "campus.pc_upload_enabled": () => "true",
 };
 
 // 哪些 key 需要加密(prompt / 开关 / 阈值不算敏感,不加密)

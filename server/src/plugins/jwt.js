@@ -33,6 +33,10 @@ export default fp(async (app) => {
     if (!req.user?.sub) {
       return reply.code(401).send({ error: "bad_token" });
     }
+    // 校招学生端 token(aud=campus-public)只能用于 /api/campus/public/*,不得进入后台路由
+    if (req.user?.aud === "campus-public") {
+      return reply.code(401).send({ error: "bad_audience", message: "该凭证不能访问后台" });
+    }
     const u = await req.server.prisma.user.findUnique({
       where: { id: req.user.sub },
       select: { id: true, isActive: true, tokenVersion: true, deactivatedReason: true },
