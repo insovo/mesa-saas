@@ -18,15 +18,6 @@
       "backend": 3001,
       "frontend": 5173,
       "since": "2026-05-25"
-    },
-    {
-      "slot": 2,
-      "name": "campus-module",
-      "path": ".worktrees/feature/campus-module",
-      "branch": "feature/campus-module",
-      "backend": 3021,
-      "frontend": 5193,
-      "since": "2026-10-08"
     }
   ]
 }
