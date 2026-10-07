@@ -1,0 +1,2250 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>校招模块设计规划 — 后台台账 + 学生网页投递与智能匹配</title>
+<meta name="description" content="校招模块整体规划:后台专场 / 岗位 /
+台账管理 + 学生端移动网页(H5,扫码即开,无需小程序)。学生投递 ≤3
+岗、现场面试与内推两类岗位、投递与智能匹配均须先上传简历、简历 3
+版存档、60
+分展示下限、波浪球进度动画、专场首页可配置。覆盖业务规则、页面流、后台页面、数据模型、API
+契约、匹配引擎复用、安全合规、非功能、分期计划与待确认问题。v2
+变更:小程序改为网页版;60 分定为展示下限;直投也必须上传简历。v3
+变更:任何简历上传成功即后台抽取(extract + structure),台账即时可见学校 /
+专业 / 学历。v4 变更:学生免登录——扫码 /
+点链接直达,首次上传时勾选告知即匿名建档(会话存浏览器),手机 / 邮箱 /
+微信在确认页填写;后台提供首页 / 直接投递 / 智能匹配三个入口码。">
+<style>
+:root{--bg:#ffffff;--fg:#1B254B;--muted:#707EAE;--faint:#A0AEC0;--line:#E2E8F0;--accent:#422AFB;--accent-soft:#EEF0FF;--code-bg:#F4F7FE;--card:#ffffff;--shadow:0 18px 40px rgba(112,144,176,.12);--warn-bg:#FFF7E6;--warn-fg:#B7791F}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0B1437;--fg:#E9EDF7;--muted:#A3AED0;--faint:#707EAE;--line:#1F2A5A;--accent:#7551FF;--accent-soft:#1B2559;--code-bg:#111C44;--card:#111C44;--shadow:0 18px 40px rgba(0,0,0,.35);--warn-bg:#2B2411;--warn-fg:#F6C177}}
+:root[data-theme=dark]{--bg:#0B1437;--fg:#E9EDF7;--muted:#A3AED0;--faint:#707EAE;--line:#1F2A5A;--accent:#7551FF;--accent-soft:#1B2559;--code-bg:#111C44;--card:#111C44;--shadow:0 18px 40px rgba(0,0,0,.35);--warn-bg:#2B2411;--warn-fg:#F6C177}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Segoe UI",Roboto,sans-serif}
+.layout{display:grid;grid-template-columns:280px minmax(0,1fr);gap:0;min-height:100vh}
+nav.toc{position:sticky;top:0;height:100vh;overflow-y:auto;padding:24px 16px 40px 20px;border-right:1px solid var(--line);font-size:13px}
+nav.toc .brand{font-weight:700;color:var(--accent);letter-spacing:.02em;margin-bottom:4px}
+nav.toc .sub{color:var(--muted);font-size:12px;margin-bottom:14px}
+nav.toc ul{list-style:none;margin:0;padding-left:0}
+nav.toc ul ul{padding-left:12px;border-left:1px solid var(--line);margin-left:4px}
+nav.toc li{margin:2px 0}
+nav.toc a{color:var(--muted);text-decoration:none;display:block;padding:3px 6px;border-radius:8px;line-height:1.4}
+nav.toc a:hover{color:var(--accent);background:var(--accent-soft)}
+main{padding:40px 48px 120px;max-width:1080px;width:100%}
+header.doc{margin-bottom:28px;padding-bottom:20px;border-bottom:1px solid var(--line)}
+header.doc h1{font-size:30px;line-height:1.25;margin:0 0 10px}
+header.doc .meta{color:var(--muted);font-size:13px;display:flex;flex-wrap:wrap;gap:14px}
+header.doc .meta span::before{content:"◦ ";color:var(--faint)}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h2{font-size:22px;margin:44px 0 14px;padding-top:14px;border-top:1px solid var(--line)}
+h3{font-size:17px;margin:28px 0 10px}
+h4{font-size:15px;margin:20px 0 8px;color:var(--muted)}
+a{color:var(--accent)}
+p{margin:10px 0}
+blockquote{margin:14px 0;padding:10px 16px;border-left:4px solid var(--accent);background:var(--accent-soft);border-radius:0 12px 12px 0;color:var(--fg)}
+blockquote p{margin:4px 0}
+code{font-family:"JetBrains Mono","SF Mono",Menlo,Consolas,monospace;font-size:12.5px;background:var(--code-bg);padding:2px 6px;border-radius:6px}
+pre{background:var(--code-bg);border:1px solid var(--line);border-radius:14px;padding:14px 16px;overflow-x:auto;line-height:1.55}
+pre code{background:none;padding:0;font-size:12.5px}
+table{border-collapse:separate;border-spacing:0;width:100%;margin:14px 0;font-size:13.5px;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+th,td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}
+th{background:var(--code-bg);font-weight:600;color:var(--fg)}
+tr:last-child td{border-bottom:none}
+td code{white-space:nowrap}
+ul,ol{padding-left:22px}
+li{margin:3px 0}
+hr{border:none;border-top:1px solid var(--line);margin:32px 0}
+.diagram{margin:18px 0;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--card);overflow-x:auto}
+.diagram svg{max-width:100%;height:auto;display:block;margin:0 auto;--bg:transparent;--fg:var(--fg);--line:var(--faint);--accent:var(--accent);--muted:var(--muted);--surface:var(--code-bg);--border:var(--line)}
+.diagram svg text{font-family:inherit}
+.callout{margin:14px 0;padding:12px 16px;border-radius:12px;background:var(--warn-bg);color:var(--warn-fg);border:1px solid rgba(183,121,31,.25)}
+.task-list{list-style:none;padding-left:4px}
+input[type=checkbox]{margin-right:6px}
+kbd{font-family:inherit;font-size:12px;border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;padding:1px 6px;background:var(--code-bg)}
+footer.doc{margin-top:60px;padding-top:16px;border-top:1px solid var(--line);color:var(--faint);font-size:12px}
+@media (max-width:960px){.layout{grid-template-columns:1fr}nav.toc{position:static;height:auto;border-right:none;border-bottom:1px solid var(--line);padding:16px}main{padding:24px 16px 80px}header.doc h1{font-size:24px}}
+@media print{nav.toc{display:none}.layout{display:block}main{padding:0;max-width:none}pre,table,.diagram{break-inside:avoid}}
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="toc">
+<div class="brand">MESA Recruit · 设计文档</div>
+<div class="sub">2026-10-08</div>
+<ul>
+<li><a href="#结论与边界" id="toc-结论与边界">0. 结论与边界</a></li>
+<li><a href="#背景与目标" id="toc-背景与目标">1. 背景与目标</a>
+<ul>
+<li><a href="#现状" id="toc-现状">1.1 现状</a></li>
+<li><a href="#目标" id="toc-目标">1.2 目标</a></li>
+<li><a href="#设计原则" id="toc-设计原则">1.3 设计原则</a></li>
+</ul></li>
+<li><a href="#名词与角色" id="toc-名词与角色">2. 名词与角色</a></li>
+<li><a href="#总体架构" id="toc-总体架构">3. 总体架构</a></li>
+<li><a href="#业务规则矩阵" id="toc-业务规则矩阵">4.
+业务规则矩阵</a></li>
+<li><a href="#学生端网页h5设计" id="toc-学生端网页h5设计">5.
+学生端网页(H5)设计</a>
+<ul>
+<li><a href="#技术与兼容" id="toc-技术与兼容">5.1 技术与兼容</a></li>
+<li><a href="#页面与流转" id="toc-页面与流转">5.2 页面与流转</a></li>
+<li><a href="#流程-a看-jd-直接投递" id="toc-流程-a看-jd-直接投递">5.3
+流程 A:看 JD 直接投递</a></li>
+<li><a href="#流程-b不知道投什么-智能匹配"
+id="toc-流程-b不知道投什么-智能匹配">5.4 流程 B:不知道投什么 →
+智能匹配</a></li>
+<li><a href="#进度动画波浪球" id="toc-进度动画波浪球">5.5
+进度动画(波浪球)</a></li>
+<li><a href="#简历版本规则" id="toc-简历版本规则">5.6
+简历版本规则</a></li>
+</ul></li>
+<li><a href="#后台web-campus设计" id="toc-后台web-campus设计">6.
+后台(Web <code>/campus</code>)设计</a>
+<ul>
+<li><a href="#台账页默认-tab" id="toc-台账页默认-tab">6.1 台账页(默认
+tab)</a></li>
+<li><a href="#专场-tab" id="toc-专场-tab">6.2 专场 tab</a></li>
+<li><a href="#设置-tabadmin" id="toc-设置-tabadmin">6.3 设置
+tab(admin)</a></li>
+</ul></li>
+<li><a href="#数据模型" id="toc-数据模型">7. 数据模型</a>
+<ul>
+<li><a href="#投递状态机" id="toc-投递状态机">7.1 投递状态机</a></li>
+</ul></li>
+<li><a href="#api-契约" id="toc-api-契约">8. API 契约</a>
+<ul>
+<li><a href="#学生端公开端点-apicampuspublicauthguard-外学生-jwt"
+id="toc-学生端公开端点-apicampuspublicauthguard-外学生-jwt">8.1
+学生端公开端点 <code>/api/campus/public/*</code>(AuthGuard 外,学生
+JWT)</a></li>
+<li><a href="#后台端点-apicampusjwt-pagekey-campus"
+id="toc-后台端点-apicampusjwt-pagekey-campus">8.2 后台端点
+<code>/api/campus/*</code>(JWT + pageKey <code>campus</code>)</a></li>
+</ul></li>
+<li><a href="#智能匹配与评分" id="toc-智能匹配与评分">9.
+智能匹配与评分</a></li>
+<li><a href="#与现有系统的衔接" id="toc-与现有系统的衔接">10.
+与现有系统的衔接</a></li>
+<li><a href="#安全与合规" id="toc-安全与合规">11. 安全与合规</a></li>
+<li><a href="#非功能与基础设施" id="toc-非功能与基础设施">12.
+非功能与基础设施</a></li>
+<li><a href="#分期计划" id="toc-分期计划">13. 分期计划</a></li>
+<li><a href="#待确认问题" id="toc-待确认问题">14. 待确认问题</a>
+<ul>
+<li><a href="#已定稿v2-v3" id="toc-已定稿v2-v3">已定稿(v2 / v3)</a></li>
+</ul></li>
+<li><a href="#实施进度" id="toc-实施进度">15. 实施进度</a></li>
+<li><a href="#附录-a-后台可配置项清单"
+id="toc-附录-a-后台可配置项清单">附录 A · 后台可配置项清单</a></li>
+<li><a href="#附录-b-错误码" id="toc-附录-b-错误码">附录 B ·
+错误码</a></li>
+<li><a href="#附录-c-涉及文件预估" id="toc-附录-c-涉及文件预估">附录 C ·
+涉及文件(预估)</a></li>
+</ul>
+</nav>
+<main>
+<header class="doc">
+<h1>校招模块设计规划 — 后台台账 + 学生网页投递与智能匹配</h1>
+<div class="meta"><span>设计规划稿 v4(Phase 0–3
+已实现,待评审合并)</span><span>2026-10-08</span><span>基于 main
+198eced</span></div>
+<p>校招模块整体规划:后台专场 / 岗位 / 台账管理 +
+学生端移动网页(H5,扫码即开,无需小程序)。学生投递 ≤3
+岗、现场面试与内推两类岗位、投递与智能匹配均须先上传简历、简历 3
+版存档、60
+分展示下限、波浪球进度动画、专场首页可配置。覆盖业务规则、页面流、后台页面、数据模型、API
+契约、匹配引擎复用、安全合规、非功能、分期计划与待确认问题。v2
+变更:小程序改为网页版;60 分定为展示下限;直投也必须上传简历。v3
+变更:任何简历上传成功即后台抽取(extract + structure),台账即时可见学校 /
+专业 / 学历。v4 变更:学生免登录——扫码 /
+点链接直达,首次上传时勾选告知即匿名建档(会话存浏览器),手机 / 邮箱 /
+微信在确认页填写;后台提供首页 / 直接投递 / 智能匹配三个入口码。</p>
+</header>
+<h2 id="结论与边界">0. 结论与边界</h2>
+<ul>
+<li><strong>定位</strong>:校招模块 = 后台(Web
+<code>/campus</code>,pageKey <code>campus</code> 已挂好占位)+
+<strong>学生端移动网页</strong>(AuthGuard 外的公开路由
+<code>/campus/:slug</code>,扫码在微信内置浏览器或任意浏览器打开)。不做微信小程序:省掉
+ICP 备案、企业主体、AppID 与提审周期,前端代码与现有 React / Tailwind /
+GSAP / <code>LiquidLoader</code> 直接共用。</li>
+<li><strong>复用优先</strong>:简历存储(R2 presigned
+直传,与公开上传链接同款)、三层解析评估(TextIn → Kimi → Jev,已有
+<code>tpl.campus.general</code> 校招评价模板与
+<code>derived.isFreshGraduate</code>
+应届判定)、异步任务轮询(<code>parseTaskStore</code>,规避 Cloudflare
+100s)、候选人详情 / 分享 / 面试评价,全部沿用。校招新增的是「专场 / 学生
+/ 投递 / 简历版本」四类实体和一套学生端公开 API。</li>
+<li><strong>学生免登录,扫码直达</strong>:后台为每个专场生成三个入口码 /
+链接(首页 / 直接投递 /
+智能匹配),学生扫到哪个就进哪个流程,不注册不登录。首次上传简历时勾选《个人信息处理告知》即匿名建档,会话保存在当前浏览器;两条路径都<strong>必须先上传简历并确认联系方式</strong>(手机
+/ 邮箱 / 微信在确认页一次填好),之后才能投递或匹配。</li>
+<li><strong>四条定稿规则</strong>:每专场最多投 3 岗(可配);简历最多传 3
+次、以最新为准、旧版存档;对学生展示的匹配分以 60
+为<strong>展示下限</strong>(内部保留原始分与
+A/B/C/D);<strong>任何简历上传成功即后台抽取</strong>(TextIn + Kimi
+结构化,不评估),直投学生的学校 / 专业 /
+学历在台账里即时可见,智能匹配复用抽取结果只跑评估。</li>
+<li><strong>数据落到现有候选人体系</strong>:每位学生对应一条
+<code>Candidate</code>(来源
+<code>校招·&lt;专场名&gt;</code>),投递、匹配、面试评价在现有页面都能看到;台账页是校招视角的汇总,不复制一套候选人管理。</li>
+<li><strong>分期</strong>:Phase 0
+后台台账与配置(无学生端即可用,线下收简历也能登记)→ Phase 1
+学生网页「上传 + 直接投递」→ Phase 2 「智能匹配」→ Phase 3
+现场面试联动。</li>
+</ul>
+<div class="callout">
+<b>网页版相对小程序的两处取舍</b>:① 学生身份没有
+openid,采用<b>匿名会话</b>(浏览器 localStorage 保存学生 JWT,30
+天),身份信息在确认联系方式页采集;换设备 /
+清缓存会产生第二条记录,台账按手机号提示重复,由 HR 合并;② iOS
+微信内置浏览器选文件只能从「文件」App
+选,不能直接选聊天记录里的简历,页面要给一行指引并提供电脑端上传兜底。详见
+§5.1 与 §12。
+</div>
+<hr />
+<h2 id="背景与目标">1. 背景与目标</h2>
+<h3 id="现状">1.1 现状</h3>
+<ul>
+<li>main 已合并「校招」侧边栏入口(PR #220):pageKey
+<code>campus</code>、路由
+<code>/campus</code>、<code>pages/Campus.jsx</code>
+占位「建设中」。默认仅 admin 可见,可在用户管理授权。</li>
+<li>现有能力可直接复用:</li>
+</ul>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>现有能力</th>
+<th>位置</th>
+<th>校招如何用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>公开上传(无登录)</td>
+<td><code>routes/upload-links.js</code> +
+<code>pages/PublicUpload.jsx</code>,<code>/api/public/upload/:token</code></td>
+<td>学生端上传沿用「presigned PUT R2 → submit 事务建
+Candidate」模式,鉴权由 token 链接改为学生会话
+JWT;微信内置浏览器兼容经验(302 跳转代替
+<code>window.open</code>)直接继承</td>
+</tr>
+<tr>
+<td>异步解析任务</td>
+<td><code>lib/parseTaskStore.js</code>(Redis,退化内存)+
+<code>GET /resumes/parse-tasks/:id</code></td>
+<td>匹配任务复用同一存储与轮询模式,学生端 2s 轮询</td>
+</tr>
+<tr>
+<td>三层解析评估</td>
+<td><code>lib/evaluation/pipeline.js</code>(extract / structure /
+evaluate / report 四阶段)</td>
+<td>一次抽取、多岗位评估;校招模板 <code>tpl.campus.general</code>
+已把年限设 INFO、毕业批次设 MUST、项目 / 校园经历设 CORE</td>
+</tr>
+<tr>
+<td>评价模型 / JD 事实</td>
+<td><code>Job.jdFacts</code> +
+<code>Job.evaluationModel</code>,<code>jd.basics.recruitType = campus</code>
+自动选校招模板</td>
+<td>参与智能匹配的 JD 在后台一键「抽取 JD 事实 +
+生成评价模型」后才可开启匹配</td>
+</tr>
+<tr>
+<td>候选人详情 / 分享 / 面试评价</td>
+<td>CandidateDetail / ShareLink / InterviewEvaluation</td>
+<td>现场面试官扫码评价、HR 分享简报,零改动</td>
+</tr>
+<tr>
+<td>波浪球</td>
+<td><code>Primitives.jsx</code> <code>LiquidLoader</code>(三档调色板 red
+≤60 / blue 60–80 / violet &gt;80,<code>loading</code> 呼吸光晕)</td>
+<td>学生端进度动画与匹配分展示<strong>直接复用组件</strong></td>
+</tr>
+<tr>
+<td>邮箱验证码</td>
+<td><code>lib/email.js</code> +
+<code>lib/verificationCodes.js</code>(登录 / 找回密码已用)</td>
+<td>学生登录发码、限流、过期逻辑复用</td>
+</tr>
+<tr>
+<td>Excel 导出</td>
+<td>exceljs(部门统计 / 面试评价 / 绩效密钥导出)</td>
+<td>台账导出</td>
+</tr>
+</tbody>
+</table>
+<h3 id="目标">1.2 目标</h3>
+<ol type="1">
+<li>HR 能在后台建<strong>专场</strong>(如「10 月 8 日
+南京理工大学专场」),挂上本场可投递的岗位,区分「现场面试」与「内推」,设置可投递岗位数、简历上传次数、参与智能匹配的
+JD。</li>
+<li>学生扫展板二维码打开网页即是当前专场首页,两个入口完成投递;不知道投什么时上传简历,系统给出匹配度(现场面试岗位优先)。</li>
+<li>后台<strong>台账</strong>一页看全:谁、哪所学校、投了哪 3
+个岗、匹配分多少、简历传了几版、联系方式是否确认、当前进展;支持筛选、批量流转、导出。</li>
+<li>学生上传的每一版简历都存档可追溯,系统始终以最新版为准;每位投递学生都有简历且上传即抽取,HR
+在台账直接看到学校 / 专业 / 学历,不需要事后催传或手动点解析。</li>
+</ol>
+<h3 id="设计原则">1.3 设计原则</h3>
+<ul>
+<li><strong>最小改动</strong>:不改现有 Candidate / Job
+表语义,校招字段放新表;现有页面零回归。</li>
+<li><strong>先后台后学生端</strong>:后台 + API
+契约先行,学生端按契约开发,契约在本文 §8 固定。</li>
+<li><strong>解析计费可控</strong>:一份简历只抽取一次(sha256
+幂等),评估按岗位数线性,报告层对学生端关闭(用代码从逐项判定生成 3
+条理由)。</li>
+<li><strong>公开端点只回必要字段</strong>:学生端 API
+不暴露内部评估明细、不返回其他学生数据、不返回 R2 直链。</li>
+</ul>
+<hr />
+<h2 id="名词与角色">2. 名词与角色</h2>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>名词</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>专场 <code>CampusSession</code></td>
+<td>一次校招活动(学校 + 日期 + 首页文案 + 规则参数 + URL
+slug)。同一时刻<strong>只有一个</strong>专场处于「上线」状态;首页路由
+<code>/campus/:slug</code>,<code>/campus</code>
+公开根路径自动跳当前上线专场</td>
+</tr>
+<tr>
+<td>专场岗位 <code>CampusSessionJob</code></td>
+<td>专场与 <code>Job</code> 的关联,带类型 <code>onsite</code>(现场面试)/
+<code>referral</code>(内推,不能现场面试)、是否参与智能匹配、排序</td>
+</tr>
+<tr>
+<td>学生 <code>CampusApplicant</code></td>
+<td>学生端用户,首次上传时匿名建档(手机号为空),确认联系方式后填入手机 /
+邮箱 / 微信;绑定一条 <code>Candidate</code></td>
+</tr>
+<tr>
+<td>简历版本 <code>CampusResumeVersion</code></td>
+<td>学生每次上传生成一版(v1 / v2 / v3),最新版为当前版</td>
+</tr>
+<tr>
+<td>投递 <code>CampusApplication</code></td>
+<td>学生 × 岗位,来源 <code>direct</code>(看 JD 直投)/
+<code>match</code>(智能匹配后投),带状态机</td>
+</tr>
+<tr>
+<td>匹配任务 <code>CampusMatchRun</code></td>
+<td>一次「以当前简历版本 → 抽取 →
+对所有参与匹配岗位评估」的异步任务</td>
+</tr>
+<tr>
+<td>角色</td>
+<td><strong>学生</strong>(网页,匿名会话,免登录)· <strong>HR /
+招聘官</strong>(后台,需 <code>campus</code> pageKey)·
+<strong>admin</strong>(全部 + 专场规则)·
+<strong>面试官</strong>(沿用面试评价公开页,扫码无登录)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="总体架构">3. 总体架构</h2>
+<div class="diagram"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1149.01 389">
+<style>
+  
+  text { font-family: 'Inter', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 30%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="arrowhead" markerWidth="8" markerHeight="4.8" refX="8" refY="2.4" orient="auto">
+    <polygon points="0 0, 8 2.4, 0 4.8" fill="var(--_arrow)" />
+  </marker>
+  <marker id="arrowhead-start" markerWidth="8" markerHeight="4.8" refX="0" refY="2.4" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.4, 8 4.8" fill="var(--_arrow)" />
+  </marker>
+</defs>
+<polyline points="200.70000000000002,67.75 330.21000000000004,67.75" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="440.86,67.75 529.21,67.75 529.21,92 680.035,92 680.035,187.5" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="448.01000000000005,224 680.035,224 680.035,223.5" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="440.86,67.75 529.21,67.75 529.21,53.5 910.185,53.5 910.185,40" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="749.66,205.5 787.9599999999999,205.5 787.9599999999999,134.5 858.435,134.5" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="749.66,205.5 858.435,205.5" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="749.66,205.5 787.9599999999999,205.5 787.9599999999999,87.75 910.185,87.75 910.185,87" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="749.66,205.5 787.9599999999999,205.5 787.9599999999999,271 826.26,271" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="994.1099999999999,271 1014.11,271 1014.11,211 1034.11,211" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="994.1099999999999,271 1041.26,271" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="994.1099999999999,271 1014.11,271 1014.11,331 1041.56,331" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="749.66,205.5 787.9599999999999,205.5 787.9599999999999,331 879.885,331" fill="none" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="4 4" marker-end="url(#arrowhead)" />
+<rect x="216.7" y="54.25" width="90.36" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="261.88" y="67.75" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">/campus/:slug</text>
+<rect x="464.01000000000005" y="78.5" width="130.4" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="529.21" y="92" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">/api/campus/public/*</text>
+<rect x="484.03000000000003" y="210.5" width="90.36" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="529.21" y="224" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">/api/campus/*</text>
+<rect x="634.855" y="40" width="90.36" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="680.035" y="53.5" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">presigned PUT</text>
+<rect x="765.66" y="317.5" width="44.6" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="787.9599999999999" y="331" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">验证码邮件</text>
+<rect x="40" y="49.75" width="160.70000000000002" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="330.21000000000004" y="49.75" width="110.65" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="610.41" y="187.5" width="139.25" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="323.06" y="206" width="124.95" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="847.7099999999999" y="47" width="124.95" height="33" fill="var(--_node-fill)" stroke="none" />
+<line x1="847.7099999999999" y1="47" x2="847.7099999999999" y2="80" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<line x1="972.66" y1="47" x2="972.66" y2="80" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<ellipse cx="910.185" cy="80" rx="62.475" ry="7" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<ellipse cx="910.185" cy="47" rx="62.475" ry="7" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="858.435" y="118" width="103.5" height="33" fill="var(--_node-fill)" stroke="none" />
+<line x1="858.435" y1="118" x2="858.435" y2="151" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<line x1="961.935" y1="118" x2="961.935" y2="151" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<ellipse cx="910.185" cy="151" rx="51.75" ry="7" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<ellipse cx="910.185" cy="118" rx="51.75" ry="7" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="858.435" y="189" width="103.5" height="33" fill="var(--_node-fill)" stroke="none" />
+<line x1="858.435" y1="189" x2="858.435" y2="222" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<line x1="961.935" y1="189" x2="961.935" y2="222" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<ellipse cx="910.185" cy="222" rx="51.75" ry="7" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<ellipse cx="910.185" cy="189" rx="51.75" ry="7" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="826.26" y="253" width="167.85000000000002" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1034.11" y="193" width="74.9" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1041.26" y="253" width="60.6" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1041.56" y="313" width="60" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="879.885" y="313" width="60.6" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<text x="120.35000000000001" y="67.75" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">学生 手机浏览器 或 微信内置浏览器</text>
+<text x="385.535" y="67.75" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">web 前端 公开路由</text>
+<text x="680.035" y="205.5" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Fastify backend</text>
+<text x="385.535" y="224" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">HR 后台 /campus</text>
+<text x="910.185" y="63.5" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">R2 campus/ 前缀</text>
+<text x="910.185" y="134.5" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">PostgreSQL</text>
+<text x="910.185" y="205.5" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Redis 任务状态</text>
+<text x="910.185" y="271" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">evaluation pipeline</text>
+<text x="1071.56" y="211" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">TextIn</text>
+<text x="1071.56" y="271" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Kimi</text>
+<text x="1071.56" y="331" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Jev</text>
+<text x="910.185" y="331" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">邮件服务</text>
+</svg></div>
+<ul>
+<li><strong>同一前端工程两组路由</strong>:<code>/campus</code>(后台,AuthGuard
+内)与 <code>/campus/:slug/*</code>(学生端,AuthGuard 外,与
+<code>/share/:token</code>、<code>/upload/:token</code>
+同层级),学生端页面 lazy mount 不进后台 bundle 主链。</li>
+<li><strong>两套 API 前缀,同一进程</strong>:<code>/api/campus/*</code>
+后台(JWT + pageKey
+<code>campus</code>),<code>/api/campus/public/*</code> 学生端(学生
+JWT,<code>aud=campus-public</code>,与后台 JWT 同密钥不同
+audience,互不通用)。</li>
+<li><strong>学生会话(免登录)</strong>:首次上传前勾选告知 →
+<code>POST /auth/start</code> 建占位 <code>Candidate</code> +
+<code>CampusApplicant</code>(phone 为空)→ 签 30 天 JWT 存
+<code>localStorage</code>(<code>mesa.campus.token.v1</code>);之后所有请求带该
+token。手机 / 邮箱 / 微信在「确认联系方式」页写入学生与
+Candidate。无需验证码、无第三方凭证。</li>
+<li><strong>任务执行</strong>:匹配任务 <code>setImmediate</code>
+起跑,状态写
+<code>parseTaskStore</code>;增加一个进程内并发闸(<code>campus.match.concurrency</code>,默认
+3)避免专场现场几百人同时上传把 Kimi / Jev
+打爆,排队中的任务也回「排队位次」给学生端显示。</li>
+</ul>
+<hr />
+<h2 id="业务规则矩阵">4. 业务规则矩阵</h2>
+<p>需求 9 条 + 本次定稿 3 条,逐一落成规则与可配置项:</p>
+<table>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+</colgroup>
+<thead>
+<tr>
+<th>#</th>
+<th>需求</th>
+<th>规则</th>
+<th>配置位置</th>
+<th>默认</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>最多投递 3 个岗位</td>
+<td>每学生在<strong>同一专场</strong>内有效投递(未撤回)≤
+<code>maxApplyJobs</code>;达上限 409
+<code>campus_apply_quota_exceeded</code>;同一岗位不可重复投</td>
+<td>专场</td>
+<td>3</td>
+</tr>
+<tr>
+<td>2</td>
+<td>现场面试 / 内推两类岗位</td>
+<td><code>CampusSessionJob.kind = onsite \| referral</code>;JD
+卡与匹配结果均显示类型角标;内推岗位投递成功页文案「将由内推人跟进,不安排现场面试」</td>
+<td>专场岗位</td>
+<td>—</td>
+</tr>
+<tr>
+<td>3</td>
+<td>不知道投什么 → 上传简历智能匹配</td>
+<td>对 <code>matchEnabled=true</code> 的专场岗位逐一评估;结果<strong>先
+onsite 后
+referral</strong>,组内按原始分降序;只对学生端可见的岗位评估</td>
+<td>专场岗位</td>
+<td>开</td>
+</tr>
+<tr>
+<td>4</td>
+<td>上传后确认联系方式</td>
+<td>上传完成即进「联系方式确认页」:手机(必填)、邮箱(必填,不验证)、微信号(可选)、姓名
+/ 学校 /
+专业(抽取结果预填),勾选「我确认以上方式可直接联系到本人」后才能发起匹配或投递;<code>contactConfirmedAt</code>
+记录</td>
+<td>—</td>
+<td>必须</td>
+</tr>
+<tr>
+<td>5</td>
+<td>只有两个按钮</td>
+<td>首页仅「智能匹配」「查看岗位投递」;可投递数、匹配参与范围均由后台配置</td>
+<td>专场</td>
+<td>—</td>
+</tr>
+<tr>
+<td>6</td>
+<td>简历最多上传 3 次,以最新为准,旧版存档</td>
+<td>同一专场内
+<code>resumeUploadCount ≤ maxResumeUploads</code>;新版成功后
+<code>currentResumeVersionId</code> 指向它并同步
+<code>Candidate.attachment</code>;旧版仅存档;后台可看版本列表与时间、可下载任一版</td>
+<td>专场</td>
+<td>3</td>
+</tr>
+<tr>
+<td>7</td>
+<td><strong>评分最低 60 分 = 展示下限(定稿)</strong></td>
+<td>对学生展示分
+<code>scoreShown = max(scoreFloor, scoreRaw)</code>;<strong>内部保留原始分、A/B/C/D、硬筛结果</strong>,台账可切换看原始分;排序与
+HR 判断用原始分;硬筛 FAIL 的岗位折叠到「暂不匹配」不显示分数</td>
+<td>专场 <code>scoreFloor</code></td>
+<td>60</td>
+</tr>
+<tr>
+<td>8</td>
+<td>抽取 / 匹配阶段进度动画</td>
+<td><code>LiquidLoader</code> 按任务阶段映射进度(§5.5),轮询
+2s,排队时显示「前方 N 人」</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td>9</td>
+<td>首页专场可配置</td>
+<td>专场的
+<code>slug / heroTitle / heroSubtitle / bannerKey / startsAt / endsAt / status</code>;<code>GET /public/session/current</code>
+返回当前上线专场;无上线专场时首页显示「暂无进行中的校招专场」</td>
+<td>专场</td>
+<td>—</td>
+</tr>
+<tr>
+<td>10</td>
+<td><strong>投递与匹配都必须先上传简历(定稿)</strong></td>
+<td>任一路径在无当前简历版本时先跳上传页;<code>POST /applications</code>
+与 <code>POST /match-runs</code> 后端二道防线:无
+<code>currentResumeVersionId</code> → 428
+<code>campus_resume_required</code></td>
+<td>—</td>
+<td>强制</td>
+</tr>
+<tr>
+<td>12</td>
+<td><strong>上传即抽取(定稿)</strong></td>
+<td><code>POST /resumes/submit</code> 成功后 <code>setImmediate</code>
+起抽取任务(pipeline
+<code>extract + structure</code>,<strong>不评估</strong>);学生不等待,直接进联系方式确认页;抽取完成回填
+Candidate 的学校 / 专业 / 学历 /
+姓名并预填确认页;智能匹配复用该结果(sha256 幂等)只跑评估</td>
+<td>—</td>
+<td>强制</td>
+</tr>
+<tr>
+<td>11</td>
+<td><strong>不做小程序,直接用网页(定稿)</strong></td>
+<td>学生端为 <code>/campus/:slug/*</code>
+公开路由;后台专场生成<strong>三个入口码</strong>:首页
+<code>/campus/:slug</code>、直接投递
+<code>/campus/:slug/jobs</code>、智能匹配
+<code>/campus/:slug/match</code>,展板 / PPT / 公众号菜单任选</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td>13</td>
+<td><strong>学生免登录(定稿)</strong></td>
+<td>不注册不登录;首次上传勾选告知即匿名建档,会话存浏览器 30
+天;「我的投递」只在同一浏览器可见,换设备需联系 HR 查询</td>
+<td>系统 <code>campus.auth.jwt_ttl</code></td>
+<td>30d</td>
+</tr>
+<tr>
+<td>14</td>
+<td><strong>后台任务不随页面中断,可取消(定稿)</strong></td>
+<td>抽取 / 匹配都是服务器后台任务(状态在 Redis /
+DB),学生关页、切后台、换页都不中断;进行中的页面(确认页 / 我的投递 /
+匹配进度)显示提示条「关闭页面也不会中断,稍后可在我的投递查看」+「取消」。取消为协作式:置任务
+<code>cancelRequested</code>,流水线在阶段边界(抽取前后 / 评估前 /
+落库前)检查并退出,不落库;版本行立即标
+<code>cancelled</code>,可「重新解析」(不计上传次数)。HR 台账同样可取消 /
+重试</td>
+<td>—</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="学生端网页h5设计">5. 学生端网页(H5)设计</h2>
+<h3 id="技术与兼容">5.1 技术与兼容</h3>
+<ul>
+<li><strong>同一 React
+工程</strong>:<code>web/src/pages/campus/public/*</code>,路由挂在
+<code>App.jsx</code> AuthGuard 外,与 <code>PublicUpload.jsx</code>
+同模式;移动端优先布局,桌面端居中 480px 容器。</li>
+<li><strong>免登录会话</strong>:上传页首次使用时勾选《个人信息处理告知》→
+<code>POST /auth/start</code> 匿名建档并签 30 天 JWT;token 存
+<code>localStorage</code>,丢失即视为新学生(记录仍在系统中,HR
+可按手机号合并)。</li>
+<li><strong>上传</strong>:<code>&lt;input type="file" accept=".pdf,.doc,.docx"&gt;</code>
+→ <code>POST /resumes/presigned-url</code> → 浏览器 PUT R2 →
+<code>POST /resumes/submit</code>,与公开上传链接完全一致;≤ 20MB,后缀 +
+magic bytes 双校验。</li>
+<li><strong>微信内置浏览器</strong>:iOS 只能从「文件」App
+选文件,页面上传按钮下固定一行指引「微信里的简历请先长按 → 用其他应用打开
+→ 存储到文件」;首页右上角「电脑上传」展示本专场的二维码与短链(复用
+<code>UploadShareLink</code>,<code>defaultSource</code> 写专场名,HR
+在台账可把该上传合并到学生记录);所有新开窗口用
+<code>&lt;a target="_blank"&gt;</code> + 后端 302,不用
+<code>window.open</code>。</li>
+<li><strong>波浪球</strong>:直接
+<code>import { LiquidLoader }</code>,无需重写。</li>
+<li><strong>动效</strong>:GSAP + <code>prefers-reduced-motion</code>,与
+Reports 一致。</li>
+</ul>
+<h3 id="页面与流转">5.2 页面与流转</h3>
+<div class="diagram"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 491.935 1132.4">
+<style>
+  
+  text { font-family: 'Inter', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 30%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="arrowhead" markerWidth="8" markerHeight="4.8" refX="8" refY="2.4" orient="auto">
+    <polygon points="0 0, 8 2.4, 0 4.8" fill="var(--_arrow)" />
+  </marker>
+  <marker id="arrowhead-start" markerWidth="8" markerHeight="4.8" refX="0" refY="2.4" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.4, 8 4.8" fill="var(--_arrow)" />
+  </marker>
+</defs>
+<polyline points="385.885,76 385.885,104.5 209.38,104.5 209.38,133" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="385.885,76 385.885,624.2" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="385.885,660.2 385.885,717.2" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="385.885,753.2 385.885,829.4976960309777 361.1576960309777,829.4976960309777" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="191.14447630426125,227.96447630426124 191.14447630426125,274.7 168.93,274.7 168.93,303.2" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="314.4784410069761,837.581558993024 314.4784410069761,781.7 262.11,781.7 262.11,321.2 227.83,321.2" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="168.93,339.2 168.93,359.2 98.9,359.2 98.9,379.2" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="98.9,415.2 98.9,455.2" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="242.03498247619996,213.54501752380003 242.03498247619996,274.7 325.435,274.7 325.435,566.2 230.68,566.2" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="98.9,491.2 98.9,519.7 78.32000000000002,519.7 78.32000000000002,566.2 141.48000000000002,566.2" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="98.9,491.2 98.9,519.7 119.48,519.7 119.48,998.4000000000001 123.46000000000001,998.4000000000001" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="341.86,923.4000000000001 341.86,998.4000000000001 248.41,998.4000000000001" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="186.08,584.2 186.08,624.2" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="186.08,660.2 186.08,688.7 170.5,688.7 170.5,998.4000000000001 123.46000000000001,998.4000000000001" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="186.08,660.2 186.08,688.7 215.38,688.7 215.38,735.2 352.01,735.2" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="185.935,1016.4000000000001 185.935,1074.4 316.285,1074.4" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="385.885,76 385.885,104.5 473.935,104.5 473.935,1074.4 376.88500000000005,1074.4" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<rect x="189.94" y="91" width="38.88" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="209.38" y="104.5" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">智能匹配</text>
+<rect x="366.445" y="383.7" width="38.88" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="385.885" y="397.2" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">查看岗位</text>
+<rect x="372.16499999999996" y="768.2" width="27.44" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="385.885" y="781.7" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">投递</text>
+<rect x="158.07" y="261.2" width="21.72" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="168.93" y="274.7" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">否</text>
+<rect x="251.25" y="552.7" width="21.72" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="262.11" y="566.2" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">否</text>
+<rect x="314.575" y="383.7" width="21.72" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="325.435" y="397.2" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">是</text>
+<rect x="53.160000000000025" y="506.20000000000005" width="50.32" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="78.32000000000002" y="519.7" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">来自智能匹配</text>
+<rect x="100.04" y="675.2" width="38.88" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="119.48" y="688.7" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">来自投递</text>
+<rect x="331" y="938.4000000000001" width="21.72" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="341.86" y="951.9000000000001" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">是</text>
+<rect x="156.78" y="768.2" width="27.44" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="170.5" y="781.7" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">投递</text>
+<rect x="344.86" y="40" width="82.05000000000001" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<polygon points="209.38,133 265.98,189.6 209.38,246.2 152.78,189.6" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="319.835" y="624.2" width="132.10000000000002" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="352.01" y="717.2" width="67.75" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<polygon points="341.86,810.2 398.46000000000004,866.8000000000001 341.86,923.4000000000001 285.26,866.8000000000001" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="110.03" y="303.2" width="117.80000000000001" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="40" y="379.2" width="117.80000000000001" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="57.875" y="455.2" width="82.05000000000001" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="141.48000000000002" y="548.2" width="89.2" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="123.46000000000001" y="980.4000000000001" width="124.95" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="145.055" y="624.2" width="82.05000000000001" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="316.285" y="1056.4" width="60.6" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<text x="385.885" y="58" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">首页 当前专场</text>
+<text x="209.38" y="189.6" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">已登录且有简历?</text>
+<text x="385.885" y="642.2" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">岗位列表 onsite 在前</text>
+<text x="385.885" y="735.2" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">JD 详情</text>
+<text x="341.86" y="866.8000000000001" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">已登录且有简历?</text>
+<text x="168.93" y="321.2" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">登录 手机号+邮箱验证码</text>
+<text x="98.9" y="397.2" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">上传简历 第 n/3 次</text>
+<text x="98.9" y="473.2" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">联系方式确认页</text>
+<text x="186.08" y="566.2" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">匹配进度 波浪球</text>
+<text x="185.935" y="998.4000000000001" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">投递成功 剩余 N 个名额</text>
+<text x="186.08" y="642.2" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">匹配结果 列表</text>
+<text x="346.58500000000004" y="1074.4" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">我的投递</text>
+</svg></div>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>页面</th>
+<th>要点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>首页 <code>/campus/:slug</code></td>
+<td>专场 banner + 标题 / 副标题(后台配)+
+两个大按钮;底部小字「我的投递」与「已投
+x/3」;右上「电脑上传」二维码;无上线专场时空态</td>
+</tr>
+<tr>
+<td>岗位列表</td>
+<td>两段:<strong>现场面试岗位</strong>、<strong>内推岗位</strong>;卡片显示岗位
+/ 部门 / 地点 / 类型角标 / 已投标记</td>
+</tr>
+<tr>
+<td>JD 详情</td>
+<td>复用 <code>Job</code> 的 description / responsibilities /
+requirements / nice /
+benefits;底部「投递」按钮,达上限时置灰并提示;无简历时按钮文案变「上传简历并投递」</td>
+</tr>
+<tr>
+<td>上传简历</td>
+<td>显示「第 n/3 次上传,新版将覆盖旧版用于匹配与投递」;选文件 →
+进度条;submit 成功即进下一页,抽取在后台跑;失败可重试不计次(只有 submit
+成功才计数)</td>
+</tr>
+<tr>
+<td>联系方式确认</td>
+<td>姓名、手机(必填)、邮箱(必填)、微信号;顶部一行小波浪球显示「正在读取简历…」,抽取完成后姓名
+/ 学校 / 专业 / 学历自动预填供学生确认修改;三条提示语:务必保持畅通 /
+最好电话或微信能直接联系本人 / 面试通知通过这些渠道发出;复选框确认</td>
+</tr>
+<tr>
+<td>匹配进度</td>
+<td><code>LiquidLoader loading</code> + 阶段文案 +
+排队位次;可退出页面,再进「我的投递」能看到结果</td>
+</tr>
+<tr>
+<td>匹配结果</td>
+<td>两段(onsite / referral)各岗位:<code>LiquidLoader size=48</code> 显示
+<code>scoreShown</code> + 3 条理由(2 条匹配点 + 1
+条待补充);「投递」按钮;硬筛不通过的岗位折叠到「暂不匹配」并写明原因(如毕业批次)</td>
+</tr>
+<tr>
+<td>我的投递</td>
+<td>投递列表与状态(已投递 / 筛选中 / 现场面试 / 内推已推送 / 通过 /
+未通过)、可撤回(仅已投递 /
+筛选中)、简历版本与剩余上传次数、「重新匹配」按钮(有新版本时高亮);本设备无会话时提示先上传简历或「找回记录」</td>
+</tr>
+<tr>
+<td>找回记录</td>
+<td>换设备 / 清缓存后:填当时确认过的手机号 + 邮箱 → 邮箱验证码(复用
+<code>verificationCodes</code>,purpose <code>CAMPUS_RECOVER</code>)→
+验证通过把本设备会话接回原记录。<strong>不是登录</strong>:没有账号密码,只匹配「已确认联系方式」的记录;入口在首页底部、上传页、我的投递空态</td>
+</tr>
+</tbody>
+</table>
+<h3 id="流程-a看-jd-直接投递">5.3 流程 A:看 JD 直接投递</h3>
+<ol type="1">
+<li><code>GET /public/session/current</code> →
+首页;<code>GET /public/session/current/jobs</code> →
+两段列表;<code>GET /public/jobs/:id</code> → 详情。</li>
+<li>点投递:无会话或无简历 → 上传页(首次勾选告知即匿名建档)→
+联系方式确认页;两者都有且已确认 → 直接投递。前端带 <code>next</code>
+回到 JD 并自动完成投递。</li>
+<li><code>POST /public/applications { jobId, source: "direct" }</code> →
+201;后端校验专场在线、岗位属于本专场、额度、重复、<strong>有简历</strong>、<strong>已确认联系方式</strong>。</li>
+<li><code>/auth/start</code> 时事务内创建占位
+<code>Candidate</code>(name「待解析简历」,source
+<code>校招·&lt;专场&gt;</code>,tags
+<code>["校招", &lt;学校&gt;]</code>,ownerId =
+专场创建者),抽取完成后回填姓名 / 学校,确认页写入手机 / 邮箱;投递时
+<code>Candidate.jobId</code> 若为空则设为本次岗位。</li>
+<li>submit
+成功即起抽取任务(<code>extract + structure</code>),学生进确认页时后台已在跑;抽取完成回填
+<code>Candidate</code> 学校 / 专业 / 学历与
+<code>profile</code>,台账立即可见。抽取失败(如 .doc
+超时)不阻塞投递,台账标「待解析」由 HR 重试。</li>
+</ol>
+<h3 id="流程-b不知道投什么-智能匹配">5.4 流程 B:不知道投什么 →
+智能匹配</h3>
+<div class="diagram"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 609.475 956">
+<style>
+  
+  text { font-family: 'Inter', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 30%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="seq-arrow" markerWidth="8" markerHeight="4.8" refX="8" refY="2.4" orient="auto-start-reverse">
+    <polygon points="0 0, 8 2.4, 0 4.8" fill="var(--_arrow)" />
+  </marker>
+  <marker id="seq-arrow-open" markerWidth="8" markerHeight="4.8" refX="8" refY="2.4" orient="auto-start-reverse">
+    <polyline points="0 0, 8 2.4, 0 4.8" fill="none" stroke="var(--_arrow)" stroke-width="1" />
+  </marker>
+</defs>
+<rect x="30" y="618" width="241.02499999999998" height="100" rx="0" ry="0" fill="none" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="30" y="618" width="86.17999999999999" height="18" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="36" y="627" dy="0.35em" font-size="11" font-weight="600" fill="var(--_text-sec)">loop [每 2s]</text>
+<rect x="291.025" y="726" width="288.45000000000005" height="100" rx="0" ry="0" fill="none" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="291.025" y="726" width="175.5" height="18" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="297.025" y="735" dy="0.35em" font-size="11" font-weight="600" fill="var(--_text-sec)">loop [每个 matchEnabled 岗位]</text>
+<line x1="80" y1="70" x2="80" y2="926" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line x1="220" y1="70" x2="220" y2="926" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line x1="370.65" y1="70" x2="370.65" y2="926" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line x1="524.875" y1="70" x2="524.875" y2="926" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line x1="80" y1="90" x2="220" y2="90" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="150" y="84" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">POST /public/resumes/presigned-url</text>
+<line x1="220" y1="130" x2="80" y2="130" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+<text x="150" y="124" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">{ url, key }</text>
+<polyline points="80,170 110,170 110,190 80,190" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="116" y="180" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">PUT 文件到 R2</text>
+<line x1="80" y1="240" x2="220" y2="240" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="150" y="234" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">POST /public/resumes/submit { key, filename }</text>
+<polyline points="220,280 250,280 250,300 220,300" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="256" y="290" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">sha256 去重 · 次数校验 · 建版本 · 同步 Candidate.attachment</text>
+<line x1="220" y1="350" x2="370.65" y2="350" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="295.325" y="344" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">setImmediate 抽取任务(extract + structure)</text>
+<line x1="220" y1="390" x2="80" y2="390" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+<text x="150" y="384" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">201 { versionId, version, remaining, parseTaskId }</text>
+<line x1="370.65" y1="430" x2="524.875" y2="430" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="447.7625" y="424" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">extract + structure(sha256 幂等)</text>
+<line x1="524.875" y1="470" x2="370.65" y2="470" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+<text x="447.7625" y="464" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">ResumeParse + profile 回填 Candidate</text>
+<line x1="80" y1="510" x2="220" y2="510" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="150" y="504" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">POST /public/match-runs</text>
+<line x1="220" y1="550" x2="370.65" y2="550" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="295.325" y="544" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">入队(并发闸) · 建 task · 等待抽取完成</text>
+<line x1="220" y1="590" x2="80" y2="590" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+<text x="150" y="584" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">202 { runId, queuePosition }</text>
+<line x1="80" y1="658" x2="220" y2="658" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="150" y="652" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">GET /public/match-runs/:runId</text>
+<line x1="220" y1="698" x2="80" y2="698" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+<text x="150" y="692" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">{ status, progress, stage, queuePosition, results? }</text>
+<line x1="370.65" y1="766" x2="524.875" y2="766" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="447.7625" y="760" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">hardFilter + Jev evaluate + composite(jobId 覆盖)</text>
+<line x1="524.875" y1="806" x2="370.65" y2="806" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+<text x="447.7625" y="800" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">CandidateEvaluation(isCurrent per job)</text>
+<line x1="370.65" y1="846" x2="220" y2="846" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="295.325" y="840" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">results 排序(onsite 优先 · 原始分降序)· scoreShown 下限 · 代码生成 3 条理由</text>
+<line x1="220" y1="886" x2="80" y2="886" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+<text x="150" y="880" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">status=done + results</text>
+<rect x="40" y="30" width="80" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="80" y="50" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">学生端网页</text>
+<rect x="178.975" y="30" width="82.05000000000001" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="220" y="50" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">backend</text>
+<rect x="301.025" y="30" width="139.25" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="370.65" y="50" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">并发闸 + taskStore</text>
+<rect x="480.275" y="30" width="89.2" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="524.875" y="50" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">pipeline</text>
+</svg></div>
+<ul>
+<li><strong>上传即抽取,匹配只评估</strong>:submit 起
+<code>mode=reextract</code>(仅 extract + structure,写
+<code>ResumeParse</code> + <code>Candidate.profile</code>);match-run
+起时若该版本抽取仍在跑则等待(进度条停在 60%
+以下显示「正在读取简历」),已完成则直接从 evaluate
+阶段开始。<code>pipeline.runPipeline</code>
+需小幅扩展:<code>opts.jobId</code>
+覆盖、<code>opts.skipReport=true</code>、<code>opts.skipEvaluate=true</code>。抽取结果以
+<code>ResumeParse(candidateId, fileSha256, provider)</code>
+幂等,再传同一文件不重复计费。</li>
+<li><strong>理由生成不走 Kimi</strong>:从
+<code>CandidateEvaluation.items</code> 取 <code>verdict=满足</code> 且
+tier 最高的 2 项 + 1 项
+<code>未提及 / 不满足</code>,模板化成「符合:xxx」「可补充:xxx」;报告层
+<code>reportStatus=skipped</code>,HR
+在候选人详情点「生成报告」时再跑。</li>
+<li><strong>结果快照</strong>:写
+<code>CampusMatchRun.results</code>,学生端和台账都读快照,不每次重算。</li>
+<li>匹配完成后学生仍受 3 岗上限,投递用 <code>source: "match"</code> 并带
+<code>matchRunId</code>。</li>
+</ul>
+<h3 id="进度动画波浪球">5.5 进度动画(波浪球)</h3>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>阶段(task.stages)</th>
+<th>进度区间</th>
+<th>文案</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>queued(并发闸排队)</td>
+<td>0–5%,不涨</td>
+<td>「前方还有 N 位同学,请稍候」</td>
+</tr>
+<tr>
+<td>extract(TextIn)</td>
+<td>5–30%</td>
+<td>「正在读取你的简历…」</td>
+</tr>
+<tr>
+<td>structure(Kimi 结构化)</td>
+<td>30–60%</td>
+<td>「正在理解你的经历与技能…」</td>
+</tr>
+<tr>
+<td>evaluate(逐岗位)</td>
+<td>60–95%,每完成一个岗位 +35/N</td>
+<td>「正在和 N 个岗位比对(k/N)…」</td>
+</tr>
+<tr>
+<td>done</td>
+<td>100% → 跳结果页</td>
+<td>「匹配完成」</td>
+</tr>
+<tr>
+<td>failed</td>
+<td>球体 red 档 + 文案</td>
+<td>「这次没成功,再试一次(不计上传次数)」</td>
+</tr>
+<tr>
+<td>cancelled</td>
+<td>球体灰 + 文案</td>
+<td>「已取消」+「重新匹配」</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><p>进度页顶部常驻提示条:「匹配在后台进行,关闭页面也不会中断,稍后可在我的投递查看结果」+「取消匹配」按钮;取消同抽取的协作式机制,<code>CampusMatchRun.status=cancelled</code>。</p></li>
+<li><p>抽取已在上传时完成的情况下(多数),匹配进度直接从 60%
+起跑,学生等待时间只剩评估阶段(典型 10–30s)。</p></li>
+<li><p>两次轮询之间用时间插值让水位缓慢上涨,但<strong>不越过当前阶段上限</strong>,避免「卡在
+99%」。</p></li>
+<li><p>组件即 <code>LiquidLoader</code>(<code>loading=true</code>
+呼吸光晕,<code>level</code> 为插值后进度);结果页每个岗位用
+<code>size=48</code> 静态显示 <code>scoreShown</code>。</p></li>
+</ul>
+<h3 id="简历版本规则">5.6 简历版本规则</h3>
+<ul>
+<li>计数口径:<strong>submit 成功</strong>才
++1;解析失败不计次,可重传;同一 sha256
+重复上传提示「与上一版相同」且不计次。</li>
+<li>新版本上传后:立即起新一轮抽取(每版计 1 次 Kimi
+结构化),<code>currentResumeVersionId</code>
+指向新版,<code>Candidate.attachment</code>
+同步,<code>Candidate.documents.resume</code> 追加一条(旧版保留在列表,标
+<code>v1 / v2</code>),之前的匹配结果标
+<code>stale=true</code>,学生「重新匹配」走新版本;已投递记录不受影响,HR
+看到的始终是最新版。</li>
+<li>达上限后上传按钮置灰:「已用完 3 次上传机会,如需更新请联系现场
+HR」(HR 可在台账给单个学生加次数)。</li>
+</ul>
+<hr />
+<h2 id="后台web-campus设计">6. 后台(Web <code>/campus</code>)设计</h2>
+<p>路由仍是 <code>/campus</code>,页内三个 tab:<strong>台账 · 专场 ·
+设置</strong>。沿用 Tailwind 令牌、<code>Card</code> /
+<code>Table</code> / <code>StatusPill</code> /
+<code>LiquidLoader</code>。</p>
+<h3 id="台账页默认-tab">6.1 台账页(默认 tab)</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>区块</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>KPI 行</td>
+<td>本专场:学生数 / 投递数 / 已上传简历 / 已确认联系方式 / 现场面试中 /
+已通过(GSAP CountUp,与 NewHire 一致)</td>
+</tr>
+<tr>
+<td>筛选</td>
+<td>专场(默认当前上线)· 岗位 · 岗位类型 · 投递来源(直投 / 匹配)· 状态 ·
+学校 · 学历 · 毕业年份 · 解析状态(已解析 / 解析中 / 待解析失败)·
+是否确认联系方式 · 搜索(姓名 / 手机 / 邮箱 / 学校)</td>
+</tr>
+<tr>
+<td>表格列</td>
+<td>姓名(链到候选人详情)· 学校 / 专业 / 学历 / 毕业年 · 手机 / 邮箱 /
+微信(受 <code>candidate.contact</code> 模块权限控制打码)· 联系方式确认 ✓
+· 投递岗位(最多 3 个 chip,带 onsite / referral 角标与来源)·
+匹配分(波浪球小图,hover 显原始分与 A/B/C/D)· 简历 v(n)/上限 · 当前状态 ·
+最近活动时间</td>
+</tr>
+<tr>
+<td>行操作</td>
+<td>查看学生详情抽屉 · 推进状态 · 安排现场面试(复用 Interview)·
+生成面试评价二维码(复用 InterviewEvaluation)· 分享简报(复用 ShareLink)·
+重试解析 / 重新匹配 · 加上传次数</td>
+</tr>
+<tr>
+<td>批量</td>
+<td>勾选 → 批量推进状态 / 批量安排面试 / 批量重试解析 / 导出
+xlsx(exceljs,列同表格 + 原始分 + 各岗位分)</td>
+</tr>
+<tr>
+<td>学生详情抽屉</td>
+<td>基本信息 + 联系方式 + 投递列表(每条:岗位、来源、分数、状态时间线)+
+<strong>简历版本列表</strong>(v1 / v2 /
+v3:时间、文件名、大小、下载、是否当前版、对应解析结果)+ 匹配任务历史 +
+「合并电脑端上传」(把 <code>UploadShareLink</code> 进来的同名 /
+同手机候选人并入)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="专场-tab">6.2 专场 tab</h3>
+<ul>
+<li>列表:名称 / 学校 / 日期 / slug / 状态(草稿 · 上线 · 已结束)/ 学生数
+/
+投递数;「上线」互斥,点上线自动下线其他专场;上线后显示学生端二维码与短链(可下载
+PNG 放展板)。</li>
+<li>编辑表单:名称、学校、slug(自动生成可改)、日期区间、首页标题 /
+副标题、banner 图(R2
+<code>campus/banners/</code>)、<code>maxApplyJobs</code>、<code>maxResumeUploads</code>、<code>scoreFloor</code>、<code>matchEnabled</code>(整场开关)、<code>showSalary</code>。</li>
+<li>岗位配置:从 <code>Job</code> 列表勾选加入,每行设
+<code>kind</code>(onsite /
+referral)、<code>matchEnabled</code>、排序;加入时若
+<code>Job.jdFacts</code> 或 <code>evaluationModel</code>
+为空,行内显示「未生成评价模型」并提供一键生成(调现有
+<code>/jobs/:id/extract-facts</code> +
+<code>/evaluation-model/suggest</code>),未生成不允许开匹配。</li>
+<li>预览:右侧手机壳 iframe 直接加载
+<code>/campus/:slug?preview=1</code>(草稿态也可预览,带
+<code>preview</code> 参数时后端允许读草稿专场但禁止写操作)。</li>
+</ul>
+<h3 id="设置-tabadmin">6.3 设置 tab(admin)</h3>
+<ul>
+<li>匹配并发 <code>campus.match.concurrency</code>;学生 JWT 有效期
+<code>campus.auth.jwt_ttl</code>;验证码发送频率上限;联系方式确认页三条提示语文案;电脑端上传兜底开关。</li>
+<li>权限:pageKey <code>campus</code> 看页;新增模块键
+<code>campus.manage</code>(专场 /
+岗位配置)、<code>campus.export</code>(导出含联系方式);默认仅
+admin。</li>
+</ul>
+<hr />
+<h2 id="数据模型">7. 数据模型</h2>
+<div class="diagram"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1008.25 428.5">
+<style>
+  
+  
+  text { font-family: 'Inter', system-ui, sans-serif; }
+  .mono { font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', ui-monospace, monospace; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 30%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+</defs>
+<polyline points="180,170.25 233.3,170.25 233.3,276 356.6,276 356.6,267.5" fill="none" stroke="var(--_line)" stroke-width="0.75" />
+<polyline points="180,331.5 356.6,331.5 356.6,321.5" fill="none" stroke="var(--_line)" stroke-width="0.75" />
+<polyline points="180,170.25 233.3,170.25 233.3,151.75 286.6,151.75" fill="none" stroke="var(--_line)" stroke-width="0.75" />
+<polyline points="426.6,151.75 488.48,151.75 488.48,67 560.2850000000001,67" fill="none" stroke="var(--_line)" stroke-width="0.75" />
+<polyline points="426.6,151.75 488.48,151.75 488.48,361.5 550.3600000000001,361.5" fill="none" stroke="var(--_line)" stroke-width="0.75" />
+<polyline points="426.6,151.75 488.48,151.75 488.48,187 630.2850000000001,187 630.2850000000001,230.5" fill="none" stroke="var(--_line)" stroke-width="0.75" />
+<polyline points="426.6,294.5 488.48,294.5 488.48,276 630.2850000000001,276 630.2850000000001,284.5" fill="none" stroke="var(--_line)" stroke-width="0.75" />
+<polyline points="426.6,151.75 488.48,151.75 488.48,137.5 898.25,137.5 898.25,176.75" fill="none" stroke="var(--_line)" stroke-width="0.75" />
+<polyline points="710.21,361.5 898.25,361.5 898.25,230.75" fill="none" stroke="var(--_line)" stroke-width="0.75" />
+<rect x="40" y="143.25" width="140" height="54" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="40" y="143.25" width="140" height="32" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="110" y="159.25" text-anchor="middle" dy="0.35em" font-size="13" font-weight="700" fill="var(--_text)">CampusSession</text>
+<line x1="40" y1="175.25" x2="180" y2="175.25" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<text x="110" y="186.25" text-anchor="middle" dy="0.35em" font-size="11" fill="var(--_text-faint)" font-style="italic">(no attributes)</text>
+<rect x="286.6" y="267.5" width="140" height="54" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="286.6" y="267.5" width="140" height="32" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="356.6" y="283.5" text-anchor="middle" dy="0.35em" font-size="13" font-weight="700" fill="var(--_text)">CampusSessionJob</text>
+<line x1="286.6" y1="299.5" x2="426.6" y2="299.5" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<text x="356.6" y="310.5" text-anchor="middle" dy="0.35em" font-size="11" fill="var(--_text-faint)" font-style="italic">(no attributes)</text>
+<rect x="40" y="304.5" width="140" height="54" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="40" y="304.5" width="140" height="32" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="110" y="320.5" text-anchor="middle" dy="0.35em" font-size="13" font-weight="700" fill="var(--_text)">Job</text>
+<line x1="40" y1="336.5" x2="180" y2="336.5" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<text x="110" y="347.5" text-anchor="middle" dy="0.35em" font-size="11" fill="var(--_text-faint)" font-style="italic">(no attributes)</text>
+<rect x="286.6" y="124.75" width="140" height="54" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="286.6" y="124.75" width="140" height="32" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="356.6" y="140.75" text-anchor="middle" dy="0.35em" font-size="13" font-weight="700" fill="var(--_text)">CampusApplicant</text>
+<line x1="286.6" y1="156.75" x2="426.6" y2="156.75" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<text x="356.6" y="167.75" text-anchor="middle" dy="0.35em" font-size="11" fill="var(--_text-faint)" font-style="italic">(no attributes)</text>
+<rect x="560.2850000000001" y="40" width="140" height="54" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="560.2850000000001" y="40" width="140" height="32" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="630.2850000000001" y="56" text-anchor="middle" dy="0.35em" font-size="13" font-weight="700" fill="var(--_text)">Candidate</text>
+<line x1="560.2850000000001" y1="72" x2="700.2850000000001" y2="72" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<text x="630.2850000000001" y="83" text-anchor="middle" dy="0.35em" font-size="11" fill="var(--_text-faint)" font-style="italic">(no attributes)</text>
+<rect x="550.3600000000001" y="334.5" width="159.85000000000002" height="54" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="550.3600000000001" y="334.5" width="159.85000000000002" height="32" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="630.2850000000001" y="350.5" text-anchor="middle" dy="0.35em" font-size="13" font-weight="700" fill="var(--_text)">CampusResumeVersion</text>
+<line x1="550.3600000000001" y1="366.5" x2="710.2100000000002" y2="366.5" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<text x="630.2850000000001" y="377.5" text-anchor="middle" dy="0.35em" font-size="11" fill="var(--_text-faint)" font-style="italic">(no attributes)</text>
+<rect x="557.5100000000001" y="230.5" width="145.55" height="54" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="557.5100000000001" y="230.5" width="145.55" height="32" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="630.2850000000001" y="246.5" text-anchor="middle" dy="0.35em" font-size="13" font-weight="700" fill="var(--_text)">CampusApplication</text>
+<line x1="557.5100000000001" y1="262.5" x2="703.0600000000002" y2="262.5" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<text x="630.2850000000001" y="273.5" text-anchor="middle" dy="0.35em" font-size="11" fill="var(--_text-faint)" font-style="italic">(no attributes)</text>
+<rect x="828.25" y="176.75" width="140" height="54" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="828.25" y="176.75" width="140" height="32" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="898.25" y="192.75" text-anchor="middle" dy="0.35em" font-size="13" font-weight="700" fill="var(--_text)">CampusMatchRun</text>
+<line x1="828.25" y1="208.75" x2="968.25" y2="208.75" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<text x="898.25" y="219.75" text-anchor="middle" dy="0.35em" font-size="11" fill="var(--_text-faint)" font-style="italic">(no attributes)</text>
+<line x1="184" y1="164.25" x2="184" y2="176.25" stroke="var(--_line)" stroke-width="1" />
+<line x1="188" y1="164.25" x2="188" y2="176.25" stroke="var(--_line)" stroke-width="1" />
+<line x1="363.6" y1="271.5" x2="356.6" y2="283.5" stroke="var(--_line)" stroke-width="1" />
+<line x1="356.6" y1="271.5" x2="356.6" y2="283.5" stroke="var(--_line)" stroke-width="1" />
+<line x1="349.6" y1="271.5" x2="356.6" y2="283.5" stroke="var(--_line)" stroke-width="1" />
+<circle cx="356.6" cy="287.5" r="4" fill="var(--bg)" stroke="var(--_line)" stroke-width="1" />
+<line x1="184" y1="325.5" x2="184" y2="337.5" stroke="var(--_line)" stroke-width="1" />
+<line x1="188" y1="325.5" x2="188" y2="337.5" stroke="var(--_line)" stroke-width="1" />
+<line x1="363.6" y1="325.5" x2="356.6" y2="337.5" stroke="var(--_line)" stroke-width="1" />
+<line x1="356.6" y1="325.5" x2="356.6" y2="337.5" stroke="var(--_line)" stroke-width="1" />
+<line x1="349.6" y1="325.5" x2="356.6" y2="337.5" stroke="var(--_line)" stroke-width="1" />
+<circle cx="356.6" cy="341.5" r="4" fill="var(--bg)" stroke="var(--_line)" stroke-width="1" />
+<line x1="184" y1="164.25" x2="184" y2="176.25" stroke="var(--_line)" stroke-width="1" />
+<line x1="188" y1="164.25" x2="188" y2="176.25" stroke="var(--_line)" stroke-width="1" />
+<line x1="282.6" y1="158.75" x2="270.6" y2="151.75" stroke="var(--_line)" stroke-width="1" />
+<line x1="282.6" y1="151.75" x2="270.6" y2="151.75" stroke="var(--_line)" stroke-width="1" />
+<line x1="282.6" y1="144.75" x2="270.6" y2="151.75" stroke="var(--_line)" stroke-width="1" />
+<circle cx="266.6" cy="151.75" r="4" fill="var(--bg)" stroke="var(--_line)" stroke-width="1" />
+<line x1="430.6" y1="145.75" x2="430.6" y2="157.75" stroke="var(--_line)" stroke-width="1" />
+<line x1="434.6" y1="145.75" x2="434.6" y2="157.75" stroke="var(--_line)" stroke-width="1" />
+<line x1="556.2850000000001" y1="73" x2="556.2850000000001" y2="61" stroke="var(--_line)" stroke-width="1" />
+<line x1="552.2850000000001" y1="73" x2="552.2850000000001" y2="61" stroke="var(--_line)" stroke-width="1" />
+<line x1="430.6" y1="145.75" x2="430.6" y2="157.75" stroke="var(--_line)" stroke-width="1" />
+<line x1="434.6" y1="145.75" x2="434.6" y2="157.75" stroke="var(--_line)" stroke-width="1" />
+<line x1="546.3600000000001" y1="368.5" x2="534.3600000000001" y2="361.5" stroke="var(--_line)" stroke-width="1" />
+<line x1="546.3600000000001" y1="361.5" x2="534.3600000000001" y2="361.5" stroke="var(--_line)" stroke-width="1" />
+<line x1="546.3600000000001" y1="354.5" x2="534.3600000000001" y2="361.5" stroke="var(--_line)" stroke-width="1" />
+<circle cx="530.3600000000001" cy="361.5" r="4" fill="var(--bg)" stroke="var(--_line)" stroke-width="1" />
+<line x1="430.6" y1="145.75" x2="430.6" y2="157.75" stroke="var(--_line)" stroke-width="1" />
+<line x1="434.6" y1="145.75" x2="434.6" y2="157.75" stroke="var(--_line)" stroke-width="1" />
+<line x1="623.2850000000001" y1="226.5" x2="630.2850000000001" y2="214.5" stroke="var(--_line)" stroke-width="1" />
+<line x1="630.2850000000001" y1="226.5" x2="630.2850000000001" y2="214.5" stroke="var(--_line)" stroke-width="1" />
+<line x1="637.2850000000001" y1="226.5" x2="630.2850000000001" y2="214.5" stroke="var(--_line)" stroke-width="1" />
+<circle cx="630.2850000000001" cy="210.5" r="4" fill="var(--bg)" stroke="var(--_line)" stroke-width="1" />
+<line x1="430.6" y1="288.5" x2="430.6" y2="300.5" stroke="var(--_line)" stroke-width="1" />
+<line x1="434.6" y1="288.5" x2="434.6" y2="300.5" stroke="var(--_line)" stroke-width="1" />
+<line x1="623.2850000000001" y1="280.5" x2="630.2850000000001" y2="268.5" stroke="var(--_line)" stroke-width="1" />
+<line x1="630.2850000000001" y1="280.5" x2="630.2850000000001" y2="268.5" stroke="var(--_line)" stroke-width="1" />
+<line x1="637.2850000000001" y1="280.5" x2="630.2850000000001" y2="268.5" stroke="var(--_line)" stroke-width="1" />
+<circle cx="630.2850000000001" cy="264.5" r="4" fill="var(--bg)" stroke="var(--_line)" stroke-width="1" />
+<line x1="430.6" y1="145.75" x2="430.6" y2="157.75" stroke="var(--_line)" stroke-width="1" />
+<line x1="434.6" y1="145.75" x2="434.6" y2="157.75" stroke="var(--_line)" stroke-width="1" />
+<line x1="891.25" y1="172.75" x2="898.25" y2="160.75" stroke="var(--_line)" stroke-width="1" />
+<line x1="898.25" y1="172.75" x2="898.25" y2="160.75" stroke="var(--_line)" stroke-width="1" />
+<line x1="905.25" y1="172.75" x2="898.25" y2="160.75" stroke="var(--_line)" stroke-width="1" />
+<circle cx="898.25" cy="156.75" r="4" fill="var(--bg)" stroke="var(--_line)" stroke-width="1" />
+<line x1="714.21" y1="355.5" x2="714.21" y2="367.5" stroke="var(--_line)" stroke-width="1" />
+<line x1="718.21" y1="355.5" x2="718.21" y2="367.5" stroke="var(--_line)" stroke-width="1" />
+<line x1="905.25" y1="234.75" x2="898.25" y2="246.75" stroke="var(--_line)" stroke-width="1" />
+<line x1="898.25" y1="234.75" x2="898.25" y2="246.75" stroke="var(--_line)" stroke-width="1" />
+<line x1="891.25" y1="234.75" x2="898.25" y2="246.75" stroke="var(--_line)" stroke-width="1" />
+<circle cx="898.25" cy="250.75" r="4" fill="var(--bg)" stroke="var(--_line)" stroke-width="1" />
+<rect x="220.72" y="253.875" width="25.16" height="17" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="233.3" y="262.375" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">has</text>
+<rect x="263.58" y="323" width="19.44" height="17" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="273.3" y="331.5" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">in</text>
+<rect x="215" y="152.5" width="36.6" height="17" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="233.3" y="161" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">joins</text>
+<rect x="470.18" y="95.91249999999997" width="36.6" height="17" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="488.48" y="104.41249999999997" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">binds</text>
+<rect x="464.46000000000004" y="248.12500000000006" width="48.04" height="17" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="488.48" y="256.62500000000006" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">uploads</text>
+<rect x="508.5475000000001" y="178.5" width="48.04" height="17" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="532.5675000000001" y="187" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">applies</text>
+<rect x="496.5625000000001" y="267.5" width="53.760000000000005" height="17" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="523.4425000000001" y="276" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">receives</text>
+<rect x="659.4849999999999" y="129" width="30.880000000000003" height="17" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="674.925" y="137.5" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">runs</text>
+<rect x="845.585" y="353" width="48.04" height="17" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="869.605" y="361.5" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">basedOn</text>
+</svg></div>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>模型</th>
+<th>关键字段</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CampusSession</code></td>
+<td><code>name slug(unique) school startsAt endsAt status(draft/live/closed) heroTitle heroSubtitle bannerKey maxApplyJobs=3 maxResumeUploads=3 scoreFloor=60 matchEnabled=true showSalary createdBy</code></td>
+<td><code>status=live</code> 全表唯一(部分唯一索引)</td>
+</tr>
+<tr>
+<td><code>CampusSessionJob</code></td>
+<td><code>sessionId jobId kind(onsite/referral) matchEnabled sortOrder</code></td>
+<td><code>@@unique([sessionId, jobId])</code></td>
+</tr>
+<tr>
+<td><code>CampusApplicant</code></td>
+<td><code>sessionId phone? email? candidateId(unique) name wechat school major degree gradYear contactConfirmedAt consentAt consentVersion resumeUploadCount currentResumeVersionId extraUploads tokenVersion lastSeenAt registeredBy</code></td>
+<td>匿名建档时 <code>phone</code>
+为空;<code>@@index([sessionId, phone])</code>
+非唯一(换设备会产生第二条,台账按手机号提示重复,HR 合并);HR
+手工登记仍以手机号查重并跨专场复用 Candidate</td>
+</tr>
+<tr>
+<td><code>CampusResumeVersion</code></td>
+<td><code>applicantId version attachmentKey fileSha256 filename size resumeParseId? uploadedAt</code></td>
+<td><code>@@unique([applicantId, version])</code>;R2 key
+<code>campus/&lt;sessionId&gt;/&lt;applicantId&gt;/v&lt;n&gt;.&lt;ext&gt;</code></td>
+</tr>
+<tr>
+<td><code>CampusApplication</code></td>
+<td><code>applicantId sessionJobId jobId source(direct/match) matchRunId? resumeVersionId scoreRaw? scoreShown? evaluationId? status statusChangedAt note withdrawnAt</code></td>
+<td><code>@@unique([applicantId, jobId])</code>;<code>resumeVersionId</code>
+记投递时的版本,便于追溯;状态机见 §7.1</td>
+</tr>
+<tr>
+<td><code>CampusMatchRun</code></td>
+<td><code>applicantId resumeVersionId taskId status(queued/running/done/failed) results Json stale error startedAt finishedAt costs Json</code></td>
+<td><code>results[]</code>:<code>{ jobId, kind, scoreRaw, scoreShown, classification, hardFilter, reasons[], evaluationId }</code></td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><code>Candidate</code> 不加列;校招相关在
+<code>CampusApplicant.candidateId</code> 反查。候选人列表 / 详情通过
+<code>source</code> 前缀与 <code>tags</code>
+识别校招来源;详情页右侧可加一张「校招」小卡(专场 / 投递 / 版本)——放
+Phase 3。</li>
+<li><code>CandidateEvaluation</code> 已支持 (candidateId, jobId)
+多条,<code>isCurrent</code> 按岗位维度维护,不需改表。</li>
+</ul>
+<h3 id="投递状态机">7.1 投递状态机</h3>
+<div class="diagram"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 462.80000000000007 547">
+<style>
+  
+  text { font-family: 'Inter', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 30%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="arrowhead" markerWidth="8" markerHeight="4.8" refX="8" refY="2.4" orient="auto">
+    <polygon points="0 0, 8 2.4, 0 4.8" fill="var(--_arrow)" />
+  </marker>
+  <marker id="arrowhead-start" markerWidth="8" markerHeight="4.8" refX="0" refY="2.4" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.4, 8 4.8" fill="var(--_arrow)" />
+  </marker>
+</defs>
+<polyline points="315.17500000000007,76 315.17500000000007,133" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="315.17500000000007,169 315.17500000000007,197.5 254.275,197.5 254.275,226" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="254.275,262 254.275,290.5 113.2,290.5 113.2,319" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="254.55564516129033,262 255.00000000000003,319" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="113.2,355 113.2,375 103.2,375 103.2,413 76.47500000000001,413" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="113.2,355 113.2,375 174.10000000000002,375 174.10000000000002,413 224.57500000000007,413" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="255.00000000000003,355 255.00000000000003,375 194.10000000000002,375 194.10000000000002,413 151.375,413" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="255.00000000000003,355 255.00000000000003,375 278.45000000000005,375 278.45000000000005,413 313.7750000000001,413" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="254.275,262 254.275,290.5 321.9,290.5 321.9,413 313.7750000000001,413" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="315.17500000000007,169 315.17500000000007,197.5 374.625,197.5 374.625,226" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="113.92500000000001,431 113.92500000000001,471" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="269.17500000000007,431 269.17500000000007,471" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="374.625,262 374.625,319" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<rect x="295.73500000000007" y="91" width="38.88" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="315.17500000000007" y="104.5" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">学生投递</text>
+<rect x="226.255" y="184" width="56.04" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="254.275" y="197.5" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">HR 开始筛选</text>
+<rect x="70.88" y="277" width="84.64" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="113.2" y="290.5" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">现场面试(onsite)</text>
+<rect x="204.10000000000002" y="277" width="101.8" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="255.00000000000003" y="290.5" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">推送内推人(referral)</text>
+<rect x="355.185" y="184" width="38.88" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="374.625" y="197.5" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">学生撤回</text>
+<circle cx="315.17500000000007" cy="58" r="16" fill="var(--_text)" stroke="none" />
+<rect x="274.1500000000001" y="133" width="82.05000000000001" height="36" rx="6" ry="6" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="206.1" y="226" width="96.35000000000001" height="36" rx="6" ry="6" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="40" y="319" width="146.4" height="36" rx="6" ry="6" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="210.40000000000003" y="319" width="89.2" height="36" rx="6" ry="6" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="76.47500000000001" y="395" width="74.9" height="36" rx="6" ry="6" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="224.57500000000007" y="395" width="89.2" height="36" rx="6" ry="6" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="326.45" y="226" width="96.35000000000001" height="36" rx="6" ry="6" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<circle cx="113.92500000000001" cy="489" r="16" fill="none" stroke="var(--_text)" stroke-width="1.5" />
+<circle cx="113.92500000000001" cy="489" r="12" fill="var(--_text)" stroke="none" />
+<circle cx="269.17500000000007" cy="489" r="16" fill="none" stroke="var(--_text)" stroke-width="1.5" />
+<circle cx="269.17500000000007" cy="489" r="12" fill="var(--_text)" stroke="none" />
+<circle cx="374.625" cy="337" r="16" fill="none" stroke="var(--_text)" stroke-width="1.5" />
+<circle cx="374.625" cy="337" r="12" fill="var(--_text)" stroke="none" />
+
+<text x="315.17500000000007" y="151" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">applied</text>
+<text x="254.275" y="244" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">screening</text>
+<text x="113.2" y="337" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">onsite_interview</text>
+<text x="255.00000000000003" y="337" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">referred</text>
+<text x="113.92500000000001" y="413" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">passed</text>
+<text x="269.17500000000007" y="413" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">rejected</text>
+<text x="374.625" y="244" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">withdrawn</text>
+
+
+
+</svg></div>
+<ul>
+<li><code>withdrawn</code> 释放额度(可再投其他岗位);是否允许撤回见
+§14。</li>
+<li><code>passed</code> 时可一键把 <code>Candidate.status</code>
+置「待入职」,触发现有候选人 → 员工自动转化。</li>
+</ul>
+<hr />
+<h2 id="api-契约">8. API 契约</h2>
+<h3 id="学生端公开端点-apicampuspublicauthguard-外学生-jwt">8.1
+学生端公开端点 <code>/api/campus/public/*</code>(AuthGuard 外,学生
+JWT)</h3>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr>
+<th>方法</th>
+<th>路径</th>
+<th>入参</th>
+<th>出参 / 错误</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/session/current</code></td>
+<td><code>?slug=</code>(可选)</td>
+<td><code>{ session:{ id,slug,name,school,heroTitle,heroSubtitle,bannerUrl,maxApplyJobs,maxResumeUploads,matchEnabled,endsAt } \| null, me?:{ applied, uploads, hasResume, contactConfirmed } }</code>;无需登录</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/session/current/jobs</code></td>
+<td><code>?kind=</code></td>
+<td><code>{ onsite:[…], referral:[…] }</code>,每项
+<code>{ id,title,dept,location,employment,salary?,applied }</code>;无需登录</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/jobs/:id</code></td>
+<td>—</td>
+<td>JD 详情(白名单字段),非本专场岗位 404;无需登录</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/auth/start</code></td>
+<td><code>{ slug?, consent: true }</code></td>
+<td><code>201 { token, me, session }</code> 匿名建档;已持有效 token 时
+<code>{ token: null, reused: true }</code>;422
+<code>campus_consent_required</code>;专场未开放 410</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/auth/recover/send-code</code></td>
+<td><code>{ slug?, phone, email }</code></td>
+<td>匹配本专场已确认联系方式的记录 → 发邮箱验证码;404
+<code>campus_record_not_found</code>;429
+<code>campus_code_rate_limited</code>;424
+<code>campus_email_send_failed</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/auth/recover/verify</code></td>
+<td><code>{ slug?, phone, email, code }</code></td>
+<td><code>{ token, me, session }</code> 接回原记录;400
+<code>campus_code_invalid</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/me</code></td>
+<td>—</td>
+<td>applicant + 版本数 + 投递摘要</td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/me</code></td>
+<td><code>{ name,wechat,school,major,degree,gradYear }</code></td>
+<td>applicant</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/me/contact-confirm</code></td>
+<td><code>{ phone, email, wechat?, name? }</code></td>
+<td>写 <code>contactConfirmedAt</code> 并同步 Candidate;422
+<code>campus_phone_invalid / campus_email_invalid</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/resumes/presigned-url</code></td>
+<td><code>{ filename, contentType, size }</code></td>
+<td><code>{ url, key }</code>;410
+<code>campus_resume_quota_exceeded</code>;415 / 413</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/resumes/submit</code></td>
+<td><code>{ key, filename, sha256 }</code></td>
+<td><code>201 { versionId, version, remaining, duplicate, parseTaskId }</code>;事务:建版本
++ 首次建 Candidate + 同步 attachment;事务外 <code>setImmediate</code>
+起抽取任务</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/resumes/:versionId/parse-status</code></td>
+<td>—</td>
+<td><code>{ status(pending\|running\|done\|failed\|cancelled\|skipped), error, prefill }</code>(确认页小波浪球与预填用;done
+时 prefill 附
+<code>{ name, school, major, degree, gradYear }</code>)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/resumes/:versionId/cancel-parse</code></td>
+<td>—</td>
+<td>取消进行中的抽取(协作式),版本立即标 cancelled</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/resumes/:versionId/reparse</code></td>
+<td>—</td>
+<td>取消 / 失败后重新解析当前版本,不计上传次数;running 时 409</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/resumes</code></td>
+<td>—</td>
+<td>版本列表(不含下载链接)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/match-runs</code></td>
+<td>—</td>
+<td><code>202 { runId, queuePosition }</code>;403
+<code>campus_match_disabled</code>;428
+<code>campus_resume_required</code> /
+<code>campus_contact_unconfirmed</code>;409
+<code>campus_match_in_progress</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/match-runs/:id</code></td>
+<td>—</td>
+<td><code>{ status, stage, progress, queuePosition, results?, error? }</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/match-runs/:id/cancel</code></td>
+<td>—</td>
+<td>取消匹配(协作式,Phase 2)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/applications</code></td>
+<td><code>{ jobId, source, matchRunId? }</code></td>
+<td>201;409 额度 / 重复;428 无简历 / 未确认联系方式;410 专场已结束</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/applications</code></td>
+<td>—</td>
+<td>我的投递</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/applications/:id</code></td>
+<td>—</td>
+<td>撤回(若开放)</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>限流:<code>/api/campus/public/*</code> 按访客 IP 每分钟 90 次(含 2s
+轮询);上传次数由业务规则限制。</li>
+<li>所有 5xx 对外改 4xx(与 Kimi 超时同款策略),让 Cloudflare 透传
+JSON。</li>
+<li><code>?preview=1</code> + 后台 JWT 时允许读草稿专场(供专场 tab
+预览),写端点一律拒绝。</li>
+</ul>
+<h3 id="后台端点-apicampusjwt-pagekey-campus">8.2 后台端点
+<code>/api/campus/*</code>(JWT + pageKey <code>campus</code>)</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>资源</th>
+<th>端点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>专场</td>
+<td><code>GET/POST /sessions</code> ·
+<code>GET/PATCH/DELETE /sessions/:id</code> ·
+<code>POST /sessions/:id/live</code>(互斥上线)·
+<code>POST /sessions/:id/close</code> ·
+<code>GET /sessions/:id/qrcode.png</code></td>
+</tr>
+<tr>
+<td>专场岗位</td>
+<td><code>GET/POST /sessions/:id/jobs</code> ·
+<code>PATCH/DELETE /sessions/:id/jobs/:sjId</code> ·
+<code>POST /sessions/:id/jobs/reorder</code></td>
+</tr>
+<tr>
+<td>台账</td>
+<td><code>GET /sessions/:id/ledger</code>(分页 + 全部筛选,返回聚合行)·
+<code>GET /sessions/:id/ledger/export.xlsx</code></td>
+</tr>
+<tr>
+<td>学生</td>
+<td><code>GET /applicants/:id</code>(含版本 / 投递 / 匹配历史)·
+<code>GET /applicants/:id/resumes/:versionId/download</code>(302 R2 短时
+URL)· <code>PATCH /applicants/:id</code>(加次数、改联系方式)·
+<code>POST /applicants/:id/merge { candidateId }</code>(并入电脑端上传)</td>
+</tr>
+<tr>
+<td>投递</td>
+<td><code>PATCH /applications/:id</code>(状态 + note)·
+<code>POST /applications/bulk-status</code></td>
+</tr>
+<tr>
+<td>匹配</td>
+<td><code>POST /applicants/:id/match-runs</code>(HR 代跑 / 重跑)·
+<code>POST /sessions/:id/match-runs/bulk</code> ·
+<code>POST /applicants/:id/resumes/:versionId/cancel</code>(取消抽取)</td>
+</tr>
+<tr>
+<td>设置</td>
+<td>复用 <code>/system/settings</code>,新增键
+<code>campus.match.concurrency</code> / <code>campus.auth.jwt_ttl</code>
+/ <code>campus.auth.code_rate</code> / <code>campus.contact_hints</code>
+/ <code>campus.pc_upload_enabled</code></td>
+</tr>
+</tbody>
+</table>
+<p>所有新端点用 Fastify schema 校验入参,<code>:id</code> 走
+<code>whereByIdOrExternal</code>,写操作记 <code>AuditLog</code>。</p>
+<hr />
+<h2 id="智能匹配与评分">9. 智能匹配与评分</h2>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>环节</th>
+<th>方案</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>评价模型</td>
+<td>专场岗位开匹配前必须有 <code>jdFacts</code> +
+<code>evaluationModel</code>;<code>jd.basics.recruitType=campus</code>
+自动选 <code>tpl.campus.general</code>(毕业批次 MUST、年限 INFO、项目 /
+校园经历 CORE)。专场编辑页可一键为所有岗位生成</td>
+</tr>
+<tr>
+<td>抽取</td>
+<td><strong>上传即抽取</strong>:走现有 extract(TextIn → pdftotext → Kimi
+Files 三级回退)+
+structure(Kimi,<code>thinking=disabled</code>);<code>ResumeParse</code>
+按 sha256 幂等;失败由 HR 在台账重试</td>
+</tr>
+<tr>
+<td>评估</td>
+<td>每岗位:hardFilter(代码)→ 题目生成 → Jev(答案缓存 7 天)→
+composite;并行度受全局并发闸</td>
+</tr>
+<tr>
+<td>排序</td>
+<td><code>kind=onsite</code> 组 → <code>referral</code> 组;组内
+<code>scoreRaw</code> 降序;硬筛 FAIL 单列「暂不匹配」</td>
+</tr>
+<tr>
+<td>展示分</td>
+<td><code>scoreShown = max(session.scoreFloor, scoreRaw)</code>,结果快照同时存两者;学生端只下发
+<code>scoreShown</code></td>
+</tr>
+<tr>
+<td>理由</td>
+<td>代码从 <code>items</code> 生成,不调 Kimi;HR 侧报告按需生成</td>
+</tr>
+<tr>
+<td>成本(估)</td>
+<td>每位学生:每个简历版本 TextIn 1 次 + Kimi 结构化 1 次(实测 kimi-k2.6
+约 25s / 1K 输出 token,上限 3 版即 3 次)+ Jev N 次(N =
+参与匹配岗位数,典型 5–10);Kimi 报告 0 次。专场 300 人 × 8 岗 ≈ 300–400
+次 Kimi + 2400 次 Jev。上传即抽取把 Kimi
+耗时前移到上传瞬间分散发生,匹配阶段只剩
+Jev;抽取任务与匹配任务共用并发闸,并发 3 时上传高峰排队峰值约 300 × 30s /
+3 ≈ 50 分钟 ——
+需要<strong>提前让学生在专场前几天上传</strong>(专场可设「预热期」提前上线)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="与现有系统的衔接">10. 与现有系统的衔接</h2>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>现有页面</th>
+<th>校招数据如何出现</th>
+<th>需改动</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>候选人列表 / 详情</td>
+<td>学生即 Candidate,<code>source=校招·南理工专场</code>,tags
+含「校招」;投递岗位 =
+<code>Candidate.jobId</code>(主投递,取最早或分数最高)</td>
+<td>详情页加「校招」小卡(Phase 3)</td>
+</tr>
+<tr>
+<td>Upload 页「我接收到的简历」</td>
+<td>ownerId = 专场创建者,自动出现且已解析;列表
+LiquidLoader「解析中」状态复用 <code>parsingStartedAt</code></td>
+<td>无</td>
+</tr>
+<tr>
+<td>分享简报 / 面试评价</td>
+<td>直接用</td>
+<td>无</td>
+</tr>
+<tr>
+<td>面试安排</td>
+<td>台账「安排现场面试」= 现有 <code>Interview</code>
+建记录,方式线下、地点取专场地点</td>
+<td>无</td>
+</tr>
+<tr>
+<td>入职</td>
+<td><code>passed</code> → 候选人状态「待入职」→ 自动 upsert
+Employee</td>
+<td>无</td>
+</tr>
+<tr>
+<td>报表</td>
+<td>新增「校招」看板(投递漏斗、学校分布、岗位热度)—— Phase 3</td>
+<td>新页</td>
+</tr>
+<tr>
+<td>审计</td>
+<td>专场上线 / 下线、状态批量流转、导出含联系方式、学生合并</td>
+<td>写 AuditLog</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="安全与合规">11. 安全与合规</h2>
+<ul>
+<li><strong>个人信息</strong>:首次上传前展示《个人信息处理告知》并勾选同意(存
+<code>consentAt</code> + <code>consentVersion</code>);联系方式在台账受
+<code>candidate.contact</code> 权限打码,导出含联系方式需
+<code>campus.export</code>。</li>
+<li><strong>会话</strong>:匿名学生 JWT <code>aud=campus-public</code>(30
+天),后台中间件拒绝该 audience;<code>tokenVersion</code> 支持 HR
+单个学生强制下线;token 泄露只影响单个学生的本次会话。</li>
+<li><strong>身份冒用</strong>:免登录下任何人都可填他人手机号,但只能新建记录、不能读取已有记录(会话与记录一一对应),HR
+在台账按手机号发现重复后处理。</li>
+<li><strong>文件</strong>:后缀 + magic bytes 双校验(pdf / doc / docx),≤
+20MB,R2 <code>campus/</code> 前缀与主桶分离;presigned key
+由后端生成不可指定;所有外部解析器 / LLM 文本入库前
+<code>deepStripNul</code>(坑 #54)。</li>
+<li><strong>防刷</strong>:IP 限流 + 每会话上传 / 投递次数上限;同一文件
+sha256 重复上传不计次也不重跑;匹配任务每学生同一时刻只允许 1
+个运行中;学生换手机号绕过 3 次上限的成本高于收益,接受。</li>
+<li><strong>对外最小化</strong>:学生端 API
+不返回评估明细、其他学生信息、R2 直链;分数只回
+<code>scoreShown</code>。</li>
+</ul>
+<hr />
+<h2 id="非功能与基础设施">12. 非功能与基础设施</h2>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>项</th>
+<th>现状</th>
+<th>方案 / 风险</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>域名与备案</td>
+<td>网页不要求 ICP 备案;公开上传链接已在微信内验证可用</td>
+<td>无需新域名;若微信对 insovo.top
+域名出现「已停止访问」拦截(通常由举报触发),备用短域名 + 302
+即可切换</td>
+</tr>
+<tr>
+<td>大陆访问 Cloudflare</td>
+<td>偶发慢</td>
+<td>学生端静态资源与 API 均经 CF;首屏 bundle 需与后台分 chunk(已
+lazy);必要时为 <code>/campus/*</code> 开 CF 缓存规则</td>
+</tr>
+<tr>
+<td>峰值并发</td>
+<td>并发闸 3,Redis 任务状态</td>
+<td>专场现场建议预热期提前上传;若排队 &gt;10
+分钟,首页提示「现场可先直投,匹配结果稍后在『我的投递』查看」</td>
+</tr>
+<tr>
+<td>Cloudflare 100s</td>
+<td>已异步化</td>
+<td>所有长任务 202 + 轮询,沿用</td>
+</tr>
+<tr>
+<td>微信内置浏览器</td>
+<td>iOS 文件选择受限;<code>window.open</code> 被拦</td>
+<td>指引文案 + 电脑端上传兜底;新窗口用 <code>&lt;a&gt;</code> + 后端
+302(现有做法)</td>
+</tr>
+<tr>
+<td>换设备 / 清缓存</td>
+<td>会话在 localStorage</td>
+<td>学生用「找回记录」(手机号 + 邮箱验证码)自助接回;验证码邮件依赖
+Resend,QQ / 163 等学生常用邮箱需确认 SPF /
+DKIM;台账按手机号提示重复记录,HR 合并(Phase 3)</td>
+</tr>
+<tr>
+<td>备份</td>
+<td>每日 PG 全量 → R2</td>
+<td>新表自动纳入;R2 <code>campus/</code> 与简历同桶</td>
+</tr>
+<tr>
+<td>可观测</td>
+<td>uptime-kuma</td>
+<td>新增
+<code>/api/campus/public/health</code>(含并发闸水位、排队长度)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="分期计划">13. 分期计划</h2>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr>
+<th>阶段</th>
+<th>范围</th>
+<th>产出</th>
+<th>估算</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Phase 0 后台</strong></td>
+<td>5 张新表 + migration;专场 / 岗位配置 + 二维码;台账(筛选 / 详情抽屉 /
+状态流转 / 导出);HR 手工登记学生 +
+上传简历(线下收简历也能用);权限键</td>
+<td><code>/campus</code> 三 tab 可用</td>
+<td>4–5 人日</td>
+</tr>
+<tr>
+<td><strong>Phase 1 学生端·上传 + 直投</strong></td>
+<td>公开路由与页面(首页 / 岗位 / JD / 上传 / 联系方式确认 / 投递 /
+我的投递);匿名会话;presigned
+上传与版本;<strong>上传即抽取</strong>(pipeline
+<code>skipEvaluate</code>)+ 确认页预填;<code>/public/*</code>
+端点与限流;隐私告知;后台三入口码</td>
+<td>学生扫码即可上传简历并投递 ≤3 岗,台账即时见学校 / 专业</td>
+<td>5 人日</td>
+</tr>
+<tr>
+<td><strong>Phase 2 学生端·智能匹配</strong></td>
+<td>pipeline <code>jobId</code> 覆盖 +
+<code>skipReport</code>;并发闸;<code>CampusMatchRun</code>(等待 /
+复用抽取结果);波浪球进度页;结果页;台账批量重跑</td>
+<td>上传 → 匹配 → 投递闭环</td>
+<td>4 人日</td>
+</tr>
+<tr>
+<td><strong>Phase 3 联动</strong></td>
+<td>候选人详情「校招」卡;批量安排现场面试 +
+面试评价二维码;校招报表;<code>passed</code> → 待入职;电脑端上传合并</td>
+<td>校招全流程进入现有招聘链路</td>
+<td>3–4 人日</td>
+</tr>
+</tbody>
+</table>
+<p>Phase 0 与 Phase 1
+可由同一人串行,无外部前置条件(不需要备案、主体、第三方凭证)。</p>
+<hr />
+<h2 id="待确认问题">14. 待确认问题</h2>
+<ol type="1">
+<li><strong>上传 3
+次的口径</strong>:按专场(本文默认)还是按手机号终身?</li>
+<li><strong>是否允许学生撤回投递</strong>以换岗位?默认允许,撤回释放额度。</li>
+<li><strong>同一手机号跨专场</strong>:默认每专场一条学生记录、Candidate
+复用同一条;若希望每场独立候选人,改为每场新建。</li>
+<li><strong>薪资是否对学生展示</strong>:默认按专场开关,内推岗位默认不展示。</li>
+<li><strong>硬筛不通过的岗位</strong>(如非目标毕业批次)是否完全隐藏,还是折叠展示并写原因(本文默认折叠展示)。</li>
+</ol>
+<h3 id="已定稿v2-v3">已定稿(v2 / v3)</h3>
+<ul>
+<li>不做小程序,学生端为网页 <code>/campus/:slug</code>。</li>
+<li>60 分为展示下限,不过滤、不影响排序与 HR 判断。</li>
+<li>投递与智能匹配都必须先上传简历并确认联系方式。</li>
+<li>任何简历上传成功即后台抽取(extract +
+structure,不评估),智能匹配复用抽取结果只跑评估。</li>
+<li>学生免登录:扫码 / 链接直达(首页 / 直接投递 /
+智能匹配三入口),首次上传勾选告知即匿名建档。</li>
+<li>换设备用「手机号 + 邮箱验证码」找回记录(免登录,只接回会话)。</li>
+</ul>
+<hr />
+<h2 id="实施进度">15. 实施进度</h2>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>阶段</th>
+<th>状态</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Phase 0 后台</td>
+<td><strong>已实现(分支
+<code>feature/campus-module</code>,2026-10-08)</strong></td>
+<td>6 张表迁移
+<code>20261007161233_campus_module</code>;<code>routes/campus.js</code>
+全部 §8.2 端点;<code>pages/Campus.jsx</code> 三 tab(台账 / 专场 / 设置)+
+<code>components/campus/*</code>;权限键 <code>campus.manage</code> /
+<code>campus.export</code>;设置键 <code>campus.*</code>;pipeline
+<code>skipEvaluate</code>;HR 登记学生 +
+代传简历即触发抽取。与设计差异:专场「单一上线」用事务互斥而非部分唯一索引(避免
+Prisma 迁移漂移);专场另加
+<code>location</code>、<code>showSalaryOnsite / showSalaryReferral</code>
+两开关;学生表加 <code>registeredBy</code>,版本表加
+<code>parseStatus / parseError / parseTaskId / uploadedBy</code>
+以驱动台账解析状态;投递 <code>source</code> 增加 <code>hr</code></td>
+</tr>
+<tr>
+<td>Phase 1 学生端·上传 + 直投</td>
+<td><strong>已实现(同分支,2026-10-08,v4 免登录)</strong></td>
+<td><code>routes/campus-public.js</code> 全部 §8.1 端点(匿名建档
+<code>/auth/start</code> / 会话 / 岗位 / 简历 presigned+submit /
+抽取状态 / 联系确认 / 投递 / 撤回);前端
+<code>pages/campus/public/*</code> 七页(首页 / 岗位 / JD /
+上传含告知勾选 / 联系确认 / 我的投递 / 匹配占位),路由
+<code>/campus/:slug/*</code> 在 AuthGuard 外,独立
+<code>lib/campusApi.js</code>;后台专场二维码弹窗三入口码 + 下载 PNG;迁移
+<code>20261008010000_campus_anonymous_student</code>(phone
+可空、去唯一键);「找回记录」<code>/auth/recover/*</code> +
+<code>pages/campus/public/CampusRecover.jsx</code>;后台任务提示条
+<code>TaskBanner</code> +
+协作式取消(<code>parseTaskStore.requestCancel</code> / pipeline
+<code>assertNotCancelled</code> /
+<code>extract.cancelExtraction</code>,学生
+<code>cancel-parse|reparse</code>、HR
+<code>cancel</code>)。差异:撤回仅限 applied /
+screening;<code>/match</code> 先放占位页(Phase 2
+替换);首页「电脑上传」二维码未做(放 Phase 3);学生 JWT
+<code>aud=campus-public</code>,后台 <code>authenticate</code> 显式拒绝该
+aud</td>
+</tr>
+<tr>
+<td>Phase 2 学生端·智能匹配</td>
+<td><strong>已实现(同分支,2026-10-08)</strong></td>
+<td><code>lib/campus/match.js</code>:<code>startMatchRun</code>(门禁 /
+开关 / 并发闸排队 / 同学生单任务)→
+版本未解析时任务内先抽取(<code>executeExtraction</code>)→ 逐岗位
+<code>runPipeline(mode=reevaluate, detached, skipReport)</code>(新开关:只写
+<code>CandidateEvaluation(isCurrent=false)</code>,不动候选人主投递 /
+快照)→ 代码生成 3 条理由 → 现场优先 / 原始分降序 / 硬筛 FAIL 与失败沉底
+→ <code>CampusMatchRun.results</code>
+快照;协作式取消(岗位之间检查);进度映射
+<code>progressOf</code>。端点:学生
+<code>POST /match-runs</code>、<code>GET /match-runs/latest|:id</code>、<code>POST /match-runs/:id/cancel</code>,HR
+<code>POST /applicants/:id/match-runs</code>(代跑)与
+<code>/match-runs/:runId/cancel</code>;<code>/me.latestMatchRun</code>。前端
+<code>CampusMatch.jsx</code>:进入即复用未过期结果或自动发起;进度页
+LiquidLoader 160px 水位插值 + 阶段文案 + 排队位次 + 后台提示条 /
+取消;结果页两段分组、展示分波浪球、理由、投递(<code>source=match</code>
+带分数)、「暂不匹配」折叠、简历更新后提示重新匹配;首页按钮与「我的投递」卡片联动;HR
+抽屉「匹配记录」展示原始分 / 分类 / 成本 + 代跑 /
+取消。差异:对学生只下发 <code>scoreShown</code>,原始分仅 HR
+可见;理由不走 Kimi</td>
+</tr>
+<tr>
+<td>Phase 3 联动</td>
+<td><strong>已实现(同分支,2026-10-08)</strong></td>
+<td>①
+候选人详情右栏「校招」卡(<code>CampusCandidateCard</code>,<code>GET /campus/by-candidate/:candidateId</code>,非校招候选人不显示):专场
+/ 联系确认 / 版本 / 投递与状态 / 最近匹配球;②
+现场面试:抽屉单条「安排现场面试」与台账「批量安排现场面试」(<code>POST /applications/:id/interview</code>、<code>/applications/bulk-interview</code>),创建
+<code>Interview</code>(线下 / 专场地点 / 轮次「现场面试」/
+分类「校招」)+ 投递→现场面试 +
+候选人→面试中,内推岗位拒绝;面试评价二维码走候选人详情既有入口(抽屉直达链接);③
+通过联动:投递改「已通过」时可勾选同时把候选人置「待入职」并自动建
+employee(<code>advance</code> 参数,与候选人 PATCH 同口径,单条 / 批量);④
+数据看板
+tab(<code>GET /sessions/:id/stats</code>):投递漏斗、每日登记、学校
+Top10、岗位热度(投递 / 通过 / 匹配来源 / 均分),shadcn charts;⑤
+电脑端上传:专场按需创建公开上传链接(<code>POST /sessions/:id/pc-upload-link</code>,新列
+<code>pcUploadToken</code>,迁移
+<code>20261008020000</code>),二维码弹窗第四入口「电脑上传」,学生首页「复制电脑上传链接」;台账抽屉「合并电脑端上传」按姓名
+/
+手机搜索公开上传候选人并入为新版本(次数不足自动加一次,源候选人标「已合并到校招」+
+已淘汰,写备注,触发抽取)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="附录-a-后台可配置项清单">附录 A · 后台可配置项清单</h2>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr>
+<th>配置</th>
+<th>层级</th>
+<th>默认</th>
+<th>影响</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>maxApplyJobs</code></td>
+<td>专场</td>
+<td>3</td>
+<td>投递额度</td>
+</tr>
+<tr>
+<td><code>maxResumeUploads</code></td>
+<td>专场</td>
+<td>3</td>
+<td>上传次数;学生级 <code>extraUploads</code> 可单独加</td>
+</tr>
+<tr>
+<td><code>scoreFloor</code></td>
+<td>专场</td>
+<td>60</td>
+<td>展示分下限</td>
+</tr>
+<tr>
+<td><code>matchEnabled</code></td>
+<td>专场 / 专场岗位</td>
+<td>开</td>
+<td>智能匹配入口与参与岗位</td>
+</tr>
+<tr>
+<td><code>kind</code></td>
+<td>专场岗位</td>
+<td>—</td>
+<td>onsite / referral,排序与文案</td>
+</tr>
+<tr>
+<td><code>showSalary</code></td>
+<td>专场</td>
+<td>onsite 开 / referral 关</td>
+<td>JD 卡薪资字段</td>
+</tr>
+<tr>
+<td><code>slug / heroTitle / heroSubtitle / bannerKey</code></td>
+<td>专场</td>
+<td>—</td>
+<td>学生端首页与 URL</td>
+</tr>
+<tr>
+<td><code>startsAt / endsAt / status</code></td>
+<td>专场</td>
+<td>—</td>
+<td>上线窗口;<code>endsAt</code> 后投递 410</td>
+</tr>
+<tr>
+<td><code>campus.match.concurrency</code></td>
+<td>系统</td>
+<td>3</td>
+<td>匹配并发</td>
+</tr>
+<tr>
+<td><code>campus.auth.jwt_ttl</code></td>
+<td>系统</td>
+<td>7d</td>
+<td>学生会话有效期</td>
+</tr>
+<tr>
+<td><code>campus.auth.code_rate</code></td>
+<td>系统</td>
+<td>60s / 5 次每小时</td>
+<td>验证码发送限流</td>
+</tr>
+<tr>
+<td><code>campus.contact_hints</code></td>
+<td>系统</td>
+<td>三条默认文案</td>
+<td>联系方式确认页提示</td>
+</tr>
+<tr>
+<td><code>campus.pc_upload_enabled</code></td>
+<td>系统</td>
+<td>开</td>
+<td>首页「电脑上传」二维码兜底</td>
+</tr>
+</tbody>
+</table>
+<h2 id="附录-b-错误码">附录 B · 错误码</h2>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>码</th>
+<th>HTTP</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>campus_session_inactive</code></td>
+<td>410</td>
+<td>无上线专场 / 已结束</td>
+</tr>
+<tr>
+<td><code>campus_code_invalid</code></td>
+<td>400</td>
+<td>验证码错误或过期</td>
+</tr>
+<tr>
+<td><code>campus_code_rate_limited</code></td>
+<td>429</td>
+<td>验证码发送过于频繁</td>
+</tr>
+<tr>
+<td><code>campus_apply_quota_exceeded</code></td>
+<td>409</td>
+<td>投递额度用完</td>
+</tr>
+<tr>
+<td><code>campus_duplicate_application</code></td>
+<td>409</td>
+<td>重复投递同一岗位</td>
+</tr>
+<tr>
+<td><code>campus_resume_required</code></td>
+<td>428</td>
+<td>未上传简历(投递 / 匹配前置)</td>
+</tr>
+<tr>
+<td><code>campus_resume_quota_exceeded</code></td>
+<td>410</td>
+<td>上传次数用完</td>
+</tr>
+<tr>
+<td><code>campus_file_unsupported</code></td>
+<td>415</td>
+<td>非 pdf / doc / docx 或 magic bytes 不符</td>
+</tr>
+<tr>
+<td><code>campus_contact_unconfirmed</code></td>
+<td>428</td>
+<td>未确认联系方式</td>
+</tr>
+<tr>
+<td><code>campus_contact_insufficient</code></td>
+<td>422</td>
+<td>电话与微信都为空</td>
+</tr>
+<tr>
+<td><code>campus_match_disabled</code></td>
+<td>403</td>
+<td>专场或岗位未开匹配</td>
+</tr>
+<tr>
+<td><code>campus_match_in_progress</code></td>
+<td>409</td>
+<td>已有运行中的匹配任务</td>
+</tr>
+<tr>
+<td><code>campus_job_not_in_session</code></td>
+<td>404</td>
+<td>岗位不属于当前专场</td>
+</tr>
+</tbody>
+</table>
+<h2 id="附录-c-涉及文件预估">附录 C · 涉及文件(预估)</h2>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>层</th>
+<th>新增</th>
+<th>修改</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>server</td>
+<td><code>routes/campus.js</code> · <code>routes/campus-public.js</code>
+· <code>lib/campus/{auth,matchRunner,ledger,reasons}.js</code> ·
+<code>prisma/migrations/&lt;ts&gt;_campus_module/</code></td>
+<td><code>schema.prisma</code>(5 表)·
+<code>lib/evaluation/pipeline.js</code>(<code>jobId</code> 覆盖 /
+<code>skipReport</code> / <code>skipEvaluate</code>)·
+<code>lib/permissionKeys.js</code>(<code>campus.manage</code> /
+<code>campus.export</code>)· <code>lib/settings.js</code>(新键)·
+<code>index.js</code> 挂路由 · <code>.env.example</code>(无新凭证)</td>
+</tr>
+<tr>
+<td>web</td>
+<td><code>pages/Campus.jsx</code> 填充 ·
+<code>components/campus/{Ledger,SessionForm,SessionJobs,ApplicantDrawer,PhonePreview}.jsx</code>
+·
+<code>pages/campus/public/{Home,Login,Jobs,JobDetail,Upload,Contact,Progress,Result,Mine}.jsx</code>
+· <code>lib/campusApi.js</code>(学生端独立 axios 实例,不走后台 401
+拦截)</td>
+<td><code>App.jsx</code>(AuthGuard 外新路由)·
+<code>lib/permissions.js</code> 标签 ·
+<code>scripts/gen-icon-map.mjs</code> 重跑</td>
+</tr>
+<tr>
+<td>docs</td>
+<td>本文;实施后补 <code>delivery-docs/src/02_api.md</code>
+校招章节、<code>mesa-subsystems</code> skill 条目</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<footer class="doc">单文件 HTML · 由 tools/md2html 从 Markdown 生成 · 无外部依赖,可离线打开与打印</footer>
+</main>
+</div>
+</body>
+</html>

@@ -12,6 +12,7 @@ import BadgeCheck from "lucide-react/dist/esm/icons/badge-check.mjs";
 import Ban from "lucide-react/dist/esm/icons/ban.mjs";
 import BarChart3 from "lucide-react/dist/esm/icons/bar-chart-3.mjs";
 import Bell from "lucide-react/dist/esm/icons/bell.mjs";
+import BellRing from "lucide-react/dist/esm/icons/bell-ring.mjs";
 import BookOpen from "lucide-react/dist/esm/icons/book-open.mjs";
 import Bot from "lucide-react/dist/esm/icons/bot.mjs";
 import Briefcase from "lucide-react/dist/esm/icons/briefcase.mjs";
@@ -51,6 +52,7 @@ import ExternalLink from "lucide-react/dist/esm/icons/external-link.mjs";
 import Eye from "lucide-react/dist/esm/icons/eye.mjs";
 import EyeOff from "lucide-react/dist/esm/icons/eye-off.mjs";
 import File from "lucide-react/dist/esm/icons/file.mjs";
+import FileCheck from "lucide-react/dist/esm/icons/file-check.mjs";
 import FileScan from "lucide-react/dist/esm/icons/file-scan.mjs";
 import FileSignature from "lucide-react/dist/esm/icons/file-signature.mjs";
 import FileText from "lucide-react/dist/esm/icons/file-text.mjs";
@@ -62,6 +64,7 @@ import Folder from "lucide-react/dist/esm/icons/folder.mjs";
 import FolderKanban from "lucide-react/dist/esm/icons/folder-kanban.mjs";
 import Gift from "lucide-react/dist/esm/icons/gift.mjs";
 import GitBranch from "lucide-react/dist/esm/icons/git-branch.mjs";
+import GitMerge from "lucide-react/dist/esm/icons/git-merge.mjs";
 import Globe from "lucide-react/dist/esm/icons/globe.mjs";
 import GraduationCap from "lucide-react/dist/esm/icons/graduation-cap.mjs";
 import GripVertical from "lucide-react/dist/esm/icons/grip-vertical.mjs";
@@ -94,7 +97,9 @@ import MessageCircle from "lucide-react/dist/esm/icons/message-circle.mjs";
 import MessageCircleQuestion from "lucide-react/dist/esm/icons/message-circle-question.mjs";
 import MessageSquare from "lucide-react/dist/esm/icons/message-square.mjs";
 import MessageSquarePlus from "lucide-react/dist/esm/icons/message-square-plus.mjs";
+import Mic from "lucide-react/dist/esm/icons/mic.mjs";
 import Minus from "lucide-react/dist/esm/icons/minus.mjs";
+import MonitorUp from "lucide-react/dist/esm/icons/monitor-up.mjs";
 import Moon from "lucide-react/dist/esm/icons/moon.mjs";
 import MoreHorizontal from "lucide-react/dist/esm/icons/more-horizontal.mjs";
 import Network from "lucide-react/dist/esm/icons/network.mjs";
@@ -104,6 +109,8 @@ import Paperclip from "lucide-react/dist/esm/icons/paperclip.mjs";
 import PenLine from "lucide-react/dist/esm/icons/pen-line.mjs";
 import Pencil from "lucide-react/dist/esm/icons/pencil.mjs";
 import Phone from "lucide-react/dist/esm/icons/phone.mjs";
+import PhoneCall from "lucide-react/dist/esm/icons/phone-call.mjs";
+import Play from "lucide-react/dist/esm/icons/play.mjs";
 import Plus from "lucide-react/dist/esm/icons/plus.mjs";
 import PlusCircle from "lucide-react/dist/esm/icons/plus-circle.mjs";
 import QrCode from "lucide-react/dist/esm/icons/qr-code.mjs";
@@ -120,6 +127,7 @@ import ScrollText from "lucide-react/dist/esm/icons/scroll-text.mjs";
 import Search from "lucide-react/dist/esm/icons/search.mjs";
 import SearchCheck from "lucide-react/dist/esm/icons/search-check.mjs";
 import Send from "lucide-react/dist/esm/icons/send.mjs";
+import Settings from "lucide-react/dist/esm/icons/settings.mjs";
 import Settings2 from "lucide-react/dist/esm/icons/settings-2.mjs";
 import Share2 from "lucide-react/dist/esm/icons/share-2.mjs";
 import Shield from "lucide-react/dist/esm/icons/shield.mjs";
@@ -128,9 +136,11 @@ import ShieldOff from "lucide-react/dist/esm/icons/shield-off.mjs";
 import SlidersHorizontal from "lucide-react/dist/esm/icons/sliders-horizontal.mjs";
 import Smartphone from "lucide-react/dist/esm/icons/smartphone.mjs";
 import Sparkles from "lucide-react/dist/esm/icons/sparkles.mjs";
+import Square from "lucide-react/dist/esm/icons/square.mjs";
 import Star from "lucide-react/dist/esm/icons/star.mjs";
 import Stethoscope from "lucide-react/dist/esm/icons/stethoscope.mjs";
 import StickyNote from "lucide-react/dist/esm/icons/sticky-note.mjs";
+import Table2 from "lucide-react/dist/esm/icons/table-2.mjs";
 import Target from "lucide-react/dist/esm/icons/target.mjs";
 import ThumbsDown from "lucide-react/dist/esm/icons/thumbs-down.mjs";
 import ThumbsUp from "lucide-react/dist/esm/icons/thumbs-up.mjs";
@@ -145,6 +155,7 @@ import UserCheck from "lucide-react/dist/esm/icons/user-check.mjs";
 import UserCircle from "lucide-react/dist/esm/icons/user-circle.mjs";
 import UserCog from "lucide-react/dist/esm/icons/user-cog.mjs";
 import UserPlus from "lucide-react/dist/esm/icons/user-plus.mjs";
+import UserRound from "lucide-react/dist/esm/icons/user-round.mjs";
 import Users from "lucide-react/dist/esm/icons/users.mjs";
 import UsersRound from "lucide-react/dist/esm/icons/users-round.mjs";
 import Video from "lucide-react/dist/esm/icons/video.mjs";
@@ -166,6 +177,7 @@ export const ICON_MAP = {
   "ban": Ban,
   "bar-chart-3": BarChart3,
   "bell": Bell,
+  "bell-ring": BellRing,
   "book-open": BookOpen,
   "bot": Bot,
   "briefcase": Briefcase,
@@ -205,6 +217,7 @@ export const ICON_MAP = {
   "eye": Eye,
   "eye-off": EyeOff,
   "file": File,
+  "file-check": FileCheck,
   "file-scan": FileScan,
   "file-signature": FileSignature,
   "file-text": FileText,
@@ -216,6 +229,7 @@ export const ICON_MAP = {
   "folder-kanban": FolderKanban,
   "gift": Gift,
   "git-branch": GitBranch,
+  "git-merge": GitMerge,
   "globe": Globe,
   "graduation-cap": GraduationCap,
   "grip-vertical": GripVertical,
@@ -248,7 +262,9 @@ export const ICON_MAP = {
   "message-circle-question": MessageCircleQuestion,
   "message-square": MessageSquare,
   "message-square-plus": MessageSquarePlus,
+  "mic": Mic,
   "minus": Minus,
+  "monitor-up": MonitorUp,
   "moon": Moon,
   "more-horizontal": MoreHorizontal,
   "network": Network,
@@ -258,6 +274,8 @@ export const ICON_MAP = {
   "pen-line": PenLine,
   "pencil": Pencil,
   "phone": Phone,
+  "phone-call": PhoneCall,
+  "play": Play,
   "plus": Plus,
   "plus-circle": PlusCircle,
   "qr-code": QrCode,
@@ -274,6 +292,7 @@ export const ICON_MAP = {
   "search": Search,
   "search-check": SearchCheck,
   "send": Send,
+  "settings": Settings,
   "settings-2": Settings2,
   "share-2": Share2,
   "shield": Shield,
@@ -282,9 +301,11 @@ export const ICON_MAP = {
   "sliders-horizontal": SlidersHorizontal,
   "smartphone": Smartphone,
   "sparkles": Sparkles,
+  "square": Square,
   "star": Star,
   "stethoscope": Stethoscope,
   "sticky-note": StickyNote,
+  "table-2": Table2,
   "target": Target,
   "thumbs-down": ThumbsDown,
   "thumbs-up": ThumbsUp,
@@ -299,6 +320,7 @@ export const ICON_MAP = {
   "user-circle": UserCircle,
   "user-cog": UserCog,
   "user-plus": UserPlus,
+  "user-round": UserRound,
   "users": Users,
   "users-round": UsersRound,
   "video": Video,

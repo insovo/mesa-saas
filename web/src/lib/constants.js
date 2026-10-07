@@ -67,6 +67,40 @@ export const URGENCY_TONE = {
   low: { bg: "#F4F7FE", fg: "#707EAE", label: "可缓" },
 };
 
+// ─── 校招模块 ───
+export const CAMPUS_APP_STATUS = ["applied", "screening", "onsite_interview", "referred", "passed", "rejected", "withdrawn"];
+export const CAMPUS_APP_STATUS_LABEL = {
+  applied: "已投递",
+  screening: "筛选中",
+  onsite_interview: "现场面试",
+  referred: "内推已推送",
+  passed: "已通过",
+  rejected: "未通过",
+  withdrawn: "已撤回",
+};
+export const CAMPUS_APP_STATUS_TONE = {
+  applied: { bg: "#F4F7FE", fg: "#707EAE", dot: "#A3AED0" },
+  screening: { bg: "#DBEAFE", fg: "#1D4ED8", dot: "#3B82F6" },
+  onsite_interview: { bg: "#E9E3FF", fg: "#2111A5", dot: "#422AFB" },
+  referred: { bg: "#FEF3C7", fg: "#854D0E", dot: "#EAB308" },
+  passed: { bg: "#DCFCE7", fg: "#15803D", dot: "#22C55E" },
+  rejected: { bg: "#FEE2E2", fg: "#B91C1C", dot: "#F53939" },
+  withdrawn: { bg: "#F8F9FA", fg: "#A3AED0", dot: "#CBD5E0" },
+};
+export const CAMPUS_JOB_KIND_LABEL = { onsite: "现场面试", referral: "内推" };
+export const CAMPUS_JOB_KIND_TONE = {
+  onsite: { bg: "#E9E3FF", fg: "#2111A5" },
+  referral: { bg: "#FEF3C7", fg: "#854D0E" },
+};
+export const CAMPUS_SOURCE_LABEL = { direct: "直投", match: "智能匹配", hr: "HR 登记" };
+export const CAMPUS_SESSION_STATUS_LABEL = { draft: "草稿", live: "上线中", closed: "已结束" };
+export const CAMPUS_SESSION_STATUS_TONE = {
+  draft: { bg: "#F4F7FE", fg: "#707EAE", dot: "#A3AED0" },
+  live: { bg: "#DCFCE7", fg: "#15803D", dot: "#22C55E" },
+  closed: { bg: "#F8F9FA", fg: "#A3AED0", dot: "#CBD5E0" },
+};
+export const CAMPUS_PARSE_STATUS_LABEL = { pending: "待解析", running: "解析中", done: "已解析", failed: "解析失败", skipped: "未解析", cancelled: "已取消" };
+
 export const SOURCE_TONE = {
   自动上传: { bg: "#E9E3FF", fg: "#422AFB" },
   内推: { bg: "#DCFCE7", fg: "#15803D" },

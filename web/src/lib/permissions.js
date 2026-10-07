@@ -39,6 +39,8 @@ export const MODULE_KEYS = Object.freeze([
   "interview.delete",
   "user.manage",
   "system.llm.manage",
+  "campus.manage",
+  "campus.export",
 ]);
 
 // 中文标签 — 给 admin 用户管理页的勾选 UI 用
@@ -81,6 +83,8 @@ export const MODULE_LABELS = Object.freeze({
   "interview.delete": "删除面试安排",
   "user.manage": "用户管理(辅助)",
   "system.llm.manage": "LLM 配置变更",
+  "campus.manage": "校招专场 / 岗位配置",
+  "campus.export": "校招台账导出(含联系方式)",
 });
 
 // 模块归类 — 用户管理页面板分组
@@ -112,6 +116,10 @@ export const MODULE_GROUPS = Object.freeze([
   {
     label: "入职 / 面试操作",
     keys: ["employee.delete", "interview.delete"],
+  },
+  {
+    label: "校招",
+    keys: ["campus.manage", "campus.export"],
   },
   {
     label: "高级 / 系统",

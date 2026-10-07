@@ -27,6 +27,8 @@ import interviewEvalsRoutes from "./routes/interview-evals.js";
 import performanceRoutes from "./routes/performance.js";
 import feishuRoutes from "./routes/feishu.js";
 import feishuConfigRoutes from "./routes/feishu-config.js";
+import campusRoutes from "./routes/campus.js";
+import campusPublicRoutes from "./routes/campus-public.js";
 import { verifyTemplateOnBoot } from "./lib/interviewEvalTemplate.js";
 import { verifyPerformanceTemplatesOnBoot } from "./lib/performanceEvalTemplate.js";
 
@@ -88,6 +90,9 @@ await app.register(performanceRoutes, { prefix: "/api" });
 await app.register(feishuRoutes, { prefix: "/api/feishu" });
 // feishu-config: bot 自动分享设置(登录态,全局仅 admin)
 await app.register(feishuConfigRoutes, { prefix: "/api/feishu-config" });
+// campus: 校招后台(登录态 + pageKey campus)+ 学生端公开路由(验证码会话,AuthGuard 外)
+await app.register(campusRoutes, { prefix: "/api/campus" });
+await app.register(campusPublicRoutes, { prefix: "/api/campus/public" });
 
 // 启动时校验面试评价模板 hash — 不一致就抛错(模板被改过 / 版本不对)
 try {

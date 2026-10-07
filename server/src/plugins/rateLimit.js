@@ -18,6 +18,7 @@ export default fp(async (app) => {
     const u = req.url || "";
     if (u.startsWith("/api/health")) return 10000;
     if (u.startsWith("/api/public/")) return 40;
+    if (u.startsWith("/api/campus/public/")) return 90; // 学生端:含 2s 轮询(抽取 / 匹配进度),比 token 公开页宽
     if (u.startsWith("/api/feishu")) return 60;
     return 200;
   };

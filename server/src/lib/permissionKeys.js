@@ -42,6 +42,9 @@ export const MODULE_KEYS = Object.freeze([
   "interview.delete",
   "user.manage",
   "system.llm.manage",
+  // 校招:专场 / 岗位配置 与 含联系方式的台账导出(默认仅 admin)
+  "campus.manage",
+  "campus.export",
 ]);
 
 // 新建普通用户默认页面权限 — 不含 departments/system.llm/users(规划 §三末段)
