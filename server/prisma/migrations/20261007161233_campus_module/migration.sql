@@ -158,15 +158,6 @@ CREATE UNIQUE INDEX "campus_applications_applicant_id_job_id_key" ON "campus_app
 -- CreateIndex
 CREATE INDEX "campus_match_runs_applicant_id_started_at_idx" ON "campus_match_runs"("applicant_id", "started_at");
 
--- CreateIndex
-CREATE INDEX "audit_logs_actor_id_created_at_idx" ON "audit_logs"("actor_id", "created_at");
-
--- CreateIndex
-CREATE INDEX "audit_logs_action_created_at_idx" ON "audit_logs"("action", "created_at");
-
--- CreateIndex
-CREATE INDEX "password_history_user_id_created_at_idx" ON "password_history"("user_id", "created_at");
-
 -- AddForeignKey
 ALTER TABLE "campus_session_jobs" ADD CONSTRAINT "campus_session_jobs_session_id_fkey" FOREIGN KEY ("session_id") REFERENCES "campus_sessions"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
