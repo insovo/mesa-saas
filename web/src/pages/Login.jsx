@@ -1,26 +1,10 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import gsap from "gsap";
 import { api } from "../lib/api.js";
 import { setAuth, addSavedAccount } from "../lib/auth.js";
 import { Button, Input, I, Modal, toast } from "../components/Primitives.jsx";
 import { useAuth } from "../lib/authContext.jsx";
 import PasswordStrengthMeter from "../components/PasswordStrengthMeter.jsx";
-import DecryptedText from "../components/DecryptedText.jsx";
-import CurvedLoop from "../components/CurvedLoop.jsx";
-// 登录页 v2(2026-07):Hyperspeed 全屏暗色背景 + 玻璃拟态卡片,弃用原烘焙设计图素材
-
-// Hyperspeed 光速公路背景(three.js,lazy → 单独 chunk,仅登录页拉取)
-const Hyperspeed = lazy(() => import("../components/Hyperspeed.jsx"));
-// reduced-motion 用户不跑 WebGL 动画,退回静态深色底
-const REDUCE_MOTION =
-  typeof window !== "undefined" &&
-  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-// 背景效果的暗色底(与 Hyperspeed fog 黑色衔接)
-const HYPER_BG = "#050510";
-
-// 品牌渐变(与站内 brand-logo 流光同族)
-const BRAND_GRADIENT = "linear-gradient(90deg,#5B6CF0,#7C3AED,#C026D3,#7C3AED,#5B6CF0)";
 
 // 上次成功登录的邮箱记忆(明文邮箱不敏感;绝不存密码)。与「记住账号」多账号切换是两套。
 const LAST_EMAIL_KEY = "mesa.login.last_email";
@@ -54,22 +38,6 @@ export default function Login() {
   const [mfaToken, setMfaToken] = useState(null); // 进入 MFA 第二步时持有
   const [remember, setRemember] = useState(false);
   const [showPwd, setShowPwd] = useState(false);
-  const stageRef = useRef(null);
-
-  useEffect(() => {
-    if (!stageRef.current) return;
-    const ctx = gsap.context(() => {
-      gsap.from(".login-rise", {
-        y: 22,
-        opacity: 0,
-        duration: 0.7,
-        ease: "power3.out",
-        stagger: 0.1,
-        clearProps: "transform,opacity",
-      });
-    }, stageRef);
-    return () => ctx.revert();
-  }, []);
 
   async function onSubmit(e) {
     e.preventDefault();
@@ -116,116 +84,48 @@ export default function Login() {
   }
 
   return (
-    <div ref={stageRef} className="min-h-screen relative overflow-hidden" style={{ background: HYPER_BG }}>
-      {/* Hyperspeed 光速公路全屏背景(桌面 + 移动统一单实例;空白处按住鼠标/触摸可加速) */}
-      {!REDUCE_MOTION && (
-        <Suspense fallback={null}>
-          <Hyperspeed />
-        </Suspense>
-      )}
-      {/* 品牌区氛围柔光(不挡交互) */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 z-[1]"
-        style={{ background: "radial-gradient(ellipse 68% 52% at 28% 24%, rgba(124,58,237,0.16), transparent 62%)" }}
-      />
-      {/* 桌面端的品牌弧形标语：贴左上角沿陡峭弧线上冲(对齐设计标注红线),避开右侧登录卡。 */}
-      <div aria-hidden className="pointer-events-none absolute left-0 top-0 z-[2] hidden h-[52vh] w-[40vw] max-w-[640px] lg:block">
-        <CurvedLoop
-          marqueeText="Build ✦ Future ✦ Code ✦ With ✦ Us ✦"
-          speed={2}
-          curveAmount={70}
-          direction="right"
-          interactive={false}
-          className="opacity-90"
-        />
-      </div>
-
-      {/* pointer-events-none 让空白区把鼠标事件透传给底层 canvas(按住加速);仅登录卡恢复交互 */}
-      <div className="relative z-10 min-h-screen flex items-center justify-center px-4 py-10 lg:px-14 pointer-events-none">
-        <div className="w-full max-w-6xl flex flex-col lg:flex-row items-center justify-center lg:justify-between gap-10 lg:gap-20">
-          {/* ── 左:品牌 + 主张(桌面完整版;移动端只保留 logo 行);背景已是全屏动效 ── */}
-          <div className="login-rise w-full max-w-md lg:max-w-[540px] lg:flex-1 select-none pointer-events-none">
-            {/* 品牌名:乱码解密揭示(无 logo 球)。渐变在父层;乱码字显式 fill 避免继承 transparent 看不见 */}
-            <div
-              className="flex items-center justify-center lg:justify-start"
-              style={{ filter: "drop-shadow(0 2px 10px rgba(5,5,16,0.9)) drop-shadow(0 0 2px rgba(5,5,16,0.8))" }}
-            >
-              <DecryptedText
-                text="Overseas R&D"
-                animateOn="view"
-                sequential
-                revealDirection="start"
-                speed={55}
-                loop
-                loopDelay={2200}
-                parentClassName="animate-gradient-x"
-                className="text-[26px] lg:text-[30px] font-bold [-webkit-text-fill-color:transparent]"
-                encryptedClassName="text-[26px] lg:text-[30px] font-bold text-white/35 [-webkit-text-fill-color:rgba(255,255,255,0.35)]"
-                style={{
-                  fontFamily: "Poppins, sans-serif",
-                  background: BRAND_GRADIENT,
-                  backgroundSize: "200% auto",
-                  WebkitBackgroundClip: "text",
-                  backgroundClip: "text",
-                }}
-              />
-            </div>
-
-            <div className="hidden lg:block">
-              <h1 className="mt-9 text-[42px] font-bold leading-tight whitespace-nowrap" style={{ letterSpacing: "3px" }}>
-                <span className="text-white">全球人才</span>
-                <span className="text-white/60 mx-2.5">·</span>
-                <span style={{ background: "linear-gradient(90deg,#E0639B,#D53872)", WebkitBackgroundClip: "text", backgroundClip: "text", WebkitTextFillColor: "transparent" }}>精准招聘</span>
-              </h1>
-              <p className="mt-4 text-[15px] text-white/55 tracking-wider">智能化招聘管理,助力企业全球研发人才战略</p>
-            </div>
-          </div>
-
-          {/* ── 右:暗色玻璃拟态登录卡(桌面/移动共用同一表单) ── */}
-          <div className="login-rise w-full max-w-md lg:w-[440px] lg:shrink-0 pointer-events-auto">
-            <div className="rounded-[28px] border border-white/10 shadow-glow-lg p-8"
-              style={{ background: "rgba(20,18,40,0.55)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)" }}>
-              <h1 className="text-3xl font-bold text-white tracking-tight">欢迎登录</h1>
-              <p className="text-sm text-white/55 mt-2 mb-8">海外研发招聘管理系统</p>
-              <form onSubmit={onSubmit} className="space-y-5">
-                <div>
-                  <label htmlFor="email" className="text-xs font-bold text-white/70 ml-1 mb-2 block">邮箱 / 账户名</label>
-                  <div className="relative">
-                    <I name="mail" size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 pointer-events-none" />
-                    <input id="email" type="text" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="请输入邮箱或账户名" autoComplete="username" required
-                      className="w-full h-[52px] rounded-2xl border border-white/15 bg-white/5 pl-11 pr-4 text-sm text-white placeholder:text-white/40 outline-none focus:border-brand focus:bg-white/10 focus:ring-4 focus:ring-brand/20 transition-all" />
-                  </div>
-                </div>
-                <div>
-                  <label htmlFor="password" className="text-xs font-bold text-white/70 ml-1 mb-2 block">密码</label>
-                  <div className="relative">
-                    <I name="lock" size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 pointer-events-none" />
-                    <input id="password" type={showPwd ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="请输入密码" autoComplete="current-password" required
-                      className="w-full h-[52px] rounded-2xl border border-white/15 bg-white/5 pl-11 pr-11 text-sm text-white placeholder:text-white/40 outline-none focus:border-brand focus:bg-white/10 focus:ring-4 focus:ring-brand/20 transition-all" />
-                    <button type="button" onClick={() => setShowPwd((v) => !v)} className="absolute right-4 top-1/2 -translate-y-1/2 text-white/50 hover:text-white transition" aria-label="切换密码可见">
-                      <I name={showPwd ? "eye" : "eye-off"} size={18} />
-                    </button>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between gap-2">
-                  <label className="inline-flex items-center gap-2 cursor-pointer select-none">
-                    <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="accent-brand w-4 h-4" style={{ colorScheme: "dark" }} />
-                    <span className="text-xs text-white/60">记住账号</span>
-                  </label>
-                  <button type="button" onClick={() => setForgotOpen(true)} className="text-xs font-medium text-brand-300 hover:text-white hover:underline transition">忘记密码?</button>
-                </div>
-                {error && <div className="text-sm text-red-200 bg-red-500/15 border border-red-400/25 rounded-xl px-4 py-3 flex items-center gap-2"><I name="alert-circle" size={16} />{error}</div>}
-                {deactivated && <div className="text-sm text-amber-200 bg-amber-500/15 border border-amber-400/25 rounded-xl px-4 py-3">账号已被停用 · {deactivated.reason || "请联系系统管理员开通"}</div>}
-                <button type="submit" disabled={submitting} className="w-full h-[54px] rounded-2xl text-white text-[15px] font-bold inline-flex items-center justify-center gap-2 shadow-[0_12px_28px_rgba(213,56,114,0.42)] active:scale-[0.98] transition-all disabled:opacity-70" style={{ background: "linear-gradient(90deg,#D53872 0%,#DF6395 100%)" }}>
-                  {submitting ? (<><I name="loader" size={16} className="animate-spin" /> 登录中...</>) : (<>登录</>)}
-                </button>
-              </form>
-              <p className="text-center text-sm text-white/55 mt-6">还没有账号? <span className="text-brand-300 font-medium">联系管理员开通</span></p>
-            </div>
-            <div className="flex items-center justify-center gap-1.5 mt-5 text-xs text-white/45"><I name="shield-check" size={13} className="text-emerald-400" /> 数据安全保障 · 隐私严格保护</div>
-          </div>
+    <div className="min-h-screen bg-gradient-to-br from-[#F4F6FF] via-white to-[#ECEAFF] flex items-center justify-center px-4 py-8">
+      <div className="w-full max-w-[420px] rounded-[24px] border border-gray-100 bg-white p-6 shadow-card sm:p-8">
+        <div className="mb-8 flex items-center gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand text-white"><I name="briefcase" size={22} /></div>
+          <div><p className="text-sm font-bold text-navy-700">Overseas R&amp;D</p><p className="text-xs text-gray-500">招聘管理系统</p></div>
         </div>
+        <h1 className="text-2xl font-bold text-navy-700">欢迎登录</h1>
+        <p className="mt-1.5 mb-7 text-sm text-gray-600">请输入账号信息继续使用</p>
+        <form onSubmit={onSubmit} className="space-y-5">
+          <div>
+            <label htmlFor="email" className="text-xs font-bold text-navy-700 ml-1 mb-2 block">邮箱 / 账户名</label>
+            <div className="relative">
+              <I name="mail" size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              <input id="email" type="text" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="请输入邮箱或账户名" autoComplete="username" required
+                className="w-full h-[52px] rounded-2xl border border-gray-200 bg-white pl-11 pr-4 text-sm text-navy-700 placeholder:text-gray-400 outline-none focus:border-brand focus:ring-4 focus:ring-brand/10 transition-all" />
+            </div>
+          </div>
+          <div>
+            <label htmlFor="password" className="text-xs font-bold text-navy-700 ml-1 mb-2 block">密码</label>
+            <div className="relative">
+              <I name="lock" size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              <input id="password" type={showPwd ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="请输入密码" autoComplete="current-password" required
+                className="w-full h-[52px] rounded-2xl border border-gray-200 bg-white pl-11 pr-11 text-sm text-navy-700 placeholder:text-gray-400 outline-none focus:border-brand focus:ring-4 focus:ring-brand/10 transition-all" />
+              <button type="button" onClick={() => setShowPwd((v) => !v)} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-brand transition" aria-label="切换密码可见">
+                <I name={showPwd ? "eye" : "eye-off"} size={18} />
+              </button>
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+              <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="accent-brand w-4 h-4" />
+              <span className="text-xs text-gray-600">记住账号</span>
+            </label>
+            <button type="button" onClick={() => setForgotOpen(true)} className="text-xs font-medium text-brand hover:underline">忘记密码?</button>
+          </div>
+          {error && <div className="text-sm text-red-700 bg-red-50 border border-red-100 rounded-xl px-4 py-3 flex items-center gap-2"><I name="alert-circle" size={16} />{error}</div>}
+          {deactivated && <div className="text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">账号已被停用 · {deactivated.reason || "请联系系统管理员开通"}</div>}
+          <button type="submit" disabled={submitting} className="w-full h-[52px] rounded-2xl bg-brand hover:bg-brand-hover text-white text-sm font-bold inline-flex items-center justify-center gap-2 shadow-button active:scale-[0.98] transition-all disabled:opacity-70">
+            {submitting ? (<><I name="loader" size={16} className="animate-spin" /> 登录中...</>) : (<>登录</>)}
+          </button>
+        </form>
+        <p className="text-center text-xs text-gray-500 mt-6">还没有账号？请联系管理员开通</p>
       </div>
 
       {forgotOpen && (
@@ -251,15 +151,6 @@ function MfaModal({ mfaToken, email, onCancel, onSuccess }) {
   const [recoveryCode, setRecoveryCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const rootRef = useRef(null);
-
-  useEffect(() => {
-    if (!rootRef.current) return;
-    const ctx = gsap.context(() => {
-      gsap.from(".mfa-row", { y: 8, opacity: 0, duration: 0.3, stagger: 0.05, ease: "power3.out", clearProps: "transform,opacity" });
-    }, rootRef);
-    return () => ctx.revert();
-  }, [mode]);
 
   async function submit() {
     setError("");
@@ -283,7 +174,7 @@ function MfaModal({ mfaToken, email, onCancel, onSuccess }) {
 
   return (
     <Modal open={true} onClose={onCancel} maxWidth="max-w-sm">
-      <div ref={rootRef} className="p-6 space-y-4">
+      <div className="p-6 space-y-4">
         <h3 className="mfa-row text-lg font-bold text-navy-700 flex items-center gap-2">
           <I name="shield-check" size={18} className="text-brand" /> 两步验证
         </h3>
@@ -364,7 +255,6 @@ function ForgotPasswordModal({ onClose, initialEmail = "" }) {
   const [resetting, setResetting] = useState(false);
   const [devCode, setDevCode] = useState(null); // dev 模式下后端返回的验证码
   const [cooldown, setCooldown] = useState(0);
-  const cardRef = useRef(null);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -372,20 +262,6 @@ function ForgotPasswordModal({ onClose, initialEmail = "" }) {
     return () => clearInterval(t);
   }, [cooldown]);
 
-  useEffect(() => {
-    if (!cardRef.current) return;
-    const ctx = gsap.context(() => {
-      gsap.from(".fp-step", {
-        y: 14,
-        opacity: 0,
-        duration: 0.35,
-        ease: "power3.out",
-        stagger: 0.06,
-        clearProps: "transform,opacity",
-      });
-    }, cardRef);
-    return () => ctx.revert();
-  }, [step]);
 
   async function sendCode() {
     if (!email.includes("@")) return toast("请输入正确的邮箱", "error");
@@ -443,7 +319,7 @@ function ForgotPasswordModal({ onClose, initialEmail = "" }) {
 
   return (
     <Modal open={true} onClose={onClose} maxWidth="max-w-md">
-      <div ref={cardRef} className="p-6 space-y-4">
+      <div className="p-6 space-y-4">
         <h3 className="fp-step text-lg font-bold text-navy-700 flex items-center gap-2">
           <I name="key-round" size={18} className="text-brand" /> 忘记密码
         </h3>
