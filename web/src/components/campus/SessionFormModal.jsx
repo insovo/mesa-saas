@@ -12,7 +12,12 @@ export default function SessionFormModal({ open, onClose, session, onSaved }) {
   const [saving, setSaving] = useState(false);
   useEffect(() => {
     if (!open) return;
-    setForm(session ? { ...EMPTY, ...session, startsAt: toLocal(session.startsAt), endsAt: toLocal(session.endsAt), slug: session.slug || "" } : EMPTY);
+    setForm(session ? {
+      ...EMPTY, ...session,
+      school: session.school ?? "", location: session.location ?? "",
+      heroTitle: session.heroTitle ?? "", heroSubtitle: session.heroSubtitle ?? "",
+      startsAt: toLocal(session.startsAt), endsAt: toLocal(session.endsAt), slug: session.slug || "",
+    } : EMPTY);
   }, [open, session]);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
