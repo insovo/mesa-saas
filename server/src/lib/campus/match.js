@@ -1,7 +1,7 @@
 // 校招智能匹配:一版简历 × 全部参与匹配岗位 → 逐岗位评估 → 结果快照(设计 §5.4 / §9)
 //   - 抽取只做一次:版本未解析时先在本任务内抽取(复用 executeExtraction),已解析直接复用 ResumeParse / profile
 //   - 评估走 pipeline(mode=reevaluate, detached, skipReport):只写 CandidateEvaluation(isCurrent=false),不动候选人主投递与快照
-//   - 理由由代码从逐项判定生成,不调 Kimi;对学生展示分 = max(scoreFloor, 原始分)
+//   - 理由由代码从逐项判定生成,不调 Kimi;校招展示分至少为 60
 //   - 协作式取消:run.taskId 的 cancelRequested 在每个岗位之间检查;cancelMatchRun 立即把 run 标 cancelled
 //   - 任务与页面无关:进度写 parseTaskStore(task.stages),学生端 2s 轮询
 
@@ -47,8 +47,8 @@ export function progressOf(run, task) {
   return { progress: 3, stage: "queued", queuePosition: task?.queuedAhead ?? null };
 }
 
-export async function startMatchRun(app, { applicant, session, concurrency = 3 }) {
-  if (!session.matchEnabled) throw httpError("本专场未开放智能匹配", 403, "campus_match_disabled");
+export async function startMatchRun(app, { applicant, session, concurrency = 3, staff = false }) {
+  if (!session.matchEnabled && !staff) throw httpError("本专场未开放智能匹配", 403, "campus_match_disabled");
   if (!applicant.currentResumeVersionId) throw httpError("请先上传简历", 428, "campus_resume_required");
   if (!(await isKimiConfigured())) throw httpError("匹配服务未配置,请联系现场 HR", 424, "kimi_not_configured");
   const inFlight = await app.prisma.campusMatchRun.findFirst({ where: { applicantId: applicant.id, status: { in: ["queued", "running"] } } });
@@ -125,7 +125,7 @@ async function runMatch(app, runId) {
         const ev = await app.prisma.candidateEvaluation.findUnique({ where: { id: st.evaluation.id } });
         if (ev) {
           const excluded = ev.hardFilter?.result === "FAIL";
-          item = { ...item, scoreRaw: ev.overallScore, scoreShown: shownScore(ev.overallScore, session.scoreFloor), classification: ev.classification, hardFilter: ev.hardFilter?.result || null, excluded, reasons: excluded ? [{ kind: "gap", text: excludedReason(ev.hardFilter) }] : buildReasons(ev), evaluationId: ev.id, engine: ev.engine };
+          item = { ...item, scoreRaw: ev.versions?.rawOverallScore ?? ev.overallScore, scoreShown: shownScore(ev.overallScore, session.scoreFloor), classification: ev.classification, hardFilter: ev.hardFilter?.result || null, excluded, reasons: excluded ? [{ kind: "gap", text: excludedReason(ev.hardFilter) }] : buildReasons(ev), evaluationId: ev.id, engine: ev.engine };
           if (ev.costs?.cached) jevCached++;
         }
       } else {
@@ -161,7 +161,7 @@ export function runShape(run, task, { student = true } = {}) {
   return {
     id: run.id, status: run.status, stale: run.stale, startedAt: run.startedAt, finishedAt: run.finishedAt, error: run.error,
     resumeVersionId: run.resumeVersionId, ...p,
-    results: run.status === "done" ? results.map((r) => (student ? { jobId: r.jobId, kind: r.kind, title: r.title, dept: r.dept, location: r.location, scoreShown: r.scoreShown, excluded: r.excluded, reasons: r.reasons, error: r.error ? "evaluate_failed" : null } : r)) : undefined,
+    results: run.status === "done" ? results.map((r) => (student ? { jobId: r.jobId, kind: r.kind, title: r.title, dept: r.dept, location: r.location, scoreShown: shownScore(r.scoreShown ?? r.scoreRaw, 60), excluded: r.excluded, reasons: r.reasons, error: r.error ? "evaluate_failed" : null } : { ...r, scoreShown: shownScore(r.scoreShown ?? r.scoreRaw, 60) })) : undefined,
     ...(student ? {} : { costs: run.costs }),
   };
 }

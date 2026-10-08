@@ -23,6 +23,7 @@ import { getEffective, getEffectiveBool, getEffectiveJson, getEffectiveNumber, S
 import { runHardFilter } from "./hardFilter.js";
 import { buildState, buildQuestions } from "./questions.js";
 import { normalizeAnswers, composite } from "./composite.js";
+import { campusEvaluationModel, CAMPUS_SCORE_FLOOR, CAMPUS_TIER_WEIGHTS } from "./campusPolicy.js";
 import { legacyToEvaluation } from "./legacyAdapter.js";
 import { sanitizeReport, candidateSnapshotFromReport } from "./report.js";
 import { draftEvaluationModel, EVAL_SCHEMA_VERSION, QUESTION_TEMPLATE_VERSION } from "./templates.js";
@@ -263,17 +264,19 @@ async function evaluateStage(app, taskId, { cand, job, markdown, detail, summary
     getEffectiveNumber(SETTING_KEYS.EVAL_CONFIDENCE_GATE, 0.5), getEffective(SETTING_KEYS.EVAL_REPORT_POLICY),
   ]);
   const useJev = force === "jev" ? true : force === "legacy" ? false : enabled;
+  const isCampus = job.recruitmentType === "campus";
   const runLegacy = async () => {
-    const match = await matchAgainstJob({ candidateSummary: summary || `${cand.name || ""}`, jobTitle: job.title, jobDescription: job.description || "", model: kimiModel });
-    const ev = legacyToEvaluation(match, { thresholds: thresholds || undefined });
-    return { evaluation: { ...ev, versions: { schema: EVAL_SCHEMA_VERSION, engine: "legacy", kimiModel: kimiModel || null }, costs: null }, match };
+    const match = await matchAgainstJob({ candidateSummary: summary || `${cand.name || ""}`, jobTitle: job.title, jobDescription: job.description || "", model: kimiModel, campus: isCampus });
+    const ev = legacyToEvaluation(match, { thresholds: thresholds || undefined, scoreFloor: isCampus ? CAMPUS_SCORE_FLOOR : 0 });
+    return { evaluation: { ...ev, versions: { schema: EVAL_SCHEMA_VERSION, engine: "legacy", kimiModel: kimiModel || null, ...(isCampus ? { rawOverallScore: ev.rawOverallScore } : {}) }, costs: null }, match };
   };
 
   let primary = null, shadow = null, match = null, jevError = null;
   if (useJev) {
     try {
-      const { model: evalModel, job: job2 } = await ensureEvaluationModel(app, job);
+      const { model: savedModel, job: job2 } = await ensureEvaluationModel(app, job);
       job = job2;
+      const evalModel = isCampus ? campusEvaluationModel(savedModel) : savedModel;
       const hardFilter = runHardFilter(evalModel, cand);
       const { state, meta: stateMeta } = buildState({ markdown, profile: cand.profile, derived: cand.derived, jdFacts: job.jdFacts, job, piiStrip });
       const { questions, map, meta: qMeta } = buildQuestions(evalModel, hardFilter);
@@ -283,12 +286,12 @@ async function evaluateStage(app, taskId, { cand, job, markdown, detail, summary
         answers = jevOut.answers;
       }
       const items = normalizeAnswers(evalModel, hardFilter, answers, map);
-      const c = composite(evalModel, items, answers, { thresholds: thresholds || undefined, tierWeights: tierWeights || undefined, confidenceGate: gate });
+      const c = composite(evalModel, items, answers, { thresholds: thresholds || undefined, tierWeights: isCampus ? CAMPUS_TIER_WEIGHTS : tierWeights || undefined, confidenceGate: gate, scoreFloor: isCampus ? CAMPUS_SCORE_FLOOR : 0 });
       primary = {
         engine: "jev", hardFilter, items, jevRequest: { questions, map, meta: { ...stateMeta, ...qMeta } }, jevAnswers: answers,
         dimensions: c.dimensions, overallScore: c.overallScore, bonus: c.bonus, classification: c.classification, reviewPriority: c.reviewPriority,
         reasons: c.reasons, flags: c.flags, minConfidence: c.minConfidence, interviewKeys: c.interviewKeys,
-        versions: { schema: EVAL_SCHEMA_VERSION, questionTemplate: QUESTION_TEMPLATE_VERSION, evaluationModel: job.evaluationModelVersion, jevModel: jevOut?.model || null, kimiModel: kimiModel || null },
+        versions: { schema: EVAL_SCHEMA_VERSION, questionTemplate: QUESTION_TEMPLATE_VERSION, evaluationModel: job.evaluationModelVersion, jevModel: jevOut?.model || null, kimiModel: kimiModel || null, ...(isCampus ? { rawOverallScore: c.rawOverallScore } : {}) },
         costs: jevOut ? { jevInputTokens: jevOut.inputTokens, jevUsd: jevOut.costUsd, cached: jevOut.cached, latencyMs: jevOut.latencyMs } : { jevInputTokens: 0, jevUsd: 0 },
         reportPolicy: policy || "auto_ab",
       };

@@ -864,7 +864,7 @@ function promptHashOf(prompt) {
 // 输出: { jdMatch, risks, highlights, matchReason, aiSuggestedTags, insights, matchedFor, againstFor }
 //   (V2 新字段: 2026-05-24 加入 aiSuggestedTags/insights/matchedFor/againstFor,
 //    供 candidate-detail-flat 设计稿的左侧 TagsModule / 匹配项-不匹配项 / 洞察 Tab 渲染)
-export async function matchAgainstJob({ candidateSummary, jobTitle, jobDescription, model }) {
+export async function matchAgainstJob({ candidateSummary, jobTitle, jobDescription, model, campus = false }) {
   const useModel = await pickModel(model);
   const systemPrompt = `你是 MESA Recruit 的「候选人-岗位匹配评估」专家。
 基于下面给出的候选人简报和岗位 JD,输出严格 JSON,不要 Markdown 包裹,不要额外文字。
@@ -886,7 +886,7 @@ JSON 结构(所有字段都必须出现,无内容也要返回空数组/空串/�
 
 评估规则:
 1. 只参考给出的简报和 JD,不要凭空推测、不要给含糊推测的"可能有助于..."这种水文
-2. jdMatch 维度: 行业匹配 / 核心技能匹配 / 工作年限匹配 / 学历匹配 / 关键经验匹配,综合打分
+2. jdMatch 维度: ${campus ? "专业学习 / 课程项目 / 实习实践 / 竞赛获奖 / 岗位技能与学历匹配;不要求全职工作年限,校园证据也算有效实践" : "行业匹配 / 核心技能匹配 / 工作年限匹配 / 学历匹配 / 关键经验匹配"},综合打分
 3. risks(相对此 JD 的缺项): 每条具体到 JD 的某项要求,例:"JD 要求 5 年 XX 经验,候选人仅 2 年" 或 "JD 要求精通 React,简历未提及"
 4. highlights(相对此 JD 的优势,**硬性要求**):
    - 每条**必须直接对应 JD 中的一项要求或加分项**, 不要写跟 JD 无关的通用夸赞

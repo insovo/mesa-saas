@@ -2,6 +2,7 @@
 // 每类要求的默认 tier / method / 权重由模板给;Kimi 只补 Jev 题目措辞;HR 在 UI 调 tier / 权重 / 措辞后保存。
 
 import { displayName } from "../taxonomy/index.js";
+import { campusEvaluationModel } from "./campusPolicy.js";
 
 export const EVAL_SCHEMA_VERSION = "eval.v1";
 export const QUESTION_TEMPLATE_VERSION = "qt.v1";
@@ -246,7 +247,7 @@ export function draftEvaluationModel(jdFacts, { templateId = null, defaultWeight
     push({ key: "info_restrictions", label: `限制条件(仅记录):${[f.restrictions.age?.raw, f.restrictions.gender].filter(Boolean).join(" / ")}`, tier: "INFO", method: "none", source: "restrictions", weight: 0, compliance: "年龄/性别不参与评估,请核对是否符合当地反歧视法规" });
   }
 
-  return {
+  const model = {
     version: 1,
     schemaVersion: EVAL_SCHEMA_VERSION,
     templateId: tpl,
@@ -258,6 +259,7 @@ export function draftEvaluationModel(jdFacts, { templateId = null, defaultWeight
     fixedQuestions: ["stability", "sufficiency", "inflation"],
     source: "draft",
   };
+  return tpl === "tpl.campus.general" ? campusEvaluationModel(model) : model;
 }
 
 // 保存前校验(routes/jobs.js 用):返回 { ok, errors[] , warnings[] }

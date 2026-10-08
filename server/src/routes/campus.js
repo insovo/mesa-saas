@@ -24,7 +24,7 @@ import { mapStatusToStage, candidateToEmployeeData } from "../lib/candidateToEmp
 import { randomBytes } from "node:crypto";
 import {
   JOB_KINDS, APP_STATUS, QUOTA_STATUS, ALLOWED_RESUME_MIME, RESUME_MAX_SIZE,
-  maskPhone, maskEmail, normalizeSlug, normalizePhone, uploadsAllowed,
+  maskPhone, maskEmail, normalizeSlug, normalizePhone, uploadsAllowed, shownScore,
 } from "../lib/campus/shared.js";
 
 async function refreshAutoEvaluation(app, applicantId) {
@@ -205,7 +205,7 @@ function versionShape(v) {
 function applicationShape(a) {
   return {
     id: a.id, jobId: a.jobId, sessionJobId: a.sessionJobId, source: a.source, status: a.status, statusChangedAt: a.statusChangedAt, note: a.note,
-    scoreRaw: a.scoreRaw, scoreShown: a.scoreShown, resumeVersionId: a.resumeVersionId, createdAt: a.createdAt,
+    scoreRaw: a.scoreRaw, scoreShown: shownScore(a.scoreShown ?? a.scoreRaw, 60), resumeVersionId: a.resumeVersionId, createdAt: a.createdAt,
     kind: a.sessionJob?.kind, job: a.sessionJob?.job ? { id: a.sessionJob.job.id, title: a.sessionJob.job.title, dept: a.sessionJob.job.dept } : null,
   };
 }
@@ -228,13 +228,13 @@ function applicantShape(a, { showContact, versionsAllowed }) {
     versions: (a.resumeVersions || []).map(versionShape),
     applications: (a.applications || []).map(applicationShape),
     registeredBy: a.registeredBy, lastSeenAt: a.lastSeenAt, createdAt: a.createdAt, updatedAt: a.updatedAt,
-    candidate: a.candidate ? { id: a.candidate.id, status: a.candidate.status, classification: a.candidate.classification, jdMatch: a.candidate.jdMatch, parsingStartedAt: a.candidate.parsingStartedAt, profileCompletion: a.candidate.profileCompletion } : null,
+    candidate: a.candidate ? { id: a.candidate.id, status: a.candidate.status, classification: a.candidate.classification, jdMatch: shownScore(a.candidate.jdMatch, 60), parsingStartedAt: a.candidate.parsingStartedAt, profileCompletion: a.candidate.profileCompletion } : null,
   };
 }
 
 function bestMatchScore(run, currentResumeVersionId) {
   if (!run || run.resumeVersionId !== currentResumeVersionId || !Array.isArray(run.results)) return null;
-  const scores = run.results.map((r) => r?.scoreShown).filter((score) => typeof score === "number" && Number.isFinite(score));
+  const scores = run.results.map((r) => shownScore(r?.scoreShown ?? r?.scoreRaw, 60)).filter((score) => typeof score === "number" && Number.isFinite(score));
   return scores.length ? Math.max(...scores) : null;
 }
 
@@ -247,7 +247,7 @@ const applicantInclude = {
 export default async function campusRoutes(app, { generateJobModel = buildCampusJobModel } = {}) {
   app.addHook("preHandler", app.authenticate);
   app.addHook("preHandler", async (req, reply) => {
-    if (req.user.role === "CAMPUS_INTERVIEWER" && req.method === "GET" && /^\/api\/campus\/by-candidate\/[^/?]+(?:\?.*)?$/.test(req.url)) return;
+    if (["ADMIN", "CAMPUS_INTERVIEWER", "RECRUITER"].includes(req.user.role) && ["GET", "POST"].includes(req.method) && /^\/api\/campus\/by-candidate\/[^/?]+(?:\/match-runs)?(?:\?.*)?$/.test(req.url)) return;
     const access = await assertPage(req, reply, "campus");
     if (!access) return reply;
     if (!campusRouteAllowed(access, req.method, req.url)) {
@@ -647,7 +647,7 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
         name: safe(it.name || ""), school: safe(it.school || ""), major: safe(it.major || ""), degree: safe(it.degree || ""), gradYear: it.gradYear || "",
         phone: safe(it.phone || ""), email: safe(it.email || ""), wechat: safe(it.wechat || ""), confirmed: it.contactConfirmedAt ? "是" : "否",
         jobs: safe(apps.map((a) => a.job?.title || "").join(" / ")), kinds: apps.map((a) => kindLabel[a.kind] || "").join(" / "), sources: apps.map((a) => sourceLabel[a.source] || "").join(" / "),
-        scoreShown: apps.map((a) => a.scoreShown ?? "").join(" / "), scoreRaw: apps.map((a) => a.scoreRaw ?? "").join(" / "),
+        scoreShown: apps.map((a) => shownScore(a.scoreShown ?? a.scoreRaw, 60) ?? "").join(" / "), scoreRaw: apps.map((a) => a.scoreRaw ?? "").join(" / "),
         status: apps.map((a) => statusLabel[a.status] || a.status).join(" / "), version: it.currentVersion ? `v${it.currentVersion.version}/${it.uploadsAllowed}` : "", parse: it.currentVersion ? parseLabel[it.currentVersion.parseStatus] || "" : "无简历",
         createdAt: new Date(it.createdAt).toLocaleString("zh-CN", { hour12: false }),
       });
@@ -686,7 +686,8 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
         const a = await tx.campusApplicant.create({
           data: {
             sessionId: s.id, candidateId, phone, email: b.email?.trim() || null, name: b.name?.trim() || null, wechat: b.wechat || null,
-            school: b.school || null, major: b.major || null, degree: b.degree || null, gradYear: b.gradYear ?? null,
+            school: b.school || null, major: b.major || null, degree: b.degree || null,
+            ...(b.gradYear != null ? { gradYear: b.gradYear, gradYearSource: "manual" } : {}),
             contactConfirmedAt: b.contactConfirmed ? new Date() : null, registeredBy: req.user.sub,
           },
         });
@@ -725,6 +726,10 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
     if (!a) return;
     const { contactConfirmed, ...rest } = req.body;
     const data = { ...rest };
+    if (Object.hasOwn(data, "gradYear")) {
+      data.gradYearSource = data.gradYear == null ? "default" : "manual";
+      if (data.gradYear == null) data.gradYear = 2026;
+    }
     if (data.phone !== undefined) {
       data.phone = normalizePhone(data.phone);
       const dup = await app.prisma.campusApplicant.findFirst({ where: { sessionId: a.sessionId, phone: data.phone, NOT: { id: a.id } } });
@@ -817,7 +822,7 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
     const a = await loadApplicant(req, reply, req.params.id);
     if (!a) return;
     try {
-      const run = await startMatchRun(app, { applicant: a, session: a.session, concurrency: await concurrency() });
+      const run = await startMatchRun(app, { applicant: a, session: a.session, concurrency: await concurrency(), staff: true });
       await writeLog(app.prisma, { req, action: "campus.match.start", entityType: "CampusMatchRun", entityId: run.id, diff: { applicantId: a.id } });
       return reply.code(202).send({ run: runShape(run, await getTask(app, run.taskId), { student: false }) });
     } catch (err) {
@@ -936,13 +941,31 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
 
   // ─── 候选人详情「校招」卡:按 candidateId 查学生摘要 ──────────────
   app.get("/by-candidate/:candidateId", async (req, reply) => {
+    if (!(await assertPage(req, reply, "candidate.detail"))) return;
     const permitted = await assertCandidateAccess(req, reply, req.params.candidateId);
     if (!permitted) return;
     const a = await app.prisma.campusApplicant.findUnique({ where: { candidateId: req.params.candidateId }, include: { ...applicantInclude, session: { select: { id: true, name: true, slug: true, school: true, status: true, scoreFloor: true } }, matchRuns: { orderBy: { startedAt: "desc" }, take: 1 } } });
     if (!a) return { applicant: null };
     const access = await loadUserAccess(req);
     const run = a.matchRuns[0] || null;
-    return { applicant: applicantShape(a, { showContact: hasModule(access, "candidate.contact"), versionsAllowed: uploadsAllowed(a.session, a) }), session: a.session, latestMatchRun: run ? runShape(run, null, { student: false }) : null };
+    return { applicant: applicantShape(a, { showContact: hasModule(access, "candidate.contact"), versionsAllowed: uploadsAllowed(a.session, a) }), session: a.session, latestMatchRun: run ? runShape(run, run.taskId ? await getTask(app, run.taskId) : null, { student: false }) : null };
+  });
+
+  app.post("/by-candidate/:candidateId/match-runs", async (req, reply) => {
+    if (!["ADMIN", "CAMPUS_INTERVIEWER", "RECRUITER"].includes(req.user.role)) return reply.code(403).send({ error: "forbidden" });
+    if (!(await assertPage(req, reply, "candidate.detail"))) return;
+    const permitted = await assertCandidateAccess(req, reply, req.params.candidateId);
+    if (!permitted) return;
+    const a = await app.prisma.campusApplicant.findUnique({ where: { candidateId: req.params.candidateId }, include: { session: true } });
+    if (!a) return reply.code(404).send({ error: "not_found" });
+    try {
+      const run = await startMatchRun(app, { applicant: a, session: a.session, concurrency: await concurrency(), staff: true });
+      await writeLog(app.prisma, { req, action: "campus.match.start", entityType: "CampusMatchRun", entityId: run.id, diff: { applicantId: a.id } });
+      return reply.code(202).send({ run: runShape(run, await getTask(app, run.taskId), { student: false }) });
+    } catch (err) {
+      if (err.statusCode) return reply.code(err.statusCode).send({ error: err.code, message: err.message });
+      throw err;
+    }
   });
 
   // ─── 合并电脑端上传:把公开上传进来的候选人简历并入学生记录(作为新版本,触发抽取),源候选人打标 ──

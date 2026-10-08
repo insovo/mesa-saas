@@ -16,6 +16,7 @@ test("校招面试官默认仅可访问校招候选人接口", () => {
   const access = { role: "CAMPUS_INTERVIEWER", pageKeys: campusInterviewerPageKeys([]) };
   assert.equal(campusRouteAllowed(access, "GET", "/api/campus/sessions"), false);
   assert.equal(campusRouteAllowed(access, "GET", "/api/campus/by-candidate/one"), true);
+  assert.equal(campusRouteAllowed(access, "POST", "/api/campus/by-candidate/one/match-runs"), true);
 });
 
 test("校招候选人和岗位范围由角色固定，不受普通 owner 和授权范围影响", async () => {

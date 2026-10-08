@@ -68,7 +68,7 @@ function projectProfile(profile) {
     domainTags: e.domainTags, industryTags: e.companyIndustryTags, tools: e.tools,
   });
   return {
-    education: (p.education || []).map((e) => ({ school: e.school, degree: e.degree, major: e.major, period: `${e.startDate || "?"} ~ ${e.endDate || (e.current ? "至今" : "?")}`, overseas: e.overseas, courses: (e.courses || []).slice(0, 10), honors: e.honors })),
+    education: (p.education || []).map((e) => ({ school: e.school, degree: e.degree, major: e.major, period: `${e.startDate || "?"} ~ ${e.endDate || (e.current ? "至今" : "?")}`, overseas: e.overseas, gpa: e.gpa, ranking: e.ranking, courses: (e.courses || []).slice(0, 10), scholarships: e.scholarships, honors: e.honors, researchDirection: e.researchDirection })),
     experience: (p.experience || []).map(seg),
     internships: (p.internships || []).map(seg),
     projects: (p.projects || []).map((x) => ({ name: x.name, role: x.role, period: `${x.startDate || "?"} ~ ${x.current ? "至今" : (x.endDate || "?")}`, type: x.type, stage: x.stage, regionTags: x.regionTags, duties: (x.duties || []).slice(0, 6), contributions: (x.contributions || []).slice(0, 6), outcomes: (x.outcomes || []).slice(0, 6), domainTags: x.domainTags })),
@@ -80,7 +80,7 @@ function projectProfile(profile) {
     },
     languages: (p.languages || []).map((l) => ({ name: l.raw || l.name, level: l.level || l.levelRaw, exams: (l.exams || []).map((e) => `${e.name} ${e.score || ""}`.trim()), businessCapable: l.businessCapable })),
     certificates: (p.certificates || []).map((c) => c.name),
-    campus: p.campus ? { roles: p.campus.roles, competitions: (p.campus.competitions || []).map((c) => `${c.name}${c.award ? `·${c.award}` : ""}${c.role ? `·${c.role}` : ""}`), scholarships: p.campus.scholarships, honors: p.campus.honors } : undefined,
+    campus: p.campus ? { roles: p.campus.roles, clubs: p.campus.clubs, competitions: (p.campus.competitions || []).map((c) => `${c.name}${c.award ? `·${c.award}` : ""}${c.role ? `·${c.role}` : ""}`), scholarships: p.campus.scholarships, honors: p.campus.honors, research: p.campus.research, volunteer: p.campus.volunteer } : undefined,
     intent: p.intent ? { targetTitles: p.intent.targetTitles, targetCities: p.intent.targetCities, acceptTravel: p.intent.acceptTravel, acceptOverseas: p.intent.acceptOverseas, acceptRelocation: p.intent.acceptRelocation } : undefined,
   };
 }
@@ -142,6 +142,19 @@ export const FIXED_QUESTIONS = {
   },
 };
 
+const CAMPUS_FIXED_QUESTIONS = {
+  sufficiency: {
+    type: "noul",
+    instructions: "结合课程、校园项目、竞赛、科研、实习和专业学习,简历是否仍不足以判断与岗位的相关性?不要因缺少全职工作经历判信息不足。",
+    criteria: { true: "课程、项目、校园活动和实习均没有可判断的具体信息", false: "至少有相关课程、项目、校园表现或实习的具体证据" },
+  },
+  inflation: {
+    type: "noul",
+    instructions: "简历是否大量罗列技能却在课程项目、竞赛、科研、实习或校园活动中找不到对应证据?",
+    criteria: { true: "技能罗列很多,没有任何相关学习或实践事例", false: "技能有课程、项目、竞赛、科研、实习等事例支撑,或技能栏克制" },
+  },
+};
+
 function ensureLevelZero(criteria) {
   const arr = Array.isArray(criteria) ? criteria.map((c) => String(c)) : [];
   if (!arr.length) return ["简历未提及相关信息", "有少量相关信息", "有具体相关经历", "深度相关并有成果"];
@@ -196,7 +209,7 @@ export function buildQuestions(evaluationModel, hardFilterResult, { includeFixed
   }
   if (includeFixed) {
     const fixed = Array.isArray(evaluationModel?.fixedQuestions) ? evaluationModel.fixedQuestions : ["stability", "sufficiency", "inflation"];
-    for (const name of fixed) if (FIXED_QUESTIONS[name] && name !== "relocation") questions[`meta_${name}`] = FIXED_QUESTIONS[name];
+    for (const name of fixed) if (FIXED_QUESTIONS[name] && name !== "relocation") questions[`meta_${name}`] = evaluationModel?.scoringContext === "campus" ? (CAMPUS_FIXED_QUESTIONS[name] || FIXED_QUESTIONS[name]) : FIXED_QUESTIONS[name];
     if (needRelocation && !questions.req_cond_location) questions.meta_relocation = FIXED_QUESTIONS.relocation;
   }
   return { questions, map, meta: { questionTemplate: QUESTION_TEMPLATE_VERSION, count: Object.keys(questions).length } };

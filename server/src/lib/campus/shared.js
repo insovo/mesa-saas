@@ -36,10 +36,10 @@ export function normalizePhone(p) {
   return String(p || "").replace(/[\s-]/g, "").trim();
 }
 
-// 对学生展示分:下限兜底(设计 §4 规则 7)
+// 校招展示分下限为 60;专场可设置更高的展示下限。
 export function shownScore(raw, floor) {
   if (raw == null) return null;
-  return Math.max(Number(floor) || 0, Number(raw));
+  return Math.max(60, Number(floor) || 0, Number(raw));
 }
 
 export function uploadsAllowed(session, applicant) {

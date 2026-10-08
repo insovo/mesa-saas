@@ -3366,7 +3366,7 @@ function CandidateDetail() {
               )}
             </div>
           </div>
-          <CampusCandidateCard candidateId={c.id} />
+          <CampusCandidateCard candidateId={c.id} currentUser={me} />
         </Card>
 
         {/* 窄屏把面试评价和附件放在页面末尾 */}

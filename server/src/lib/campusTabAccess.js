@@ -4,6 +4,7 @@ export function campusRouteAllowed(access, method, rawUrl) {
   if (access.role !== "CAMPUS_INTERVIEWER") return true;
   const path = rawUrl.split("?")[0].replace(/^\/api\/campus/, "").replace(/\/$/, "");
   if (method === "GET" && /^\/by-candidate\/[^/]+$/.test(path)) return true;
+  if (method === "POST" && /^\/by-candidate\/[^/]+\/match-runs$/.test(path)) return true;
   const has = (tab) => access.pageKeys.includes(`campus.${tab}`);
   const any = CAMPUS_TABS.some(has);
   if (method === "GET" && (path === "/sessions" || /^\/sessions\/[^/]+$/.test(path))) return any;

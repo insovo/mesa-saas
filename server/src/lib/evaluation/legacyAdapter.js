@@ -1,8 +1,9 @@
 // legacy 适配器:把 kimi.js matchAgainstJob 的输出(jdMatch + risks/highlights/...)包成 CandidateEvaluation 同形
 // 用于 jev.enabled=false / Jev 调用失败时的自动回退。engine="legacy",items=[],只有 CORE 维度=jdMatch。
 
-export function legacyToEvaluation(match, { thresholds = { A: 85, B: 70, C: 55 } } = {}) {
-  const score = typeof match?.jdMatch === "number" ? Math.max(0, Math.min(100, Math.round(match.jdMatch))) : 0;
+export function legacyToEvaluation(match, { thresholds = { A: 85, B: 70, C: 55 }, scoreFloor = 0 } = {}) {
+  const rawOverallScore = typeof match?.jdMatch === "number" ? Math.max(0, Math.min(100, Math.round(match.jdMatch))) : 0;
+  const score = Math.max(rawOverallScore, scoreFloor);
   const classification = score >= thresholds.A ? "A" : score >= thresholds.B ? "B" : score >= thresholds.C ? "C" : "D";
   return {
     engine: "legacy",
@@ -10,6 +11,7 @@ export function legacyToEvaluation(match, { thresholds = { A: 85, B: 70, C: 55 }
     items: [],
     dimensions: [{ key: "CORE", score, weight: 100 }],
     overallScore: score,
+    rawOverallScore,
     bonus: 0,
     classification,
     reviewPriority: classification === "A" || classification === "B" ? "HIGH" : classification === "C" ? "REVIEW" : "LOW",

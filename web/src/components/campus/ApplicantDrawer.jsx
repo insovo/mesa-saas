@@ -253,7 +253,7 @@ export default function ApplicantDrawer({ applicantId, open, initialEdit = false
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <p className="text-xs text-gray-500">学生端发起或 HR 代跑;结果为快照,原始分仅 HR 可见</p>
-                <Button size="sm" variant="secondary" disabled={!a.currentResumeVersionId || !session?.matchEnabled || (data.matchRuns || []).some((r) => r.status === "running" || r.status === "queued")} onClick={startMatch} icon={<I name="sparkles" size={14} />}>代跑匹配</Button>
+                <Button size="sm" variant="secondary" disabled={!a.currentResumeVersionId || (data.matchRuns || []).some((r) => r.status === "running" || r.status === "queued")} onClick={startMatch} icon={<I name="sparkles" size={14} />}>代跑匹配</Button>
               </div>
               {(data.matchRuns || []).length === 0 && <p className="text-xs text-gray-500 text-center py-6">还没有智能匹配记录</p>}
               {(data.matchRuns || []).map((r) => (

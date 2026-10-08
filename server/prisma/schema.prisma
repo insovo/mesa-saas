@@ -890,7 +890,8 @@ model CampusApplicant {
   school                 String?
   major                  String?
   degree                 String?
-  gradYear               Int?          @map("grad_year")
+  gradYear               Int?          @default(2026) @map("grad_year")
+  gradYearSource         String        @default("default") @map("grad_year_source") // default | resume | manual
   contactConfirmedAt     DateTime?     @map("contact_confirmed_at")
   consentAt              DateTime?     @map("consent_at")
   consentVersion         String?       @map("consent_version")

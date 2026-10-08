@@ -1149,14 +1149,15 @@ Header 必填:`X-Perf-Access-Key: <明文密钥>`
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/sessions/:id/applicants` | HR 登记:`phone`(必填)`name email wechat school major degree gradYear contactConfirmed jobIds[] resume{ key filename size contentType sha256 }`;事务内建 / 复用 Candidate(同手机号跨专场复用)+ 学生 + 版本 v1 + 投递(source=hr),成功后 `setImmediate` 起抽取;同专场同手机 409 `campus_applicant_exists` |
+| POST | `/sessions/:id/applicants` | HR 登记:`phone`(必填)`name email wechat school major degree gradYear contactConfirmed jobIds[] resume{ key filename size contentType sha256 }`;未填毕业年份默认 2026,显式填写视为人工修改;事务内建 / 复用 Candidate(同手机号跨专场复用)+ 学生 + 版本 v1 + 投递(source=hr),成功后 `setImmediate` 起抽取;同专场同手机 409 `campus_applicant_exists` |
 | GET / PATCH / DELETE | `/applicants/:id` | 详情(版本 / 投递 / 近 10 次匹配,`applicant.bestMatchScore` 与台账同口径)/ 更新(同步 Candidate 姓名 / 联系方式 / 学校;`extraUploads` 加次数;`contactConfirmed`)/ 删除登记(需 `campus.manage`,Candidate 保留)|
 | POST | `/applicants/:id/resumes` | HR 代传新版:次数超限 410 `campus_resume_quota_exceeded`;非 PDF/Word 415 `campus_file_unsupported`;返回 `{ version, taskId }`,旧匹配结果标 stale |
 | POST | `/applicants/:id/resumes/:versionId/reparse` | 重试解析(仅当前版;running 时 409 `campus_parse_in_progress`;Kimi 未配置 424;cancelled 可重试)|
 | POST | `/applicants/:id/resumes/:versionId/cancel` | 取消进行中的抽取(协作式,写审计 `campus.resume.cancel_parse`)|
-| POST | `/applicants/:id/match-runs` | HR 代跑智能匹配(规则同学生端);`GET /applicants/:id` 的 `matchRuns[]` 带原始分 / 分类 / 成本 |
+| POST | `/applicants/:id/match-runs` | HR 代跑智能匹配(专场总开关关闭时仍可代跑,岗位参与匹配开关照常生效);`GET /applicants/:id` 的 `matchRuns[]` 带原始分 / 分类 / 成本 |
 | POST | `/applicants/:id/match-runs/:runId/cancel` | 取消匹配 |
-| GET | `/by-candidate/:candidateId` | 候选人详情「校招」卡:`{ applicant, session, latestMatchRun }`,非校招候选人 `{ applicant: null }` |
+| GET | `/by-candidate/:candidateId` | 候选人详情「校招」卡:`{ applicant, session, latestMatchRun }`,进行中的匹配含实时进度;非校招候选人 `{ applicant: null }`。需有该候选人的详情访问权限 |
+| POST | `/by-candidate/:candidateId/match-runs` | admin、校招面试官、招聘官在候选人详情发起或重新发起智能匹配,返回 `202 { run }`;需有该候选人的详情访问权限,沿用简历及单任务限制;专场总开关只限制学生端,后台可代跑匹配 |
 | POST | `/applicants/:id/merge` | `{ candidateId }` 合并电脑端上传:源候选人须有附件、未绑定学生、未合并过(409 `campus_merge_self / campus_merge_linked / campus_merge_no_attachment / campus_merge_done`);作为新版本并触发抽取,次数不足自动 `extraUploads+1`,补空字段,源候选人 tags+`已合并到校招` 且置已淘汰,写 CandidateNote |
 | POST | `/applications/:id/interview` | `{ scheduledAt, location?, interviewer?, round?, notes? }` 安排现场面试:建 `Interview`(mode 线下 / category 校招 / link=地点)+ 投递→`onsite_interview` + 候选人→面试中;内推岗位 409 `campus_not_onsite` |
 | POST | `/applications/bulk-interview` | 同上 + `ids[]`,跳过内推投递,返回 `{ created, skipped }` |
@@ -1170,6 +1171,10 @@ Header 必填:`X-Perf-Access-Key: <明文密钥>`
 | DELETE | `/applications/:id` | 移除投递记录 |
 
 校招自动评估：学生或 HR 投递后，以及匹配任务完成后，后台从当前简历版本的有效匹配结果中选择**已投递的现场面试岗位里原始分最高**的一份。匹配阶段生成的硬筛和 Jev 逐项判定会作为当前评估，后台只补齐 AI 报告层；未匹配、匹配失败、硬筛排除、过期版本、关闭匹配的岗位或仅内推投递都不会自动生成报告。新版简历、撤回、投递状态或岗位类型变化会重新选择。`GET /api/candidates/:id/evaluations` 对有候选人访问权限的面试官、招聘人员和 admin 返回 `campusAutoEvaluation: { status, job, error, hasOnsiteApplication }`，状态为 `not_applicable | awaiting_match | pending | running | done | failed`；校招台账的 `items[]` / 学生详情的 `applicant` 另返回 `autoEvaluationStatus` 和 `autoEvaluationJobId`。候选人详情、校招台账和学生详情抽屉展示评估状态，进行中的任务会轮询刷新。
+
+校招评分：后台手动重评与学生 / HR 智能匹配统一采用最低 60 分的校招评估分；低于 60 的原始分保存在 `CandidateEvaluation.versions.rawOverallScore`，匹配结果的 `scoreRaw` 用于排序和审计，`scoreShown` 至少为 60（专场可设置更高展示下限）。校招评估不将全职工作年限和任职稳定性作为扣分项；课程项目、科研、竞赛和实习可作为岗位能力证据，GPA / 排名 / 奖学金 / 校园荣誉提供加分。硬性条件未满足仍保留对应判定与分类，不因分数下限消除风险提示。旧评价模型在评估时应用校招规则，不修改 HR 已保存的原模型；历史评估记录保持原值，重评后使用新规则。
+
+候选人详情「校招」卡显示每个岗位已有的展示分，包括硬性条件未通过的岗位；单个岗位评估未生成分数时显示「评分失败」，可用卡片上的智能匹配按钮重新运行。匹配中自动刷新进度与结果。
 
 ## 19.5 设置
 
@@ -1195,11 +1200,11 @@ AuthGuard 外,学生**不注册不登录**。会话:首次上传前 `POST /auth/
 | POST | `/auth/start` | 可选 | `{ slug?, consent: true }` → `201 { token, me, session, reused:false }` 匿名建档(占位 Candidate + 学生,phone 空);已持本专场有效 token 时 `{ token: null, reused: true }`;422 `campus_consent_required`;专场未开放 410 |
 | POST | `/auth/recover/send-code` | — | 找回记录(免登录):`{ slug?, phone, email }` 匹配本专场 `contactConfirmedAt` 非空的记录 → 邮箱验证码(purpose `CAMPUS_RECOVER`,60s 冷却 / 每小时 5 次);404 `campus_record_not_found`;429 `campus_code_rate_limited`;424 `campus_email_send_failed`;未配 Resend 时回 `devCode`(仅开发)|
 | POST | `/auth/recover/verify` | — | `{ slug?, phone, email, code }` → `{ token, me, session }`,签新学生 JWT 接回原记录并写 `emailVerifiedAt`;400 `campus_code_invalid` |
-| GET / PATCH | `/me` | 学生 | 档案 + 版本 + 投递;PATCH `name wechat school major degree gradYear`(同步 Candidate)|
+| GET / PATCH | `/me` | 学生 | 档案 + 版本 + 投递;PATCH `name wechat school major degree gradYear`(同步 Candidate);显式提交 `gradYear` 记为人工修改,后续简历抽取不覆盖 |
 | POST | `/me/contact-confirm` | 学生 | `{ phone, email, wechat?, name? }`(手机 / 邮箱必填,格式校验)→ 写 `contactConfirmedAt` 并同步 Candidate;422 `campus_phone_invalid / campus_email_invalid` |
 | POST | `/resumes/presigned-url` | 学生 | `{ filename, contentType, size }` → `{ uploadUrl, key }`;key `campus/<sessionId>/<applicantId>/v<n>-<ts>.<ext>`;415 / 410 `campus_resume_quota_exceeded` / 503 `r2_not_configured` |
 | POST | `/resumes/submit` | 学生 | `{ key, filename, size, contentType, sha256 }`;key 必须本人前缀(403 `campus_key_forbidden`);同 sha256 回 `duplicate:true` 不计次;成功 201 `{ version, remaining, parseTaskId }` 并起抽取 |
-| GET | `/resumes` · `/resumes/:versionId/parse-status` | 学生 | 版本列表 / 抽取状态 `{ status: pending\|running\|done\|failed\|cancelled\|skipped, error, prefill{ name school major degree gradYear } }` |
+| GET | `/resumes` · `/resumes/:versionId/parse-status` | 学生 | 版本列表 / 抽取状态 `{ status: pending\|running\|done\|failed\|cancelled\|skipped, error, prefill{ name school major degree gradYear } }`;毕业年份默认 2026,简历抽取可覆盖默认值,人工修改优先 |
 | POST | `/resumes/:versionId/cancel-parse` | 学生 | 取消进行中的抽取:置任务 `cancelRequested`,流水线在阶段边界退出不落库;版本立即 `cancelled`;已结束的原样返回 |
 | POST | `/resumes/:versionId/reparse` | 学生 | 取消 / 失败 / 未解析后重跑当前版本(不计上传次数);非当前版 409 `campus_not_current_version`;running 409 `campus_parse_in_progress`;Kimi 未配置 424 |
 | POST | `/match-runs` | 学生 | 发起智能匹配(门禁同投递;专场 `matchEnabled`;同学生同时只允许 1 个 409 `campus_match_in_progress`;无可匹配岗位 409 `campus_no_match_jobs`;Kimi 未配置 424)→ `202 { run }` |

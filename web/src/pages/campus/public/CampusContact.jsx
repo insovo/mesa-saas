@@ -18,20 +18,25 @@ export default function CampusContact() {
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const prefilled = useRef(false);
+  const yearEdited = useRef(false);
   const [taskBusy, setTaskBusy] = useState(false);
   const [pollKey, setPollKey] = useState(0);
   const hints = info?.contactHints?.length ? info.contactHints : ["请务必保持电话、邮箱、微信畅通", "最好电话或微信能直接联系到本人", "面试与录用通知将通过以上渠道发出"];
 
   useEffect(() => {
+    if (ready && !me) nav(`${base(slug)}/upload?next=${encodeURIComponent(next)}`, { replace: true });
+  }, [ready, me, nav, slug, next]);
+
+  useEffect(() => {
     if (!me || form) return;
-    setForm({ name: me.name || "", phone: me.phone || "", email: me.email || "", wechat: me.wechat || "", school: me.school || "", major: me.major || "", degree: me.degree || "", gradYear: me.gradYear || "" });
+    setForm({ name: me.name || "", phone: me.phone || "", email: me.email || "", wechat: me.wechat || "", school: me.school || "", major: me.major || "", degree: me.degree || "", gradYear: me.gradYear ?? 2026 });
     setConfirm(!!me.contactConfirmed);
   }, [me, form]);
 
-  // 轮询抽取状态(2s,最多 2 分钟);done 时只补空字段
+  // 轮询抽取状态(2s,最多 2 分钟);基础信息只补空,毕业年份覆盖默认值但保留手动修改。
   useEffect(() => {
     const vid = me?.currentVersion?.id;
-    if (!vid) return;
+    if (!vid || !form) return;
     let alive = true, n = 0;
     const tick = async () => {
       try {
@@ -40,14 +45,14 @@ export default function CampusContact() {
         setParse(r);
         if (r.status === "done" && r.prefill && !prefilled.current) {
           prefilled.current = true;
-          setForm((f) => f && ({ ...f, name: f.name || r.prefill.name || "", school: f.school || r.prefill.school || "", major: f.major || r.prefill.major || "", degree: f.degree || r.prefill.degree || "", gradYear: f.gradYear || r.prefill.gradYear || "" }));
+          setForm((f) => f && ({ ...f, name: f.name || r.prefill.name || "", school: f.school || r.prefill.school || "", major: f.major || r.prefill.major || "", degree: f.degree || r.prefill.degree || "", gradYear: yearEdited.current ? f.gradYear : r.prefill.gradYear ?? f.gradYear }));
         }
         if ((r.status === "running" || r.status === "pending") && n++ < 60) setTimeout(tick, 2000);
       } catch { /* ignore */ }
     };
     tick();
     return () => { alive = false; };
-  }, [me?.currentVersion?.id, pollKey]);
+  }, [me?.currentVersion?.id, !!form, pollKey]);
 
   async function cancelParse() {
     setTaskBusy(true);
@@ -64,9 +69,10 @@ export default function CampusContact() {
     if (!confirm) return toast("请勾选确认联系方式可直接联系到本人", "error");
     if (!/^\+?\d{6,15}$/.test(form.phone.replace(/[\s-]/g, ""))) return toast("请填写正确的手机号", "error");
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) return toast("请填写正确的邮箱", "error");
+    if (!/^\d{4}$/.test(String(form.gradYear)) || Number(form.gradYear) < 1990 || Number(form.gradYear) > 2100) return toast("请填写正确的毕业年份", "error");
     setBusy(true);
     try {
-      await campus.updateMe({ name: form.name.trim() || null, school: form.school.trim() || null, major: form.major.trim() || null, degree: form.degree || null, gradYear: form.gradYear ? Number(form.gradYear) : null });
+      await campus.updateMe({ name: form.name.trim() || null, school: form.school.trim() || null, major: form.major.trim() || null, degree: form.degree || null, ...(yearEdited.current ? { gradYear: Number(form.gradYear) } : {}) });
       await campus.confirmContact({ phone: form.phone.trim(), email: form.email.trim(), wechat: form.wechat.trim() || null, name: form.name.trim() || null });
       await reload();
       toast("已确认", "success");
@@ -75,7 +81,6 @@ export default function CampusContact() {
     finally { setBusy(false); }
   }
 
-  if (ready && !me) { nav(`${base(slug)}/upload?next=${encodeURIComponent(next)}`, { replace: true }); return null; }
   if (!me || !form) return <Shell title="确认联系方式" back><Spinner /></Shell>;
   const parsing = parse.status === "running" || parse.status === "pending";
   return (
@@ -103,7 +108,7 @@ export default function CampusContact() {
             <div className="col-span-2"><label className="text-xs font-bold ml-1">学校</label><input className={`${inputCls} mt-1.5`} value={form.school} onChange={(e) => setForm({ ...form, school: e.target.value })} placeholder={parsing ? "读取中…" : ""} /></div>
             <div><label className="text-xs font-bold ml-1">专业</label><input className={`${inputCls} mt-1.5`} value={form.major} onChange={(e) => setForm({ ...form, major: e.target.value })} /></div>
             <div><label className="text-xs font-bold ml-1">学历</label><select className={`${inputCls} mt-1.5`} value={form.degree} onChange={(e) => setForm({ ...form, degree: e.target.value })}><option value="">未填</option>{DEGREES.map((d) => <option key={d} value={d}>{d}</option>)}</select></div>
-            <div className="col-span-2"><label className="text-xs font-bold ml-1">毕业年份</label><input className={`${inputCls} mt-1.5`} inputMode="numeric" value={form.gradYear} onChange={(e) => setForm({ ...form, gradYear: e.target.value.replace(/\D/g, "").slice(0, 4) })} placeholder="2027" /></div>
+            <div className="col-span-2"><label className="text-xs font-bold ml-1">毕业年份<span className="ml-2 text-[11px] font-normal text-gray-500">默认 2026，简历识别后自动更新，也可修改</span></label><input className={`${inputCls} mt-1.5`} inputMode="numeric" value={form.gradYear} onChange={(e) => { yearEdited.current = true; setForm({ ...form, gradYear: e.target.value.replace(/\D/g, "").slice(0, 4) }); }} placeholder="2026" /></div>
           </div>
           <label className="flex items-start gap-2 text-sm text-navy-700 ml-1">
             <input type="checkbox" className="accent-brand mt-0.5 w-4 h-4 shrink-0" checked={confirm} onChange={(e) => setConfirm(e.target.checked)} />

@@ -31,8 +31,8 @@ export function gateStatus() {
   return { running, queued: queue.length };
 }
 
-// 把抽取出的 Candidate 字段回填到学生档案(只补空,不覆盖学生 / HR 已填的值)
-async function backfillApplicant(prisma, applicantId, candidate) {
+// 把抽取出的 Candidate 字段回填到学生档案;毕业年份可覆盖默认值,不能覆盖人工修改。
+export async function backfillApplicant(prisma, applicantId, candidate) {
   const a = await prisma.campusApplicant.findUnique({ where: { id: applicantId } });
   if (!a) return;
   const data = {};
@@ -42,8 +42,13 @@ async function backfillApplicant(prisma, applicantId, candidate) {
   if (!a.degree && candidate.education) data.degree = candidate.education;
   if (!a.email && candidate.email) data.email = candidate.email;
   const gy = candidate.derived?.graduationYear;
-  if (!a.gradYear && Number.isInteger(gy)) data.gradYear = gy;
   if (Object.keys(data).length) await prisma.campusApplicant.update({ where: { id: applicantId }, data });
+  if (Number.isInteger(gy) && gy >= 1990 && gy <= 2100) {
+    await prisma.campusApplicant.updateMany({
+      where: { id: applicantId, gradYearSource: { not: "manual" } },
+      data: { gradYear: gy, gradYearSource: "resume" },
+    });
+  }
 }
 
 // 启动抽取(fire-and-forget)。返回 taskId;Kimi 未配置时直接把版本标 skipped 并返回 null。
@@ -72,8 +77,8 @@ export async function executeExtraction(app, { applicantId, versionId, candidate
     }
     if (t?.status === "done") {
       const parse = await app.prisma.resumeParse.findFirst({ where: { candidateId }, orderBy: { createdAt: "desc" }, select: { id: true } });
-      await app.prisma.campusResumeVersion.update({ where: { id: versionId }, data: { parseStatus: "done", resumeParseId: parse?.id || null, parseError: null } });
       if (t.candidate) await backfillApplicant(app.prisma, applicantId, t.candidate);
+      await app.prisma.campusResumeVersion.update({ where: { id: versionId }, data: { parseStatus: "done", resumeParseId: parse?.id || null, parseError: null } });
       return "done";
     }
     await app.prisma.campusResumeVersion.update({ where: { id: versionId }, data: { parseStatus: "failed", parseError: t?.error?.code || t?.error?.message || "unknown_error" } });

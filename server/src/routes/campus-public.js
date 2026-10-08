@@ -14,7 +14,7 @@ import { startMatchRun, cancelMatchRun, runShape } from "../lib/campus/match.js"
 import { getTask } from "../lib/parseTaskStore.js";
 import { ensureCandidate, createVersionTx, createApplicationTx, findSessionForPublic, httpError } from "../lib/campus/service.js";
 import { reconcileCampusAutoEvaluation } from "../lib/campus/autoEvaluation.js";
-import { ALLOWED_RESUME_MIME, RESUME_MAX_SIZE, QUOTA_STATUS, normalizePhone, uploadsAllowed } from "../lib/campus/shared.js";
+import { ALLOWED_RESUME_MIME, RESUME_MAX_SIZE, QUOTA_STATUS, normalizePhone, uploadsAllowed, shownScore } from "../lib/campus/shared.js";
 
 const PHONE_RE = /^\+?\d{6,15}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -51,7 +51,7 @@ function versionShape(v) {
   return { id: v.id, version: v.version, filename: v.filename, size: v.size, parseStatus: v.parseStatus, uploadedAt: v.uploadedAt };
 }
 function applicationShape(a) {
-  return { id: a.id, jobId: a.jobId, source: a.source, status: a.status, statusChangedAt: a.statusChangedAt, scoreShown: a.scoreShown, createdAt: a.createdAt, kind: a.sessionJob?.kind, job: a.sessionJob?.job ? { id: a.sessionJob.job.id, title: a.sessionJob.job.title, dept: a.sessionJob.job.dept, location: a.sessionJob.job.location } : null };
+  return { id: a.id, jobId: a.jobId, source: a.source, status: a.status, statusChangedAt: a.statusChangedAt, scoreShown: shownScore(a.scoreShown ?? a.scoreRaw, 60), createdAt: a.createdAt, kind: a.sessionJob?.kind, job: a.sessionJob?.job ? { id: a.sessionJob.job.id, title: a.sessionJob.job.title, dept: a.sessionJob.job.dept, location: a.sessionJob.job.location } : null };
 }
 function meShape(a, session) {
   const current = a.resumeVersions?.find((v) => v.id === a.currentResumeVersionId) || null;
@@ -229,6 +229,10 @@ export default async function campusPublicRoutes(app) {
     const a = await requireStudent(req, reply);
     if (!a) return;
     const data = { ...req.body };
+    if (Object.hasOwn(data, "gradYear")) {
+      data.gradYearSource = data.gradYear == null ? "default" : "manual";
+      if (data.gradYear == null) data.gradYear = 2026;
+    }
     const u = await app.prisma.$transaction(async (tx) => {
       const row = await tx.campusApplicant.update({ where: { id: a.id }, data, include: applicantInclude });
       const cd = {};
@@ -310,7 +314,9 @@ export default async function campusPublicRoutes(app) {
     let prefill = null;
     if (v.parseStatus === "done") {
       const c = await app.prisma.candidate.findUnique({ where: { id: a.candidateId }, select: { name: true, school: true, major: true, education: true, derived: true } });
-      prefill = { name: a.name || (c?.name !== "待解析简历" ? c?.name : null) || null, school: a.school || c?.school || null, major: a.major || c?.major || null, degree: a.degree || c?.education || null, gradYear: a.gradYear || c?.derived?.graduationYear || null };
+      const extractedYear = c?.derived?.graduationYear;
+      const gradYear = Number.isInteger(extractedYear) && extractedYear >= 1990 && extractedYear <= 2100 ? extractedYear : a.gradYear ?? 2026;
+      prefill = { name: a.name || (c?.name !== "待解析简历" ? c?.name : null) || null, school: a.school || c?.school || null, major: a.major || c?.major || null, degree: a.degree || c?.education || null, gradYear: a.gradYearSource === "manual" ? a.gradYear : gradYear };
     }
     return { status: v.parseStatus, error: v.parseStatus === "failed" ? v.parseError : null, prefill };
   });
@@ -394,7 +400,7 @@ export default async function campusPublicRoutes(app) {
         if (req.body.source === "match" && req.body.matchRunId) {
           const run = await tx.campusMatchRun.findFirst({ where: { id: req.body.matchRunId, applicantId: a.id, resumeVersionId: a.currentResumeVersionId, status: "done", stale: false } });
           const hit = Array.isArray(run?.results) ? run.results.find((r) => r.jobId === req.body.jobId) : null;
-          if (hit && !hit.error && hit.evaluationId) extra = { matchRunId: run.id, scoreRaw: hit.scoreRaw ?? null, scoreShown: hit.scoreShown ?? null, evaluationId: hit.evaluationId };
+          if (hit && !hit.error && hit.evaluationId) extra = { matchRunId: run.id, scoreRaw: hit.scoreRaw ?? null, scoreShown: shownScore(hit.scoreShown ?? hit.scoreRaw, 60), evaluationId: hit.evaluationId };
         }
         return createApplicationTx(tx, { applicant: a, session: a.session, jobId: req.body.jobId, source: req.body.source || "direct", resumeVersionId: a.currentResumeVersionId, ...extra });
       });

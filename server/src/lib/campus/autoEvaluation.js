@@ -2,7 +2,7 @@ import { createTask, getTask } from "../parseTaskStore.js";
 import { runPipeline } from "../evaluation/pipeline.js";
 import { candidateSnapshotFromReport } from "../evaluation/report.js";
 import { withGate } from "./extract.js";
-import { QUOTA_STATUS } from "./shared.js";
+import { QUOTA_STATUS, shownScore } from "./shared.js";
 
 const activeStatus = new Set(QUOTA_STATUS);
 const inFlight = new Map();
@@ -55,7 +55,7 @@ async function reconcileInner(app, applicantId, { recover = false } = {}) {
     for (const a of active) {
       const hit = (Array.isArray(run.results) ? run.results : []).find((r) => r.jobId === a.jobId);
       if (hit && !hit.error && hit.evaluationId && (a.matchRunId !== run.id || a.evaluationId !== hit.evaluationId)) {
-        await app.prisma.campusApplication.update({ where: { id: a.id }, data: { matchRunId: run.id, resumeVersionId: run.resumeVersionId, scoreRaw: hit.scoreRaw, scoreShown: hit.scoreShown, evaluationId: hit.evaluationId } });
+        await app.prisma.campusApplication.update({ where: { id: a.id }, data: { matchRunId: run.id, resumeVersionId: run.resumeVersionId, scoreRaw: hit.scoreRaw, scoreShown: shownScore(hit.scoreShown ?? hit.scoreRaw, 60), evaluationId: hit.evaluationId } });
       }
     }
   }

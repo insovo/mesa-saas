@@ -208,6 +208,7 @@ export const resources = {
     bulkInterview: (body) => api.post("/campus/applications/bulk-interview", body).then((r) => r.data),
     pcUploadLink: (id, regenerate = false) => api.post(`/campus/sessions/${id}/pc-upload-link`, { regenerate }).then((r) => r.data),
     byCandidate: (candidateId) => api.get(`/campus/by-candidate/${candidateId}`).then((r) => r.data),
+    matchByCandidate: (candidateId) => api.post(`/campus/by-candidate/${candidateId}/match-runs`).then((r) => r.data.run),
     merge: (id, candidateId) => api.post(`/campus/applicants/${id}/merge`, { candidateId }).then((r) => r.data),
     stats: (id) => api.get(`/campus/sessions/${id}/stats`).then((r) => r.data),
     getSettings: () => api.get("/campus/settings").then((r) => r.data.settings),

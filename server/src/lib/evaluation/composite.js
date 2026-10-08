@@ -93,7 +93,8 @@ export function composite(evaluationModel, items, jevAnswers = {}, settings = {}
   let bonus = 0;
   for (const it of items) if (it.tier === "BONUS" && !it.unknown && it.normalized != null) bonus += (it.bonus || 0) * it.normalized;
   bonus = Math.min(bonusCap, Math.round(bonus * 10) / 10);
-  const overallScore = Math.max(0, Math.min(100, Math.round(overallBase + bonus)));
+  const rawOverallScore = Math.max(0, Math.min(100, Math.round(overallBase + bonus)));
+  const overallScore = Math.max(rawOverallScore, Math.max(0, Math.min(100, settings.scoreFloor || 0)));
 
   // 置信:只看 Jev 判定的 CORE / PREFERRED
   const confs = items.filter((it) => it.source === "jev" && (it.tier === "CORE" || it.tier === "PREFERRED")).map((it) => it.confidence);
@@ -128,6 +129,7 @@ export function composite(evaluationModel, items, jevAnswers = {}, settings = {}
   return {
     dimensions: ["MUST", "CORE", "PREFERRED", "STABILITY"].map((k) => ({ key: k, score: dims[k], weight: tw[k] || 0 })),
     overallScore,
+    rawOverallScore,
     overallBase: Math.round(overallBase),
     bonus,
     classification,
