@@ -224,6 +224,12 @@ function applicantShape(a, { showContact, versionsAllowed }) {
   };
 }
 
+function bestMatchScore(run, currentResumeVersionId) {
+  if (!run || run.resumeVersionId !== currentResumeVersionId || !Array.isArray(run.results)) return null;
+  const scores = run.results.map((r) => r?.scoreShown).filter((score) => typeof score === "number" && Number.isFinite(score));
+  return scores.length ? Math.max(...scores) : null;
+}
+
 const applicantInclude = {
   candidate: { select: { id: true, name: true, school: true, major: true, education: true, status: true, classification: true, jdMatch: true, parsingStartedAt: true, profileCompletion: true } },
   resumeVersions: { orderBy: { version: "desc" } },
@@ -544,7 +550,7 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
     },
   };
 
-  async function queryLedger(sessionId, q, { showContact }) {
+  async function queryLedger(sessionId, q, { showContact, includeBestMatch = true }) {
     const where = { sessionId };
     if (q.school) where.school = { contains: q.school, mode: "insensitive" };
     if (q.degree) where.degree = q.degree;
@@ -561,12 +567,13 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
         { school: { contains: kw, mode: "insensitive" } }, { major: { contains: kw, mode: "insensitive" } }, { candidate: { name: { contains: kw, mode: "insensitive" } } },
       ];
     }
+    const include = includeBestMatch ? { ...applicantInclude, matchRuns: { where: { status: "done", stale: false }, orderBy: { startedAt: "desc" }, take: 1, select: { resumeVersionId: true, results: true } } } : applicantInclude;
     const [session, rows, total] = await Promise.all([
       app.prisma.campusSession.findUnique({ where: { id: sessionId } }),
-      app.prisma.campusApplicant.findMany({ where, orderBy: { createdAt: "desc" }, skip: q.skip ?? 0, take: q.take ?? 100, include: applicantInclude }),
+      app.prisma.campusApplicant.findMany({ where, orderBy: { createdAt: "desc" }, skip: q.skip ?? 0, take: q.take ?? 100, include }),
       app.prisma.campusApplicant.count({ where }),
     ]);
-    let items = rows.map((a) => applicantShape(a, { showContact, versionsAllowed: uploadsAllowed(session, a) }));
+    let items = rows.map((a) => ({ ...applicantShape(a, { showContact, versionsAllowed: uploadsAllowed(session, a) }), ...(includeBestMatch ? { bestMatchScore: bestMatchScore(a.matchRuns?.[0], a.currentResumeVersionId) } : {}) }));
     if (q.parse) {
       items = items.filter((it) => (q.parse === "none" ? !it.currentVersion : it.currentVersion?.parseStatus === q.parse));
     }
@@ -599,7 +606,7 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
     if (!hasModule(access, "campus.export")) return reply.code(403).send({ error: "forbidden", message: "无台账导出权限" });
     const s = await loadSession(req, reply, req.params.id);
     if (!s) return;
-    const { items } = await queryLedger(s.id, { ...req.query, skip: 0, take: 500 }, { showContact: true });
+    const { items } = await queryLedger(s.id, { ...req.query, skip: 0, take: 500 }, { showContact: true, includeBestMatch: false });
     const statusLabel = { applied: "已投递", screening: "筛选中", onsite_interview: "现场面试", referred: "内推已推送", passed: "已通过", rejected: "未通过", withdrawn: "已撤回" };
     const kindLabel = { onsite: "现场面试", referral: "内推" };
     const sourceLabel = { direct: "直投", match: "智能匹配", hr: "HR 登记" };
@@ -683,10 +690,13 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
     const a = await loadApplicant(req, reply, req.params.id);
     if (!a) return;
     const access = await loadUserAccess(req);
-    const runs = await app.prisma.campusMatchRun.findMany({ where: { applicantId: a.id }, orderBy: { startedAt: "desc" }, take: 10 });
+    const [runs, latestValidRun] = await Promise.all([
+      app.prisma.campusMatchRun.findMany({ where: { applicantId: a.id }, orderBy: { startedAt: "desc" }, take: 10 }),
+      a.currentResumeVersionId ? app.prisma.campusMatchRun.findFirst({ where: { applicantId: a.id, resumeVersionId: a.currentResumeVersionId, status: "done", stale: false }, orderBy: { startedAt: "desc" }, select: { resumeVersionId: true, results: true } }) : Promise.resolve(null),
+    ]);
     const shaped = [];
     for (const r of runs) shaped.push(runShape(r, r.status === "queued" || r.status === "running" ? await getTask(app, r.taskId) : null, { student: false }));
-    return { applicant: applicantShape(a, { showContact: hasModule(access, "candidate.contact"), versionsAllowed: uploadsAllowed(a.session, a) }), session: { id: a.session.id, name: a.session.name, maxApplyJobs: a.session.maxApplyJobs, scoreFloor: a.session.scoreFloor, matchEnabled: a.session.matchEnabled }, matchRuns: shaped };
+    return { applicant: { ...applicantShape(a, { showContact: hasModule(access, "candidate.contact"), versionsAllowed: uploadsAllowed(a.session, a) }), bestMatchScore: bestMatchScore(latestValidRun, a.currentResumeVersionId) }, session: { id: a.session.id, name: a.session.name, maxApplyJobs: a.session.maxApplyJobs, scoreFloor: a.session.scoreFloor, matchEnabled: a.session.matchEnabled }, matchRuns: shaped };
   });
 
   app.patch("/applicants/:id", { schema: { body: APPLICANT_PATCH_BODY } }, async (req, reply) => {

@@ -112,7 +112,6 @@ export default function ApplicantDrawer({ applicantId, open, onClose, sessionJob
   }
 
   const uploadsLeft = a ? Math.max(0, a.uploadsAllowed - a.resumeUploadCount) : 0;
-  const bestScore = activeApps.reduce((m, x) => (x.scoreShown != null && x.scoreShown > m ? x.scoreShown : m), null);
 
   return (
     <Modal open={open} onClose={onClose} maxWidth="max-w-3xl">
@@ -137,7 +136,7 @@ export default function ApplicantDrawer({ applicantId, open, onClose, sessionJob
               </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              {bestScore != null && <LiquidLoader size={48} level={bestScore} instant />}
+              {a.bestMatchScore != null && <LiquidLoader size={48} level={a.bestMatchScore} label={a.bestMatchScore} instant />}
               <Link to={`/candidates/${a.candidateId}`} className="inline-flex items-center gap-1 text-xs text-brand hover:underline"><I name="external-link" size={12} />候选人详情</Link>
               <button type="button" onClick={onClose} className="p-1.5 rounded-lg hover:bg-lightPrimary text-gray-500"><I name="x" size={16} /></button>
             </div>

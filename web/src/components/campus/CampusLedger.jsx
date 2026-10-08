@@ -168,7 +168,7 @@ export default function CampusLedger({ sessions, onSessionsChanged }) {
               <thead>
                 <tr className="text-left text-[11px] text-gray-600 border-b border-gray-100">
                   <th className="px-4 py-3 w-8"><input type="checkbox" className="accent-brand" checked={allAppIds.length > 0 && allAppIds.every((id) => selected.has(id))} onChange={(e) => setSelected(e.target.checked ? new Set(allAppIds) : new Set())} /></th>
-                  <th className="px-3 py-3">学生</th><th className="px-3 py-3">学校 / 专业</th><th className="px-3 py-3">联系方式</th><th className="px-3 py-3">投递岗位</th><th className="px-3 py-3">匹配分</th><th className="px-3 py-3">简历</th><th className="px-3 py-3">状态</th><th className="px-3 py-3">登记时间</th><th className="px-3 py-3"></th>
+                  <th className="px-3 py-3">学生</th><th className="px-3 py-3">学校 / 专业</th><th className="px-3 py-3">联系方式</th><th className="px-3 py-3">投递岗位</th><th className="px-3 py-3" title="当前简历最近一次有效匹配中，各岗位的最高分">匹配分</th><th className="px-3 py-3">简历</th><th className="px-3 py-3">状态</th><th className="px-3 py-3">登记时间</th><th className="px-3 py-3"></th>
                 </tr>
               </thead>
               <tbody>
@@ -176,7 +176,6 @@ export default function CampusLedger({ sessions, onSessionsChanged }) {
                   const apps = it.applications.filter((a) => a.status !== "withdrawn");
                   const ids = apps.map((a) => a.id);
                   const checked = ids.length > 0 && ids.every((id) => selected.has(id));
-                  const best = apps.reduce((m, a) => (a.scoreShown != null && a.scoreShown > m ? a.scoreShown : m), null);
                   return (
                     <tr key={it.id} className="border-b border-gray-50 hover:bg-lightPrimary/40 cursor-pointer" onClick={() => setDrawerId(it.id)}>
                       <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><input type="checkbox" className="accent-brand" checked={checked} disabled={ids.length === 0} onChange={() => toggleRow(it)} /></td>
@@ -188,7 +187,7 @@ export default function CampusLedger({ sessions, onSessionsChanged }) {
                           <div className="flex flex-col gap-1">{apps.map((a) => <span key={a.id} className="inline-flex items-center gap-1.5 text-xs text-navy-700"><KindTag kind={a.kind} /><span className="truncate max-w-[180px]">{a.job?.title}</span><span className="text-[10px] text-gray-400">{a.source === "hr" ? "HR" : a.source === "match" ? "匹配" : "直投"}</span></span>)}</div>
                         )}
                       </td>
-                      <td className="px-3 py-3">{best != null ? <LiquidLoader size={40} level={best} instant /> : <span className="text-xs text-gray-400">—</span>}</td>
+                      <td className="px-3 py-3">{it.bestMatchScore != null ? <LiquidLoader size={40} level={it.bestMatchScore} label={it.bestMatchScore} instant /> : <span className="text-xs text-gray-400">—</span>}</td>
                       <td className="px-3 py-3"><div className="flex flex-col gap-1 items-start"><ParseTag status={it.currentVersion?.parseStatus} />{it.currentVersion && <span className="text-[10px] text-gray-500">v{it.currentVersion.version} / {it.uploadsAllowed}</span>}</div></td>
                       <td className="px-3 py-3"><div className="flex flex-col gap-1 items-start">{apps.length === 0 ? <span className="text-xs text-gray-400">—</span> : apps.map((a) => <AppStatusPill key={a.id} status={a.status} />)}</div></td>
                       <td className="px-3 py-3 text-[11px] text-gray-500 whitespace-nowrap">{fmtDateTime(it.createdAt)}</td>

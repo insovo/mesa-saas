@@ -1126,7 +1126,7 @@ Header 必填:`X-Perf-Access-Key: <明文密钥>`
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/sessions/:id/ledger` | query `q jobId kind source status school degree gradYear parse(done\|running\|pending\|failed\|none) contact(confirmed\|unconfirmed) skip take`;返回 `{ items[], total, stats{ applicants withResume confirmed applications byStatus onsiteInterview passed }, showContact, gate{ running queued } }` |
+| GET | `/sessions/:id/ledger` | query `q jobId kind source status school degree gradYear parse(done\|running\|pending\|failed\|none) contact(confirmed\|unconfirmed) skip take`;返回 `{ items[], total, stats{ applicants withResume confirmed applications byStatus onsiteInterview passed }, showContact, gate{ running queued } }`。`items[].bestMatchScore` 为当前简历最近一次未过期、已完成匹配的全部 JD 中最高展示分,无有效分数时为 `null` |
 | GET | `/sessions/:id/ledger/export.xlsx` | 同筛选,≤500 行,含联系方式与原始分;公式注入前缀 `'` |
 
 ## 19.4 学生 / 简历版本 / 投递
@@ -1134,7 +1134,7 @@ Header 必填:`X-Perf-Access-Key: <明文密钥>`
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | POST | `/sessions/:id/applicants` | HR 登记:`phone`(必填)`name email wechat school major degree gradYear contactConfirmed jobIds[] resume{ key filename size contentType sha256 }`;事务内建 / 复用 Candidate(同手机号跨专场复用)+ 学生 + 版本 v1 + 投递(source=hr),成功后 `setImmediate` 起抽取;同专场同手机 409 `campus_applicant_exists` |
-| GET / PATCH / DELETE | `/applicants/:id` | 详情(版本 / 投递 / 近 10 次匹配)/ 更新(同步 Candidate 姓名 / 联系方式 / 学校;`extraUploads` 加次数;`contactConfirmed`)/ 删除登记(需 `campus.manage`,Candidate 保留)|
+| GET / PATCH / DELETE | `/applicants/:id` | 详情(版本 / 投递 / 近 10 次匹配,`applicant.bestMatchScore` 与台账同口径)/ 更新(同步 Candidate 姓名 / 联系方式 / 学校;`extraUploads` 加次数;`contactConfirmed`)/ 删除登记(需 `campus.manage`,Candidate 保留)|
 | POST | `/applicants/:id/resumes` | HR 代传新版:次数超限 410 `campus_resume_quota_exceeded`;非 PDF/Word 415 `campus_file_unsupported`;返回 `{ version, taskId }`,旧匹配结果标 stale |
 | POST | `/applicants/:id/resumes/:versionId/reparse` | 重试解析(仅当前版;running 时 409 `campus_parse_in_progress`;Kimi 未配置 424;cancelled 可重试)|
 | POST | `/applicants/:id/resumes/:versionId/cancel` | 取消进行中的抽取(协作式,写审计 `campus.resume.cancel_parse`)|
