@@ -42,6 +42,11 @@ export default function ReparseConfirmModal({ open, onClose, onConfirm, currentJ
           先确认投递岗位与解析粒度。
         </p>
 
+        <div role="note" className="mb-4 flex items-start gap-2 rounded-xl bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
+          <I name="alert-triangle" size={15} className="mt-0.5 shrink-0" />
+          <span>确认后会重新调用 AI，额外消耗 Token。{mode === "full" && "重新识别文档还会产生文档解析费用。"}</span>
+        </div>
+
         <div className="mb-4">
           <label className="text-[11px] font-bold uppercase tracking-wide text-[#A3AED0] mb-1.5 block">投递岗位</label>
           <select
@@ -98,7 +103,7 @@ export default function ReparseConfirmModal({ open, onClose, onConfirm, currentJ
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={onClose} disabled={reparsing}>取消</Button>
           <Button onClick={handleConfirm} disabled={reparsing} icon={<I name={reparsing ? "loader" : "zap"} size={12} className={reparsing ? "animate-spin" : ""} />}>
-            {reparsing ? (mode === "reevaluate" ? "评估中..." : "解析中...") : (mode === "reevaluate" ? "开始评估" : "开始解析")}
+            {reparsing ? (mode === "reevaluate" ? "评估中..." : "解析中...") : (mode === "reevaluate" ? "确认并开始评估" : "确认并开始解析")}
           </Button>
         </div>
       </div>

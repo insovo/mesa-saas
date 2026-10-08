@@ -30,6 +30,7 @@
 // 合入生产: V2 设计稿 1:1 接管 /candidates/:id。
 // mockApi → resources/api;接 useParams 拿真实候选人 id;新字段(documents/insights/aiSuggestedTags 等)生产 API 暂未返回,渲染处用 ?? [] / ?? null 兜底。
 import React, { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import HelpCircle from "lucide-react/dist/esm/icons/help-circle.mjs";
 import { ICON_MAP } from "../lib/iconMap.js";
 import { useParams, useNavigate, Link } from "react-router-dom";
@@ -42,7 +43,6 @@ import MarkdownBullets from "../components/MarkdownBullets.jsx";
 import InterviewEvalCard from "../components/InterviewEvalCard.jsx";
 import CampusCandidateCard from "../components/campus/CampusCandidateCard.jsx";
 import JdDescModal from "../components/JdDescModal.jsx";
-import { candidateExpText, hasWorkExperience } from "../lib/constants.js";
 import { DurationPicker, MaxViewsPicker, BotShareSettings } from "../components/ShareDefaultsPanel.jsx";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "../components/ui/chart.jsx";
 import { Bar as RBar, BarChart, XAxis, YAxis } from "recharts";
@@ -199,13 +199,14 @@ function Modal({ open, onClose, children, maxWidth = "max-w-2xl" }) {
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
   if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-start sm:items-center justify-center overflow-y-auto p-4">
       <div className="absolute inset-0 bg-[#0B1437]/30 backdrop-blur-sm" onClick={onClose}></div>
-      <div className={`relative w-full ${maxWidth} bg-white rounded-[20px] shadow-[14px_17px_40px_4px_rgba(112,144,176,0.08)] max-h-[90vh] overflow-auto`}>
+      <div className={`relative w-full ${maxWidth} bg-white rounded-[20px] shadow-[14px_17px_40px_4px_rgba(112,144,176,0.08)] max-h-[90vh] overflow-y-auto`} style={{ maxHeight: "calc(100dvh - 2rem)" }}>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -2577,21 +2578,6 @@ function DocsModule({ documents, onChange, onDownload }) {
   );
 }
 
-function OverviewTile({ icon, label, value, sub }) {
-  return (
-    <div className="flex items-center gap-3 p-3 rounded-xl border border-[#E9ECEF] hover:border-[#422AFB]/40 transition">
-      <div className="w-10 h-10 rounded-lg bg-[#E9E3FF] flex items-center justify-center shrink-0">
-        <I name={icon} size={18} className="text-[#422AFB]" />
-      </div>
-      <div className="min-w-0">
-        <p className="text-sm font-bold text-[#1B254B] truncate">{value}</p>
-        <p className="text-[10px] text-[#707EAE] uppercase tracking-wide">{label}</p>
-        {sub && <p className="text-[10px] text-[#A3AED0] mt-0.5">{sub}</p>}
-      </div>
-    </div>
-  );
-}
-
 function RobotMascot() {
   // 装饰用的渐变机器人小图标 — 仅 svg + lucide bot
   return (
@@ -2923,8 +2909,6 @@ function CandidateDetail() {
   const [profileMeta, setProfileMeta] = useState({ warnings: [], lastParse: null });
   const [reportBusy, setReportBusy] = useState(false);
   const tagName = useTaxonomy();
-  const [notes, setNotes] = useState([]);
-  const [noteOpen, setNoteOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
   const [statusSaving, setStatusSaving] = useState(false);
@@ -2932,13 +2916,7 @@ function CandidateDetail() {
   const [jdDescOpen, setJdDescOpen] = useState(false);
   const [jdMatchOpen, setJdMatchOpen] = useState(false);
   const [pendingJobId, setPendingJobId] = useState(""); // ⬅ 切 JD 确认流
-  const [reviews, setReviews] = useState([]);
-  const [reviewOpen, setReviewOpen] = useState(false);
-  const [replyTo, setReplyTo] = useState(null);
-  const [myVotes, setMyVotes] = useState({});
-
   const me = getUser() || { id: null, name: "未知用户", role: "VIEWER" };
-  const isAdmin = me?.role === "ADMIN";
 
   async function load() {
     try { setC(await resources.candidates.detail(id)); }
@@ -2946,20 +2924,15 @@ function CandidateDetail() {
   }
 
   useEffect(() => {
-    // 切候选人时立刻清空所有与「上个候选人」绑定的 state,
-    // 避免在新 detail/reviews/notes 拉回来之前一闪而过显示旧候选人的内容
+    // 切候选人时立刻清空上个候选人的详情,避免请求返回前显示旧资料
     setC(null);
     setErr("");
-    setNotes([]);
-    setReviews([]);
-    setMyVotes({});
     setMatchingJobId("");
     setStatusOpen(false);
     setJdPickerOpen(false);
     setJdDescOpen(false);
     setJdMatchOpen(false);
     setPendingJobId("");
-    setReplyTo(null);
     load();
     resources.jobs.list({ take: 200 }).then((d) => setJobs(d.items || [])).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3009,28 +2982,6 @@ function CandidateDetail() {
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [c?.id, evals.campusAutoEvaluation?.status]);
-
-  useEffect(() => {
-    if (!c?.id) return;
-    resources.notes.list(c.id).then(setNotes).catch(() => {});
-    resources.reviews.list(c.id).then(setReviews).catch(() => {});
-    resources.reviews.myVotes(c.id).then(setMyVotes).catch(() => {});
-  }, [c?.id]);
-
-  async function vote(reviewId, value) {
-    const prev = myVotes[reviewId] || 0;
-    const nextValue = prev === value ? 0 : value;
-    try {
-      const { review, myVote } = await resources.reviews.vote(c.id, reviewId, nextValue);
-      setReviews((p) => p.map((r) => r.id === review.id ? { ...r, upvotes: review.upvotes, downvotes: review.downvotes } : r));
-      setMyVotes((p) => {
-        const next = { ...p };
-        if (myVote === 0) delete next[reviewId];
-        else next[reviewId] = myVote;
-        return next;
-      });
-    } catch (e) { toast(e.message || "投票失败", "error"); }
-  }
 
   async function switchJob(id) {
     // 用户在 picker / select 里选了一个目标 JD —— 不直接发请求,先弹确认窗
@@ -3459,7 +3410,7 @@ function CandidateDetail() {
         </div>
       </aside>
 
-      {/* ╔═══ MIDDLE COLUMN: Actions + AI + Job overview + 经历 / 项目 / 教育 / 备注 ═══╗ */}
+      {/* ╔═══ MIDDLE COLUMN: Actions + AI + 经历 / 项目 / 教育 ═══╗ */}
       <div className="w-full 2xl:flex-1 min-w-0 space-y-4">
 
         {/* === Action buttons === */}
@@ -3554,86 +3505,6 @@ function CandidateDetail() {
           onRunMatch={openJdMatchConfirm}
           onReport={runReport}
         />
-
-        {/* === Job Overview === */}
-        {(() => {
-          const job = jobs.find(j => j.id === c.jobId);
-          return (
-            <Card className="p-5 md:p-6">
-              <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-                <h3 className="min-w-0 text-base font-bold text-[#1B254B] flex flex-wrap items-center gap-2 [overflow-wrap:anywhere]">
-                  <I name="briefcase" size={16} className="text-[#422AFB]" />
-                  岗位概览
-                  {job && <span className="text-[11px] text-[#707EAE] font-medium">· {job.title}</span>}
-                </h3>
-                <div className="flex items-center gap-3 text-[11px] text-[#707EAE]">
-                  <span className="px-2 py-0.5 rounded-full bg-green-50 text-green-700 font-bold">招聘中</span>
-                  <span>创建于 {fmtDate(c.pushedAt)}</span>
-                </div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <OverviewTile icon="briefcase" label="经验" value={candidateExpText(c.yearsExp, hasWorkExperience(c.experience), { full: false }) || "—"} sub="JD 要求 5-7 年" />
-                <OverviewTile icon="graduation-cap" label="学历" value={c.education || "—"} sub="JD 要求 本科+" />
-                <OverviewTile
-                  icon="languages"
-                  label="语言要求"
-                  value={(c.languages || []).map(l => l.name).join(" · ") || "—"}
-                  sub={(() => {
-                    const job = jobs.find(j => j.id === c.jobId);
-                    return job?.languageRequirement ? `JD 要求 ${job.languageRequirement}` : "JD 未指定";
-                  })()}
-                />
-              </div>
-
-              {/* JD 技能 / 经验 / 素质要求 */}
-              {((job?.requirements?.length || 0) > 0 || (job?.nice?.length || 0) > 0) && (
-                <div className="mt-4 pt-4 border-t border-[#E9ECEF]">
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
-                    {Array.isArray(job.requirements) && job.requirements.length > 0 && (
-                      <div>
-                        <h4 className="text-[11px] font-bold uppercase tracking-wide text-[#A3AED0] flex items-center gap-1.5 mb-2">
-                          <I name="check-circle-2" size={12} className="text-[#422AFB]" />
-                          技能 / 经验 / 素质要求
-                        </h4>
-                        <ul className="space-y-1.5">
-                          {job.requirements.map((r, i) => (
-                            <li key={i} className="text-xs text-[#1B254B] flex items-start gap-2 leading-relaxed">
-                              <span className="w-4 h-4 rounded bg-[#F4F7FE] text-[#422AFB] text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">{i + 1}</span>
-                              <span>{r}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    {Array.isArray(job.nice) && job.nice.length > 0 && (
-                      <div>
-                        <h4 className="text-[11px] font-bold uppercase tracking-wide text-[#A3AED0] flex items-center gap-1.5 mb-2">
-                          <I name="sparkles" size={12} className="text-[#422AFB]" />
-                          加分项
-                        </h4>
-                        <ul className="space-y-1.5">
-                          {job.nice.map((r, i) => (
-                            <li key={i} className="text-xs text-[#707EAE] flex items-start gap-2 leading-relaxed">
-                              <I name="plus" size={11} className="text-[#A3AED0] mt-1 shrink-0" />
-                              <span>{r}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setJdDescOpen(true)}
-                    className="mt-3 text-[11px] text-[#422AFB] font-bold hover:underline flex items-center gap-1"
-                  >
-                    查看完整 JD <I name="arrow-right" size={11} />
-                  </button>
-                </div>
-              )}
-            </Card>
-          );
-        })()}
 
         {/* === Skills / Risks / Highlights — 3 small cards === */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -3764,33 +3635,9 @@ function CandidateDetail() {
         </div>
       </div>
 
-      {/* ╔═══ RIGHT COLUMN: Reviews + Feedback History ═══╗ */}
-      <aside className="w-full 2xl:w-[320px] min-w-0 shrink-0 space-y-4 2xl:sticky 2xl:top-4 2xl:self-start 2xl:max-h-[calc(100vh-2rem)] 2xl:overflow-y-auto 2xl:pr-1 2xl:-mr-1">
-        <ReviewsCard
-          reviews={reviews} candidate={c} me={me} isAdmin={isAdmin}
-          myVotes={myVotes} onVote={vote}
-          onAdd={() => { setReplyTo(null); setReviewOpen(true); }}
-          onReply={(r) => { setReplyTo(r); setReviewOpen(true); }}
-          updateReview={(r) => setReviews((p) => p.map((x) => x.id === r.id ? r : x))}
-        />
-        <FeedbackHistoryCard
-          notes={notes}
-          insights={c.insights}
-          onAdd={() => setNoteOpen(true)}
-          onDelete={async (n) => {
-            if (!confirm("删除这条备注?")) return;
-            try {
-              await resources.notes.remove(c.id, n.id);
-              setNotes((p) => p.filter((x) => x.id !== n.id));
-              toast("已删除", "success");
-            } catch (err) { toast(err.message || "删除失败", "error"); }
-          }}
-        />
-      </aside>
     </div>
 
     {/* Modals */}
-    <NoteModal open={noteOpen} onClose={() => setNoteOpen(false)} candidate={c} onCreated={(n) => { setNotes((p) => [n, ...p]); setNoteOpen(false); }} />
     <JdDescModal
       open={jdDescOpen}
       onClose={() => setJdDescOpen(false)}
@@ -3823,12 +3670,6 @@ function CandidateDetail() {
       candidateName={c.name}
       reparsing={reparsing}
       hasProfile={!!c.profile}
-    />
-    <ReviewModal
-      open={reviewOpen}
-      onClose={() => { setReviewOpen(false); setReplyTo(null); }}
-      candidate={c} replyTo={replyTo}
-      onCreated={(r) => { setReviews((p) => [...p, r]); setReviewOpen(false); setReplyTo(null); }}
     />
     <ShareModal open={shareOpen} onClose={() => setShareOpen(false)} candidate={c} />
     </>
