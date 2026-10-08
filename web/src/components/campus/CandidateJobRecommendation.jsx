@@ -39,30 +39,33 @@ export default function CandidateJobRecommendation({ candidateId, canEdit }) {
   const hasMissingOption = current?.jobId && !data.options.some((job) => job.id === current.jobId);
 
   return (
-    <div className="w-full min-w-0 rounded-xl border border-[#CFC8FF] bg-[#F7F5FF] px-3 py-2.5 lg:flex-1 2xl:flex-none">
-      <div className="flex items-center gap-1.5 text-xs font-bold text-[#422AFB]">
-        <I name="sparkles" size={14} /> 建议岗位
+    <div className="w-full min-w-0 lg:w-56 lg:shrink-0 2xl:w-full">
+      <div className="flex items-center gap-1.5 text-[11px] font-semibold text-[#707EAE]">
+        <I name="sparkles" size={14} className="text-[#422AFB]" /> 建议岗位
       </div>
       {canEdit ? (
-        <select
-          aria-label="选择建议岗位"
-          value={current?.jobId || ""}
-          onChange={(event) => chooseJob(event.target.value)}
-          disabled={!data || saving}
-          className="mt-1.5 w-full rounded-lg border border-[#B8AEFF] bg-white px-2.5 py-2 text-sm font-semibold text-[#1B254B] focus:outline-none focus:ring-2 focus:ring-[#422AFB] disabled:opacity-60"
-        >
-          <option value="">暂不建议岗位</option>
-          {hasMissingOption && <option value={current.jobId}>{current.jobTitle}（已移出专场）</option>}
-          {data?.options.map((job) => <option key={job.id} value={job.id}>{job.title}</option>)}
-        </select>
-      ) : <p className="mt-1.5 truncate text-sm font-semibold text-[#1B254B]" title={current?.jobTitle || "尚未选择"}>{current?.jobTitle || "尚未选择"}</p>}
-      <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[11px] text-[#707EAE]">
+        <div className="group relative mt-1.5">
+          <select
+            aria-label="选择建议岗位"
+            value={current?.jobId || ""}
+            onChange={(event) => chooseJob(event.target.value)}
+            disabled={!data || saving}
+            className="w-full cursor-pointer appearance-none bg-transparent py-1 pr-6 text-sm font-bold text-[#1B254B] hover:text-[#422AFB] focus-visible:rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#422AFB] disabled:cursor-wait disabled:opacity-60"
+          >
+            <option value="">暂不建议岗位</option>
+            {hasMissingOption && <option value={current.jobId}>{current.jobTitle}（已移出专场）</option>}
+            {data?.options.map((job) => <option key={job.id} value={job.id}>{job.title}</option>)}
+          </select>
+          <I name="chevron-down" size={14} className="pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 text-[#A3AED0] group-hover:text-[#422AFB]" />
+        </div>
+      ) : <p className="mt-1.5 truncate py-1 text-sm font-bold text-[#1B254B]" title={current?.jobTitle || "尚未选择"}>{current?.jobTitle || "尚未选择"}</p>}
+      <div className="mt-1 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[11px] text-[#A3AED0]">
         <span className="min-w-0 truncate" title={current ? `${current.actorName} · ${formatTime(current.createdAt)}` : ""}>
           {current ? `${current.actorName} · ${formatTime(current.createdAt)}` : "暂无操作记录"}
         </span>
         {!!data?.history.length && <button type="button" onClick={() => setHistoryOpen((open) => !open)} aria-expanded={historyOpen} className="shrink-0 font-semibold text-[#422AFB] hover:underline">{historyOpen ? "收起记录" : "历史记录"}</button>}
       </div>
-      {historyOpen && <ol className="mt-2 max-h-40 space-y-1.5 overflow-y-auto border-t border-[#E3DFFF] pt-2 text-[11px] text-[#707EAE]">
+      {historyOpen && <ol className="mt-2 max-h-40 space-y-1.5 overflow-y-auto text-[11px] text-[#707EAE]">
         {data.history.map((entry) => <li key={entry.id} className="break-words"><span className="font-semibold text-[#1B254B]">{entry.actorName}</span> · {entry.jobTitle || "清除建议"}<span className="block">{formatTime(entry.createdAt)}</span></li>)}
       </ol>}
     </div>
