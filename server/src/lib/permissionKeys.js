@@ -30,6 +30,7 @@ export const CAMPUS_TABS = Object.freeze(["ledger", "sessions", "jobs", "stats",
 export const CAMPUS_INTERVIEWER_MODULE_KEYS = Object.freeze([
   "candidate.contact", "candidate.attachments", "candidate.aiInsights",
   "candidate.reviews", "candidate.notes", "candidate.jdMatch",
+  "candidate.delete",
 ]);
 export function campusInterviewerPageKeys(tabs = []) {
   const selected = CAMPUS_TABS.filter((tab) => tabs.includes(tab));

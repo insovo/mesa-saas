@@ -378,7 +378,7 @@ export default function Candidates() {
   }
 
   async function onDelete(id, name) {
-    if (!confirm(`确定删除 ${name} 吗?`)) return;
+    if (!confirm(`确定删除 ${name} 吗?${campusInterviewer ? "\n关联的校招登记、投递和简历版本也会被删除，无法恢复。" : ""}`)) return;
     try {
       await resources.candidates.remove(id);
       toast("已删除", "success");
@@ -634,9 +634,9 @@ export default function Candidates() {
                       <button onClick={() => navigate(`/candidates/${c.externalId || c.id}`)} className="w-7 h-7 rounded-full bg-lightPrimary text-gray-700 hover:text-brand flex items-center justify-center" title="查看详情">
                         <I name="arrow-right" size={12} />
                       </button>
-                      {!campusInterviewer && <button onClick={() => onDelete(c.id, c.name)} className="w-7 h-7 rounded-full bg-red-50 text-red-500 hover:bg-red-100 flex items-center justify-center" title="删除">
+                      <button onClick={() => onDelete(c.id, c.name)} className="w-7 h-7 rounded-full bg-red-50 text-red-500 hover:bg-red-100 flex items-center justify-center" title="删除">
                         <I name="trash-2" size={12} />
-                      </button>}
+                      </button>
                     </div>
                   </div>
                 </div>

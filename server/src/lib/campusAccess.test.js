@@ -3,13 +3,14 @@ import assert from "node:assert/strict";
 import { campusInterviewerApiAllowed } from "./campusInterviewerApi.js";
 import { campusRouteAllowed } from "./campusTabAccess.js";
 import { campusInterviewerPageKeys } from "./permissionKeys.js";
-import { buildCandidateScopeWhere, buildJobScopeWhere } from "./permissions.js";
+import { assertCandidateAccess, buildCandidateScopeWhere, buildJobScopeWhere } from "./permissions.js";
 
 test("校招面试官默认仅可访问校招候选人接口", () => {
   assert.deepEqual(campusInterviewerPageKeys([]), ["candidates", "candidate.detail"]);
   assert.equal(campusInterviewerApiAllowed("GET", "/api/candidates"), true);
   assert.equal(campusInterviewerApiAllowed("GET", "/api/candidates/one/evaluations"), true);
   assert.equal(campusInterviewerApiAllowed("POST", "/api/candidates"), false);
+  assert.equal(campusInterviewerApiAllowed("DELETE", "/api/candidates/one"), true);
   assert.equal(campusInterviewerApiAllowed("GET", "/api/users"), false);
   assert.equal(campusInterviewerApiAllowed("GET", "/api/reports"), false);
   const access = { role: "CAMPUS_INTERVIEWER", pageKeys: campusInterviewerPageKeys([]) };
@@ -29,7 +30,32 @@ test("校招候选人和岗位范围由角色固定，不受普通 owner 和授�
   assert.deepEqual(await buildCandidateScopeWhere(req), { campusApplicant: { isNot: null } });
   assert.deepEqual(await buildJobScopeWhere(req), { campusSessionJobs: { some: {} } });
   assert.deepEqual(req.permsCache.access.pageKeys, campusInterviewerPageKeys(["jobs"]));
-  assert.equal(req.permsCache.access.moduleKeys.includes("candidate.delete"), false);
+  assert.equal(req.permsCache.access.moduleKeys.includes("candidate.delete"), true);
+  assert.equal(req.permsCache.access.moduleKeys.includes("candidate.edit"), false);
+});
+
+test("删除前的候选人范围校验只放行校招候选人", async () => {
+  const queries = [];
+  const req = {
+    user: { sub: "interviewer" },
+    server: { prisma: {
+      user: { findUnique: async () => ({ id: "interviewer", role: "CAMPUS_INTERVIEWER", isActive: true, accessPolicy: {} }) },
+      candidate: { findFirst: async ({ where }) => {
+        queries.push(where);
+        return where.id === "campus" ? { id: "campus" } : null;
+      } },
+    } },
+  };
+  const responses = [];
+  const reply = { code(status) { responses.push(status); return this; }, send(body) { responses.push(body); return this; } };
+
+  assert.equal((await assertCandidateAccess(req, reply, "campus")).role, "CAMPUS_INTERVIEWER");
+  assert.equal(await assertCandidateAccess(req, reply, "ordinary"), null);
+  assert.deepEqual(queries, [
+    { id: "campus", campusApplicant: { isNot: null } },
+    { id: "ordinary", campusApplicant: { isNot: null } },
+  ]);
+  assert.deepEqual(responses, [404, { error: "not_found" }]);
 });
 
 test("单个校招 tab 不会放行其他 tab 的读写接口", () => {

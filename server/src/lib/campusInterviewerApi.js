@@ -5,6 +5,7 @@ export function campusInterviewerApiAllowed(method, rawUrl) {
   if (method === "GET" && /^\/api\/candidates(?:\/[^/]+(?:\/(?:profile|evaluations|notes|reviews|reviews-votes|reviews\/[^/]+\/voters))?)?$/.test(path)) return true;
   if (method === "POST" && /^\/api\/candidates\/[^/]+\/(?:notes|reviews|reviews\/[^/]+\/(?:vote|request-delete))$/.test(path)) return true;
   if (method === "DELETE" && /^\/api\/candidates\/[^/]+\/notes\/[^/]+$/.test(path)) return true;
+  if (method === "DELETE" && /^\/api\/candidates\/[^/]+$/.test(path)) return true;
   if (method === "GET" && /^\/api\/jobs(?:\/[^/]+|\/taxonomy\/[^/]+|\/evaluation\/templates)?$/.test(path)) return true;
   if (method === "POST" && path === "/api/jobs/parse-text") return true;
   if (method === "GET" && path === "/api/resumes/llm-status") return true;

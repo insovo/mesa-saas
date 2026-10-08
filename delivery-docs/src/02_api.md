@@ -67,7 +67,7 @@ date: "2026-07-17"
 
 管理员在 `POST /api/users` 提交 `role: "CAMPUS_INTERVIEWER"`、`username`（3–32 位文字、数字、`.`、`_`、`-`）、`password` 和可选 `campusTabs`。`campusTabs` 可选 `ledger`、`sessions`、`jobs`、`stats`、`settings`，默认空数组；无需邮箱。账户名按小写唯一保存。此角色不能通过普通用户的角色编辑切换创建；忘记密码时由管理员在用户管理页重置。
 
-管理员在 `PATCH /api/users/:id/policy` 提交 `{ "campusTabs": ["ledger", "jobs"] }` 整体覆盖 tab 授权。校招面试官的基础页面固定为 `candidates`、`candidate.detail`；选中至少一个 tab 才开放 `campus` 页面。其候选人列表及详情始终仅返回与校招学生关联的记录，不能通过普通页面或 API 修改这一范围。校招 tab 的读写接口按各自授权校验；`settings` 只可查看，修改仍限管理员。校招面试官不能访问其他业务 API，校招台账导出仍需单独的 `campus.export` 权限，因而此角色不可导出。
+管理员在 `PATCH /api/users/:id/policy` 提交 `{ "campusTabs": ["ledger", "jobs"] }` 整体覆盖 tab 授权。校招面试官的基础页面固定为 `candidates`、`candidate.detail`；选中至少一个 tab 才开放 `campus` 页面。其候选人列表及详情始终仅返回与校招学生关联的记录，不能通过普通页面或 API 修改这一范围；可删除有权访问的校招候选人，删除时其校招登记、投递和简历版本会级联删除。校招 tab 的读写接口按各自授权校验；`settings` 只可查看，修改仍限管理员。校招面试官不能访问其他业务 API，校招台账导出仍需单独的 `campus.export` 权限，因而此角色不可导出。
 
 这项变更使用迁移 `20261008030000_campus_interviewer` 增加角色和可选 `username` 字段。既有邮箱账户和邮箱登录保持可用。
 

@@ -3620,7 +3620,7 @@ function CandidateDetail() {
   }
 
   async function onDelete() {
-    if (!confirm(`确定删除 ${c.name} 吗?`)) return;
+    if (!confirm(`确定删除 ${c.name} 吗?${me?.role === "CAMPUS_INTERVIEWER" ? "\n关联的校招登记、投递和简历版本也会被删除，无法恢复。" : ""}`)) return;
     try {
       await resources.candidates.remove(c.id);
       toast("已删除", "success");
