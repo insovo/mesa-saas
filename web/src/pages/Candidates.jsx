@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { api, resources, LONG_TIMEOUT } from "../lib/api.js";
+import { api, resources } from "../lib/api.js";
 import {
   Card,
   Button,
   Input,
   StatusPill,
-  AiBadge,
   LiquidLoader,
   Avatar,
   I,
@@ -17,7 +16,6 @@ import {
   toast,
 } from "../components/Primitives.jsx";
 import { STATUS_ORDER, candidateExpText, hasWorkExperience } from "../lib/constants.js";
-import ReparseConfirmModal from "../components/ReparseConfirmModal.jsx";
 import { useMe } from "../lib/authContext.jsx";
 
 // Helpers — Upload.jsx 已经有相同函数,后续可抽 lib/format.js 复用
@@ -89,11 +87,9 @@ export default function Candidates() {
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [err, setErr] = useState("");
-  const [reparseTarget, setReparseTarget] = useState(null); // 弹 modal 用的候选人(单条)
   // 批量操作
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [bulkAssigning, setBulkAssigning] = useState(false);
-  const [reparsingIds, setReparsingIds] = useState(() => new Set()); // 批量解析进行中
   const [llmStatus, setLlmStatus] = useState(null);
   // 三层评估:分类 / 优先级筛选 + 批量评估到 JD
   const [classFilter, setClassFilter] = useState("");
@@ -183,7 +179,7 @@ export default function Candidates() {
     }
   }
 
-  // jobs 列表只 load 一次,给 ReparseConfirmModal 的 select 用 + inline 关联 JD 下拉用
+  // jobs 列表只 load 一次,给关联 JD 下拉用
   useEffect(() => {
     resources.jobs.list({ take: 200 }).then((d) => setJobs(d.items || [])).catch(() => {});
     api.get("/departments", { params: { take: 200 } }).then((r) => setDepartments(r.data.items || [])).catch(() => {});
@@ -251,7 +247,6 @@ export default function Candidates() {
       return c?.attachment;  // 没附件的不能解析
     });
     if (ids.length === 0) return toast("选中的简历都没有附件,无法解析", "error");
-    setReparsingIds((prev) => new Set([...prev, ...ids]));
     try {
       await Promise.all(ids.map((id) => {
         const c = items.find((x) => x.id === id);
@@ -260,97 +255,9 @@ export default function Candidates() {
       toast(`已触发 ${ids.length} 份简历重新解析(后台 5-60 秒,会自动刷新)`, "success");
       setSelectedIds(new Set());
       setTimeout(() => load(), 5000);
-      setTimeout(() => {
-        load();
-        setReparsingIds((prev) => {
-          const next = new Set(prev);
-          ids.forEach((id) => next.delete(id));
-          return next;
-        });
-      }, 30000);
+      setTimeout(() => load(), 30000);
     } catch (e) {
       toast(e.response?.data?.message || "触发批量解析失败", "error");
-      setReparsingIds((prev) => {
-        const next = new Set(prev);
-        ids.forEach((id) => next.delete(id));
-        return next;
-      });
-    }
-  }
-
-  // 重新解析(异步): POST /resumes/parse {candidateId, jobId} 立即拿 taskId,轮询 GET /parse-tasks/:taskId 直到 done/failed
-  // 入口走 ReparseConfirmModal,让用户先确认/修改投递岗位再开跑(与详情页同行为)。
-  const [reparsingId, setReparsingId] = useState(null);
-
-  function openReparse(c) {
-    if (!c?.id) return;
-    if (!c.attachment) return toast("无简历附件,无法重新解析", "error");
-    setReparseTarget(c);
-  }
-
-  async function onReparse(jobId, mode) {
-    const c = reparseTarget;
-    if (!c?.id) return;
-    setReparsingId(c.id);
-    try {
-      const body = { candidateId: c.id, jobId };
-      if (mode) body.mode = mode; // reevaluate | reextract | full(ReparseConfirmModal 三档粒度)
-      const { data: { task: initialTask } } = await api.post("/resumes/parse", body);
-      const taskId = initialTask.id;
-      const startedAt = Date.now();
-      const MAX_WAIT_MS = 5 * 60 * 1000;
-      let finalTask = null;
-      while (Date.now() - startedAt < MAX_WAIT_MS) {
-        await new Promise((r) => setTimeout(r, 2000));
-        const { data: { task } } = await api.get(`/resumes/parse-tasks/${taskId}`);
-        if (task.status === "done" || task.status === "failed") { finalTask = task; break; }
-        // 兜底:task 状态可能因 Redis/内存存储竞态卡在 running,但候选人其实已解析完成。
-        // 直接查候选人自身 parsing(后端权威),已结束就视为完成,避免行永久卡「解析中」。
-        // 正常情况上面 task 已 done 先 break,不会走到这,零额外开销。
-        try {
-          const fresh = await resources.candidates.detail(c.id);
-          if (fresh && fresh.parsing === false && fresh.parser) { finalTask = { status: "done", candidate: fresh }; break; }
-        } catch { /* 兜底查询失败忽略,继续轮询 task */ }
-      }
-      if (!finalTask) {
-        toast(`${c.name} 重新解析超时(>5 分钟)`, "error");
-        return;
-      }
-      if (finalTask.status === "done") {
-        setItems((prev) => prev.map((x) => (x.id === c.id ? finalTask.candidate : x)));
-        setReparseTarget(null);
-        toast(`✓ ${finalTask.candidate.name} 已重新解析`, "success");
-      } else {
-        // failed — 全完整错误塞剪贴板 + console.error 完整 task
-        const err = finalTask.error || {};
-        const full = JSON.stringify({
-          candidate: c.name,
-          taskId: finalTask.id,
-          startedAt: finalTask.startedAt,
-          finishedAt: finalTask.finishedAt,
-          statusCode: err.statusCode,
-          errorCode: err.code,
-          message: err.message,
-        }, null, 2);
-        console.error("[reparse] task failed", finalTask);
-        if (navigator.clipboard?.writeText) navigator.clipboard.writeText(full).catch(() => {});
-        toast(`${c.name} · ${err.code || "error"} · 完整错误已复制到剪贴板`, "error");
-      }
-    } catch (e) {
-      console.error("[reparse] axios failed", c.name, e);
-      const r = e.response;
-      const full = JSON.stringify({
-        candidate: c.name,
-        status: r?.status,
-        url: r?.config?.url,
-        data: r?.data,
-        message: e.message,
-      }, null, 2);
-      if (navigator.clipboard?.writeText) navigator.clipboard.writeText(full).catch(() => {});
-      toast(`重新解析失败 · ${c.name} · 完整错误已复制到剪贴板`, "error");
-    } finally {
-      setReparsingId(null);
-      load(); // 兜底:结束后用后端真实状态刷新列表(等效自动「切页面重进」),确保行不卡在「解析中」
     }
   }
 
@@ -548,7 +455,6 @@ export default function Candidates() {
           <ul className="divide-y divide-gray-200">
             {items.map((c) => {
               const isSelected = selectedIds.has(c.id);
-              const isReparsing = reparsingIds.has(c.id) || reparsingId === c.id || c.parsing;
               return (
               <li key={c.id} className={`py-4 group rounded-xl transition-colors duration-200 -mx-2 px-2 ${isSelected ? "bg-brand/5" : "hover:bg-lightPrimary/70"}`}>
                 {/* === 桌面端: 响应式单行列式(宽屏一行,中小屏 flex-wrap 自动换行) === */}
@@ -577,15 +483,19 @@ export default function Candidates() {
                   {/* 岗位列 */}
                   <div className="w-[140px] shrink-0">
                     <p className="text-[10px] text-gray-400 mb-1">岗位</p>
-                    <select disabled={campusInterviewer}
-                      value={c.jobId || ""}
-                      onChange={(e) => onSingleAssign(c.id, { jobId: e.target.value || null })}
-                      className="h-7 w-full rounded-lg border border-gray-200 px-2 text-[11px] text-navy-700 outline-none focus:border-brand bg-white"
-                      title={c.job?.title ? `关联 JD: ${c.job.title}` : "点击关联 JD"}
-                    >
-                      <option value="">— 未关联 JD —</option>
-                      {jobs.map((j) => (<option key={j.id} value={j.id}>{j.title}</option>))}
-                    </select>
+                    {c.jobId ? (
+                      <select disabled={campusInterviewer}
+                        value={c.jobId}
+                        onChange={(e) => onSingleAssign(c.id, { jobId: e.target.value || null })}
+                        className="h-7 w-full rounded-lg border border-gray-200 px-2 text-[11px] text-navy-700 outline-none focus:border-brand bg-white"
+                        title={c.job?.title ? `关联 JD: ${c.job.title}` : "关联 JD"}
+                      >
+                        <option value="">— 未关联 JD —</option>
+                        {jobs.map((j) => (<option key={j.id} value={j.id}>{j.title}</option>))}
+                      </select>
+                    ) : (
+                      <span className="text-[11px] text-gray-500">未关联 JD</span>
+                    )}
                   </div>
                   {/* 来源列 — 中小屏隐藏 */}
                   <div className="hidden lg:block w-[150px] shrink-0">
@@ -598,19 +508,6 @@ export default function Candidates() {
                   </div>
                   {/* 右操作区:ml-auto 推到行尾 */}
                   <div className="flex items-center gap-2 shrink-0 ml-auto">
-                    {c.parser && <AiBadge parser={c.parser} confidence={c.parserConfidence} />}
-                    {/* 解析按钮 — LLM 已配且有附件时始终显示;已解析显示"重新解析" */}
-                    {!campusInterviewer && llmStatus?.configured && c.attachment && (
-                      <button
-                        onClick={() => openReparse(c)}
-                        disabled={isReparsing}
-                        className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg bg-brand-gradient text-white text-[11px] font-bold shadow-button hover:shadow-button-hover active:scale-95 transition-all disabled:opacity-60 shrink-0"
-                        title={c.parser ? "重新解析(AI)" : "AI 解析这份简历"}
-                      >
-                        <I name={isReparsing ? "loader" : (c.parser ? "refresh-cw" : "sparkles")} size={10} className={isReparsing ? "animate-spin" : ""} />
-                        {isReparsing ? "解析中" : (c.parser ? "重新解析" : "解析")}
-                      </button>
-                    )}
                     <ClassChip classification={c.classification} reviewPriority={c.reviewPriority} />
                     {c.jdMatch != null ? (
                       <div className="shrink-0 pr-0.5">
@@ -664,14 +561,13 @@ export default function Candidates() {
                       {(c.tags || []).length > 4 && <span className="text-[10px] text-gray-600">+{c.tags.length - 4}</span>}
                     </div>
                   )}
-                  {/* 应聘岗位 + AI badge */}
+                  {/* 应聘岗位 */}
                   <div className="flex items-center gap-2 mt-2 pl-[56px] flex-wrap">
                     {c.appliedFor && (
                       <span className="text-[11px] text-gray-700 inline-flex items-center gap-1">
                         <I name="briefcase" size={10} /> {c.appliedFor}
                       </span>
                     )}
-                    {c.parser && <AiBadge parser={c.parser} confidence={c.parserConfidence} />}
                     <ClassChip classification={c.classification} reviewPriority={c.reviewPriority} />
                   </div>
                 </Link>
@@ -755,15 +651,6 @@ export default function Candidates() {
           </div>
         </div>
       </Modal>
-      <ReparseConfirmModal
-        open={!!reparseTarget}
-        onClose={() => setReparseTarget(null)}
-        onConfirm={onReparse}
-        currentJob={jobs.find((j) => j.id === reparseTarget?.jobId)}
-        jobs={jobs}
-        candidateName={reparseTarget?.name}
-        reparsing={!!reparsingId && reparsingId === reparseTarget?.id}
-      />
     </div>
   );
 }
