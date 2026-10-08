@@ -1,5 +1,5 @@
-// /api/candidates/:id/interview-evals  - admin 端: 列表 + 创建
-// /api/interview-evals/:id              - admin 端: 详情 / patch / delete / export
+// /api/candidates/:id/interview-evals  - 后台端: 列表 + 创建
+// /api/interview-evals/:id              - 后台端: 详情 / patch / delete / export
 // /api/public/interview-eval/:token     - 公开端: 表单读 / 草稿 / 提交 / 导出
 //
 // 模型: InterviewEvaluation (server/prisma/schema.prisma)
@@ -31,6 +31,7 @@ import {
   renderEvaluationToXlsx,
   attachmentHeaderForFilename,
 } from "../lib/interviewEvalExport.js";
+import { assertCandidateAccess } from "../lib/permissions.js";
 
 function tokenGen() {
   return randomBytes(24).toString("base64url");
@@ -102,7 +103,7 @@ function publicShape(ev, meta = {}) {
   };
 }
 
-// admin 端响应整形 (含内部字段)
+// 后台端响应整形 (含内部字段)
 function adminShape(ev) {
   return {
     id: ev.id,
@@ -188,12 +189,13 @@ function validateForSubmit(body, merged) {
 }
 
 export default async function interviewEvalRoutes(app) {
-  // ─── Admin 端: 鉴权 ─────────────────────────────────────────────
+  // ─── 后台端: 鉴权 ─────────────────────────────────────────────
   app.register(async (admin) => {
     admin.addHook("preHandler", admin.authenticate);
 
     // GET 列表 — 某候选人的所有评价邀请
-    admin.get("/candidates/:id/interview-evals", async (req) => {
+    admin.get("/candidates/:id/interview-evals", async (req, reply) => {
+      if (req.user.role === "CAMPUS_INTERVIEWER" && !await assertCandidateAccess(req, reply, req.params.id)) return;
       const list = await admin.prisma.interviewEvaluation.findMany({
         where: { candidateId: req.params.id, deletedAt: null },
         orderBy: { createdAt: "desc" },
@@ -224,6 +226,7 @@ export default async function interviewEvalRoutes(app) {
         },
       },
     }, async (req, reply) => {
+      if (req.user.role === "CAMPUS_INTERVIEWER" && !await assertCandidateAccess(req, reply, req.params.id)) return;
       const candidate = await admin.prisma.candidate.findUnique({
         where: { id: req.params.id },
         include: { job: { select: { id: true, title: true, dept: true } } },
@@ -280,8 +283,9 @@ export default async function interviewEvalRoutes(app) {
     admin.get("/interview-evals/:id", async (req, reply) => {
       const ev = await admin.prisma.interviewEvaluation.findUnique({ where: { id: req.params.id } });
       if (!ev || ev.deletedAt) return reply.code(404).send({ error: "eval_not_found" });
-      // 非 ADMIN 只能看自己创建的(对齐 upload-links.js 风格)
-      if (req.user.role !== "ADMIN" && ev.createdBy !== req.user.sub) {
+      if (req.user.role === "CAMPUS_INTERVIEWER" && !await assertCandidateAccess(req, reply, ev.candidateId)) return;
+      // 校招面试官可查看校招候选人的评价;其他非管理员仅能查看自己创建的评价
+      if (req.user.role !== "ADMIN" && req.user.role !== "CAMPUS_INTERVIEWER" && ev.createdBy !== req.user.sub) {
         return reply.code(403).send({ error: "forbidden" });
       }
       return { item: adminShape(ev) };
@@ -302,6 +306,7 @@ export default async function interviewEvalRoutes(app) {
     }, async (req, reply) => {
       const ev = await admin.prisma.interviewEvaluation.findUnique({ where: { id: req.params.id } });
       if (!ev || ev.deletedAt) return reply.code(404).send({ error: "eval_not_found" });
+      if (req.user.role === "CAMPUS_INTERVIEWER" && !await assertCandidateAccess(req, reply, ev.candidateId)) return;
       if (req.user.role !== "ADMIN" && ev.createdBy !== req.user.sub) {
         return reply.code(403).send({ error: "forbidden" });
       }
@@ -352,7 +357,8 @@ export default async function interviewEvalRoutes(app) {
     admin.get("/interview-evals/:id/export.xlsx", async (req, reply) => {
       const ev = await admin.prisma.interviewEvaluation.findUnique({ where: { id: req.params.id } });
       if (!ev || ev.deletedAt) return reply.code(404).send({ error: "eval_not_found" });
-      if (req.user.role !== "ADMIN" && ev.createdBy !== req.user.sub) {
+      if (req.user.role === "CAMPUS_INTERVIEWER" && !await assertCandidateAccess(req, reply, ev.candidateId)) return;
+      if (req.user.role !== "ADMIN" && req.user.role !== "CAMPUS_INTERVIEWER" && ev.createdBy !== req.user.sub) {
         return reply.code(403).send({ error: "forbidden" });
       }
 

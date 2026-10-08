@@ -1,4 +1,4 @@
-// 面试评价 Card — 嵌入候选人详情页右侧 aside,在「面试安排」和「附件」之间
+// 面试评价 Card — 嵌入候选人详情页左侧 aside,在资料卡和「附件」之间
 // 提供能力:
 //   - 列出本候选人所有面试评价邀请(状态/总分/推荐结论)
 //   - 新建评价邀请 → 生成 token + 二维码,招聘官扫码或复制链接发面试官
@@ -235,7 +235,7 @@ function LinkViewModal({ open, onClose, item }) {
 }
 
 // ─── 操作菜单 ────────────────────────────────────────────────────
-function ActionMenu({ item, onAction, isAdmin }) {
+function ActionMenu({ item, onAction, isAdmin, canManage }) {
   const [open, setOpen] = useState(false);
   useEffect(() => {
     if (!open) return;
@@ -272,7 +272,7 @@ function ActionMenu({ item, onAction, isAdmin }) {
               <I name="rotate-ccw" size={12} /> 退回编辑
             </button>
           )}
-          {item.status !== "revoked" && (
+          {canManage && item.status !== "revoked" && (
             <button onClick={() => { setOpen(false); onAction("revoke"); }} className="w-full px-3 py-2 text-left text-xs hover:bg-lightPrimary flex items-center gap-2 text-red-600">
               <I name="ban" size={12} /> 撤销链接
             </button>
@@ -325,7 +325,19 @@ export default function InterviewEvalCard({ candidate, currentUser }) {
         .then(() => toast("链接已复制", "success"))
         .catch(() => toast("复制失败", "error"));
     } else if (action === "export") {
-      window.location.href = resources.interviewEvals.exportUrl(item.id);
+      try {
+        const res = await resources.interviewEvals.exportXlsx(item.id);
+        const url = URL.createObjectURL(res.data);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `面试评价_${candidate.name || "候选人"}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        toast(`导出失败: ${err.response?.data?.message || err.message}`, "error");
+      }
     } else if (action === "reopen") {
       try {
         await resources.interviewEvals.update(item.id, { status: "draft" });
@@ -421,7 +433,7 @@ export default function InterviewEvalCard({ candidate, currentUser }) {
                     {item.status === "submitted" && item.totalScore != null && (
                       <LiquidLoader size={48} level={item.totalScore} label={item.totalScore} />
                     )}
-                    <ActionMenu item={item} onAction={(a) => handleAction(item, a)} isAdmin={isAdmin} />
+                    <ActionMenu item={item} onAction={(a) => handleAction(item, a)} isAdmin={isAdmin} canManage={isAdmin || item.createdBy === currentUser?.id} />
                   </div>
                 </div>
               </div>

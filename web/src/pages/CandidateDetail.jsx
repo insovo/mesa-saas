@@ -1133,7 +1133,7 @@ function JdMatchConfirmModal({ open, onClose, onConfirm, jobs, currentJobId, can
       <div className="p-6">
         <div className="flex items-start justify-between gap-4 mb-4">
           <h3 className="text-lg font-bold text-[#1B254B] flex items-center gap-2">
-            <I name="sparkles" size={18} className="text-[#422AFB]" />确认重评 JD
+            <I name="sparkles" size={18} className="text-[#422AFB]" />确认重新评分
           </h3>
           <button onClick={onClose} disabled={matching} className="text-gray-400 hover:text-[#1B254B] disabled:opacity-30"><I name="x" size={20} /></button>
         </div>
@@ -3550,8 +3550,8 @@ function CandidateDetail() {
               {canEdit && <Button variant="ghost" size="sm" onClick={openReparse} disabled={reparsing} title="重新抽取简历信息，更新简报、教育及基础字段" icon={<I name={reparsing ? "loader" : "rotate-ccw"} size={12} className={reparsing ? "animate-spin" : ""} />}>
                 {reparsing ? "抽取中" : "重新抽取简历信息"}
               </Button>}
-              {canEdit && <Button size="sm" onClick={openJdMatchConfirm} disabled={matching} title="确认或更换 JD 后重新评估匹配度" icon={<I name={matching ? "loader" : "sparkles"} size={12} className={matching ? "animate-spin" : ""} />}>
-                {matching ? "重评中" : "重评 JD"}
+              {canEdit && <Button size="sm" onClick={openJdMatchConfirm} disabled={matching} title="确认或更换 JD 后重新评分" icon={<I name={matching ? "loader" : "sparkles"} size={12} className={matching ? "animate-spin" : ""} />}>
+                {matching ? "评分中" : "重新评分"}
               </Button>}
             </div>
           </Card>

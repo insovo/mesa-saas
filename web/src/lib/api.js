@@ -144,8 +144,7 @@ export const resources = {
     detail: (id) => api.get(`/interview-evals/${id}`).then((r) => r.data.item),
     update: (id, body) => api.patch(`/interview-evals/${id}`, body).then((r) => r.data.item),
     remove: (id) => api.delete(`/interview-evals/${id}`),
-    // 触发浏览器下载,后端响应带 Content-Disposition
-    exportUrl: (id) => `/api/interview-evals/${id}/export.xlsx`,
+    exportXlsx: (id) => api.get(`/interview-evals/${id}/export.xlsx`, { responseType: "blob" }),
   },
   performance: {
     listPeople: (params) => api.get("/performance/people", { params }).then((r) => r.data),
