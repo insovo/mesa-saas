@@ -3208,7 +3208,7 @@ function CandidateDetail() {
     </div>
     <div className="flex flex-col 2xl:flex-row gap-4 2xl:gap-5 items-start min-w-0">
 
-      {/* ╔═══ LEFT COLUMN: Profile · Details · Documents ═══╗ */}
+      {/* ╔═══ LEFT COLUMN: Profile · Campus · Details · Documents ═══╗ */}
       {/* 窄屏把本列拍平成父 flex 子项,让面试/附件排在页面末尾 */}
       <aside className="contents 2xl:block w-full 2xl:w-[350px] 2xl:shrink-0 2xl:space-y-4 2xl:sticky 2xl:top-4 2xl:self-start 2xl:max-h-[calc(100vh-2rem)] 2xl:overflow-y-auto 2xl:pr-1 2xl:-mr-1">
 
@@ -3366,15 +3366,13 @@ function CandidateDetail() {
               )}
             </div>
           </div>
+          <CampusCandidateCard candidateId={c.id} />
         </Card>
 
         {/* 窄屏把面试评价和附件放在页面末尾 */}
         <div className="w-full 2xl:w-auto space-y-4 order-last 2xl:order-none">
         {/* === 面试评价 === */}
         <InterviewEvalCard candidate={c} currentUser={me} />
-
-        {/* === 校招(仅校招来源候选人显示) === */}
-        <CampusCandidateCard candidateId={c.id} />
 
         {/* === Documents ===
             把 c.attachment(LLM 解析时上传的原始简历 R2 key)虚拟同步到「简历」分类首位,
@@ -3563,6 +3561,11 @@ function CandidateDetail() {
           </Card>
         </div>
 
+        {/* === 结构化档案(resume.v1:教育/工作/实习/项目/技能/证书/语言/校园/科研 + 派生指标)=== */}
+        {c.profile && (
+          <ProfileCard profile={c.profile} derived={c.derived} warnings={profileMeta.warnings} tagName={tagName} />
+        )}
+
         {/* === Experience timeline === */}
         <Card className="p-5 md:p-6">
           <h3 className="text-base font-bold text-[#1B254B] flex items-center gap-2">
@@ -3587,11 +3590,6 @@ function CandidateDetail() {
             return <NeedJobPlaceholder hasJob={!!c.jobId} onPickJob={() => setJdPickerOpen(true)} fieldName="工作经历" />;
           })()}
         </Card>
-
-        {/* === 结构化档案(resume.v1:教育/工作/实习/项目/技能/证书/语言/校园/科研 + 派生指标)=== */}
-        {c.profile && (
-          <ProfileCard profile={c.profile} derived={c.derived} warnings={profileMeta.warnings} tagName={tagName} />
-        )}
 
         {/* === Education === */}
         <Card className="p-5 md:p-6">
