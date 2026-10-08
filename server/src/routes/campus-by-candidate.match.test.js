@@ -62,7 +62,11 @@ test("候选人详情的岗位匹配结果包含硬筛缺项和满足项", async
       assert.deepEqual(select, { id: true, hardFilter: true, items: true });
       return [{
         id: "evaluation-1",
-        hardFilter: { result: "FAIL", items: [{ key: "grad-year", label: "2026 届毕业生", tier: "MUST", result: "FAIL", reason: "毕业年份 2027" }] },
+        hardFilter: { result: "FAIL", items: [
+          { key: "grad-year", label: "2026 届毕业生", tier: "MUST", field: "derived.graduationYear", op: "year_in", value: [2026], candidate: 2027, result: "FAIL", reason: "毕业年份 2027 ∈ [2026]" },
+          { key: "major", label: "相关专业", tier: "MUST", field: "derived.highestMajorTag", op: "in_family", candidate: "major.mech", result: "FAIL", reason: "major.mech ∈ 族 [major.cs]" },
+          { key: "tools", label: "Office/Visio", tier: "MUST", field: "derived.toolTags", op: "has_all", result: "FAIL", reason: "缺少 tool.excel,tool.visio" },
+        ] },
         items: [{ key: "grad-year", label: "2026 届毕业生", tier: "MUST", verdict: "不满足", raw: { code: { reason: "毕业年份 2027" } } }, { key: "degree", label: "本科及以上", tier: "MUST", verdict: "满足", raw: {} }],
       }];
     } },
@@ -77,7 +81,11 @@ test("候选人详情的岗位匹配结果包含硬筛缺项和满足项", async
   const response = await app.inject({ method: "GET", url: "/api/campus/by-candidate/candidate-1" });
   assert.equal(response.statusCode, 200);
   const [failed, missing] = response.json().latestMatchRun.results;
-  assert.equal(failed.analysis.hardFilter.items[0].reason, "毕业年份 2027");
+  assert.deepEqual(failed.analysis.hardFilter.items.map(({ reason }) => reason), [
+    "简历毕业年份为2027，岗位要求2026届",
+    "简历专业为机械类，不在岗位要求范围内",
+    "简历未体现：Excel、Visio",
+  ]);
   assert.deepEqual(failed.analysis.items.map(({ label, verdict }) => [label, verdict]), [["2026 届毕业生", "不满足"], ["本科及以上", "满足"]]);
   assert.equal(missing.analysis, null);
 });

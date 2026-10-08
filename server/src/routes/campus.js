@@ -21,6 +21,7 @@ import { getTask } from "../lib/parseTaskStore.js";
 import { ensureCandidate, createVersionTx, createApplicationTx } from "../lib/campus/service.js";
 import { reconcileCampusAutoEvaluation } from "../lib/campus/autoEvaluation.js";
 import { mapStatusToStage, candidateToEmployeeData } from "../lib/candidateToEmployee.js";
+import { displayName } from "../lib/taxonomy/index.js";
 import { randomBytes } from "node:crypto";
 import {
   JOB_KINDS, APP_STATUS, QUOTA_STATUS, ALLOWED_RESUME_MIME, RESUME_MAX_SIZE,
@@ -235,10 +236,23 @@ function applicantShape(a, { showContact, versionsAllowed }) {
 function matchAnalysisShape(evaluation) {
   const hardItems = Array.isArray(evaluation.hardFilter?.items) ? evaluation.hardFilter.items : [];
   const items = Array.isArray(evaluation.items) ? evaluation.items : [];
+  const hardReason = (item) => {
+    if (item.result === "FAIL" && item.field === "derived.highestMajorTag" && item.op === "in_family") {
+      return `简历专业为${displayName("majors", item.candidate) || "未提及"}，不在岗位要求范围内`;
+    }
+    if (item.result === "FAIL" && item.op === "year_in") {
+      return `简历毕业年份为${item.candidate ?? "未提及"}，岗位要求${[].concat(item.value || []).join("、")}届`;
+    }
+    if (item.result === "FAIL" && item.op === "has_all" && item.reason?.startsWith("缺少 ")) {
+      const kind = { "derived.toolTags": "tools", "derived.certificateTags": "certificates", "derived.capabilityTags": "soft" }[item.field];
+      if (kind) return `简历未体现：${item.reason.slice(3).split(",").map((id) => displayName(kind, id.trim())).join("、")}`;
+    }
+    return item.reason || null;
+  };
   return {
     hardFilter: {
       result: evaluation.hardFilter?.result || "UNKNOWN",
-      items: hardItems.map(({ key, label, tier, result, reason }) => ({ key, label, tier, result, reason })),
+      items: hardItems.map(({ key, label, tier, result, ...item }) => ({ key, label, tier, result, reason: hardReason({ result, ...item }) })),
     },
     items: items.map(({ key, label, tier, verdict, raw }) => ({ key, label, tier, verdict, reason: raw?.code?.reason || null })),
   };
