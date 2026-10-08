@@ -43,7 +43,7 @@ export function CampusMatchPanel({ campus, currentUser }) {
   const canMatch = ["ADMIN", "CAMPUS_INTERVIEWER", "RECRUITER"].includes(currentUser?.role);
   if (!canMatch && !run) return null;
   return (
-    <div className="w-full min-w-0 rounded-xl border border-[#E9ECEF] bg-[#F8FAFF] p-3 md:w-[360px] md:shrink-0 2xl:w-full">
+    <div className="w-full min-w-0 md:w-[360px] md:shrink-0 2xl:w-full">
       <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
         <p className="text-[11px] text-gray-500">
           {active ? `智能匹配中 · ${run.progress ?? 0}%${run.total ? ` (${run.done ?? 0}/${run.total})` : ""}` : run?.status === "failed" ? "智能匹配失败，请重试" : run?.status === "done" ? `最近智能匹配 · ${fmtDateTime(run.finishedAt)}${run.stale ? " · 已过期" : ""}` : "尚未智能匹配"}
