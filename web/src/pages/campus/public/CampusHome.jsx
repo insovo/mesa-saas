@@ -44,7 +44,7 @@ export default function CampusHome() {
         <Link to={`${base(slug)}/mine`} className="inline-flex items-center gap-1 text-brand font-medium"><I name="user-round" size={13} />我的投递{me ? ` · 已投 ${me.applied}/${session.maxApplyJobs}` : ""}</Link>
         {me ? <span>{me.name || me.phone || "已建档"}</span> : <Link to={`${base(slug)}/recover`} className="text-gray-600">换了设备?找回记录</Link>}
       </div>
-      <p className="mt-8 text-[11px] text-gray-400 text-center leading-relaxed">无需注册登录,上传简历并确认联系方式即可投递<br />简历仅用于本次招聘评估,详见上传页《个人信息处理告知》</p>
+      <p className="mt-8 text-[11px] text-gray-400 text-center leading-relaxed">无需注册登录,上传简历并确认联系方式即可投递</p>
     </Shell>
   );
 }
