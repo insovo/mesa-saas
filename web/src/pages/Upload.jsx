@@ -120,7 +120,7 @@ function loadReparsingFromSession() {
 function saveReparsingToSession(map) {
   try { sessionStorage.setItem(REPARSING_SS_KEY, JSON.stringify(map)); } catch {}
 }
-const NEW_JOB_DEFAULT = { title: "", description: "", responsibilities: [], requirements: [], nice: [], benefits: [], employment: null, salary: null, levelRange: null, yearsExpRange: null, educationRequirement: null, languageRequirement: null };
+const NEW_JOB_DEFAULT = { title: "", description: "", dept: null, location: null, openings: null, responsibilities: [], requirements: [], nice: [], benefits: [], employment: null, salary: null, levelRange: null, yearsExpRange: null, educationRequirement: null, languageRequirement: null };
 
 // 简历收件箱 · 真实流程
 // 1) 前端拿到文件 → POST /api/storage/presigned-url 拿短时效 PUT URL
@@ -482,6 +482,18 @@ export default function Upload() {
     }
   }
 
+  async function onExtractJdText() {
+    if (!newJob.title.trim() || newJob.description.trim().length < 10) return toast("请填写岗位名称并粘贴至少 10 字 JD 原文", "error");
+    setNewJobParsing(true);
+    try {
+      const { job: draft } = await resources.jobs.parseText({ title: newJob.title.trim(), text: newJob.description.trim() });
+      setNewJob((current) => ({ ...current, ...draft, title: current.title, description: current.description }));
+      setNewJobFacts(null);
+      toast("AI 已提取字段,请核对后创建", "success");
+    } catch (e) { toast(e.response?.data?.message || "JD 抽取失败", "error"); }
+    finally { setNewJobParsing(false); }
+  }
+
   // ─── 上传分享链接(扫码 + 链接)───────────────────────────────
   // 配置: 30 天有效 + 200 份上限 + 关联当前选中的 JD + 把"来源"作 defaultSource 预填给外部上传者
   async function onCreateUploadLink() {
@@ -581,6 +593,9 @@ export default function Upload() {
       const created = await resources.jobs.create({
         title,
         description,
+        dept: newJob.dept,
+        location: newJob.location,
+        ...(newJob.openings != null ? { openings: newJob.openings } : {}),
         responsibilities: newJob.responsibilities,
         requirements: newJob.requirements,
         nice: newJob.nice,
@@ -1158,7 +1173,7 @@ export default function Upload() {
             </div>
             <div>
               <h3 className="text-lg font-bold text-navy-700">新建岗位 JD</h3>
-              <p className="text-xs text-gray-700">填写或上传 JD 文件由 AI 自动抽取,创建后会自动关联本次上传</p>
+              <p className="text-xs text-gray-700">填写岗位名并粘贴 JD 原文,或上传文件;AI 提取后可核对字段,创建后自动关联本次上传</p>
             </div>
           </div>
 
@@ -1222,22 +1237,28 @@ export default function Upload() {
             </div>
             <textarea
               value={newJob.description}
-              onChange={(e) => setNewJob((p) => ({ ...p, description: e.target.value }))}
+              onChange={(e) => { setNewJob((p) => ({ ...p, description: e.target.value })); setNewJobFacts(null); }}
               placeholder="岗位介绍 / 职责 / 要求 / 福利 / 加分项等(可粘贴整段 JD)"
               disabled={newJobSaving}
               rows={10}
               maxLength={10000}
               className="w-full rounded-xl border border-gray-200 p-3 text-sm text-navy-700 outline-none focus:border-brand bg-white resize-y"
             />
+            <div className="mt-2">
+              <Button size="sm" variant="ghost" onClick={onExtractJdText} disabled={newJobParsing || newJobSaving || !newJob.title.trim() || newJob.description.trim().length < 10} icon={<I name={newJobParsing ? "loader" : "sparkles"} size={14} className={newJobParsing ? "animate-spin" : ""} />}>{newJobParsing ? "AI 抽取中…" : "AI 提取岗位信息"}</Button>
+            </div>
           </div>
 
           {/* AI 抽取的结构化字段预览(只读,创建时一起带到后端)*/}
-          {(newJob.responsibilities.length > 0 || newJob.requirements.length > 0 || newJob.employment || newJob.salary) && (
+          {(newJob.responsibilities.length > 0 || newJob.requirements.length > 0 || newJob.employment || newJob.salary || newJob.dept || newJob.location || newJob.openings != null) && (
             <div className="mb-4 p-4 rounded-xl bg-lightPrimary border border-brand/20">
               <p className="text-[11px] font-bold text-brand uppercase mb-2 flex items-center gap-1.5">
                 <I name="sparkles" size={11} /> AI 抽取的结构化字段(创建时一起保存到岗位)
               </p>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1 text-xs text-navy-700">
+                {newJob.dept && <div><b>部门:</b> {newJob.dept}</div>}
+                {newJob.location && <div><b>地点:</b> {newJob.location}</div>}
+                {newJob.openings != null && <div><b>名额:</b> {newJob.openings}</div>}
                 {newJob.employment && <div><b>类型:</b> {newJob.employment}</div>}
                 {newJob.salary && <div><b>薪资:</b> {newJob.salary}</div>}
                 {newJob.levelRange && <div><b>职级:</b> {newJob.levelRange}</div>}

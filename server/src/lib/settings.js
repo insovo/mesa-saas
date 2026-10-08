@@ -3,7 +3,8 @@
 //
 // 已知 setting key 与 env fallback:
 //   kimi.api_key        → KIMI_API_KEY
-//   kimi.model          → KIMI_MODEL (default "moonshot-v1-32k")
+//   kimi.model          → KIMI_MODEL (default "kimi-k2.6")
+//   kimi.jd_model       → 无 env fallback,未设置时沿用系统模型
 //   textin.app_id / textin.secret_code / textin.enabled → TEXTIN_* (文档层, 2026-09-20)
 //   jev.api_key / jev.base_url / jev.model / jev.enabled / jev.mode → JEV_* (评估层, 2026-09-20)
 //   eval.*              → 评估规则(阈值 / 默认权重 / 置信门控 / 报告策略 / 脱敏), 无 env, 代码默认
@@ -21,6 +22,7 @@ const CACHE_TTL_MS = 30_000;
 export const SETTING_KEYS = {
   KIMI_API_KEY: "kimi.api_key",
   KIMI_MODEL: "kimi.model",
+  KIMI_JD_MODEL: "kimi.jd_model",          // JD 文本 / 文件抽取专用;未设置时沿用系统模型
   KIMI_PROMPT: "kimi.prompt",  // 简历抽取 prompt: JSON 输出 profile(resume.v1)
   KIMI_REPORT_PROMPT: "kimi.report_prompt",     // 评估报告 prompt(只解释不改分)
   KIMI_JD_PROMPT: "kimi.jd_schema_prompt",      // JD 事实抽取 prompt
@@ -61,7 +63,8 @@ function boolEnv(name, dflt) {
 // env fallback 映射(prompt 没有 env fallback,在 kimi.js 里做 DEFAULT_PROMPT 兜底)
 const ENV_FALLBACK = {
   "kimi.api_key": () => process.env.KIMI_API_KEY,
-  "kimi.model":   () => process.env.KIMI_MODEL || "moonshot-v1-32k",
+  "kimi.model":   () => process.env.KIMI_MODEL || "kimi-k2.6",
+  "kimi.jd_model": () => null,
   "kimi.prompt":  () => null,
   "kimi.report_prompt": () => null,
   "kimi.jd_schema_prompt": () => null,

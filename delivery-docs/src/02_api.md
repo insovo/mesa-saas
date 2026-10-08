@@ -446,12 +446,13 @@ Query: `status` / `candidateId` / `jobId` / `from`(date-time) / `to`(date-time) 
 ## 12.2a POST /api/resumes/parse-jd  (V3, 2026-05-26)
 
 JD 文件 AI 抽取 — 用户在 Upload 页"新建 JD"弹窗上传 JD 文件(PDF/DOCX/DOC,≤20MB),后端调 Kimi 抽取成 `Job` 模型对齐的结构化字段,前端弹窗展示供用户编辑确认再 POST /jobs 落库。
+文件抽取使用 `kimi.jd_model`(未设置时沿用系统模型),以账号实际可用模型为准。
 
 ```json
 {
   "key": "uploads/jd-xxx.pdf",     // R2 object key (presigned + confirm 同款流程)
   "contentType": "application/pdf",
-  "model": "moonshot-v1-32k"        // 可选
+  "model": "kimi-k2.6"              // 可选
 }
 ```
 
@@ -481,6 +482,10 @@ JD 文件 AI 抽取 — 用户在 Upload 页"新建 JD"弹窗上传 JD 文件(PD
 - 404 `r2_object_not_found`
 - 400 `empty_file`,413 `file_too_large`(>20MB)
 - 502 `kimi_error`(LLM 上游错)
+
+## 12.2b POST /api/jobs/parse-text
+
+纯文本 JD 抽取草稿,用于普通岗位、校招岗位和简历上传页的新建 JD。需要 `job.create` 权限,或 `campus` 页面加 `campus.manage` 权限,且 Kimi Key 已配置。只读取文字,不上传文件、不创建岗位,返回后由用户核对并保存。请求体:`{"title":"岗位名称","text":"JD 原文,10–20000 字"}`。响应:`{"job":{"title":"原岗位名称","description":"原文","dept":"…","location":"…","employment":"…","salary":"…","openings":1,"responsibilities":[],"requirements":[],"nice":[],"benefits":[]},"meta":{"model":"…","usage":{}}}`;未提到的字段为空或 `null`。调用使用独立设置 `kimi.jd_model`;该设置未配置时沿用系统默认模型。JD 纯文本只提取展示字段,较复杂的 `jdFacts` 仍在评价模型生成流程中抽取。
 
 ## 12.3 GET /api/resumes/parse-tasks/:taskId
 

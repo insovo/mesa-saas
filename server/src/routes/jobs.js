@@ -5,11 +5,12 @@ import {
   loadUserAccess,
   buildJobScopeWhere,
   hasModule,
+  hasPage,
 } from "../lib/permissions.js";
 import { sanitizeJdFacts } from "../lib/jd/normalize.js";
 import { jobText } from "../lib/jd/jobText.js";
 import { draftEvaluationModel, validateEvaluationModel, listTemplates, EVAL_SCHEMA_VERSION } from "../lib/evaluation/templates.js";
-import { extractJdFacts, suggestEvaluationWording, isKimiConfigured } from "../lib/kimi.js";
+import { extractJdFacts, parseJobText, suggestEvaluationWording, isKimiConfigured } from "../lib/kimi.js";
 import { lintQuestion } from "../lib/evaluation/questions.js";
 import { list as taxonomyList, KINDS as TAXONOMY_KINDS } from "../lib/taxonomy/index.js";
 import { getEffectiveJson, SETTING_KEYS } from "../lib/settings.js";
@@ -81,6 +82,22 @@ const LIST_QUERY = {
 
 export default async function jobsRoutes(app) {
   app.addHook("preHandler", app.authenticate);
+
+  app.post("/parse-text", {
+    schema: { body: { type: "object", required: ["title", "text"], properties: {
+      title: { type: "string", minLength: 1, maxLength: 200 },
+      text: { type: "string", minLength: 10, maxLength: 20000 },
+    }, additionalProperties: false } },
+  }, async (req, reply) => {
+    const access = await loadUserAccess(req);
+    if (!access.isActive || (!hasModule(access, "job.create") && !(hasPage(access, "campus") && hasModule(access, "campus.manage")))) return reply.code(403).send({ error: "forbidden", message: "无新建岗位权限" });
+    if (!(await isKimiConfigured())) return reply.code(424).send({ error: "kimi_not_configured", message: "请先配置 Kimi API Key" });
+    try { return await parseJobText(req.body); }
+    catch (err) {
+      req.log.error({ err }, "parseJobText failed");
+      return reply.code(err.statusCode && err.statusCode < 500 ? err.statusCode : 502).send({ error: err.code || "kimi_error", message: err.statusCode === 400 ? err.message : "JD 抽取失败,请稍后重试" });
+    }
+  });
 
   app.get("/", { schema: { querystring: LIST_QUERY } }, async (req) => {
     const { q, dept, urgency, skip = 0, take = 100 } = req.query;
