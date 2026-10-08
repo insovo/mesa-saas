@@ -91,7 +91,7 @@ export default function CampusUpload() {
                   <input type="checkbox" className="accent-brand mt-0.5 w-4 h-4 shrink-0" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
                   <span>我已阅读并同意<button type="button" onClick={() => setShowNotice((v) => !v)} className="text-brand font-medium">《个人信息处理告知》</button>,同意将简历与联系方式用于本次校园招聘的评估与联系</span>
                 </label>
-                {showNotice && <div className="mt-2 text-[11px] text-gray-600 bg-lightPrimary rounded-xl p-3 leading-relaxed">我们收集你的手机号、邮箱、微信号与简历文件,仅用于本次校园招聘的岗位匹配、筛选与面试联系;简历由系统自动抽取学校 / 专业 / 经历等信息用于评估;数据存储于招聘方系统,招聘流程结束后按招聘方留存政策处理;你可联系现场 HR 要求更正或删除。本次会话保存在当前浏览器,更换设备需重新上传。</div>}
+                {showNotice && <div className="mt-2 text-[11px] text-gray-600 bg-lightPrimary rounded-xl p-3 leading-relaxed">我们收集你的手机号、邮箱、毕业年份与简历文件,仅用于本次校园招聘的岗位匹配、筛选与面试联系;简历由系统自动抽取学校 / 专业 / 经历等信息用于评估;数据存储于招聘方系统,招聘流程结束后按招聘方留存政策处理;你可联系现场 HR 要求更正或删除。本次会话保存在当前浏览器,更换设备需用手机号和邮箱找回。</div>}
               </>
             )}
             <Button className="w-full !h-12 mt-4" disabled={!file || busy || (session && !session.open) || (!me && !consent)} onClick={upload} icon={busy ? <I name="loader" size={16} className="animate-spin" /> : <I name="upload-cloud" size={16} />}>{busy ? (progress < 100 ? `上传中 ${progress}%` : "提交中…") : "上传"}</Button>

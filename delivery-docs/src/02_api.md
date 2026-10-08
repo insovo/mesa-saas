@@ -1206,7 +1206,7 @@ Header 必填:`X-Perf-Access-Key: <明文密钥>`
 
 AuthGuard 外,学生**不注册不登录**。会话:首次上传前 `POST /auth/start`(勾选告知)匿名建档并签发学生 JWT `{ sub: applicantId, aud: "campus-public", sid, tv }`(有效期 `campus.auth.jwt_ttl`,默认 30d),前端存 localStorage 并以 `Authorization: Bearer` 携带;后台 `authenticate` 拒绝该 aud(401 `bad_audience`),这里只收该 aud。限流档 90 次 / 分钟(含 2s 轮询)。学生入口链接:首页 `/campus/:slug`、直接投递 `/campus/:slug/jobs`、智能匹配 `/campus/:slug/match`(后台专场二维码弹窗三选一)。
 
-学生上传简历后,联系方式页只要求填写有效手机号和邮箱;提交后前端确保当前简历版本的匹配任务已启动(已有有效结果或进行中的任务则复用),学生可直接关闭页面,后台任务继续执行。返回同一设备可从首页或「我的投递」查看岗位匹配度;更换设备可用手机号 + 邮箱验证码找回。结果页以小球展示本专场各参与匹配岗位的最新展示分和岗位名,每个岗位都可投递(仍受专场额度、重复投递等通用规则约束);学生只看到「符合」「较为符合」的亮点,不展示硬筛结论、缺项和劣势。后台仍保留完整评估供招聘人员查看。重新进入或页面保持打开时会获取最新一次匹配任务,包括招聘人员在后台重新发起的结果。匹配启动失败不影响联系方式保存,学生可从结果页重试。
+学生上传简历后,确认页只显示手机号、邮箱与毕业年份三个输入项;毕业年份默认填入 2026,可手动修改。提交后前端确保当前简历版本的匹配任务已启动(已有有效结果或进行中的任务则复用),学生可直接关闭页面,后台任务继续执行。确认联系方式后,后续简历解析不再覆盖毕业年份。返回同一设备可从首页或「我的投递」查看岗位匹配度;更换设备可用手机号 + 邮箱验证码找回。结果页以小球展示本专场各参与匹配岗位的最新展示分和岗位名,每个岗位都可投递(仍受专场额度、重复投递等通用规则约束);学生只看到「符合」「较为符合」的亮点,不展示硬筛结论、缺项和劣势。后台仍保留完整评估供招聘人员查看。重新进入或页面保持打开时会获取最新一次匹配任务,包括招聘人员在后台重新发起的结果。匹配启动失败不影响联系方式保存,学生可从结果页重试。
 
 | 方法 | 路径 | 鉴权 | 说明 |
 | --- | --- | --- | --- |
@@ -1216,11 +1216,11 @@ AuthGuard 外,学生**不注册不登录**。会话:首次上传前 `POST /auth/
 | POST | `/auth/start` | 可选 | `{ slug?, consent: true }` → `201 { token, me, session, reused:false }` 匿名建档(占位 Candidate + 学生,phone 空);已持本专场有效 token 时 `{ token: null, reused: true }`;422 `campus_consent_required`;专场未开放 410 |
 | POST | `/auth/recover/send-code` | — | 找回记录(免登录):`{ slug?, phone, email }` 匹配本专场 `contactConfirmedAt` 非空的记录 → 邮箱验证码(purpose `CAMPUS_RECOVER`,60s 冷却 / 每小时 5 次);404 `campus_record_not_found`;429 `campus_code_rate_limited`;424 `campus_email_send_failed`;未配 Resend 时回 `devCode`(仅开发)|
 | POST | `/auth/recover/verify` | — | `{ slug?, phone, email, code }` → `{ token, me, session }`,签新学生 JWT 接回原记录并写 `emailVerifiedAt`;400 `campus_code_invalid` |
-| GET / PATCH | `/me` | 学生 | 档案 + 版本 + 投递;PATCH `name wechat school major degree gradYear`(同步 Candidate);显式提交 `gradYear` 记为人工修改,后续简历抽取不覆盖 |
-| POST | `/me/contact-confirm` | 学生 | `{ phone, email, wechat?, name? }`(手机 / 邮箱必填,格式校验)→ 写 `contactConfirmedAt` 并同步 Candidate;422 `campus_phone_invalid / campus_email_invalid` |
+| GET / PATCH | `/me` | 学生 | 档案(含 `gradYearSource`) + 版本 + 投递;确认页只 PATCH `gradYear`,记为人工修改;接口仍兼容 `name wechat school major degree`(同步 Candidate) |
+| POST | `/me/contact-confirm` | 学生 | 确认页提交 `{ phone, email }`(格式校验)→ 写 `contactConfirmedAt` 并同步 Candidate;旧客户端的 `wechat? name?` 仍兼容,省略时不清除已有微信号;422 `campus_phone_invalid / campus_email_invalid` |
 | POST | `/resumes/presigned-url` | 学生 | `{ filename, contentType, size }` → `{ uploadUrl, key }`;key `campus/<sessionId>/<applicantId>/v<n>-<ts>.<ext>`;415 / 410 `campus_resume_quota_exceeded` / 503 `r2_not_configured` |
 | POST | `/resumes/submit` | 学生 | `{ key, filename, size, contentType, sha256 }`;key 必须本人前缀(403 `campus_key_forbidden`);同 sha256 回 `duplicate:true` 不计次;成功 201 `{ version, remaining, parseTaskId }` 并起抽取 |
-| GET | `/resumes` · `/resumes/:versionId/parse-status` | 学生 | 版本列表 / 抽取状态 `{ status: pending\|running\|done\|failed\|cancelled\|skipped, error, prefill{ name school major degree gradYear } }`;毕业年份默认 2026,简历抽取可覆盖默认值,人工修改优先 |
+| GET | `/resumes` · `/resumes/:versionId/parse-status` | 学生 | 版本列表 / 抽取状态 `{ status: pending\|running\|done\|failed\|cancelled\|skipped, error, prefill{ name school major degree gradYear } }`;毕业年份默认 2026,确认前简历抽取可覆盖默认值,人工修改或确认联系方式后不再覆盖 |
 | POST | `/resumes/:versionId/cancel-parse` | 学生 | 取消进行中的抽取:置任务 `cancelRequested`,流水线在阶段边界退出不落库;版本立即 `cancelled`;已结束的原样返回 |
 | POST | `/resumes/:versionId/reparse` | 学生 | 取消 / 失败 / 未解析后重跑当前版本(不计上传次数);非当前版 409 `campus_not_current_version`;running 409 `campus_parse_in_progress`;Kimi 未配置 424 |
 | POST | `/match-runs` | 学生 | 发起智能匹配(门禁同投递;专场 `matchEnabled`;同学生同时只允许 1 个 409 `campus_match_in_progress`;无可匹配岗位 409 `campus_no_match_jobs`;Kimi 未配置 424)→ `202 { run }` |

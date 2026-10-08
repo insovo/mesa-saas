@@ -31,7 +31,7 @@ export function gateStatus() {
   return { running, queued: queue.length };
 }
 
-// 把抽取出的 Candidate 字段回填到学生档案;毕业年份可覆盖默认值,不能覆盖人工修改。
+// 联系方式确认或人工修改后,简历抽取不能覆盖学生确认的毕业年份。
 export async function backfillApplicant(prisma, applicantId, candidate) {
   const a = await prisma.campusApplicant.findUnique({ where: { id: applicantId } });
   if (!a) return;
@@ -45,9 +45,13 @@ export async function backfillApplicant(prisma, applicantId, candidate) {
   if (Object.keys(data).length) await prisma.campusApplicant.update({ where: { id: applicantId }, data });
   if (Number.isInteger(gy) && gy >= 1990 && gy <= 2100) {
     await prisma.campusApplicant.updateMany({
-      where: { id: applicantId, gradYearSource: { not: "manual" } },
+      where: { id: applicantId, gradYearSource: { not: "manual" }, contactConfirmedAt: null },
       data: { gradYear: gy, gradYearSource: "resume" },
     });
+  }
+  const current = await prisma.campusApplicant.findUnique({ where: { id: applicantId }, select: { candidateId: true, gradYear: true, gradYearSource: true, contactConfirmedAt: true } });
+  if (current && (current.contactConfirmedAt || current.gradYearSource === "manual") && Number.isInteger(current.gradYear) && candidate.derived?.graduationYear !== current.gradYear) {
+    await prisma.candidate.update({ where: { id: current.candidateId }, data: { derived: { ...(candidate.derived || {}), graduationYear: current.gradYear } } });
   }
 }
 

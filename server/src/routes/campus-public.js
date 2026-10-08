@@ -1,7 +1,7 @@
 // /api/campus/public — 校招学生端(AuthGuard 外)。设计:校招模块/校招模块设计规划.html §5 §8.1
 //
 // 学生免登录:首次上传前勾选告知 → POST /auth/start 匿名建档(phone 为空)→ 学生 JWT { sub: applicantId, aud: "campus-public", sid, tv }
-//      存浏览器 localStorage;手机 / 邮箱 / 微信在「确认联系方式」页填写。与后台 JWT 同密钥不同 audience;
+//      存浏览器 localStorage;手机号 / 邮箱 / 毕业年份在确认页填写。与后台 JWT 同密钥不同 audience;
 //      plugins/jwt.js 的 authenticate 拒绝该 aud,反之这里只收该 aud。
 // 规则:投递与智能匹配都必须先有简历(428 campus_resume_required)并确认联系方式(428 campus_contact_unconfirmed);
 //      上传成功即后台抽取(lib/campus/extract.js);对学生只回必要字段,不回 R2 直链 / 评估明细 / 原始分。
@@ -59,7 +59,7 @@ function meShape(a, session) {
   const lastRun = a.matchRuns?.[0] || null;
   return {
     latestMatchRun: lastRun ? { id: lastRun.id, status: lastRun.status, stale: lastRun.stale, finishedAt: lastRun.finishedAt, resumeVersionId: lastRun.resumeVersionId } : null,
-    id: a.id, name: a.name, phone: a.phone, email: a.email, wechat: a.wechat, school: a.school, major: a.major, degree: a.degree, gradYear: a.gradYear,
+    id: a.id, name: a.name, phone: a.phone, email: a.email, wechat: a.wechat, school: a.school, major: a.major, degree: a.degree, gradYear: a.gradYear, gradYearSource: a.gradYearSource,
     contactConfirmed: !!a.contactConfirmedAt, hasResume: !!current, currentVersion: current ? versionShape(current) : null,
     uploadsUsed: a.resumeUploadCount, uploadsAllowed: uploadsAllowed(session, a), applied: active.length, maxApplyJobs: session.maxApplyJobs,
     applications: (a.applications || []).map(applicationShape), versions: (a.resumeVersions || []).map(versionShape),
@@ -254,13 +254,17 @@ export default async function campusPublicRoutes(app) {
       if (data.school !== undefined) cd.school = data.school;
       if (data.major !== undefined) cd.major = data.major;
       if (data.degree !== undefined) cd.education = data.degree;
+      if (Object.hasOwn(data, "gradYear")) {
+        const candidate = await tx.candidate.findUnique({ where: { id: a.candidateId }, select: { derived: true } });
+        cd.derived = { ...(candidate?.derived || {}), graduationYear: data.gradYear };
+      }
       if (Object.keys(cd).length) await tx.candidate.update({ where: { id: a.candidateId }, data: cd });
       return row;
     });
     return { me: meShape(u, a.session) };
   });
 
-  // 联系方式确认:手机 + 邮箱必填,微信可选;同时同步 Candidate
+  // 联系方式确认:手机号和邮箱必填;旧客户端仍可提交姓名、微信号。
   app.post("/me/contact-confirm", { schema: { body: { type: "object", required: ["phone", "email"], properties: { phone: { type: "string", maxLength: 30 }, email: { type: "string", maxLength: 200 }, wechat: { type: ["string", "null"], maxLength: 100 }, name: { type: ["string", "null"], maxLength: 100 } }, additionalProperties: false } } }, async (req, reply) => {
     const a = await requireStudent(req, reply);
     if (!a) return;
@@ -271,7 +275,7 @@ export default async function campusPublicRoutes(app) {
     if (!PHONE_RE.test(phone)) return reply.code(422).send({ error: "campus_phone_invalid", message: "手机号格式不正确" });
     if (!EMAIL_RE.test(email)) return reply.code(422).send({ error: "campus_email_invalid", message: "邮箱格式不正确" });
     const u = await app.prisma.$transaction(async (tx) => {
-      const row = await tx.campusApplicant.update({ where: { id: a.id }, data: { phone, email, wechat, ...(name ? { name } : {}), contactConfirmedAt: new Date() }, include: applicantInclude });
+      const row = await tx.campusApplicant.update({ where: { id: a.id }, data: { phone, email, ...(Object.hasOwn(req.body, "wechat") ? { wechat } : {}), ...(name ? { name } : {}), contactConfirmedAt: new Date() }, include: applicantInclude });
       await tx.candidate.update({ where: { id: a.candidateId }, data: { phone, email, ...(name ? { name } : {}) } });
       return row;
     });
@@ -330,7 +334,7 @@ export default async function campusPublicRoutes(app) {
       const c = await app.prisma.candidate.findUnique({ where: { id: a.candidateId }, select: { name: true, school: true, major: true, education: true, derived: true } });
       const extractedYear = c?.derived?.graduationYear;
       const gradYear = Number.isInteger(extractedYear) && extractedYear >= 1990 && extractedYear <= 2100 ? extractedYear : a.gradYear ?? 2026;
-      prefill = { name: a.name || (c?.name !== "待解析简历" ? c?.name : null) || null, school: a.school || c?.school || null, major: a.major || c?.major || null, degree: a.degree || c?.education || null, gradYear: a.gradYearSource === "manual" ? a.gradYear : gradYear };
+      prefill = { name: a.name || (c?.name !== "待解析简历" ? c?.name : null) || null, school: a.school || c?.school || null, major: a.major || c?.major || null, degree: a.degree || c?.education || null, gradYear: a.contactConfirmedAt || a.gradYearSource === "manual" ? a.gradYear : gradYear };
     }
     return { status: v.parseStatus, error: v.parseStatus === "failed" ? v.parseError : null, prefill };
   });
