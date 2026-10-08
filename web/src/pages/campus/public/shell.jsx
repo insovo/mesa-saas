@@ -21,6 +21,11 @@ export function CampusProvider({ children }) {
     finally { setReady(true); }
   }, [slug]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const refreshOnReturn = () => { if (document.visibilityState === "visible") load(); };
+    document.addEventListener("visibilitychange", refreshOnReturn);
+    return () => document.removeEventListener("visibilitychange", refreshOnReturn);
+  }, [load]);
   const logout = useCallback(() => { setCampusToken(null); setMe(null); }, []);
   const value = useMemo(() => ({ slug, session: data?.session || null, info: data, me, setMe, reload: load, error, logout, ready }), [slug, data, me, load, error, logout, ready]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { campus } from "../../../lib/campusApi.js";
 import { Button, I, LiquidLoader, toast } from "../../../components/Primitives.jsx";
 import { KindTag } from "../../../components/campus/ui.jsx";
+import CampusScoreBalls from "../../../components/campus/CampusScoreBalls.jsx";
 import { Shell, useCampus, base, gatePath, Spinner, toastErr, TaskBanner, ErrorCard } from "./shell.jsx";
 
 const STAGE_TEXT = {
@@ -38,23 +39,40 @@ export default function CampusMatch() {
     } finally { setBusy(false); }
   }, []);
 
-  // 首次:有未过期的完成结果就直接展示,否则自动发起
+  // 首次读取最新结果,包括招聘方发起的匹配。
   useEffect(() => {
     if (!ready || !me?.hasResume || !me?.contactConfirmed || started.current) return;
     started.current = true;
     (async () => {
       const latest = await campus.latestMatch().catch(() => null);
       if (latest && (latest.status === "running" || latest.status === "queued" || (latest.status === "done" && !latest.stale))) { setRun(latest); setLevel(latest.progress || 0); }
-      else await start();
+      else if (session?.matchEnabled) await start();
+      else setRun(latest);
     })();
-  }, [ready, me, start]);
+  }, [ready, me, session?.matchEnabled, start]);
+
+  useEffect(() => {
+    if (!ready || !me?.contactConfirmed || run === undefined) return;
+    let alive = true;
+    const refreshLatest = async () => {
+      if (document.visibilityState === "hidden") return;
+      try {
+        const latest = await campus.latestMatch();
+        if (!alive) return;
+        setRun((current) => current?.id !== latest?.id || current?.status !== latest?.status || current?.stale !== latest?.stale ? latest : current);
+      } catch { /* 保留当前结果 */ }
+    };
+    const timer = setInterval(refreshLatest, 10000);
+    document.addEventListener("visibilitychange", refreshLatest);
+    return () => { alive = false; clearInterval(timer); document.removeEventListener("visibilitychange", refreshLatest); };
+  }, [ready, me?.contactConfirmed, run !== undefined]);
 
   // 轮询 2s
   const active = run && (run.status === "queued" || run.status === "running");
   useEffect(() => {
     if (!active) return;
     const t = setInterval(async () => {
-      try { const r = await campus.matchRun(run.id); setRun(r); if (r.status === "done") reload(); }
+      try { const r = await campus.matchRun(run.id); setRun((current) => current?.id === r.id ? r : current); if (r.status === "done") reload(); }
       catch { /* ignore */ }
     }, 2000);
     return () => clearInterval(t);
@@ -84,7 +102,7 @@ export default function CampusMatch() {
   }
 
   if (!ready || run === undefined) return <Shell title="智能匹配" back><Spinner label="准备中…" /></Shell>;
-  if (session && !session.matchEnabled) return <Shell title="智能匹配" back><ErrorCard icon="sparkles" title="本专场未开放智能匹配" message="可直接查看岗位投递" /></Shell>;
+  if (session && !session.matchEnabled && !run) return <Shell title="智能匹配" back><ErrorCard icon="sparkles" title="本专场未开放智能匹配" message="可直接查看岗位投递" /></Shell>;
   if (run === null) {
     return (
       <Shell title="智能匹配" back>
@@ -130,7 +148,15 @@ export default function CampusMatch() {
   const groups = [["onsite", "现场面试岗位", "投递后可在现场参加面试"], ["referral", "内推岗位", "由内推人跟进,不安排现场面试"]];
   return (
     <Shell title="匹配结果" back>
-      <div className="flex items-center justify-between px-1">
+      <section className="rounded-card bg-white p-4 shadow-card">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h2 className="text-sm font-bold">岗位匹配度</h2>
+          <span className="text-[11px] text-gray-500">最近更新：{run.finishedAt ? new Date(run.finishedAt).toLocaleString("zh-CN", { hour12: false }) : "刚刚"}</span>
+        </div>
+        <CampusScoreBalls matches={results} showStatus />
+        <p className="mt-3 text-[11px] text-gray-500">招聘方重新匹配后，此处会显示最新结果。</p>
+      </section>
+      <div className="mt-4 flex items-center justify-between px-1">
         <p className="text-xs text-gray-600">按匹配度排序,现场面试岗位优先 · 还可投 {quotaLeft} 个</p>
         {run.stale ? <button type="button" onClick={start} className="text-xs text-brand font-bold">简历已更新,重新匹配</button> : <button type="button" onClick={start} disabled={busy} className="text-xs text-gray-500">重新匹配</button>}
       </div>

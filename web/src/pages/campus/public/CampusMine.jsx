@@ -59,7 +59,7 @@ export default function CampusMine() {
         </div>
       </div>
 
-      {session?.matchEnabled && (
+      {(session?.matchEnabled || me.latestMatchRun) && (
         <Link to={`${base(slug)}/match`} className="mt-4 flex items-center gap-3 bg-white rounded-card shadow-card p-4">
           <div className="w-10 h-10 rounded-xl bg-brand-50 text-brand flex items-center justify-center"><I name="sparkles" size={18} /></div>
           <div className="flex-1 min-w-0">

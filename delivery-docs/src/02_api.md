@@ -1206,6 +1206,8 @@ Header 必填:`X-Perf-Access-Key: <明文密钥>`
 
 AuthGuard 外,学生**不注册不登录**。会话:首次上传前 `POST /auth/start`(勾选告知)匿名建档并签发学生 JWT `{ sub: applicantId, aud: "campus-public", sid, tv }`(有效期 `campus.auth.jwt_ttl`,默认 30d),前端存 localStorage 并以 `Authorization: Bearer` 携带;后台 `authenticate` 拒绝该 aud(401 `bad_audience`),这里只收该 aud。限流档 90 次 / 分钟(含 2s 轮询)。学生入口链接:首页 `/campus/:slug`、直接投递 `/campus/:slug/jobs`、智能匹配 `/campus/:slug/match`(后台专场二维码弹窗三选一)。
 
+学生上传简历后,联系方式页只要求填写有效手机号和邮箱;提交后前端确保当前简历版本的匹配任务已启动(已有有效结果或进行中的任务则复用),学生可直接关闭页面,后台任务继续执行。返回同一设备可从首页或「我的投递」查看岗位匹配度;更换设备可用手机号 + 邮箱验证码找回。结果页以与后台候选人资料卡一致的小球展示本专场各岗位的最新展示分、岗位名及硬筛状态;重新进入或页面保持打开时会获取最新一次匹配任务,包括招聘人员在后台重新发起的结果。匹配启动失败不影响联系方式保存,学生可从结果页重试。
+
 | 方法 | 路径 | 鉴权 | 说明 |
 | --- | --- | --- | --- |
 | GET | `/session/current?slug=` | 可选 | 当前上线专场(或 slug 指定专场);返回 `session{ …, open, preview }`、`me` 摘要(有会话时)、`contactHints[]`、`pcUploadEnabled`;`?preview=1` + 后台 JWT 可看草稿 |

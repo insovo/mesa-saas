@@ -25,7 +25,7 @@ export default function CampusHome() {
         <div className="mt-5"><ErrorCard icon="calendar-x" title="本专场已结束投递" message="感谢关注,如有疑问请联系现场 HR" /></div>
       ) : (
         <div className="mt-5 space-y-3">
-          {session.matchEnabled && (
+          {(session.matchEnabled || me?.latestMatchRun) && (
             <BigButton icon="sparkles" title={me?.latestMatchRun?.status === "done" && !me.latestMatchRun.stale ? "查看我的匹配结果" : "不知道投什么岗位?"} desc={me?.latestMatchRun?.status === "done" && !me.latestMatchRun.stale ? "已完成匹配分析,现场面试岗位优先展示" : "上传简历,系统分析与各岗位的匹配度,现场面试岗位优先"} onClick={() => go(`${base(slug)}/match`)} />
           )}
           <BigButton tone="light" icon="briefcase" title="查看岗位详情,直接投递" desc={`最多可投递 ${session.maxApplyJobs} 个岗位`} to={`${base(slug)}/jobs`} />
