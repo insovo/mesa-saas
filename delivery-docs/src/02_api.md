@@ -1160,7 +1160,7 @@ Header 必填:`X-Perf-Access-Key: <明文密钥>`
 | POST | `/applicants/:id/resumes/:versionId/cancel` | 取消进行中的抽取(协作式,写审计 `campus.resume.cancel_parse`)|
 | POST | `/applicants/:id/match-runs` | HR 代跑智能匹配(专场总开关关闭时仍可代跑,岗位参与匹配开关照常生效);`GET /applicants/:id` 的 `matchRuns[]` 带原始分 / 分类 / 成本 |
 | POST | `/applicants/:id/match-runs/:runId/cancel` | 取消匹配 |
-| GET | `/by-candidate/:candidateId` | 候选人详情「校招」卡:`{ applicant, session, latestMatchRun }`,进行中的匹配含实时进度;非校招候选人 `{ applicant: null }`。需有该候选人的详情访问权限 |
+| GET | `/by-candidate/:candidateId` | 候选人详情「校招」卡:`{ applicant, session, latestMatchRun }`,进行中的匹配含实时进度;已完成匹配的 `results[]` 按评估 ID 补充 `analysis.hardFilter` 和 `analysis.items`，供岗位分数球查看硬筛条件与逐项优劣势，缺失评估时为 `null`;非校招候选人 `{ applicant: null }`。需有该候选人的详情访问权限 |
 | POST | `/by-candidate/:candidateId/match-runs` | admin、校招面试官、招聘官在候选人详情发起或重新发起智能匹配,返回 `202 { run }`;需有该候选人的详情访问权限,沿用简历及单任务限制;专场总开关只限制学生端,后台可代跑匹配 |
 | POST | `/applicants/:id/merge` | `{ candidateId }` 合并电脑端上传:源候选人须有附件、未绑定学生、未合并过(409 `campus_merge_self / campus_merge_linked / campus_merge_no_attachment / campus_merge_done`);作为新版本并触发抽取,次数不足自动 `extraUploads+1`,补空字段,源候选人 tags+`已合并到校招` 且置已淘汰,写 CandidateNote |
 | POST | `/applications/:id/interview` | `{ scheduledAt, location?, interviewer?, round?, notes? }` 安排现场面试:建 `Interview`(mode 线下 / category 校招 / link=地点)+ 投递→`onsite_interview` + 候选人→面试中;内推岗位 409 `campus_not_onsite` |
@@ -1178,7 +1178,7 @@ Header 必填:`X-Perf-Access-Key: <明文密钥>`
 
 校招评分：后台手动重评与学生 / HR 智能匹配统一采用最低 60 分的校招评估分；低于 60 的原始分保存在 `CandidateEvaluation.versions.rawOverallScore`，匹配结果的 `scoreRaw` 用于排序和审计，`scoreShown` 至少为 60（专场可设置更高展示下限）。校招评估不将全职工作年限和任职稳定性作为扣分项；课程项目、科研、竞赛和实习可作为岗位能力证据，GPA / 排名 / 奖学金 / 校园荣誉提供加分。硬性条件未满足仍保留对应判定与分类，不因分数下限消除风险提示。旧评价模型在评估时应用校招规则，不修改 HR 已保存的原模型；历史评估记录保持原值，重评后使用新规则。
 
-候选人详情「校招」卡显示每个岗位已有的展示分，包括硬性条件未通过的岗位；单个岗位评估未生成分数时显示「评分失败」，可用卡片上的智能匹配按钮重新运行。匹配中自动刷新进度与结果。
+候选人详情「校招」卡显示每个岗位已有的展示分，包括硬性条件未通过的岗位；点击分数球可查看未通过的硬性条件及其原因、其他缺项与劣势、已满足的亮点与优势，单个岗位评估未生成分数时显示「评分失败」。可用卡片上的智能匹配按钮重新运行，匹配中自动刷新进度与结果。
 
 ## 19.5 设置
 

@@ -45,3 +45,39 @@ test("候选人范围外的招聘官不能发起匹配,只读用户没有此入�
   assert.equal(forbidden.statusCode, 403);
   assert.equal(viewer.lookedUp(), false);
 });
+
+test("候选人详情的岗位匹配结果包含硬筛缺项和满足项", async (t) => {
+  const app = Fastify();
+  const results = [
+    { jobId: "job-1", title: "产品定义", scoreShown: 60, excluded: true, evaluationId: "evaluation-1", reasons: [] },
+    { jobId: "job-2", title: "项目管理", scoreShown: 89, evaluationId: "evaluation-2", reasons: [] },
+  ];
+  app.decorate("prisma", {
+    campusApplicant: { findUnique: async () => ({
+      id: "applicant-1", candidateId: "candidate-1", sessionId: "session-1", session: { id: "session-1", maxResumeUploads: 3 },
+      resumeVersions: [], applications: [], matchRuns: [{ id: "run-1", status: "done", taskId: null, results }],
+    }) },
+    candidateEvaluation: { findMany: async ({ where, select }) => {
+      assert.deepEqual(where, { id: { in: ["evaluation-1", "evaluation-2"] }, candidateId: "candidate-1" });
+      assert.deepEqual(select, { id: true, hardFilter: true, items: true });
+      return [{
+        id: "evaluation-1",
+        hardFilter: { result: "FAIL", items: [{ key: "grad-year", label: "2026 届毕业生", tier: "MUST", result: "FAIL", reason: "毕业年份 2027" }] },
+        items: [{ key: "grad-year", label: "2026 届毕业生", tier: "MUST", verdict: "不满足", raw: { code: { reason: "毕业年份 2027" } } }, { key: "degree", label: "本科及以上", tier: "MUST", verdict: "满足", raw: {} }],
+      }];
+    } },
+  });
+  app.decorate("authenticate", async (req) => {
+    req.user = { sub: "admin-1", role: "ADMIN" };
+    req.permsCache = { access: { userId: "admin-1", role: "ADMIN", isActive: true, isAdmin: true, pageKeys: ["candidate.detail"], moduleKeys: [] } };
+  });
+  await app.register(campusRoutes, { prefix: "/api/campus" });
+  t.after(() => app.close());
+
+  const response = await app.inject({ method: "GET", url: "/api/campus/by-candidate/candidate-1" });
+  assert.equal(response.statusCode, 200);
+  const [failed, missing] = response.json().latestMatchRun.results;
+  assert.equal(failed.analysis.hardFilter.items[0].reason, "毕业年份 2027");
+  assert.deepEqual(failed.analysis.items.map(({ label, verdict }) => [label, verdict]), [["2026 届毕业生", "不满足"], ["本科及以上", "满足"]]);
+  assert.equal(missing.analysis, null);
+});

@@ -2,8 +2,66 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { resources } from "../../lib/api.js";
-import { I, LiquidLoader, toast } from "../Primitives.jsx";
+import { I, LiquidLoader, Modal, toast } from "../Primitives.jsx";
 import { KindTag, AppStatusPill, ParseTag, fmtDateTime } from "./ui.jsx";
+
+function MatchAnalysisModal({ result, stale, onClose }) {
+  if (!result) return null;
+  const hardItems = result.analysis?.hardFilter?.items || [];
+  const items = result.analysis?.items || [];
+  const failed = hardItems.filter((item) => item.result === "FAIL");
+  const failedKeys = new Set(failed.map((item) => item.key));
+  const gaps = [
+    ...failed.map((item) => ({ ...item, verdict: "硬筛未过" })),
+    ...items.filter((item) => ["不满足", "部分满足", "未提及", "待确认"].includes(item.verdict) && !failedKeys.has(item.key)),
+  ];
+  const strengths = items.filter((item) => item.verdict === "满足");
+  const fallbackGaps = (result.reasons || []).filter((reason) => reason.kind === "gap");
+  const fallbackStrengths = (result.reasons || []).filter((reason) => reason.kind === "match");
+
+  return (
+    <Modal open onClose={onClose} maxWidth="max-w-2xl">
+      <div className="p-5 sm:p-6">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs text-[#707EAE]">JD 适配分析{stale ? " · 旧版简历结果" : ""}</p>
+            <h3 className="mt-1 text-lg font-bold text-[#1B254B] break-words">{result.title}</h3>
+          </div>
+          <button type="button" onClick={onClose} aria-label="关闭岗位适配分析" className="shrink-0 rounded-lg p-1.5 text-[#707EAE] hover:bg-[#F4F7FE] hover:text-[#1B254B]"><I name="x" size={18} /></button>
+        </div>
+        <div className="mt-4 flex items-center gap-3">
+          {result.scoreShown != null && <LiquidLoader size={48} level={result.scoreShown} label={result.scoreShown} instant />}
+          <div className="text-xs text-[#707EAE]">
+            <p>{result.scoreShown == null ? "暂无匹配分" : "岗位匹配度"}</p>
+            {result.excluded && <p className="mt-1 font-semibold text-amber-700">硬筛未过{failed.length ? ` · ${failed.length} 项条件未通过` : ""}</p>}
+            {result.error && <p className="mt-1 text-rose-600">评分失败，暂无完整分析</p>}
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          <section className="rounded-xl border border-amber-100 bg-amber-50/50 p-4">
+            <h4 className="flex items-center gap-2 text-sm font-bold text-amber-900"><I name="alert-triangle" size={15} />缺项与劣势</h4>
+            {gaps.length > 0 ? (
+              <ul className="mt-3 space-y-3">
+                {gaps.map((item, index) => <li key={item.key || index} className="text-xs text-[#1B254B]">
+                  <div className="flex items-start gap-2"><span className="mt-0.5 shrink-0 text-amber-600">•</span><span className="min-w-0 break-words"><span className="font-semibold">{item.label}</span><span className="ml-1 text-amber-700">{item.verdict}</span>{item.reason && <span className="mt-0.5 block text-[#707EAE]">{item.reason}</span>}</span></div>
+                </li>)}
+              </ul>
+            ) : fallbackGaps.length > 0 ? <ul className="mt-3 space-y-2">{fallbackGaps.map((reason, index) => <li key={index} className="text-xs text-[#1B254B] break-words">• {reason.text}</li>)}</ul> : <p className="mt-3 text-xs text-[#707EAE]">暂无明确缺项</p>}
+          </section>
+          <section className="rounded-xl border border-green-100 bg-green-50/50 p-4">
+            <h4 className="flex items-center gap-2 text-sm font-bold text-green-800"><I name="check-circle-2" size={15} />亮点与优势</h4>
+            {strengths.length > 0 ? (
+              <ul className="mt-3 space-y-3">
+                {strengths.map((item, index) => <li key={item.key || index} className="flex items-start gap-2 text-xs text-[#1B254B]"><span className="mt-0.5 shrink-0 text-green-600">•</span><span className="min-w-0 break-words"><span className="font-semibold">{item.label}</span>{item.reason && <span className="mt-0.5 block text-[#707EAE]">{item.reason}</span>}</span></li>)}
+              </ul>
+            ) : fallbackStrengths.length > 0 ? <ul className="mt-3 space-y-2">{fallbackStrengths.map((reason, index) => <li key={index} className="text-xs text-[#1B254B] break-words">• {reason.text}</li>)}</ul> : <p className="mt-3 text-xs text-[#707EAE]">暂无明确匹配项</p>}
+          </section>
+        </div>
+      </div>
+    </Modal>
+  );
+}
 
 export function useCampusCandidate(candidateId) {
   const [data, setData] = useState(undefined);
@@ -37,9 +95,12 @@ export function useCampusCandidate(candidateId) {
 }
 
 export function CampusMatchPanel({ campus, currentUser }) {
+  const [selectedJobId, setSelectedJobId] = useState(null);
   const { data, active, starting, startMatch } = campus;
+  useEffect(() => setSelectedJobId(null), [data?.latestMatchRun?.id]);
   if (!data?.applicant) return null;
   const { applicant: a, latestMatchRun: run } = data;
+  const selectedResult = run?.results?.find((result) => result.jobId === selectedJobId) || null;
   const canMatch = ["ADMIN", "CAMPUS_INTERVIEWER", "RECRUITER"].includes(currentUser?.role);
   if (!canMatch && !run) return null;
   return (
@@ -55,15 +116,16 @@ export function CampusMatchPanel({ campus, currentUser }) {
       {run?.status === "done" && Array.isArray(run.results) && run.results.length > 0 && (
         <div className="flex gap-2 overflow-x-auto pb-1">
           {run.results.map((r) => (
-            <div key={r.jobId} className="flex flex-col items-center shrink-0 w-16" title={r.error ? `${r.title}：评分失败 (${r.error})` : r.excluded ? `${r.title}：硬性条件未通过` : r.title}>
+            <button key={r.jobId} type="button" onClick={() => setSelectedJobId(r.jobId)} aria-label={`查看${r.title}的 JD 适配分析`} className="flex flex-col items-center shrink-0 w-16 rounded-lg hover:bg-[#F4F7FE] focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand" title={r.error ? `${r.title}：评分失败 (${r.error})` : r.excluded ? `${r.title}：硬性条件未通过` : r.title}>
               {r.scoreShown == null ? <span className="w-10 h-10 rounded-full bg-gray-100 text-gray-400 flex items-center justify-center text-sm">—</span> : <LiquidLoader size={40} level={r.scoreShown} label={r.scoreShown} instant />}
               <span className="text-[10px] text-gray-600 mt-1 truncate w-full text-center">{r.title}</span>
               {r.scoreShown == null && <span className="text-[10px] text-rose-500">评分失败</span>}
               {r.scoreShown != null && r.excluded && <span className="text-[10px] text-amber-600">硬筛未过</span>}
-            </div>
+            </button>
           ))}
         </div>
       )}
+      <MatchAnalysisModal result={selectedResult} stale={run?.stale} onClose={() => setSelectedJobId(null)} />
     </div>
   );
 }

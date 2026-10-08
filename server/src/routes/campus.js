@@ -232,6 +232,18 @@ function applicantShape(a, { showContact, versionsAllowed }) {
   };
 }
 
+function matchAnalysisShape(evaluation) {
+  const hardItems = Array.isArray(evaluation.hardFilter?.items) ? evaluation.hardFilter.items : [];
+  const items = Array.isArray(evaluation.items) ? evaluation.items : [];
+  return {
+    hardFilter: {
+      result: evaluation.hardFilter?.result || "UNKNOWN",
+      items: hardItems.map(({ key, label, tier, result, reason }) => ({ key, label, tier, result, reason })),
+    },
+    items: items.map(({ key, label, tier, verdict, raw }) => ({ key, label, tier, verdict, reason: raw?.code?.reason || null })),
+  };
+}
+
 function bestMatchScore(run, currentResumeVersionId) {
   if (!run || run.resumeVersionId !== currentResumeVersionId || !Array.isArray(run.results)) return null;
   const scores = run.results.map((r) => shownScore(r?.scoreShown ?? r?.scoreRaw, 60)).filter((score) => typeof score === "number" && Number.isFinite(score));
@@ -953,7 +965,19 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
     if (!a) return { applicant: null };
     const access = await loadUserAccess(req);
     const run = a.matchRuns[0] || null;
-    return { applicant: applicantShape(a, { showContact: hasModule(access, "candidate.contact"), versionsAllowed: uploadsAllowed(a.session, a) }), session: a.session, latestMatchRun: run ? runShape(run, run.taskId ? await getTask(app, run.taskId) : null, { student: false }) : null };
+    const latestMatchRun = run ? runShape(run, run.taskId ? await getTask(app, run.taskId) : null, { student: false }) : null;
+    if (latestMatchRun?.status === "done") {
+      const ids = [...new Set(latestMatchRun.results.map((result) => result.evaluationId).filter(Boolean))];
+      if (ids.length) {
+        const evaluations = await app.prisma.candidateEvaluation.findMany({
+          where: { id: { in: ids }, candidateId: a.candidateId },
+          select: { id: true, hardFilter: true, items: true },
+        });
+        const byId = new Map(evaluations.map((evaluation) => [evaluation.id, matchAnalysisShape(evaluation)]));
+        latestMatchRun.results = latestMatchRun.results.map((result) => ({ ...result, analysis: byId.get(result.evaluationId) || null }));
+      }
+    }
+    return { applicant: applicantShape(a, { showContact: hasModule(access, "candidate.contact"), versionsAllowed: uploadsAllowed(a.session, a) }), session: a.session, latestMatchRun };
   });
 
   app.post("/by-candidate/:candidateId/match-runs", async (req, reply) => {
