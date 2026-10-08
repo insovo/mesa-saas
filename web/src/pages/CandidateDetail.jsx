@@ -39,6 +39,7 @@ import { getUser } from "../lib/auth.js";
 import { useHasModule } from "../lib/authContext.jsx";
 import { LiquidLoader } from "../components/Primitives.jsx";
 import ReparseConfirmModal from "../components/ReparseConfirmModal.jsx";
+import DeleteCandidateModal from "../components/DeleteCandidateModal.jsx";
 import MarkdownBullets from "../components/MarkdownBullets.jsx";
 import InterviewEvalCard from "../components/InterviewEvalCard.jsx";
 import CampusCandidateCard, { CampusMatchPanel, useCampusCandidate } from "../components/campus/CampusCandidateCard.jsx";
@@ -2921,6 +2922,7 @@ function CandidateDetail() {
   const [reportBusy, setReportBusy] = useState(false);
   const tagName = useTaxonomy();
   const [shareOpen, setShareOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
   const [statusSaving, setStatusSaving] = useState(false);
   const [jdPickerOpen, setJdPickerOpen] = useState(false);
@@ -3199,16 +3201,6 @@ function CandidateDetail() {
   if (err) return <Card className="p-6 text-red-500 text-sm">{err}</Card>;
   if (!c) return <LoadingBlock label="加载候选人..." height="h-64" />;
 
-  async function onDelete() {
-    if (!confirm(`确定删除 ${c.name} 吗?${me?.role === "CAMPUS_INTERVIEWER" ? "\n关联的校招登记、投递和简历版本也会被删除，无法恢复。" : ""}`)) return;
-    try {
-      await resources.candidates.remove(c.id);
-      toast("已删除", "success");
-      navigate("/candidates"); // 删除后当前详情页数据已失效,跳回列表(否则页面仍显示已删候选人)
-    }
-    catch (e) { toast(e.message, "error"); }
-  }
-
   return (
     <>
     <div className="mb-4">
@@ -3390,7 +3382,7 @@ function CandidateDetail() {
           )}
           <div className="hidden lg:block lg:flex-1" />
           {canDelete && (
-            <Button variant="danger" className="w-full min-[380px]:col-span-2 lg:w-auto lg:col-auto" onClick={onDelete} icon={<I name="trash-2" size={14} />}>删除候选人</Button>
+            <Button variant="danger" className="w-full min-[380px]:col-span-2 lg:w-auto lg:col-auto" onClick={() => setDeleteOpen(true)} icon={<I name="trash-2" size={14} />}>删除候选人</Button>
           )}
         </div>
 
@@ -3595,6 +3587,7 @@ function CandidateDetail() {
       hasProfile={!!c.profile}
     />
     <ShareModal open={shareOpen} onClose={() => setShareOpen(false)} candidate={c} />
+    {deleteOpen && <DeleteCandidateModal candidate={c} onClose={() => setDeleteOpen(false)} onDeleted={() => navigate("/candidates")} />}
     </>
   );
 }

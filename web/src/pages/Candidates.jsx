@@ -17,6 +17,7 @@ import {
 import { STATUS_ORDER, candidateExpText, hasWorkExperience } from "../lib/constants.js";
 import { useMe } from "../lib/authContext.jsx";
 import CampusScoreBalls from "../components/campus/CampusScoreBalls.jsx";
+import DeleteCandidateModal from "../components/DeleteCandidateModal.jsx";
 
 // Helpers — Upload.jsx 已经有相同函数,后续可抽 lib/format.js 复用
 function fmtDateTime(iso) {
@@ -73,6 +74,7 @@ export default function Candidates() {
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
+  const [deletingCandidate, setDeletingCandidate] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [err, setErr] = useState("");
   // 批量操作
@@ -253,17 +255,6 @@ export default function Candidates() {
       load();
     } catch (e) {
       toast(e.response?.data?.message || "创建失败", "error");
-    }
-  }
-
-  async function onDelete(id, name) {
-    if (!confirm(`确定删除 ${name} 吗?${campusInterviewer ? "\n关联的校招登记、投递和简历版本也会被删除，无法恢复。" : ""}`)) return;
-    try {
-      await resources.candidates.remove(id);
-      toast("已删除", "success");
-      load();
-    } catch (e) {
-      toast(e.response?.data?.message || "删除失败", "error");
     }
   }
 
@@ -468,7 +459,7 @@ export default function Candidates() {
                       <button onClick={() => navigate(`/candidates/${c.externalId || c.id}`)} className="w-7 h-7 rounded-full bg-lightPrimary text-gray-700 hover:text-brand flex items-center justify-center" title="查看详情">
                         <I name="arrow-right" size={12} />
                       </button>
-                      <button onClick={() => onDelete(c.id, c.name)} className="w-7 h-7 rounded-full bg-red-50 text-red-500 hover:bg-red-100 flex items-center justify-center" title="删除">
+                      <button onClick={() => setDeletingCandidate(c)} className="w-7 h-7 rounded-full bg-red-50 text-red-500 hover:bg-red-100 flex items-center justify-center" title="删除">
                         <I name="trash-2" size={12} />
                       </button>
                     </div>
@@ -585,6 +576,7 @@ export default function Candidates() {
           </div>
         </div>
       </Modal>
+      {deletingCandidate && <DeleteCandidateModal candidate={deletingCandidate} onClose={() => setDeletingCandidate(null)} onDeleted={() => { setDeletingCandidate(null); load(); }} />}
     </div>
   );
 }
