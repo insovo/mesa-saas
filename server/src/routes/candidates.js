@@ -10,6 +10,7 @@ import { toDisplayName, resolveNoteAuthorNames } from "../lib/displayName.js";
 import {
   loadUserAccess,
   buildCandidateScopeWhere,
+  buildJobScopeWhere,
   assertCandidateAccess,
   filterCandidateByModules,
   hasModule,
@@ -132,6 +133,70 @@ function normalizeMarkdownFields(data) {
 
 export default async function candidatesRoutes(app) {
   app.addHook("preHandler", app.authenticate);
+
+  async function recommendationContext(req, reply) {
+    const candidateScope = await buildCandidateScopeWhere(req);
+    const idWhere = whereByIdOrExternal(req.params.id);
+    const candidate = await app.prisma.candidate.findFirst({
+      where: candidateScope ? { AND: [idWhere, candidateScope] } : idWhere,
+      select: { id: true, campusApplicant: { select: { sessionId: true } } },
+    });
+    if (!candidate?.campusApplicant) {
+      reply.code(404).send({ error: "not_found" });
+      return null;
+    }
+    const jobScope = await buildJobScopeWhere(req);
+    const sessionJobs = await app.prisma.campusSessionJob.findMany({
+      where: { sessionId: candidate.campusApplicant.sessionId, ...(jobScope ? { job: jobScope } : {}) },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      select: { job: { select: { id: true, title: true } } },
+    });
+    return { candidateId: candidate.id, options: sessionJobs.map(({ job }) => job) };
+  }
+
+  async function recommendationResponse(context) {
+    const history = await app.prisma.candidateJobRecommendation.findMany({
+      where: { candidateId: context.candidateId },
+      orderBy: { id: "desc" },
+      select: { id: true, jobId: true, jobTitle: true, actorName: true, createdAt: true },
+    });
+    return { current: history[0] || null, history, options: context.options };
+  }
+
+  app.get("/:id/job-recommendation", async (req, reply) => {
+    const context = await recommendationContext(req, reply);
+    if (!context) return reply;
+    return recommendationResponse(context);
+  });
+
+  app.put("/:id/job-recommendation", { schema: { body: {
+    type: "object", required: ["jobId"], additionalProperties: false,
+    properties: { jobId: { type: "string", format: "uuid", nullable: true } },
+  } } }, async (req, reply) => {
+    const access = await loadUserAccess(req);
+    if (!hasModule(access, "candidate.edit") && access.role !== "CAMPUS_INTERVIEWER") {
+      return reply.code(403).send({ error: "forbidden", message: "无编辑权限" });
+    }
+    const context = await recommendationContext(req, reply);
+    if (!context) return reply;
+    const job = context.options.find((option) => option.id === req.body.jobId);
+    if (req.body.jobId && !job) return reply.code(400).send({ error: "job_not_in_session", message: "请选择该专场内可见的岗位" });
+
+    const previous = await app.prisma.candidateJobRecommendation.findFirst({
+      where: { candidateId: context.candidateId }, orderBy: { id: "desc" }, select: { jobId: true },
+    });
+    if ((previous?.jobId || null) === req.body.jobId) return recommendationResponse(context);
+
+    const actor = await app.prisma.user.findUnique({ where: { id: req.user.sub }, select: { name: true, email: true } });
+    await app.prisma.candidateJobRecommendation.create({ data: {
+      candidateId: context.candidateId,
+      jobId: job?.id || null,
+      jobTitle: job?.title || null,
+      actorId: req.user.sub,
+      actorName: toDisplayName(actor?.name, actor?.email || req.user.email),
+    } });
+    return recommendationResponse(context);
+  });
 
   // List + filter + search — 接入数据范围
   app.get("/", { schema: { querystring: LIST_QUERY } }, async (req) => {

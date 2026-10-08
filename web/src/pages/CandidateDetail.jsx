@@ -42,6 +42,7 @@ import ReparseConfirmModal from "../components/ReparseConfirmModal.jsx";
 import MarkdownBullets from "../components/MarkdownBullets.jsx";
 import InterviewEvalCard from "../components/InterviewEvalCard.jsx";
 import CampusCandidateCard, { CampusMatchPanel, useCampusCandidate } from "../components/campus/CampusCandidateCard.jsx";
+import CandidateJobRecommendation from "../components/campus/CandidateJobRecommendation.jsx";
 import JdDescModal from "../components/JdDescModal.jsx";
 import { DurationPicker, MaxViewsPicker, BotShareSettings } from "../components/ShareDefaultsPanel.jsx";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "../components/ui/chart.jsx";
@@ -3259,7 +3260,7 @@ function CandidateDetail() {
               {canEdit && <button type="button" onClick={openReparse} disabled={reparsing} className="text-[#422AFB] hover:underline font-bold disabled:opacity-50">去解析</button>}
             </p>
           )}
-          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between 2xl:flex-col">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between 2xl:flex-col">
             <div className="flex items-start gap-3.5 min-w-0">
               <Avatar name={c.name} animal={c.animal} src={c.avatar} size={64} />
               <div className="flex-1 min-w-0">
@@ -3277,6 +3278,7 @@ function CandidateDetail() {
                 </div>
               </div>
             </div>
+            {campus.data?.applicant && <CandidateJobRecommendation key={c.id} candidateId={c.id} canEdit={canEdit || me.role === "CAMPUS_INTERVIEWER"} />}
             <CampusMatchPanel campus={campus} currentUser={me} />
           </div>
 

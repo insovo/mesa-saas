@@ -163,6 +163,20 @@ export function normalizeLanguageLevel(lang) {
   return null;
 }
 
+export function explicitLanguageCertificates(languages) {
+  const tags = new Set();
+  for (const language of Array.isArray(languages) ? languages : []) {
+    const facts = [language?.levelRaw, language?.raw, ...(Array.isArray(language?.exams) ? language.exams : []).map((exam) => exam?.name)];
+    for (const fact of facts) {
+      const value = String(fact || "");
+      if (/未通过|未取得|未考|未获|未提及/.test(value)) continue;
+      if (/\bCET[-\s]?6\b|英语六级|^六级$/i.test(value)) tags.add("cert.cet6");
+      if (/\bCET[-\s]?4\b|英语四级|^四级$/i.test(value)) tags.add("cert.cet4");
+    }
+  }
+  return [...tags];
+}
+
 // 能力标签:skills.* 的 tag ∪ experience/projects 的 domainTags,按出现次数 + 所在经历时长加权
 function capabilityTags(profile, nowAbs) {
   const score = new Map();
@@ -234,7 +248,10 @@ export function deriveProfile(profile, now = new Date()) {
       if (!prev || LANGUAGE_LEVEL_RANK[lvl] > LANGUAGE_LEVEL_RANK[prev]) languageLevels[id] = lvl;
     }
   }
-  const certificateTags = [...new Set((Array.isArray(p.certificates) ? p.certificates : []).map((c) => c?.tag || normalizeTag("certificates", c?.name)).filter((t) => t && !String(t).startsWith("other:")))];
+  const certificateTags = [...new Set([
+    ...(Array.isArray(p.certificates) ? p.certificates : []).map((c) => c?.tag || normalizeTag("certificates", c?.name)).filter((t) => t && !String(t).startsWith("other:")),
+    ...explicitLanguageCertificates(p.languages),
+  ])];
   const toolTags = [...new Set((p.skills?.tools || []).map((t) => t?.tag).filter((t) => t && !String(t).startsWith("other:")))];
   const city = normalizeCity(p.identity?.currentCity);
 

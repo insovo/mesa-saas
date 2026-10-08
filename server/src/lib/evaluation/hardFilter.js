@@ -6,7 +6,7 @@
 // 输出:{ result: "PASS"|"FAIL"|"UNKNOWN", items: [{ key,label,tier,field,op,value,candidate,result,reason }] }
 
 import { inFamily } from "../taxonomy/index.js";
-import { degreeRankOf, LANGUAGE_LEVEL_RANK } from "../profile/derive.js";
+import { degreeRankOf, explicitLanguageCertificates, LANGUAGE_LEVEL_RANK } from "../profile/derive.js";
 
 export const CODE_FIELDS = new Set([
   "derived.highestDegree", "derived.highestMajorTag", "derived.totalYears", "derived.industryYears", "derived.domainYears", "derived.functionYears",
@@ -18,6 +18,9 @@ export const CODE_OPS = new Set([">=", ">", "==", "in", "in_family", "has_all", 
 
 // 从 candidate 取字段值;支持 "derived.industryYears.auto" 这类带子键路径(取词表祖先聚合值)
 function getPath(cand, field) {
+  if (field === "derived.certificateTags") {
+    return [...new Set([...(Array.isArray(cand?.derived?.certificateTags) ? cand.derived.certificateTags : []), ...explicitLanguageCertificates(cand?.profile?.languages)])];
+  }
   const parts = String(field || "").split(".");
   // 前两段是对象路径(derived.industryYears),其后整体是一个 tag 键(可含点号,如 quality.overseas)
   const head = parts.slice(0, 2);
@@ -29,6 +32,9 @@ function getPath(cand, field) {
   }
   if (!tail) return cur;
   return cur == null ? undefined : cur[tail];
+}
+function tagMeetsRequirement(actual, required) {
+  return inFamily(actual, [required]) || (actual === "cert.cet6" && required === "cert.cet4");
 }
 function isEmpty(v) {
   return v == null || v === "" || (Array.isArray(v) && v.length === 0) || (typeof v === "object" && !Array.isArray(v) && Object.keys(v).length === 0);
@@ -56,14 +62,14 @@ export function evaluateCodeRule(rule, cand) {
     case "has_all": {
       const arr = Array.isArray(v) ? v : [];
       const want = [].concat(value);
-      const missing = want.filter((w) => !arr.some((x) => inFamily(x, [w])));
-      return verdict(missing.length === 0, arr, missing.length ? `缺少 ${missing.join(",")}` : `含 ${want.join(",")}`);
+      const missing = want.filter((w) => !arr.some((x) => tagMeetsRequirement(x, w)));
+      return verdict(missing.length === 0, arr, missing.length ? `缺少 ${missing.join(",")}` : want.length === 1 && want[0] === "cert.cet4" && arr.includes("cert.cet6") ? "CET-6 满足 CET-4 要求" : `含 ${want.join(",")}`);
     }
     case "has_any": {
       const arr = Array.isArray(v) ? v : [];
       const want = [].concat(value);
-      const hit = want.filter((w) => arr.some((x) => inFamily(x, [w])));
-      return verdict(hit.length > 0, arr, hit.length ? `命中 ${hit.join(",")}` : `均未命中 ${want.join(",")}`);
+      const hit = want.filter((w) => arr.some((x) => tagMeetsRequirement(x, w)));
+      return verdict(hit.length > 0, arr, hit.includes("cert.cet4") && arr.includes("cert.cet6") ? "CET-6 满足 CET-4 要求" : hit.length ? `命中 ${hit.join(",")}` : `均未命中 ${want.join(",")}`);
     }
     case "degree>=": {
       const r = degreeRankOf(v), need = degreeRankOf(value);

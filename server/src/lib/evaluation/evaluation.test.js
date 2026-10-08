@@ -105,6 +105,10 @@ test("hardFilter 三态:PASS / FAIL / UNKNOWN / MISMATCH", () => {
   assert.equal(evaluateCodeRule({ field: "derived.currentCityNorm", op: "city_in", value: ["上海"] }, { derived: { currentCityNorm: "苏州" } }).result, "MISMATCH");
   assert.equal(evaluateCodeRule({ field: "derived.industryYears.semi", op: ">=", value: 3 }, CAND).result, "UNKNOWN");
   assert.equal(evaluateCodeRule({ field: "profile.identity.name", op: "==", value: "李明" }, CAND).result, "UNKNOWN"); // 不在白名单
+  const cet6Candidate = { profile: { languages: [{ name: "英语", levelRaw: "CET-6" }] }, derived: { certificateTags: [] } };
+  const cet4Rule = { field: "derived.certificateTags", op: "has_any", value: ["cert.cet4"] };
+  assert.equal(evaluateCodeRule(cet4Rule, cet6Candidate).result, "PASS");
+  assert.equal(evaluateCodeRule({ ...cet4Rule, value: ["cert.cet6"] }, { derived: { certificateTags: ["cert.cet4"] } }).result, "FAIL");
   // unknownPolicy=fail(HR 显式)才把 UNKNOWN 判 FAIL
   const hf2 = runHardFilter({ requirements: [{ key: "k", label: "l", tier: "MUST", method: "code", unknownPolicy: "fail", code: { field: "derived.industryYears.semi", op: ">=", value: 3 } }] }, CAND);
   assert.equal(hf2.result, "FAIL");

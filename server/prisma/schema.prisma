@@ -210,6 +210,7 @@ model Candidate {
   evaluations            CandidateEvaluation[]
   performanceEvaluations PerformanceEvaluation[]
   campusApplicant        CampusApplicant?
+  jobRecommendations    CandidateJobRecommendation[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -220,6 +221,21 @@ model Candidate {
   @@index([jobId])
   @@index([classification])
   @@map("candidates")
+}
+
+// 建议岗位的每次选择都留存快照；最新一条即当前建议，不影响 Candidate.jobId/评分。
+model CandidateJobRecommendation {
+  id          Int       @id @default(autoincrement())
+  candidateId String    @map("candidate_id") @db.Uuid
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  jobId       String?   @map("job_id") @db.Uuid
+  jobTitle    String?   @map("job_title")
+  actorId     String?   @map("actor_id") @db.Uuid
+  actorName   String    @map("actor_name")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([candidateId, id])
+  @@map("candidate_job_recommendations")
 }
 
 model Job {

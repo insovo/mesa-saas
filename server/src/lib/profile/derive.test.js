@@ -48,6 +48,12 @@ test("normalizeYm / 语言阶梯", () => {
   assert.equal(normalizeLanguageLevel({ levelRaw: "A2" }), "basic");
 });
 
+test("英语六级考试事实也计入证书标签，但普通 intermediate 不推断六级", () => {
+  assert.deepEqual(deriveProfile({ languages: [{ name: "英语", levelRaw: "CET-6" }] }, NOW).certificateTags, ["cert.cet6"]);
+  assert.deepEqual(deriveProfile({ languages: [{ name: "英语", exams: [{ name: "英语六级", score: "548" }] }] }, NOW).certificateTags, ["cert.cet6"]);
+  assert.deepEqual(deriveProfile({ languages: [{ name: "英语", level: "intermediate" }] }, NOW).certificateTags, []);
+});
+
 test("sanitizeProfile 词表归一 + 校园/证书/课程 保留 + PII 白名单", () => {
   const { profile, warnings } = sanitizeProfile({ ...SAMPLE, identity: { ...SAMPLE.identity, idNumber: "310101..." } }, SOURCE);
   assert.equal(profile.schemaVersion, "resume.v1");

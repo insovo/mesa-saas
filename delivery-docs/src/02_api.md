@@ -97,6 +97,14 @@ Query:
 
 `:id` 可以是 UUID 或 externalId(如 `c-001`)。
 
+### 校招建议岗位与操作历史
+
+- `GET /api/candidates/:id/job-recommendation`：返回 `{ current, history, options }`。`options` 仅含候选人所在专场且当前账号可见的岗位；`current` 为最新操作，`history` 按时间倒序显示岗位名称、操作人和时间。
+- `PUT /api/candidates/:id/job-recommendation`：请求体 `{ "jobId": "岗位 UUID" }`，传 `null` 清除建议。需候选人编辑权限，校招面试官可操作其范围内的学生；只能选择当前专场可见岗位。重复选择不新增历史。建议岗位独立于关联 JD、投递岗位和匹配分数。
+- 每次变更追加一条带岗位名和操作人快照的记录，岗位或账号以后变更时仍保留历史展示。
+
+校招智能匹配的证书规则会从结构化语言考试记录识别明确取得的 CET-4/CET-6；CET-6 满足 CET-4 要求。只有 `intermediate` 等宽泛语言等级时不会推断持证。规则修正后，已有评分需重新运行智能匹配才会更新历史快照。
+
 ## 3.3 POST /api/candidates
 
 请求体(关键字段):
