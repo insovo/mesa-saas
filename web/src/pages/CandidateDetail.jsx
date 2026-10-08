@@ -41,7 +41,7 @@ import { LiquidLoader } from "../components/Primitives.jsx";
 import ReparseConfirmModal from "../components/ReparseConfirmModal.jsx";
 import MarkdownBullets from "../components/MarkdownBullets.jsx";
 import InterviewEvalCard from "../components/InterviewEvalCard.jsx";
-import CampusCandidateCard from "../components/campus/CampusCandidateCard.jsx";
+import CampusCandidateCard, { CampusMatchPanel, useCampusCandidate } from "../components/campus/CampusCandidateCard.jsx";
 import JdDescModal from "../components/JdDescModal.jsx";
 import { DurationPicker, MaxViewsPicker, BotShareSettings } from "../components/ShareDefaultsPanel.jsx";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "../components/ui/chart.jsx";
@@ -2918,6 +2918,7 @@ function CandidateDetail() {
   const [jdMatchOpen, setJdMatchOpen] = useState(false);
   const [pendingJobId, setPendingJobId] = useState(""); // ⬅ 切 JD 确认流
   const me = getUser() || { id: null, name: "未知用户", role: "VIEWER" };
+  const campus = useCampusCandidate(c?.id);
 
   async function load() {
     try { setC(await resources.candidates.detail(id)); }
@@ -3185,7 +3186,6 @@ function CandidateDetail() {
 
   if (err) return <Card className="p-6 text-red-500 text-sm">{err}</Card>;
   if (!c) return <LoadingBlock label="加载候选人..." height="h-64" />;
-  const currentScoringJobTitle = jobs.find((job) => job.id === c.jobId)?.title || c.job?.title || (c.jobId ? c.appliedFor : null) || "未关联岗位";
 
   async function onDelete() {
     if (!confirm(`确定删除 ${c.name} 吗?${me?.role === "CAMPUS_INTERVIEWER" ? "\n关联的校招登记、投递和简历版本也会被删除，无法恢复。" : ""}`)) return;
@@ -3216,17 +3216,6 @@ function CandidateDetail() {
 
         {/* === Profile Card === */}
         <Card className="w-full 2xl:w-auto p-4 md:p-5">
-          <div className="mb-3 flex justify-end">
-            {!c.jobId && canEdit ? (
-              <button type="button" onClick={openJdMatchConfirm} disabled={matching} className="min-w-0 text-right text-[15px] leading-5 text-[#707EAE] [overflow-wrap:anywhere] hover:text-[#422AFB] disabled:opacity-50" title="选择 JD 并进行三层评分">
-                当前评分岗位：<span className="font-semibold text-[#52617E] underline underline-offset-2">{currentScoringJobTitle}</span>
-              </button>
-            ) : (
-              <p className="min-w-0 text-right text-[15px] leading-5 text-[#707EAE] [overflow-wrap:anywhere]">
-                当前评分岗位：<span className="font-semibold text-[#52617E]">{currentScoringJobTitle}</span>
-              </p>
-            )}
-          </div>
           {/* 解析中提示 — 任意页面/设备触发的解析,详情页据权威字段 c.parsing 统一显示「解析中」 */}
           {c.parsing && (
             <div className="mb-3 -mt-1 rounded-xl bg-brand/5 border border-brand/20 p-2.5 flex items-center gap-2">
@@ -3259,22 +3248,25 @@ function CandidateDetail() {
               {canEdit && <button type="button" onClick={openReparse} disabled={reparsing} className="text-[#422AFB] hover:underline font-bold disabled:opacity-50">去解析</button>}
             </p>
           )}
-          <div className="flex items-start gap-3.5">
-            <Avatar name={c.name} animal={c.animal} src={c.avatar} size={64} />
-            <div className="flex-1 min-w-0">
-              <h1 className="text-lg font-bold text-[#1B254B] truncate">{c.name}</h1>
-              <p className="text-[11px] text-[#707EAE] mt-1 flex items-center gap-1"><I name="phone" size={11} className="shrink-0" /> {c.phone || "—"}</p>
-              <p className="text-[11px] text-[#707EAE] mt-0.5 flex items-center gap-1"><I name="map-pin" size={11} className="shrink-0" /> {c.location || "—"}</p>
-              <p className="text-[11px] text-[#707EAE] mt-0.5 flex items-center gap-1 truncate">
-                <I name="link" size={11} className="shrink-0" />
-                <span className="text-[#A3AED0]">来源</span>
-                <InlineSource value={c.source} onChange={(v) => setC(prev => prev ? { ...prev, source: v } : prev)} />
-              </p>
-              <div className="flex gap-1.5 mt-2">
-                <IconBtn icon="mail" title="发邮件 / 复制邮箱" onClick={() => { navigator.clipboard?.writeText(c.email || ""); toast("已复制邮箱", "success"); }} />
-                <IconBtn icon="copy" title="复制基本信息" onClick={() => { navigator.clipboard?.writeText(`${c.name} ${c.phone} ${c.email}`); toast("已复制基本信息", "success"); }} />
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between 2xl:flex-col">
+            <div className="flex items-start gap-3.5 min-w-0">
+              <Avatar name={c.name} animal={c.animal} src={c.avatar} size={64} />
+              <div className="flex-1 min-w-0">
+                <h1 className="text-lg font-bold text-[#1B254B] truncate">{c.name}</h1>
+                <p className="text-[11px] text-[#707EAE] mt-1 flex items-center gap-1"><I name="phone" size={11} className="shrink-0" /> {c.phone || "—"}</p>
+                <p className="text-[11px] text-[#707EAE] mt-0.5 flex items-center gap-1"><I name="map-pin" size={11} className="shrink-0" /> {c.location || "—"}</p>
+                <p className="text-[11px] text-[#707EAE] mt-0.5 flex items-center gap-1 truncate">
+                  <I name="link" size={11} className="shrink-0" />
+                  <span className="text-[#A3AED0]">来源</span>
+                  <InlineSource value={c.source} onChange={(v) => setC(prev => prev ? { ...prev, source: v } : prev)} />
+                </p>
+                <div className="flex gap-1.5 mt-2">
+                  <IconBtn icon="mail" title="发邮件 / 复制邮箱" onClick={() => { navigator.clipboard?.writeText(c.email || ""); toast("已复制邮箱", "success"); }} />
+                  <IconBtn icon="copy" title="复制基本信息" onClick={() => { navigator.clipboard?.writeText(`${c.name} ${c.phone} ${c.email}`); toast("已复制基本信息", "success"); }} />
+                </div>
               </div>
             </div>
+            <CampusMatchPanel campus={campus} currentUser={me} />
           </div>
 
           {/* Profile completion */}
@@ -3295,87 +3287,7 @@ function CandidateDetail() {
             onChange={changeTags}
           />
 
-          {/* What matched / What against + Score ring */}
-          <div className="mt-4 flex items-start gap-3">
-            <div className="flex-1 space-y-3 text-[11px]">
-              <div className="flex items-start gap-2">
-                <span className="w-5 h-5 rounded-full bg-green-50 flex items-center justify-center shrink-0 mt-0.5">
-                  <I name="check" size={11} className="text-green-600" strokeWidth={3} />
-                </span>
-                <div className="min-w-0">
-                  <p className="font-bold text-[#1B254B]">匹配项</p>
-                  <p className="text-[#707EAE] mt-0.5">{(c.matchedFor || []).join("、") || "—"}</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="w-5 h-5 rounded-full bg-red-50 flex items-center justify-center shrink-0 mt-0.5">
-                  <I name="x" size={11} className="text-red-500" strokeWidth={3} />
-                </span>
-                <div className="min-w-0">
-                  <p className="font-bold text-[#1B254B]">不匹配项</p>
-                  <p className="text-[#707EAE] mt-0.5">{(c.againstFor || []).join("、") || "—"}</p>
-                </div>
-              </div>
-            </div>
-            <div className="flex flex-col items-center shrink-0">
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => c.jobId ? setJdPickerOpen(v => !v) : openJdMatchConfirm()}
-                  disabled={matching || !canEdit}
-                  className="group relative block focus:outline-none"
-                  aria-label={c.jobId ? "切换评分岗位" : "选择 JD 并进行三层评分"}
-                  aria-haspopup={c.jobId ? "listbox" : "dialog"}
-                  aria-expanded={c.jobId ? jdPickerOpen : undefined}
-                >
-                  <LiquidLoader
-                    size={56}
-                    level={matching ? 52 : (c.jdMatch ?? 0)}
-                    label={matching ? "—" : (c.jdMatch ?? "—")}
-                    loading={matching}
-                  />
-                  <span className="absolute inset-0 rounded-full ring-2 ring-transparent group-hover:ring-[#422AFB]/30 group-focus-visible:ring-[#422AFB] transition" />
-                </button>
-                {c.jobId && jdPickerOpen && (
-                  <>
-                    <div className="fixed inset-0 z-30" onClick={() => setJdPickerOpen(false)} />
-                    <div
-                      className="absolute z-40 top-full right-0 mt-2 w-[min(240px,calc(100vw-3rem))] bg-white rounded-xl shadow-[14px_17px_40px_4px_rgba(112,144,176,0.18)] p-1.5"
-                      role="listbox"
-                    >
-                      <p className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-[#A3AED0]">选择/切换 JD</p>
-                      {jobs.length === 0 ? (
-                        <p className="px-3 py-3 text-xs text-[#A3AED0]">暂无可用岗位</p>
-                      ) : jobs.map(j => {
-                        const active = j.id === c.jobId;
-                        return (
-                          <button
-                            key={j.id}
-                            role="option"
-                            aria-selected={active}
-                            onClick={() => switchJob(j.id)}
-                            disabled={matching}
-                            className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-start gap-2 hover:bg-[#F4F7FE] ${active ? "bg-[#F4F7FE]" : ""}`}
-                          >
-                            <span className="flex-1 min-w-0">
-                              <span className={`block truncate ${active ? "font-bold text-[#1B254B]" : "text-[#1B254B]"}`}>{j.title}</span>
-                              {j.dept && <span className="block text-[10px] text-[#A3AED0] mt-0.5 truncate">{j.dept}</span>}
-                            </span>
-                            {active && <I name="check" size={14} className="text-[#422AFB] mt-1 shrink-0" />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </>
-                )}
-              </div>
-              <p className="text-[10px] text-[#707EAE] text-center mt-1.5 leading-tight w-[72px]">JD 匹配度</p>
-              <span className="mt-1 max-w-[160px] rounded-full bg-[#F4F7FE] px-2 py-0.5 text-center text-[10px] font-semibold text-[#52617E] break-words" title={c.jobId ? currentScoringJobTitle : "未关联 JD"}>
-                {c.jobId ? currentScoringJobTitle : "未关联 JD"}
-              </span>
-            </div>
-          </div>
-          <CampusCandidateCard candidateId={c.id} currentUser={me} />
+          <CampusCandidateCard campus={campus} />
         </Card>
 
         {/* 窄屏把面试评价和附件放在页面末尾 */}
@@ -3498,20 +3410,6 @@ function CandidateDetail() {
             </div>
           </Card>
         )}
-
-        {/* === 三层评估(硬筛 + Jev 逐项判定 + 报告)=== */}
-        <EvaluationCard
-          evaluation={evals.current}
-          history={evals.items}
-          candidate={c}
-          jobs={jobs}
-          matching={matching}
-          reportBusy={reportBusy}
-          canEdit={canEdit}
-          campusAutoEvaluation={evals.campusAutoEvaluation}
-          onRunMatch={openJdMatchConfirm}
-          onReport={runReport}
-        />
 
         {/* === Skills / Risks / Highlights — 3 small cards === */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">

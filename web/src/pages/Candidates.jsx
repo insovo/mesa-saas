@@ -6,7 +6,6 @@ import {
   Button,
   Input,
   StatusPill,
-  LiquidLoader,
   Avatar,
   I,
   Empty,
@@ -17,6 +16,7 @@ import {
 } from "../components/Primitives.jsx";
 import { STATUS_ORDER, candidateExpText, hasWorkExperience } from "../lib/constants.js";
 import { useMe } from "../lib/authContext.jsx";
+import CampusScoreBalls from "../components/campus/CampusScoreBalls.jsx";
 
 // Helpers — Upload.jsx 已经有相同函数,后续可抽 lib/format.js 复用
 function fmtDateTime(iso) {
@@ -31,16 +31,13 @@ function fmtSource(s) {
   return t || "未提供";
 }
 
-function LinkedJobChip({ title }) {
-  return (
-    <span
-      className={`inline-flex max-w-[180px] items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold shrink-0 ${title ? "bg-lightPrimary text-navy-700" : "bg-gray-100 text-gray-500"}`}
-      title={title || "未关联 JD"}
-    >
-      <I name="briefcase" size={10} className="shrink-0" />
-      <span className="truncate">{title || "未关联 JD"}</span>
-    </span>
-  );
+function CandidateMatchScores({ candidate }) {
+  const matches = candidate.campusMatches?.length
+    ? candidate.campusMatches
+    : candidate.jobId && candidate.jdMatch != null
+      ? [{ jobId: candidate.jobId, title: candidate.job?.title || candidate.appliedFor || "岗位", scoreShown: candidate.jdMatch }]
+      : [];
+  return <CampusScoreBalls matches={matches} />;
 }
 
 // 批量评估任务持久化(切页/刷新后继续轮询),形状 { jobId, jobTitle, startedAt, tasks:[{candidateId,taskId}], results:{[candidateId]: "A"|"B"|"C"|"D"|"failed"} }
@@ -430,7 +427,6 @@ export default function Candidates() {
           <ul className="divide-y divide-gray-200">
             {items.map((c) => {
               const isSelected = selectedIds.has(c.id);
-              const linkedJobTitle = c.jobId ? (c.job?.title || jobs.find((j) => j.id === c.jobId)?.title || c.appliedFor || "已关联 JD") : null;
               return (
               <li key={c.id} className={`py-4 group rounded-xl transition-colors duration-200 -mx-2 px-2 ${isSelected ? "bg-brand/5" : "hover:bg-lightPrimary/70"}`}>
                 {/* === 桌面端: 响应式单行列式(宽屏一行,中小屏 flex-wrap 自动换行) === */}
@@ -466,17 +462,8 @@ export default function Candidates() {
                     </p>
                   </div>
                   {/* 右操作区:ml-auto 推到行尾 */}
-                  <div className="flex items-center gap-2 shrink-0 ml-auto">
-                    <LinkedJobChip title={linkedJobTitle} />
-                    {c.jdMatch != null ? (
-                      <div className="shrink-0 pr-0.5">
-                        <LiquidLoader size={40} level={c.jdMatch} label={c.jdMatch} />
-                      </div>
-                    ) : (
-                      <div className="w-9 text-[9px] text-gray-400 text-center shrink-0">
-                        <I name="link-2-off" size={12} />
-                      </div>
-                    )}
+                  <div className="flex min-w-0 max-w-full items-center gap-2 ml-auto">
+                    <CandidateMatchScores candidate={c} />
                     <div className="opacity-0 group-hover:opacity-100 transition flex flex-col gap-1 shrink-0">
                       <button onClick={() => navigate(`/candidates/${c.externalId || c.id}`)} className="w-7 h-7 rounded-full bg-lightPrimary text-gray-700 hover:text-brand flex items-center justify-center" title="查看详情">
                         <I name="arrow-right" size={12} />
@@ -504,14 +491,6 @@ export default function Candidates() {
                         {[c.location, candidateExpText(c.yearsExp, hasWorkExperience(c.experience)), c.source].filter(Boolean).join(" · ") || "—"}
                       </p>
                     </div>
-                    {c.jdMatch != null ? (
-                      <LiquidLoader size={48} level={c.jdMatch} label={c.jdMatch} />
-                    ) : (
-                      <div className="w-12 shrink-0 text-center text-[10px] text-gray-400">
-                        <I name="link-2-off" size={14} className="inline" />
-                        <p className="mt-0.5">{c.jobId ? "未评分" : "未关联"}</p>
-                      </div>
-                    )}
                   </div>
                   {/* tags row */}
                   {((c.tags || []).length > 0) && (
@@ -520,9 +499,11 @@ export default function Candidates() {
                       {(c.tags || []).length > 4 && <span className="text-[10px] text-gray-600">+{c.tags.length - 4}</span>}
                     </div>
                   )}
-                  <div className="flex items-center gap-2 mt-2 pl-[56px] flex-wrap">
-                    <LinkedJobChip title={linkedJobTitle} />
-                  </div>
+                  {(c.campusMatches?.length > 0 || (c.jobId && c.jdMatch != null)) && (
+                    <div className="mt-2 max-w-full pl-[56px]">
+                      <CandidateMatchScores candidate={c} />
+                    </div>
+                  )}
                 </Link>
               </li>
             );})}

@@ -238,6 +238,11 @@ function bestMatchScore(run, currentResumeVersionId) {
   return scores.length ? Math.max(...scores) : null;
 }
 
+function matchScores(run, currentResumeVersionId) {
+  if (!run || run.resumeVersionId !== currentResumeVersionId || !Array.isArray(run.results)) return [];
+  return run.results.filter((r) => r?.jobId).map((r) => ({ jobId: r.jobId, scoreShown: r.error ? null : shownScore(r.scoreShown ?? r.scoreRaw, 60) }));
+}
+
 const applicantInclude = {
   candidate: { select: { id: true, name: true, school: true, major: true, education: true, status: true, classification: true, jdMatch: true, parsingStartedAt: true, profileCompletion: true } },
   resumeVersions: { orderBy: { version: "desc" } },
@@ -593,7 +598,7 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
       app.prisma.campusApplicant.findMany({ where, orderBy: { createdAt: "desc" }, skip: q.skip ?? 0, take: q.take ?? 100, include }),
       app.prisma.campusApplicant.count({ where }),
     ]);
-    let items = rows.map((a) => ({ ...applicantShape(a, { showContact, versionsAllowed: uploadsAllowed(session, a) }), ...(includeBestMatch ? { bestMatchScore: bestMatchScore(a.matchRuns?.[0], a.currentResumeVersionId) } : {}) }));
+    let items = rows.map((a) => ({ ...applicantShape(a, { showContact, versionsAllowed: uploadsAllowed(session, a) }), ...(includeBestMatch ? { bestMatchScore: bestMatchScore(a.matchRuns?.[0], a.currentResumeVersionId), matchScores: matchScores(a.matchRuns?.[0], a.currentResumeVersionId) } : {}) }));
     if (q.parse) {
       items = items.filter((it) => (q.parse === "none" ? !it.currentVersion : it.currentVersion?.parseStatus === q.parse));
     }

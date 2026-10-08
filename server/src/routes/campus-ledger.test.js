@@ -56,6 +56,11 @@ test("campus ledger shows the highest JD score from the current completed match,
   const response = await app.inject({ method: "GET", url: `/api/campus/sessions/${sessionId}/ledger` });
   assert.equal(response.statusCode, 200);
   assert.deepEqual(response.json().items.map((item) => item.bestMatchScore), [89, null, null]);
+  assert.deepEqual(response.json().items.map((item) => item.matchScores), [
+    [{ jobId: "submitted", scoreShown: 72 }, { jobId: "not-submitted", scoreShown: 89 }],
+    [],
+    [],
+  ]);
 
   const detail = await app.inject({ method: "GET", url: "/api/campus/applicants/student-1" });
   assert.equal(detail.statusCode, 200);

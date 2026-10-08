@@ -3,6 +3,7 @@
 
 import { whereByIdOrExternal } from "../lib/idLookup.js";
 import { campusAutoEvaluationStatus } from "../lib/campus/autoEvaluation.js";
+import { shownScore } from "../lib/campus/shared.js";
 import { writeLog } from "../lib/audit.js";
 import { withDerivedCandidate as withDerived } from "../lib/derived.js";
 import { toDisplayName, resolveNoteAuthorNames } from "../lib/displayName.js";
@@ -165,13 +166,31 @@ export default async function candidatesRoutes(app) {
         include: {
           job: { select: { id: true, title: true, dept: true } },
           department: { select: { id: true, name: true, code: true } },
+          campusApplicant: {
+            select: {
+              currentResumeVersionId: true,
+              session: { select: { jobs: { where: { matchEnabled: true }, orderBy: { sortOrder: "asc" }, take: 4, select: { jobId: true, job: { select: { title: true } } } } } },
+              matchRuns: { where: { status: "done", stale: false }, orderBy: { startedAt: "desc" }, take: 1, select: { resumeVersionId: true, results: true } },
+            },
+          },
         },
       }),
       app.prisma.candidate.count({ where: finalWhere }),
     ]);
-    const shaped = items
-      .map(withDerived)
-      .map((c) => filterCandidateByModules(c, access));
+    const shaped = items.map(({ campusApplicant, ...candidate }) => {
+      const visible = filterCandidateByModules(withDerived(candidate), access);
+      if (!campusApplicant || !hasModule(access, "candidate.jdMatch")) return visible;
+      const run = campusApplicant.matchRuns[0];
+      const results = run?.resumeVersionId === campusApplicant.currentResumeVersionId && Array.isArray(run.results) ? run.results : [];
+      const byJob = new Map(results.map((result) => [result.jobId, result]));
+      return {
+        ...visible,
+        campusMatches: campusApplicant.session.jobs.map(({ jobId, job }) => {
+          const result = byJob.get(jobId);
+          return { jobId, title: job.title, scoreShown: result && !result.error ? shownScore(result.scoreShown ?? result.scoreRaw, 60) : null };
+        }),
+      };
+    });
     return { items: shaped, total, skip, take };
   });
 

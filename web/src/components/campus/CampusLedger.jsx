@@ -5,8 +5,9 @@ import { gsap } from "gsap";
 import { resources } from "../../lib/api.js";
 import { useHasModule } from "../../lib/authContext.jsx";
 import { CAMPUS_APP_STATUS, CAMPUS_APP_STATUS_LABEL } from "../../lib/constants.js";
-import { Card, Button, Input, I, Empty, LoadingBlock, Avatar, LiquidLoader, toast } from "../Primitives.jsx";
-import { Select, KindTag, AppStatusPill, ParseTag, AutoEvaluationTag, SessionStatusPill, fmtDateTime, errMsg } from "./ui.jsx";
+import { Card, Button, Input, I, Empty, LoadingBlock, Avatar, toast } from "../Primitives.jsx";
+import { Select, KindTag, SessionStatusPill, fmtDateTime, errMsg } from "./ui.jsx";
+import CampusScoreBalls from "./CampusScoreBalls.jsx";
 import ApplicantDrawer, { InterviewModal } from "./ApplicantDrawer.jsx";
 import ApplicantCreateModal from "./ApplicantCreateModal.jsx";
 
@@ -80,6 +81,11 @@ export default function CampusLedger({ sessions, onSessionsChanged }) {
 
   const items = data?.items || [];
   const stats = data?.stats || {};
+  const matchJobs = sessionJobs.filter((job) => job.matchEnabled).slice(0, 4);
+  const scoresFor = (applicant) => {
+    const byJob = new Map((applicant.matchScores || []).map((score) => [score.jobId, score.scoreShown]));
+    return matchJobs.map((sessionJob) => ({ jobId: sessionJob.jobId, title: sessionJob.job?.title || "岗位", scoreShown: byJob.get(sessionJob.jobId) ?? null }));
+  };
   const allAppIds = useMemo(() => items.flatMap((it) => it.applications.filter((a) => a.status !== "withdrawn").map((a) => a.id)), [items]);
 
   function toggleRow(it) {
@@ -166,11 +172,11 @@ export default function CampusLedger({ sessions, onSessionsChanged }) {
           <Empty icon="inbox" title="没有符合条件的学生" desc={Object.values(filter).some(Boolean) ? "试试清除筛选" : "点右上「登记学生」录入第一位学生"} />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="hidden md:table w-full text-sm">
               <thead>
                 <tr className="text-left text-[11px] text-gray-600 border-b border-gray-100">
                   <th className="px-4 py-3 w-8"><input type="checkbox" className="accent-brand" checked={allAppIds.length > 0 && allAppIds.every((id) => selected.has(id))} onChange={(e) => setSelected(e.target.checked ? new Set(allAppIds) : new Set())} /></th>
-                  <th className="px-3 py-3">学生</th><th className="px-3 py-3">学校 / 专业</th><th className="px-3 py-3">联系方式</th><th className="px-3 py-3">投递岗位</th><th className="px-3 py-3" title="当前简历最近一次有效匹配中，各岗位的最高分">匹配分</th><th className="px-3 py-3">AI 评估</th><th className="px-3 py-3">简历</th><th className="px-3 py-3">状态</th><th className="px-3 py-3">登记时间</th><th className="px-3 py-3"></th>
+                  <th className="px-3 py-3">学生</th><th className="px-3 py-3">学校 / 专业</th><th className="px-3 py-3">联系方式</th><th className="px-3 py-3">投递岗位</th><th className="px-3 py-3">岗位匹配度</th><th className="px-3 py-3">登记时间</th><th className="px-3 py-3"></th>
                 </tr>
               </thead>
               <tbody>
@@ -189,10 +195,7 @@ export default function CampusLedger({ sessions, onSessionsChanged }) {
                           <div className="flex flex-col gap-1">{apps.map((a) => <span key={a.id} className="inline-flex items-center gap-1.5 text-xs text-navy-700"><KindTag kind={a.kind} /><span className="truncate max-w-[180px]">{a.job?.title}</span><span className="text-[10px] text-gray-400">{a.source === "hr" ? "HR" : a.source === "match" ? "匹配" : "直投"}</span></span>)}</div>
                         )}
                       </td>
-                      <td className="px-3 py-3">{it.bestMatchScore != null ? <LiquidLoader size={40} level={it.bestMatchScore} label={it.bestMatchScore} instant /> : <span className="text-xs text-gray-400">—</span>}</td>
-                      <td className="px-3 py-3"><AutoEvaluationTag status={it.autoEvaluationStatus} title={apps.find((a) => a.jobId === it.autoEvaluationJobId)?.job?.title} /></td>
-                      <td className="px-3 py-3"><div className="flex flex-col gap-1 items-start"><ParseTag status={it.currentVersion?.parseStatus} />{it.currentVersion && <span className="text-[10px] text-gray-500">v{it.currentVersion.version} / {it.uploadsAllowed}</span>}</div></td>
-                      <td className="px-3 py-3"><div className="flex flex-col gap-1 items-start">{apps.length === 0 ? <span className="text-xs text-gray-400">—</span> : apps.map((a) => <AppStatusPill key={a.id} status={a.status} />)}</div></td>
+                      <td className="px-3 py-3 min-w-[290px]">{matchJobs.length ? <CampusScoreBalls matches={scoresFor(it)} /> : <span className="text-xs text-gray-400">—</span>}</td>
                       <td className="px-3 py-3 text-[11px] text-gray-500 whitespace-nowrap">{fmtDateTime(it.createdAt)}</td>
                       <td className="px-3 py-3"><button type="button" onClick={() => { setDrawerId(it.id); setDrawerInitialEdit(true); }} className="inline-flex items-center gap-1 text-xs font-bold text-brand hover:underline whitespace-nowrap" aria-label={`编辑${it.name || "学生"}信息`}><I name="pencil" size={12} />编辑</button></td>
                     </tr>
@@ -200,6 +203,23 @@ export default function CampusLedger({ sessions, onSessionsChanged }) {
                 })}
               </tbody>
             </table>
+            <div className="md:hidden divide-y divide-gray-100">
+              {items.map((it) => {
+                const apps = it.applications.filter((a) => a.status !== "withdrawn");
+                const ids = apps.map((a) => a.id);
+                return (
+                  <div key={it.id} className="p-4 space-y-3 min-w-0">
+                    <div className="flex items-center gap-3">
+                      <input type="checkbox" className="accent-brand shrink-0" checked={ids.length > 0 && ids.every((id) => selected.has(id))} disabled={!ids.length} onChange={() => toggleRow(it)} />
+                      <Link to={`/candidates/${it.candidateId}`} className="flex items-center gap-2 min-w-0 flex-1"><Avatar name={it.name || "?"} size={32} /><span className="min-w-0"><span className="block truncate text-sm font-bold text-navy-700">{it.name || "未填姓名"}</span><span className="block truncate text-[11px] text-gray-500">{it.school || "—"}{it.major ? ` · ${it.major}` : ""}</span></span></Link>
+                      <button type="button" onClick={() => { setDrawerId(it.id); setDrawerInitialEdit(true); }} className="shrink-0 text-xs font-bold text-brand">编辑</button>
+                    </div>
+                    <p className="text-xs text-gray-600">{it.phone || "—"}{it.contactConfirmedAt ? " · 已确认" : ""} · {apps.length ? apps.map((a) => a.job?.title).filter(Boolean).join(" / ") : "未投递"}</p>
+                    {matchJobs.length ? <CampusScoreBalls matches={scoresFor(it)} /> : <span className="text-xs text-gray-400">暂无匹配岗位</span>}
+                  </div>
+                );
+              })}
+            </div>
             <p className="px-4 py-2 text-[11px] text-gray-500">共 {data?.total ?? items.length} 位学生{data && !data.showContact ? " · 无联系方式权限,已打码" : ""}</p>
           </div>
         )}
