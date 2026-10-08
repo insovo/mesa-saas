@@ -1101,6 +1101,7 @@ function JdMatchConfirmModal({ open, onClose, onConfirm, jobs, currentJobId, can
   const [selectedJobId, setSelectedJobId] = useState(currentJobId || "");
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({ title: "", description: "", requirements: "", responsibilities: "" });
+  const associating = !currentJobId;
   useEffect(() => { if (open) setSelectedJobId(currentJobId || ""); }, [open, currentJobId]);
   useEffect(() => { if (open) setEditing(false); }, [open, selectedJobId]);
   if (!open) return null;
@@ -1120,12 +1121,12 @@ function JdMatchConfirmModal({ open, onClose, onConfirm, jobs, currentJobId, can
       <div className="p-6">
         <div className="flex items-start justify-between gap-4 mb-4">
           <h3 className="text-lg font-bold text-[#1B254B] flex items-center gap-2">
-            <I name="sparkles" size={18} className="text-[#422AFB]" />确认重新评分
+            <I name="sparkles" size={18} className="text-[#422AFB]" />{associating ? "关联 JD 并评分" : "确认重新评分"}
           </h3>
           <button onClick={onClose} disabled={matching} className="text-gray-400 hover:text-[#1B254B] disabled:opacity-30"><I name="x" size={20} /></button>
         </div>
         <p className="text-sm text-[#707EAE] mb-4">
-          请确认 <span className="font-bold text-[#1B254B]">{candidateName || "候选人"}</span> 本次评估使用的 JD；可更换岗位{canEditJob ? "或修改 JD 内容" : ""}后重评。
+          请为 <span className="font-bold text-[#1B254B]">{candidateName || "候选人"}</span> 选择本次评估使用的 JD{canEditJob ? "；也可修改 JD 内容" : ""}，确认后{associating ? "关联岗位并进行 AI 三层评分" : "重新评分"}。
         </p>
         <label htmlFor="jd-match-job" className="text-[11px] font-bold text-[#707EAE] mb-1.5 block">本次评估使用的 JD</label>
         <select
@@ -1169,11 +1170,11 @@ function JdMatchConfirmModal({ open, onClose, onConfirm, jobs, currentJobId, can
             <button type="button" onClick={() => setEditing(false)} disabled={matching} className="text-xs text-[#707EAE] hover:underline">取消修改</button>
           </div>
         )}
-        {job && selectedJobId !== currentJobId && <p className="text-[11px] text-amber-700 mt-3">确认后将切换候选人关联的 JD，并更新匹配结果。</p>}
+        {job && selectedJobId !== currentJobId && <p className="text-[11px] text-amber-700 mt-3">确认后将{associating ? "关联" : "切换"}候选人的 JD，并更新匹配结果。</p>}
         <div className="flex justify-end gap-2 mt-5">
           <Button variant="ghost" onClick={onClose} disabled={matching}>取消</Button>
           <Button onClick={() => onConfirm(selectedJobId, editing ? draft : null)} disabled={!job || matching || (editing && !draft.title.trim())} icon={<I name={matching ? "loader" : "sparkles"} size={12} className={matching ? "animate-spin" : ""} />}>
-            {matching ? "重评中" : editing ? "保存并重评" : "确认并重评"}
+            {matching ? "评分中" : editing ? "保存并评分" : associating ? "确认关联并评分" : "确认并重评"}
           </Button>
         </div>
       </div>
@@ -3163,7 +3164,8 @@ function CandidateDetail() {
       const finalTask = await runMatchTask(jobId);
       if (finalTask) {
         setJdMatchOpen(false);
-        toast(`✓ 评估完成: JD 匹配度 ${finalTask.candidate.jdMatch ?? "—"}${finalTask.evaluation?.classification ? ` · ${finalTask.evaluation.classification} 类` : ""}`, "success");
+        if (finalTask.evaluation) toast(`✓ 评估完成: JD 匹配度 ${finalTask.candidate.jdMatch ?? "—"}${finalTask.evaluation.classification ? ` · ${finalTask.evaluation.classification} 类` : ""}`, "success");
+        else toast("JD 已关联，但三层评分未完成，请重试", "error");
       }
     } catch (e) { toast(e.response?.data?.message || e.message || "评估失败", "error"); }
     finally { setMatching(false); }
@@ -3215,9 +3217,15 @@ function CandidateDetail() {
         {/* === Profile Card === */}
         <Card className="w-full 2xl:w-auto p-4 md:p-5">
           <div className="mb-3 flex justify-end">
-            <p className="min-w-0 text-right text-[15px] leading-5 text-[#707EAE] [overflow-wrap:anywhere]">
-              当前评分岗位：<span className="font-semibold text-[#52617E]">{currentScoringJobTitle}</span>
-            </p>
+            {!c.jobId && canEdit ? (
+              <button type="button" onClick={openJdMatchConfirm} disabled={matching} className="min-w-0 text-right text-[15px] leading-5 text-[#707EAE] [overflow-wrap:anywhere] hover:text-[#422AFB] disabled:opacity-50" title="选择 JD 并进行三层评分">
+                当前评分岗位：<span className="font-semibold text-[#52617E] underline underline-offset-2">{currentScoringJobTitle}</span>
+              </button>
+            ) : (
+              <p className="min-w-0 text-right text-[15px] leading-5 text-[#707EAE] [overflow-wrap:anywhere]">
+                当前评分岗位：<span className="font-semibold text-[#52617E]">{currentScoringJobTitle}</span>
+              </p>
+            )}
           </div>
           {/* 解析中提示 — 任意页面/设备触发的解析,详情页据权威字段 c.parsing 统一显示「解析中」 */}
           {c.parsing && (
@@ -3313,11 +3321,12 @@ function CandidateDetail() {
               <div className="relative">
                 <button
                   type="button"
-                  onClick={() => setJdPickerOpen(v => !v)}
-                  disabled={matching}
+                  onClick={() => c.jobId ? setJdPickerOpen(v => !v) : openJdMatchConfirm()}
+                  disabled={matching || !canEdit}
                   className="group relative block focus:outline-none"
-                  aria-haspopup="listbox"
-                  aria-expanded={jdPickerOpen}
+                  aria-label={c.jobId ? "切换评分岗位" : "选择 JD 并进行三层评分"}
+                  aria-haspopup={c.jobId ? "listbox" : "dialog"}
+                  aria-expanded={c.jobId ? jdPickerOpen : undefined}
                 >
                   <LiquidLoader
                     size={56}
@@ -3327,7 +3336,7 @@ function CandidateDetail() {
                   />
                   <span className="absolute inset-0 rounded-full ring-2 ring-transparent group-hover:ring-[#422AFB]/30 group-focus-visible:ring-[#422AFB] transition" />
                 </button>
-                {jdPickerOpen && (
+                {c.jobId && jdPickerOpen && (
                   <>
                     <div className="fixed inset-0 z-30" onClick={() => setJdPickerOpen(false)} />
                     <div
@@ -3450,7 +3459,7 @@ function CandidateDetail() {
               )}
             </div>
           )}
-          <Button variant="ghost" className="w-full lg:w-auto" onClick={() => setJdDescOpen(true)} icon={<I name="file-text" size={14} />}>JD 详情</Button>
+          <Button variant="ghost" className="w-full lg:w-auto" onClick={() => c.jobId ? setJdDescOpen(true) : openJdMatchConfirm()} disabled={!c.jobId && (!canEdit || matching)} icon={<I name="file-text" size={14} />}>JD 详情</Button>
           {canShare && (
             <Button variant="ghost" className="w-full lg:w-auto" onClick={() => setShareOpen(true)} icon={<I name="share-2" size={14} />}>分享</Button>
           )}
@@ -3528,7 +3537,7 @@ function CandidateDetail() {
                   </ul>
                 );
               }
-              return <NeedJobPlaceholder hasJob={!!c.jobId} onPickJob={() => setJdPickerOpen(true)} fieldName="核心技能" />;
+              return <NeedJobPlaceholder hasJob={!!c.jobId} onPickJob={canEdit ? openJdMatchConfirm : null} fieldName="核心技能" />;
             })()}
           </Card>
           <Card className="p-4">
@@ -3587,7 +3596,7 @@ function CandidateDetail() {
                 </ul>
               );
             }
-            return <NeedJobPlaceholder hasJob={!!c.jobId} onPickJob={() => setJdPickerOpen(true)} fieldName="工作经历" />;
+            return <NeedJobPlaceholder hasJob={!!c.jobId} onPickJob={canEdit ? openJdMatchConfirm : null} fieldName="工作经历" />;
           })()}
         </Card>
 
@@ -3616,7 +3625,7 @@ function CandidateDetail() {
                 </ul>
               );
             }
-            return <NeedJobPlaceholder hasJob={!!c.jobId} onPickJob={() => setJdPickerOpen(true)} fieldName="教育背景" />;
+            return <NeedJobPlaceholder hasJob={!!c.jobId} onPickJob={canEdit ? openJdMatchConfirm : null} fieldName="教育背景" />;
           })()}
           {c.attachment && (
             <div className="mt-6 pt-4 border-t border-[#E9ECEF] flex items-start gap-2 text-xs text-[#707EAE] min-w-0">
