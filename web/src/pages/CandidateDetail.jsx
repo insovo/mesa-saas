@@ -53,6 +53,16 @@ import { Bar as RBar, BarChart, XAxis, YAxis } from "recharts";
 
 const STATUS_ORDER = ["待筛选", "已沟通", "面试中", "待定中", "待入职", "已入职", "已淘汰"];
 
+const STATUS_ACTION_LABEL = {
+  待筛选: "待筛选",
+  已沟通: "已沟通",
+  面试中: "安排面试",
+  待定中: "待定",
+  待入职: "待入职",
+  已入职: "已入职",
+  已淘汰: "淘汰",
+};
+
 const STATUS_TONE = {
   待筛选: { bg: "#F4F7FE", fg: "#707EAE", dot: "#A3AED0" },
   已沟通: { bg: "#DBEAFE", fg: "#1D4ED8", dot: "#3B82F6" },
@@ -3303,6 +3313,7 @@ function CandidateDetail() {
   const [editingInterview, setEditingInterview] = useState(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
+  const [statusSaving, setStatusSaving] = useState(false);
   const [jdPickerOpen, setJdPickerOpen] = useState(false);
   const [jdDescOpen, setJdDescOpen] = useState(false);
   const [jdMatchOpen, setJdMatchOpen] = useState(false);
@@ -3538,12 +3549,14 @@ function CandidateDetail() {
 
   async function changeStatus(newStatus) {
     setStatusOpen(false);
-    if (!c || newStatus === c.status) return;
+    if (!c || statusSaving || newStatus === c.status) return;
+    setStatusSaving(true);
     try {
       const updated = await resources.candidates.update(c.id, { status: newStatus });
       setC(updated);
       toast(`状态改为 ${newStatus}`, "success");
-    } catch (e) { toast(e.message || "更新失败", "error"); }
+    } catch (e) { toast(e.response?.data?.message || e.message || "更新失败", "error"); }
+    finally { setStatusSaving(false); }
   }
 
   // 标签增删改 — 乐观更新本地 + 持久化到后端(只动 tags,失败回滚),切页/刷新不丢
@@ -3607,17 +3620,7 @@ function CandidateDetail() {
 
   if (err) return <Card className="p-6 text-red-500 text-sm">{err}</Card>;
   if (!c) return <LoadingBlock label="加载候选人..." height="h-64" />;
-
-  async function pushNextStatus() {
-    const idx = STATUS_ORDER.indexOf(c.status);
-    const next = STATUS_ORDER[Math.min(idx + 1, STATUS_ORDER.length - 1)];
-    if (!next || next === c.status) return toast("已是最后阶段", "info");
-    try {
-      const updated = await resources.candidates.update(c.id, { status: next });
-      setC(updated);
-      toast(`状态已推进到 ${next}`, "success");
-    } catch (e) { toast(e.message || "更新失败", "error"); }
-  }
+  const currentScoringJobTitle = jobs.find((job) => job.id === c.jobId)?.title || c.job?.title || (c.jobId ? c.appliedFor : null) || "未关联岗位";
 
   async function onDelete() {
     if (!confirm(`确定删除 ${c.name} 吗?${me?.role === "CAMPUS_INTERVIEWER" ? "\n关联的校招登记、投递和简历版本也会被删除，无法恢复。" : ""}`)) return;
@@ -3649,6 +3652,11 @@ function CandidateDetail() {
 
         {/* === Profile Card === */}
         <Card className="w-full xl:w-auto p-4 md:p-5">
+          <div className="mb-3 flex justify-end">
+            <p className="min-w-0 text-right text-[15px] leading-5 text-[#707EAE] break-words">
+              当前评分岗位：<span className="font-semibold text-[#52617E]">{currentScoringJobTitle}</span>
+            </p>
+          </div>
           {/* 解析中提示 — 任意页面/设备触发的解析,详情页据权威字段 c.parsing 统一显示「解析中」 */}
           {c.parsing && (
             <div className="mb-3 -mt-1 rounded-xl bg-brand/5 border border-brand/20 p-2.5 flex items-center gap-2">
@@ -3912,112 +3920,49 @@ function CandidateDetail() {
         </div>
       </aside>
 
-      {/* ╔═══ MIDDLE COLUMN: Stage controls + AI + Interview + Job overview + 经历 / 项目 / 教育 / 备注 ═══╗ */}
+      {/* ╔═══ MIDDLE COLUMN: Actions + AI + Interview + Job overview + 经历 / 项目 / 教育 / 备注 ═══╗ */}
       <div className="flex-1 min-w-0 space-y-4 xl:sticky xl:top-4 xl:self-start xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto xl:pr-1 xl:-mr-1">
-
-        {/* === Top control row: stage + view CTC + job === */}
-        <Card className="px-4 md:px-5 py-3">
-          <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 md:gap-5">
-            <div className="flex items-center gap-2 w-full md:w-auto">
-              <span className="text-xs text-[#707EAE] font-medium whitespace-nowrap">当前阶段</span>
-              <div className="relative flex-1 md:flex-none">
-                <button onClick={() => setStatusOpen(v => !v)} className="w-full md:w-auto inline-flex items-center justify-between md:justify-start gap-2 px-3 h-9 rounded-xl bg-white border border-[#E9ECEF] text-sm text-[#1B254B] font-bold hover:border-[#422AFB] transition">
-                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: STATUS_TONE[c.status]?.dot }} />
-                  {c.status}
-                  <I name="chevron-down" size={12} />
-                </button>
-                {statusOpen && (
-                  <>
-                    <div className="fixed inset-0 z-30" onClick={() => setStatusOpen(false)} />
-                    <div className="absolute top-full left-0 mt-1 z-40 bg-white rounded-xl shadow-[14px_17px_40px_4px_rgba(112,144,176,0.08)] p-1.5 min-w-[160px]">
-                      {STATUS_ORDER.map(s => (
-                        <button
-                          key={s}
-                          onClick={() => changeStatus(s)}
-                          className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2 hover:bg-[#F4F7FE] ${s === c.status ? "bg-[#F4F7FE] font-bold" : ""}`}
-                        >
-                          <span className="w-1.5 h-1.5 rounded-full" style={{ background: STATUS_TONE[s]?.dot }} />
-                          {s}
-                          {s === c.status && <I name="check" size={14} className="ml-auto text-[#422AFB]" />}
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-            <div className="hidden md:block md:flex-1" />
-            <div className="flex items-center gap-2 w-full md:w-auto">
-              <span className="text-xs text-[#707EAE] font-medium whitespace-nowrap">岗位</span>
-              <select
-                value={c.jobId || ""}
-                disabled={matching}
-                onChange={(e) => switchJob(e.target.value)}
-                className="flex-1 md:flex-none w-full md:w-auto h-9 px-3 pr-7 rounded-xl bg-white border border-[#E9ECEF] text-sm text-[#1B254B] font-bold hover:border-[#422AFB] outline-none cursor-pointer"
-              >
-                {jobs.map(j => <option key={j.id} value={j.id}>{j.title}</option>)}
-              </select>
-              {matching && <I name="loader" size={14} className="animate-spin text-[#422AFB]" />}
-            </div>
-          </div>
-
-          {/* Stage tabs + progress — 7 tab 等宽两端对齐,进度条填到 active tab 中心 */}
-          {(() => {
-            const idx = STATUS_ORDER.indexOf(c.status);
-            const rejected = c.status === "已淘汰";
-            // 进度条对齐到当前 tab 中心: 每个 tab 占 1/7 宽度,中心 = (idx + 0.5)/7
-            const percent = idx < 0 ? 0 : ((idx + 0.5) / STATUS_ORDER.length) * 100;
-            return (
-              <div className="-mx-4 md:-mx-5 mt-3 px-4 md:px-5 border-t border-[#E9ECEF]">
-                {/* 进度轨 — 正向阶段填充品牌渐变,「已淘汰」红色 */}
-                <div className="h-1.5 mt-3 mb-2 bg-[#F4F7FE] rounded-full overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-all duration-500 ease-out"
-                    style={{
-                      width: `${percent}%`,
-                      background: rejected
-                        ? "#FB6056"
-                        : "linear-gradient(90deg, #868CFF 0%, #432CF3 60%, #422AFB 100%)",
-                    }}
-                  />
-                </div>
-                <div className="flex w-full -mb-px">
-                  {STATUS_ORDER.map((s, i) => {
-                    const active = s === c.status;
-                    const isReject = s === "已淘汰";
-                    const passed = !rejected && !isReject && i < idx;
-                    const colorCls = active
-                      ? (isReject ? "text-[#FB6056] font-bold" : "text-[#422AFB] font-bold")
-                      : passed
-                        ? "text-[#1B254B] font-medium"
-                        : "text-[#707EAE] hover:text-[#1B254B] font-medium";
-                    return (
-                      <button
-                        key={s}
-                        onClick={() => changeStatus(s)}
-                        className={`relative flex-1 py-3 text-sm text-center transition whitespace-nowrap ${colorCls}`}
-                      >
-                        {s}
-                        {active && (
-                          <span
-                            className="absolute left-1/2 -translate-x-1/2 -bottom-px h-[3px] w-10 rounded-full"
-                            style={{ background: isReject ? "#FB6056" : "#422AFB" }}
-                          />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })()}
-        </Card>
 
         {/* === Action buttons === */}
         {/* 手机:2 列网格(主操作 + 删除各占整行,无右侧空隙);桌面:flex 一行 + 右推删除 */}
         <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
-          {canEdit && <Button className="col-span-2 sm:col-auto" onClick={pushNextStatus} icon={<I name="zap" size={14} />}>推进到下一阶段</Button>}
-          <Button variant="ghost" onClick={() => setJdDescOpen(true)} icon={<I name="file-text" size={14} />}>JD 描述</Button>
+          {canEdit && (
+            <div className="relative col-span-2 sm:col-auto">
+              <Button
+                className="w-full sm:w-auto"
+                onClick={() => setStatusOpen(v => !v)}
+                disabled={statusSaving}
+                aria-haspopup="menu"
+                aria-expanded={statusOpen}
+                icon={<I name={statusSaving ? "loader" : "list-checks"} size={14} className={statusSaving ? "animate-spin" : ""} />}
+              >
+                {statusSaving ? "状态保存中..." : `设置状态：${c.status || "待筛选"}`}
+                <I name="chevron-down" size={14} />
+              </Button>
+              {statusOpen && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setStatusOpen(false)} />
+                  <div role="menu" aria-label="设置候选人状态" className="absolute top-full left-0 z-40 mt-2 w-full min-w-[210px] rounded-xl bg-white p-1.5 shadow-[14px_17px_40px_4px_rgba(112,144,176,0.18)]">
+                    {STATUS_ORDER.map(s => (
+                      <button
+                        key={s}
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={s === c.status}
+                        onClick={() => changeStatus(s)}
+                        className={`w-full rounded-lg px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-[#F4F7FE] ${s === c.status ? "bg-[#F4F7FE] font-bold" : ""}`}
+                      >
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: STATUS_TONE[s]?.dot }} />
+                        <span className="flex-1">{STATUS_ACTION_LABEL[s]}{STATUS_ACTION_LABEL[s] !== s && <span className="ml-1 text-xs font-normal text-[#707EAE]">· {s}</span>}</span>
+                        {s === c.status && <I name="check" size={14} className="text-[#422AFB]" />}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+          <Button variant="ghost" onClick={() => setJdDescOpen(true)} icon={<I name="file-text" size={14} />}>JD 详情</Button>
           {canShare && (
             <Button variant="ghost" onClick={() => setShareOpen(true)} icon={<I name="share-2" size={14} />}>分享</Button>
           )}
@@ -4324,7 +4269,6 @@ function CandidateDetail() {
       open={jdDescOpen}
       onClose={() => setJdDescOpen(false)}
       job={jobs.find(j => j.id === c.jobId)}
-      onSwitch={() => { setJdDescOpen(false); setJdPickerOpen(true); }}
     />
     <JdSwitchConfirmModal
       open={!!pendingJobId}

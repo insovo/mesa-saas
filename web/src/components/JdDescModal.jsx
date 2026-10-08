@@ -1,5 +1,4 @@
 // JD 详情弹窗 — 候选人详情页 / 公开分享页 / 岗位页共用。
-// onSwitch 可选:传入则显示「切换 JD」按钮(详情页);不传则纯只读(公开分享页)。
 // 三层架构(2026-09-20):新增「结构化 JD」(jdFacts 只读)与「评估标准」(evaluationModel 编辑器)两个 tab;
 //   公开页 payload 没有 jdFacts / evaluationModel 时自动隐藏两 tab,零 prop 向后兼容。
 //   canEdit=true 时评估标准可编辑并 PATCH job;onSaved(job) 回调让调用方刷新。
@@ -151,7 +150,7 @@ function JdFactsView({ facts }) {
   );
 }
 
-export default function JdDescModal({ open, onClose, job, onSwitch, canEdit = false, onSaved, initialTab = "desc" }) {
+export default function JdDescModal({ open, onClose, job, canEdit = false, onSaved, initialTab = "desc" }) {
   const [tab, setTab] = useState(initialTab);
   useEffect(() => { if (open) setTab(initialTab); }, [open, initialTab]);
   if (!job) return null;
@@ -303,9 +302,6 @@ export default function JdDescModal({ open, onClose, job, onSwitch, canEdit = fa
             {job.owner && <span className="ml-3">负责人: {job.owner}</span>}
           </div>
           <div className="flex gap-2 ml-auto">
-            {onSwitch && (
-              <Button variant="ghost" onClick={onSwitch} icon={<I name="repeat" size={12} />}>切换 JD</Button>
-            )}
             <Button onClick={onClose}>关闭</Button>
           </div>
         </div>

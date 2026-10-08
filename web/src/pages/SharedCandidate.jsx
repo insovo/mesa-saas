@@ -598,7 +598,7 @@ export default function SharedCandidate() {
           allowAttachments={data?.share?.showAttachments === true}
           onCreated={(r) => { setReviews((p) => [...p, r]); setReviewOpen(false); setReplyTo(null); }}
         />
-        {/* JD 详情(只读,不传 onSwitch 即不显示切换 JD)*/}
+        {/* JD 详情(只读) */}
         <JdDescModal open={jdOpen} onClose={() => setJdOpen(false)} job={data?.job} />
       </main>
     </div>
