@@ -79,6 +79,20 @@ export function ParseTag({ status }) {
     </span>
   );
 }
+const AUTO_EVAL = {
+  not_applicable: ["不自动评估", "bg-gray-100 text-gray-600"],
+  awaiting_match: ["待有效匹配", "bg-amber-50 text-amber-700"],
+  pending: ["评估排队中", "bg-blue-50 text-blue-700"],
+  running: ["报告生成中", "bg-blue-50 text-blue-700"],
+  done: ["已完成", "bg-green-100 text-green-700"],
+  failed: ["评估失败", "bg-red-100 text-red-700"],
+};
+export function AutoEvaluationTag({ status, title }) {
+  const [label, tone] = AUTO_EVAL[status] || AUTO_EVAL.not_applicable;
+  return <span title={title} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${tone}`}>
+    {["pending", "running"].includes(status) && <I name="loader" size={10} className="animate-spin" />}{label}
+  </span>;
+}
 export function sourceLabel(s) { return CAMPUS_SOURCE_LABEL[s] || s; }
 
 export function fmtDateTime(d) {

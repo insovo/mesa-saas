@@ -6,7 +6,7 @@ import { resources } from "../../lib/api.js";
 import { useHasModule } from "../../lib/authContext.jsx";
 import { CAMPUS_APP_STATUS, CAMPUS_APP_STATUS_LABEL } from "../../lib/constants.js";
 import { Card, Button, Input, I, Empty, LoadingBlock, Avatar, LiquidLoader, toast } from "../Primitives.jsx";
-import { Select, KindTag, AppStatusPill, ParseTag, SessionStatusPill, fmtDateTime, errMsg } from "./ui.jsx";
+import { Select, KindTag, AppStatusPill, ParseTag, AutoEvaluationTag, SessionStatusPill, fmtDateTime, errMsg } from "./ui.jsx";
 import ApplicantDrawer, { InterviewModal } from "./ApplicantDrawer.jsx";
 import ApplicantCreateModal from "./ApplicantCreateModal.jsx";
 
@@ -70,8 +70,8 @@ export default function CampusLedger({ sessions, onSessionsChanged }) {
   }, [sessionId, filter]);
   useEffect(() => { load(); }, [load]);
 
-  // 有解析中的学生 → 5s 轮询刷新
-  const anyRunning = !!data?.items?.some((it) => it.currentVersion?.parseStatus === "running");
+  // 有解析或 AI 报告中的学生时刷新状态
+  const anyRunning = !!data?.items?.some((it) => it.currentVersion?.parseStatus === "running" || ["pending", "running"].includes(it.autoEvaluationStatus));
   useEffect(() => {
     if (!anyRunning) return;
     const t = setInterval(load, 5000);
@@ -170,7 +170,7 @@ export default function CampusLedger({ sessions, onSessionsChanged }) {
               <thead>
                 <tr className="text-left text-[11px] text-gray-600 border-b border-gray-100">
                   <th className="px-4 py-3 w-8"><input type="checkbox" className="accent-brand" checked={allAppIds.length > 0 && allAppIds.every((id) => selected.has(id))} onChange={(e) => setSelected(e.target.checked ? new Set(allAppIds) : new Set())} /></th>
-                  <th className="px-3 py-3">学生</th><th className="px-3 py-3">学校 / 专业</th><th className="px-3 py-3">联系方式</th><th className="px-3 py-3">投递岗位</th><th className="px-3 py-3" title="当前简历最近一次有效匹配中，各岗位的最高分">匹配分</th><th className="px-3 py-3">简历</th><th className="px-3 py-3">状态</th><th className="px-3 py-3">登记时间</th><th className="px-3 py-3"></th>
+                  <th className="px-3 py-3">学生</th><th className="px-3 py-3">学校 / 专业</th><th className="px-3 py-3">联系方式</th><th className="px-3 py-3">投递岗位</th><th className="px-3 py-3" title="当前简历最近一次有效匹配中，各岗位的最高分">匹配分</th><th className="px-3 py-3">AI 评估</th><th className="px-3 py-3">简历</th><th className="px-3 py-3">状态</th><th className="px-3 py-3">登记时间</th><th className="px-3 py-3"></th>
                 </tr>
               </thead>
               <tbody>
@@ -190,6 +190,7 @@ export default function CampusLedger({ sessions, onSessionsChanged }) {
                         )}
                       </td>
                       <td className="px-3 py-3">{it.bestMatchScore != null ? <LiquidLoader size={40} level={it.bestMatchScore} label={it.bestMatchScore} instant /> : <span className="text-xs text-gray-400">—</span>}</td>
+                      <td className="px-3 py-3"><AutoEvaluationTag status={it.autoEvaluationStatus} title={apps.find((a) => a.jobId === it.autoEvaluationJobId)?.job?.title} /></td>
                       <td className="px-3 py-3"><div className="flex flex-col gap-1 items-start"><ParseTag status={it.currentVersion?.parseStatus} />{it.currentVersion && <span className="text-[10px] text-gray-500">v{it.currentVersion.version} / {it.uploadsAllowed}</span>}</div></td>
                       <td className="px-3 py-3"><div className="flex flex-col gap-1 items-start">{apps.length === 0 ? <span className="text-xs text-gray-400">—</span> : apps.map((a) => <AppStatusPill key={a.id} status={a.status} />)}</div></td>
                       <td className="px-3 py-3 text-[11px] text-gray-500 whitespace-nowrap">{fmtDateTime(it.createdAt)}</td>

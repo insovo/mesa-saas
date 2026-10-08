@@ -6,7 +6,7 @@ import { useHasModule, useMe } from "../../lib/authContext.jsx";
 import { isAdmin } from "../../lib/permissions.js";
 import { CAMPUS_APP_STATUS, CAMPUS_APP_STATUS_LABEL } from "../../lib/constants.js";
 import { Button, Input, Modal, I, LiquidLoader, toast, Avatar } from "../Primitives.jsx";
-import { Field, Select, Toggle, KindTag, AppStatusPill, ParseTag, sourceLabel, fmtDateTime, fmtSize, uploadResumeToR2, errMsg, RESUME_ACCEPT, DEGREE_OPTIONS } from "./ui.jsx";
+import { Field, Select, Toggle, KindTag, AppStatusPill, ParseTag, AutoEvaluationTag, sourceLabel, fmtDateTime, fmtSize, uploadResumeToR2, errMsg, RESUME_ACCEPT, DEGREE_OPTIONS } from "./ui.jsx";
 
 export default function ApplicantDrawer({ applicantId, open, initialEdit = false, onClose, sessionJobs, onChanged }) {
   const [data, setData] = useState(null);
@@ -33,8 +33,8 @@ export default function ApplicantDrawer({ applicantId, open, initialEdit = false
 
   useEffect(() => { if (open) { initialEditDone.current = false; setData(null); setEditing(false); setTab("applications"); load(); } }, [open, load]);
 
-  // 有解析中的版本 → 3s 轮询
-  const running = !!data?.applicant?.versions?.some((v) => v.parseStatus === "running") || !!data?.matchRuns?.some((r) => r.status === "running" || r.status === "queued");
+  // 简历、匹配或 AI 报告进行中时刷新
+  const running = !!data?.applicant?.versions?.some((v) => v.parseStatus === "running") || !!data?.matchRuns?.some((r) => r.status === "running" || r.status === "queued") || ["pending", "running"].includes(data?.applicant?.autoEvaluationStatus);
   useEffect(() => {
     if (!open || !running) return;
     const t = setInterval(load, 3000);
@@ -134,6 +134,7 @@ export default function ApplicantDrawer({ applicantId, open, initialEdit = false
                 <h3 className="text-lg font-bold text-navy-700 truncate">{a.name || "未填姓名"}</h3>
                 {a.contactConfirmedAt ? <span className="inline-flex items-center gap-1 text-[11px] text-green-700 bg-green-100 px-2 py-0.5 rounded-full"><I name="check" size={10} />联系方式已确认</span> : <span className="text-[11px] text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">联系方式未确认</span>}
                 <ParseTag status={a.currentVersion?.parseStatus} />
+                <AutoEvaluationTag status={a.autoEvaluationStatus} title={a.applications.find((x) => x.jobId === a.autoEvaluationJobId)?.job?.title} />
               </div>
               <p className="text-xs text-gray-600 mt-1 truncate">{[a.school, a.major, a.degree, a.gradYear && `${a.gradYear} 届`].filter(Boolean).join(" · ") || "学校 / 专业待补"}</p>
               <p className="text-xs text-gray-600 mt-0.5 flex items-center gap-3 flex-wrap">

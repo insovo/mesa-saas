@@ -29,6 +29,7 @@ import feishuRoutes from "./routes/feishu.js";
 import feishuConfigRoutes from "./routes/feishu-config.js";
 import campusRoutes from "./routes/campus.js";
 import campusPublicRoutes from "./routes/campus-public.js";
+import { reconcileCampusAutoEvaluation } from "./lib/campus/autoEvaluation.js";
 import { verifyTemplateOnBoot } from "./lib/interviewEvalTemplate.js";
 import { verifyPerformanceTemplatesOnBoot } from "./lib/performanceEvalTemplate.js";
 
@@ -129,6 +130,25 @@ try {
   app.log.fatal({ err }, "failed to start");
   process.exit(1);
 }
+
+setImmediate(async () => {
+  try {
+    let cursor;
+    while (true) {
+      const rows = await app.prisma.campusApplicant.findMany({
+        where: { OR: [
+          { applications: { some: { status: { in: ["applied", "screening", "onsite_interview", "referred", "passed"] } } } },
+          { autoEvaluationStatus: { in: ["pending", "running", "done"] } },
+        ] },
+        select: { id: true, autoEvaluationStatus: true }, orderBy: { id: "asc" }, take: 100,
+        ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+      });
+      for (const row of rows) await reconcileCampusAutoEvaluation(app, row.id, { recover: ["pending", "running"].includes(row.autoEvaluationStatus) });
+      if (rows.length < 100) break;
+      cursor = rows.at(-1).id;
+    }
+  } catch (err) { app.log.error({ err }, "[campus] auto evaluation recovery failed"); }
+});
 
 const shutdown = async (signal) => {
   app.log.info(`${signal} received, closing...`);

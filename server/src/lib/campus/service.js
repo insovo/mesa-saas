@@ -44,7 +44,7 @@ export async function createVersionTx(tx, { applicant, session, resume, uploaded
   const v = await tx.campusResumeVersion.create({
     data: { applicantId: applicant.id, version, attachmentKey: resume.key, filename: resume.filename || null, size: resume.size ?? null, contentType: resume.contentType || null, fileSha256: resume.sha256 || null, uploadedBy },
   });
-  await tx.campusApplicant.update({ where: { id: applicant.id }, data: { resumeUploadCount: version, currentResumeVersionId: v.id } });
+  await tx.campusApplicant.update({ where: { id: applicant.id }, data: { resumeUploadCount: version, currentResumeVersionId: v.id, autoEvaluationStatus: "awaiting_match", autoEvaluationTaskId: null } });
   await tx.campusMatchRun.updateMany({ where: { applicantId: applicant.id, stale: false }, data: { stale: true } });
   await tx.candidate.update({ where: { id: applicant.candidateId }, data: { attachment: resume.key } });
   return v;

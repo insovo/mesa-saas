@@ -2,6 +2,7 @@
 // 所有路由都需 JWT 鉴权。
 
 import { whereByIdOrExternal } from "../lib/idLookup.js";
+import { campusAutoEvaluationStatus } from "../lib/campus/autoEvaluation.js";
 import { writeLog } from "../lib/audit.js";
 import { withDerivedCandidate as withDerived } from "../lib/derived.js";
 import { toDisplayName, resolveNoteAuthorNames } from "../lib/displayName.js";
@@ -364,7 +365,7 @@ export default async function candidatesRoutes(app) {
     const isAdmin = req.user?.role === "ADMIN";
     const rows = await app.prisma.candidateEvaluation.findMany({
       where: { candidateId: req.params.id },
-      orderBy: { evaluatedAt: "desc" },
+      orderBy: [{ isCurrent: "desc" }, { evaluatedAt: "desc" }],
       take: 20,
       include: { job: { select: { id: true, title: true, dept: true, evaluationModelVersion: true } } },
     });
@@ -375,7 +376,8 @@ export default async function candidatesRoutes(app) {
       versions: e.versions, costs: e.costs, evaluatedAt: e.evaluatedAt,
       ...(isAdmin ? { jevRequest: e.jevRequest, jevAnswers: e.jevAnswers } : {}),
     }));
-    return { items, current: items.find((i) => i.isCurrent) || null };
+    const campusAutoEvaluation = await campusAutoEvaluationStatus(app.prisma, req.params.id);
+    return { items, current: items.find((i) => i.isCurrent) || null, campusAutoEvaluation };
   });
 
   // HR 人工覆盖分类(不改 AI 原始分;写审计)

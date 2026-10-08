@@ -28,6 +28,7 @@ async function fixture(t, { manage = true, page = true, linked = true, changed =
       findFirst: async ({ where }) => { writes.push({ type: "lookup", where }); return null; },
     },
     campusSession: { findFirst: async () => ({ id: sessionId }) },
+    campusApplication: { findMany: async () => [] },
     campusSessionJob: {
       findFirst: async () => linked ? sj : null,
       findMany: async ({ where }) => linked && where.sessionId === sessionId ? sessionJobs.filter((item) => where.id.in.includes(item.id)).map((item) => ({ id: item.id, jobId: item.jobId, job: item.job })) : [],

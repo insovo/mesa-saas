@@ -11,6 +11,7 @@ import { isKimiConfigured } from "../kimi.js";
 import { withGate, gateStatus, executeExtraction } from "./extract.js";
 import { shownScore } from "./shared.js";
 import { httpError } from "./service.js";
+import { reconcileCampusAutoEvaluation } from "./autoEvaluation.js";
 
 const TIER_ORDER = { MUST: 0, CORE: 1, PREFERRED: 2, STABILITY: 3, BONUS: 4 };
 
@@ -144,6 +145,7 @@ async function runMatch(app, runId) {
     const cur = await getTask(app, taskId);
     await updateTask(app, taskId, { stages: { ...(cur?.stages || {}), evaluate: { status: "done", done: total, total } } });
     await markDone(app, taskId, { candidate: null, match: null, results: results.length });
+    await reconcileCampusAutoEvaluation(app, applicant.id).catch((err) => app.log.error({ err, runId }, "[campus] auto evaluation scheduling failed"));
   } catch (err) {
     if (err?.code === "cancelled") { await markCancelled(app, taskId); await app.prisma.campusMatchRun.updateMany({ where: { id: runId, status: { in: ["queued", "running"] } }, data: { status: "cancelled", finishedAt: new Date() } }); return; }
     app.log.error({ err, runId }, "[campus] match run failed");

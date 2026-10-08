@@ -13,11 +13,16 @@ import { startExtraction, cancelExtraction } from "../lib/campus/extract.js";
 import { startMatchRun, cancelMatchRun, runShape } from "../lib/campus/match.js";
 import { getTask } from "../lib/parseTaskStore.js";
 import { ensureCandidate, createVersionTx, createApplicationTx, findSessionForPublic, httpError } from "../lib/campus/service.js";
+import { reconcileCampusAutoEvaluation } from "../lib/campus/autoEvaluation.js";
 import { ALLOWED_RESUME_MIME, RESUME_MAX_SIZE, QUOTA_STATUS, normalizePhone, uploadsAllowed } from "../lib/campus/shared.js";
 
 const PHONE_RE = /^\+?\d{6,15}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CONSENT_VERSION = "2026-10-08";
+
+async function refreshAutoEvaluation(app, applicantId) {
+  await reconcileCampusAutoEvaluation(app, applicantId).catch((err) => app.log.error({ err, applicantId }, "[campus] auto evaluation scheduling failed"));
+}
 
 function sessionShape(s, { showSalaryFlags = false } = {}) {
   if (!s) return null;
@@ -286,6 +291,7 @@ export default async function campusPublicRoutes(app) {
       v = await app.prisma.$transaction((tx) => createVersionTx(tx, { applicant: a, session: a.session, resume: req.body }));
     } catch (err) { return sendErr(reply, err); }
     const taskId = await startExtraction(app, { applicantId: a.id, versionId: v.id, candidateId: a.candidateId, concurrency: await concurrency() });
+    await refreshAutoEvaluation(app, a.id);
     return reply.code(201).send({ duplicate: false, version: { ...versionShape(v), parseStatus: taskId ? "running" : "skipped" }, remaining: uploadsAllowed(a.session, a) - v.version, parseTaskId: taskId });
   });
 
@@ -386,12 +392,13 @@ export default async function campusPublicRoutes(app) {
       const row = await app.prisma.$transaction(async (tx) => {
         let extra = {};
         if (req.body.source === "match" && req.body.matchRunId) {
-          const run = await tx.campusMatchRun.findFirst({ where: { id: req.body.matchRunId, applicantId: a.id } });
+          const run = await tx.campusMatchRun.findFirst({ where: { id: req.body.matchRunId, applicantId: a.id, resumeVersionId: a.currentResumeVersionId, status: "done", stale: false } });
           const hit = Array.isArray(run?.results) ? run.results.find((r) => r.jobId === req.body.jobId) : null;
-          if (hit) extra = { matchRunId: run.id, scoreRaw: hit.scoreRaw ?? null, scoreShown: hit.scoreShown ?? null, evaluationId: hit.evaluationId || null };
+          if (hit && !hit.error && hit.evaluationId) extra = { matchRunId: run.id, scoreRaw: hit.scoreRaw ?? null, scoreShown: hit.scoreShown ?? null, evaluationId: hit.evaluationId };
         }
         return createApplicationTx(tx, { applicant: a, session: a.session, jobId: req.body.jobId, source: req.body.source || "direct", resumeVersionId: a.currentResumeVersionId, ...extra });
       });
+      await refreshAutoEvaluation(app, a.id);
       const full = await app.prisma.campusApplication.findUnique({ where: { id: row.id }, include: { sessionJob: { include: { job: { select: { id: true, title: true, dept: true, location: true } } } } } });
       const active = await app.prisma.campusApplication.count({ where: { applicantId: a.id, status: { in: QUOTA_STATUS } } });
       return reply.code(201).send({ application: applicationShape(full), applied: active, maxApplyJobs: a.session.maxApplyJobs });
@@ -412,6 +419,7 @@ export default async function campusPublicRoutes(app) {
     if (!row) return reply.code(404).send({ error: "not_found" });
     if (!["applied", "screening"].includes(row.status)) return reply.code(409).send({ error: "campus_cannot_withdraw", message: "该投递已进入面试流程,如需撤回请联系 HR" });
     await app.prisma.campusApplication.update({ where: { id: row.id }, data: { status: "withdrawn", statusChangedAt: new Date(), withdrawnAt: new Date() } });
+    await refreshAutoEvaluation(app, a.id);
     return reply.code(204).send();
   });
 

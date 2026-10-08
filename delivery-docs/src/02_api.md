@@ -1165,6 +1165,8 @@ Header 必填:`X-Perf-Access-Key: <明文密钥>`
 | POST | `/applications/bulk-status` | `{ ids[], status }` |
 | DELETE | `/applications/:id` | 移除投递记录 |
 
+校招自动评估：学生或 HR 投递后，以及匹配任务完成后，后台从当前简历版本的有效匹配结果中选择**已投递的现场面试岗位里原始分最高**的一份。匹配阶段生成的硬筛和 Jev 逐项判定会作为当前评估，后台只补齐 AI 报告层；未匹配、匹配失败、硬筛排除、过期版本、关闭匹配的岗位或仅内推投递都不会自动生成报告。新版简历、撤回、投递状态或岗位类型变化会重新选择。`GET /api/candidates/:id/evaluations` 对有候选人访问权限的面试官、招聘人员和 admin 返回 `campusAutoEvaluation: { status, job, error, hasOnsiteApplication }`，状态为 `not_applicable | awaiting_match | pending | running | done | failed`；校招台账的 `items[]` / 学生详情的 `applicant` 另返回 `autoEvaluationStatus` 和 `autoEvaluationJobId`。候选人详情、校招台账和学生详情抽屉展示评估状态，进行中的任务会轮询刷新。
+
 ## 19.5 设置
 
 `GET /settings`(admin 或 `campus.manage`)/ `PUT /settings`(仅 admin):`matchConcurrency authJwtTtl codeCooldownS codePerHour contactHints[] pcUploadEnabled`,落 `SystemSetting` 键 `campus.match.concurrency / campus.auth.jwt_ttl / campus.auth.code_rate / campus.contact_hints / campus.pc_upload_enabled`。

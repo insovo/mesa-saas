@@ -141,12 +141,12 @@ export default function Topbar({ navOpen = false }) {
     <header className="sticky top-0 z-20 bg-lightPrimary/70 backdrop-blur-md border-b border-white/40">
       {/* 左侧 padding 只在菜单关闭时给固定左上角的开关按钮让位;展开时内容区已被面板推开,无需再预留 */}
       <div
-        className={`flex items-center gap-4 px-4 md:px-8 pt-7 pb-5 transition-[padding-left] duration-300 ${
-          navOpen ? "" : "pl-20 md:pl-20"
+        className={`flex items-center gap-2 md:gap-4 px-4 md:px-8 pt-7 pb-5 transition-[padding-left] duration-300 ${
+          navOpen ? "" : "pl-16 md:pl-20"
         }`}
       >
         {/* min-w 保证标题不被搜索框挤到消失;超出仍 truncate 不竖排 */}
-        <div className="min-w-[140px] md:min-w-[170px] flex-1 overflow-hidden">
+        <div className="min-w-0 sm:min-w-[140px] md:min-w-[170px] flex-1 overflow-hidden">
           <p className="text-xs font-medium text-gray-700 whitespace-nowrap truncate">Overseas R&amp;D · 招聘工作台</p>
           <h1 className="title-page mt-1 text-[22px] md:text-page-title whitespace-nowrap truncate">{title}</h1>
         </div>
@@ -173,9 +173,9 @@ export default function Topbar({ navOpen = false }) {
               className="flex items-center gap-3 pl-1 pr-3 h-11 rounded-full bg-white shadow-card hover:shadow-glow hover:-translate-y-0.5 transition-all duration-200"
             >
               <Avatar name={user?.name || user?.username || user?.email || "U"} src={user?.avatar} size={36} />
-              <div className="text-left hidden sm:block">
+              <div className="text-left hidden sm:block min-w-0 max-w-32 xl:max-w-44">
                 <p className="text-xs font-medium text-gray-700 leading-tight">已登录</p>
-                <p className="text-sm font-bold text-navy-700 leading-tight">{user?.name || user?.username || user?.email}</p>
+                <p className="text-sm font-bold text-navy-700 leading-tight truncate">{user?.name || user?.username || user?.email}</p>
               </div>
               <I name="chevron-down" size={14} className="text-gray-400" />
             </button>

@@ -898,6 +898,12 @@ model CampusApplicant {
   tokenVersion           Int           @default(0) @map("token_version") // 学生 JWT 强制下线
   lastSeenAt             DateTime?     @map("last_seen_at")
   registeredBy           String?       @map("registered_by") @db.Uuid // HR 手工登记的操作者;学生自助为 null
+  autoEvaluationStatus    String       @default("not_applicable") @map("auto_evaluation_status") // not_applicable | awaiting_match | pending | running | done | failed
+  autoEvaluationJobId     String?      @map("auto_evaluation_job_id") @db.Uuid
+  autoEvaluationVersionId String?      @map("auto_evaluation_version_id") @db.Uuid
+  autoEvaluationId        String?      @map("auto_evaluation_id") @db.Uuid
+  autoEvaluationTaskId    String?      @map("auto_evaluation_task_id")
+  autoEvaluationError     String?      @map("auto_evaluation_error")
 
   resumeVersions CampusResumeVersion[]
   applications   CampusApplication[]

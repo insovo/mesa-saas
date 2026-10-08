@@ -19,12 +19,17 @@ import { startExtraction, cancelExtraction, gateStatus } from "../lib/campus/ext
 import { startMatchRun, cancelMatchRun, runShape } from "../lib/campus/match.js";
 import { getTask } from "../lib/parseTaskStore.js";
 import { ensureCandidate, createVersionTx, createApplicationTx } from "../lib/campus/service.js";
+import { reconcileCampusAutoEvaluation } from "../lib/campus/autoEvaluation.js";
 import { mapStatusToStage, candidateToEmployeeData } from "../lib/candidateToEmployee.js";
 import { randomBytes } from "node:crypto";
 import {
-  JOB_KINDS, APP_STATUS, ALLOWED_RESUME_MIME, RESUME_MAX_SIZE,
+  JOB_KINDS, APP_STATUS, QUOTA_STATUS, ALLOWED_RESUME_MIME, RESUME_MAX_SIZE,
   maskPhone, maskEmail, normalizeSlug, normalizePhone, uploadsAllowed,
 } from "../lib/campus/shared.js";
+
+async function refreshAutoEvaluation(app, applicantId) {
+  await reconcileCampusAutoEvaluation(app, applicantId).catch((err) => app.log.error({ err, applicantId }, "[campus] auto evaluation scheduling failed"));
+}
 
 const SESSION_BODY = {
   type: "object",
@@ -217,6 +222,8 @@ function applicantShape(a, { showContact, versionsAllowed }) {
     degree: a.degree || a.candidate?.education || null, gradYear: a.gradYear,
     resumeUploadCount: a.resumeUploadCount, extraUploads: a.extraUploads, uploadsAllowed: versionsAllowed,
     currentResumeVersionId: a.currentResumeVersionId,
+    autoEvaluationStatus: a.autoEvaluationStatus === "not_applicable" && a.applications?.some((x) => x.sessionJob?.kind === "onsite" && QUOTA_STATUS.includes(x.status)) ? "awaiting_match" : a.autoEvaluationStatus,
+    autoEvaluationJobId: ["pending", "running", "done", "failed"].includes(a.autoEvaluationStatus) ? a.autoEvaluationJobId : null,
     currentVersion: current ? versionShape(current) : null,
     versions: (a.resumeVersions || []).map(versionShape),
     applications: (a.applications || []).map(applicationShape),
@@ -453,6 +460,10 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
       if (err.message === "campus_job_items_limit") return reply.code(409).send({ error: "campus_job_items_limit", message: `「${err.title}」的${err.field === "nice" ? "加分项" : "福利待遇"}添加后会超过 20 条,本次未保存` });
       throw err;
     }
+    if (kind !== undefined) {
+      const affected = await app.prisma.campusApplication.findMany({ where: { sessionJobId: { in: ids }, status: { in: QUOTA_STATUS } }, distinct: ["applicantId"], select: { applicantId: true } });
+      for (const row of affected) await refreshAutoEvaluation(app, row.applicantId);
+    }
     await writeLog(app.prisma, { req, action: "campus.job.bulk_update", entityType: "CampusSession", entityId: s.id, diff: { count: ids.length, fields: Object.keys(changes) } });
     return { updated: ids.length };
   });
@@ -463,6 +474,10 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
     if (!sj) return reply.code(404).send({ error: "not_found" });
     const { jobId, ...data } = req.body; // 不允许改 jobId(删掉重加)
     const updated = await app.prisma.campusSessionJob.update({ where: { id: sj.id }, data, include: { job: { select: jobSelect }, _count: { select: { applications: true } } } });
+    if (data.kind !== undefined || data.matchEnabled !== undefined) {
+      const affected = await app.prisma.campusApplication.findMany({ where: { sessionJobId: sj.id, status: { in: QUOTA_STATUS } }, distinct: ["applicantId"], select: { applicantId: true } });
+      for (const row of affected) await refreshAutoEvaluation(app, row.applicantId);
+    }
     return { item: sessionJobShape(updated) };
   });
 
@@ -686,6 +701,7 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
     const a = await app.prisma.campusApplicant.findUnique({ where: { id: applicantId }, include: applicantInclude });
     // 上传即抽取(设计 §4 规则 12)
     if (version) await startExtraction(app, { applicantId, versionId: version.id, candidateId: a.candidateId, concurrency: await concurrency() });
+    await refreshAutoEvaluation(app, applicantId);
     await writeLog(app.prisma, { req, action: "campus.applicant.create", entityType: "CampusApplicant", entityId: applicantId, diff: { sessionId: s.id, withResume: !!version, jobs: (b.jobIds || []).length } });
     const access = await loadUserAccess(req);
     return reply.code(201).send({ applicant: applicantShape(a, { showContact: hasModule(access, "candidate.contact"), versionsAllowed: uploadsAllowed(s, a) }) });
@@ -755,6 +771,7 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
       throw err;
     }
     const taskId = await startExtraction(app, { applicantId: a.id, versionId: version.id, candidateId: a.candidateId, concurrency: await concurrency() });
+    await refreshAutoEvaluation(app, a.id);
     return reply.code(201).send({ version: { ...versionShape(version), parseStatus: taskId ? "running" : "skipped" }, taskId });
   });
 
@@ -822,6 +839,7 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
     if (!a) return;
     try {
       const row = await app.prisma.$transaction((tx) => createApplicationTx(tx, { applicant: a, session: a.session, jobId: req.body.jobId, source: "hr", resumeVersionId: a.currentResumeVersionId }));
+      await refreshAutoEvaluation(app, a.id);
       const full = await app.prisma.campusApplication.findUnique({ where: { id: row.id }, include: { sessionJob: { include: { job: { select: { id: true, title: true, dept: true } } } } } });
       return reply.code(201).send({ application: applicationShape(full) });
     } catch (err) {
@@ -844,6 +862,7 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
       if (appData.status === "passed" && advance) await advanceCandidateTx(tx, u.applicant.candidateId, u.jobId);
       return u;
     });
+    if (data.status && data.status !== row.status) await refreshAutoEvaluation(app, row.applicantId);
     if (data.status && data.status !== row.status) await writeLog(app.prisma, { req, action: "campus.application.status", entityType: "CampusApplication", entityId: row.id, diff: { from: row.status, to: data.status, advance: !!advance } });
     return { application: applicationShape(updated) };
   });
@@ -858,6 +877,10 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
       }
       return res;
     });
+    if (r.count) {
+      const changed = await app.prisma.campusApplication.findMany({ where: { id: { in: ids } }, distinct: ["applicantId"], select: { applicantId: true } });
+      for (const row of changed) await refreshAutoEvaluation(app, row.applicantId);
+    }
     await writeLog(app.prisma, { req, action: "campus.application.bulk_status", entityType: "CampusApplication", diff: { count: r.count, status, advance: !!advance } });
     return { updated: r.count };
   });
@@ -954,6 +977,7 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
       });
     } catch (err) { if (err.statusCode) return reply.code(err.statusCode).send({ error: err.code, message: err.message }); throw err; }
     await startExtraction(app, { applicantId: a.id, versionId: version.id, candidateId: a.candidateId, concurrency: await concurrency() });
+    await refreshAutoEvaluation(app, a.id);
     await writeLog(app.prisma, { req, action: "campus.applicant.merge", entityType: "CampusApplicant", entityId: a.id, diff: { from: src.id, version: version.version } });
     return reply.code(201).send({ version: versionShape(version) });
   });

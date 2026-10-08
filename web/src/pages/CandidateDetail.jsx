@@ -657,12 +657,8 @@ function EvidenceQuote({ evidence }) {
   );
 }
 
-function EvaluationCard({ evaluation, history, candidate, jobs, matching, reportBusy, onRunMatch, onReport, onOverride, canEdit }) {
+function EvaluationCard({ evaluation, history, candidate, jobs, matching, reportBusy, onRunMatch, onReport, canEdit, campusAutoEvaluation }) {
   const [showHistory, setShowHistory] = useState(false);
-  const [overrideOpen, setOverrideOpen] = useState(false);
-  const [overrideCls, setOverrideCls] = useState("B");
-  const [overrideNote, setOverrideNote] = useState("");
-  const [saving, setSaving] = useState(false);
   const job = jobs.find((j) => j.id === (evaluation?.jobId || candidate.jobId));
   const ev = evaluation;
   const report = ev?.report || {};
@@ -676,19 +672,13 @@ function EvaluationCard({ evaluation, history, candidate, jobs, matching, report
   const hfItems = Array.isArray(ev?.hardFilter?.items) ? ev.hardFilter.items : [];
   const items = Array.isArray(ev?.items) ? ev.items : [];
   const probes = Array.isArray(report.interviewProbes) ? report.interviewProbes : [];
-  const needReport = ev && ev.engine === "jev" && ["pending", "failed", "skipped"].includes(ev.reportStatus);
+  const canGenerateProbes = ev?.engine === "jev";
   const past = (history || []).filter((h) => !h.isCurrent && !h.shadow);
-
-  async function submitOverride() {
-    setSaving(true);
-    try { await onOverride(overrideCls, overrideNote); setOverrideOpen(false); setOverrideNote(""); }
-    finally { setSaving(false); }
-  }
 
   return (
     <Card className="p-5 md:p-6">
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <h3 className="text-base font-bold text-[#1B254B] flex items-center gap-2">
+        <h3 className="min-w-0 text-base font-bold text-[#1B254B] flex flex-wrap items-center gap-2 [overflow-wrap:anywhere]">
           <I name="scan-search" size={16} className="text-[#422AFB]" />
           AI 三层评估
           {job && <span className="text-[11px] text-[#707EAE] font-medium">· {job.title}</span>}
@@ -698,6 +688,21 @@ function EvaluationCard({ evaluation, history, candidate, jobs, matching, report
           {effectiveCls && <ClassChip cls={effectiveCls} manual={!!ev?.manualOverride} />}
         </div>
       </div>
+
+      {campusAutoEvaluation && (() => {
+        const { status, job: autoJob, error, hasOnsiteApplication } = campusAutoEvaluation;
+        const label = {
+          not_applicable: hasOnsiteApplication ? "尚无有效匹配，不自动评估" : "未投递现场面试岗位，不自动评估",
+          awaiting_match: "现场面试岗位尚无有效匹配，等待重新匹配",
+          pending: "已选最高匹配岗位，AI 报告排队中",
+          running: "已选最高匹配岗位，AI 报告生成中",
+          done: "最高匹配现场面试岗位自动评估完成",
+          failed: "自动评估失败",
+        }[status] || "等待自动评估";
+        return <p className={`mt-3 rounded-xl px-3 py-2 text-xs ${status === "failed" ? "bg-red-50 text-red-700" : status === "done" ? "bg-green-50 text-green-700" : "bg-[#F4F7FE] text-[#707EAE]"}`} role="status">
+          {label}{autoJob ? ` · ${autoJob.title}` : ""}{status === "failed" && error ? `：${error}` : ""}
+        </p>;
+      })()}
 
       {!ev ? (
         <div className="mt-4 flex flex-col items-center justify-center py-6 text-center">
@@ -714,7 +719,7 @@ function EvaluationCard({ evaluation, history, candidate, jobs, matching, report
         </div>
       ) : (
         <>
-          <div className="mt-4 flex items-start gap-4">
+          <div className="mt-4 flex flex-col min-[420px]:flex-row items-start gap-4">
             <div className="shrink-0 flex flex-col items-center">
               <LiquidLoader size={64} level={matching ? 52 : (ev.overallScore ?? 0)} label={matching ? "—" : (ev.overallScore ?? "—")} loading={matching} />
               <p className="text-[10px] text-[#707EAE] mt-1">综合匹配</p>
@@ -792,7 +797,7 @@ function EvaluationCard({ evaluation, history, candidate, jobs, matching, report
           {probes.length > 0 && (
             <div className="mt-4">
               <h4 className="text-[11px] font-bold uppercase tracking-wide text-[#A3AED0] flex items-center gap-1.5 mb-2">
-                <I name="message-circle-question" size={12} className="text-[#422AFB]" /> 重点验证问题
+                <I name="message-circle-question" size={12} className="text-[#422AFB]" /> 重点提问项
               </h4>
               <ol className="space-y-1.5">
                 {probes.map((p, i) => (
@@ -806,14 +811,9 @@ function EvaluationCard({ evaluation, history, candidate, jobs, matching, report
           )}
 
           <div className="mt-4 pt-3 border-t border-[#E9ECEF] flex items-center gap-2 flex-wrap">
-            {needReport && canEdit && (
-              <Button variant="ghost" size="sm" onClick={onReport} disabled={reportBusy} icon={<I name={reportBusy ? "loader" : "file-text"} size={12} className={reportBusy ? "animate-spin" : ""} />}>
-                {reportBusy ? "生成中" : ev.reportStatus === "pending" ? "生成报告" : "重试报告"}
-              </Button>
-            )}
-            {canEdit && (
-              <Button variant="ghost" size="sm" onClick={() => { setOverrideCls(effectiveCls || "B"); setOverrideOpen((v) => !v); }} icon={<I name="user-check" size={12} />}>
-                人工调整分类
+            {canGenerateProbes && canEdit && (
+              <Button variant="ghost" size="sm" onClick={onReport} disabled={reportBusy} icon={<I name={reportBusy ? "loader" : "message-circle-question"} size={12} className={reportBusy ? "animate-spin" : ""} />}>
+                {reportBusy ? "生成中" : ev.reportStatus === "done" && probes.length > 0 ? "重新生成重点提问项" : "生成重点提问项"}
               </Button>
             )}
             {past.length > 0 && (
@@ -821,29 +821,15 @@ function EvaluationCard({ evaluation, history, candidate, jobs, matching, report
                 <I name="history" size={11} /> {showHistory ? "收起历史" : `查看历史评估(${past.length})`}
               </button>
             )}
-            <div className="flex-1" />
-            <span className="text-[10px] text-[#A3AED0]">
+            <span className="text-[10px] text-[#A3AED0] break-all sm:ml-auto">
               {fmtDate(ev.evaluatedAt)}{ev.versions?.jevModel ? ` · ${ev.versions.jevModel}` : ""}{ev.costs?.jevUsd != null ? ` · $${Number(ev.costs.jevUsd).toFixed(4)}${ev.costs.cached ? "(缓存)" : ""}` : ""}
             </span>
           </div>
 
-          {overrideOpen && (
-            <div className="mt-3 rounded-xl border border-[#E9ECEF] p-3 flex flex-col sm:flex-row gap-2 sm:items-center">
-              <select value={overrideCls} onChange={(e) => setOverrideCls(e.target.value)} className="h-9 px-2 rounded-xl border border-[#E9ECEF] text-sm text-[#1B254B] bg-white outline-none focus:border-[#422AFB]">
-                {["A", "B", "C", "D"].map((k) => <option key={k} value={k}>{k} · {CLASS_TONE[k].label}</option>)}
-              </select>
-              <input value={overrideNote} onChange={(e) => setOverrideNote(e.target.value)} maxLength={500} placeholder="调整原因(可选)" className="flex-1 h-9 px-3 rounded-xl border border-[#E9ECEF] text-sm text-[#1B254B] outline-none focus:border-[#422AFB]" />
-              <div className="flex gap-2">
-                <Button variant="ghost" size="sm" onClick={() => setOverrideOpen(false)} disabled={saving}>取消</Button>
-                <Button size="sm" onClick={submitOverride} disabled={saving} icon={<I name={saving ? "loader" : "check"} size={12} className={saving ? "animate-spin" : ""} />}>保存</Button>
-              </div>
-            </div>
-          )}
-
           {showHistory && past.length > 0 && (
             <ul className="mt-3 space-y-1.5">
               {past.map((h) => (
-                <li key={h.id} className="flex items-center gap-2 text-[11px] text-[#707EAE] rounded-lg bg-[#F4F7FE] px-3 py-1.5">
+                <li key={h.id} className="flex flex-wrap items-center gap-2 text-[11px] text-[#707EAE] rounded-lg bg-[#F4F7FE] px-3 py-1.5">
                   <span className="shrink-0">{fmtDate(h.evaluatedAt)}</span>
                   <span className="flex-1 min-w-0 truncate text-[#1B254B]">{h.job?.title || "—"}</span>
                   <EngineChip engine={h.engine} />
@@ -1099,9 +1085,9 @@ function JdSwitchConfirmModal({ open, onClose, onConfirm, currentJob, targetJob,
           ⚠ 当前已采纳的智能标签和评估字段会被覆盖,确认前请先备份。原始简历不变。
         </p>
 
-        <div className="flex justify-end gap-2">
-          <Button variant="ghost" onClick={onClose}>取消</Button>
-          <Button onClick={onConfirm} icon={<I name="zap" size={12} />}>
+        <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+          <Button variant="ghost" className="w-full sm:w-auto" onClick={onClose}>取消</Button>
+          <Button className="w-full sm:w-auto" onClick={onConfirm} icon={<I name="zap" size={12} />}>
             确认切换并重新匹配
           </Button>
         </div>
@@ -1824,7 +1810,7 @@ function ReviewItem({ review, replies = [], candidate, me, isAdmin, myVotes = {}
           {review.deletedAt ? (
             <p className="text-sm text-gray-400 italic mt-1 line-through">[已删除]</p>
           ) : (
-            <p className="text-sm text-[#1B254B] mt-1 whitespace-pre-wrap">{review.content}</p>
+            <p className="text-sm text-[#1B254B] mt-1 whitespace-pre-wrap [overflow-wrap:anywhere]">{review.content}</p>
           )}
           {!review.deletedAt && (review.attachments || []).length > 0 && (
             <div className="flex flex-wrap gap-2 mt-2">
@@ -1946,7 +1932,7 @@ function ReviewsCard({ reviews, candidate, me, isAdmin, myVotes, onVote, onAdd, 
       )}
 
       {selectedIds.length > 0 && (
-        <div className="mt-3 p-2.5 rounded-xl bg-[#E9E3FF] border border-[#422AFB]/30 flex items-center gap-2">
+        <div className="mt-3 p-2.5 rounded-xl bg-[#E9E3FF] border border-[#422AFB]/30 flex flex-wrap items-center gap-2">
           <span className="text-xs font-bold text-[#422AFB]">已选 {selectedIds.length} 条</span>
           <div className="flex-1" />
           <Button size="sm" variant="ghost" onClick={clearSelected}>清空</Button>
@@ -2684,7 +2670,7 @@ function FeedbackHistoryCard({ notes, onDelete, onAdd, insights }) {
                     {onDelete && (
                       <button
                         onClick={() => onDelete(n)}
-                        className="opacity-0 group-hover:opacity-100 transition text-red-500 hover:bg-red-50 w-6 h-6 rounded flex items-center justify-center shrink-0"
+                        className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition text-red-500 hover:bg-red-50 w-6 h-6 rounded flex items-center justify-center shrink-0"
                         aria-label="删除备注"
                       >
                         <I name="trash-2" size={12} />
@@ -2933,7 +2919,7 @@ function CandidateDetail() {
   const [matchingJobId, setMatchingJobId] = useState("");
   const [matching, setMatching] = useState(false);
   // 三层评估:评估记录(当前 + 历史)/ 结构化档案元信息 / 按需报告
-  const [evals, setEvals] = useState({ items: [], current: null });
+  const [evals, setEvals] = useState({ items: [], current: null, campusAutoEvaluation: null });
   const [profileMeta, setProfileMeta] = useState({ warnings: [], lastParse: null });
   const [reportBusy, setReportBusy] = useState(false);
   const tagName = useTaxonomy();
@@ -2983,7 +2969,10 @@ function CandidateDetail() {
     if (!cid) return;
     try {
       const { data } = await api.get(`/candidates/${cid}/evaluations`);
-      setEvals({ items: data.items || [], current: data.current || null });
+      setEvals({ items: data.items || [], current: data.current || null, campusAutoEvaluation: data.campusAutoEvaluation || null });
+      if (data.current?.jobId && ["pending", "running", "done"].includes(data.campusAutoEvaluation?.status)) {
+        setC((prev) => prev?.id === cid && prev.jobId !== data.current.jobId ? { ...prev, jobId: data.current.jobId, appliedFor: data.current.job?.title || prev.appliedFor } : prev);
+      }
     } catch { /* 无权限或无记录:保持空 */ }
   }
   async function loadProfileMeta(cid = c?.id) {
@@ -3007,12 +2996,19 @@ function CandidateDetail() {
 
   useEffect(() => {
     if (!c?.id) return;
-    setEvals({ items: [], current: null });
+    setEvals({ items: [], current: null, campusAutoEvaluation: null });
     setProfileMeta({ warnings: [], lastParse: null });
     loadEvaluations(c.id);
     loadProfileMeta(c.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [c?.id]);
+
+  useEffect(() => {
+    if (!c?.id || !["awaiting_match", "pending", "running"].includes(evals.campusAutoEvaluation?.status)) return;
+    const timer = setInterval(() => loadEvaluations(c.id), evals.campusAutoEvaluation.status === "awaiting_match" ? 8000 : 3000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [c?.id, evals.campusAutoEvaluation?.status]);
 
   useEffect(() => {
     if (!c?.id) return;
@@ -3147,31 +3143,20 @@ function CandidateDetail() {
     return finalTask;
   }
 
-  // 按需生成 / 重试评估报告(C/D 类默认不自动写报告)
+  // 按需生成重点提问项(C/D 类默认不自动生成报告层)
   async function runReport() {
     if (!c?.id) return;
     setReportBusy(true);
     try {
       const { data: { task: initialTask } } = await api.post(`/resumes/candidates/${c.id}/report`);
       const finalTask = await pollTask(initialTask.id, 3 * 60 * 1000);
-      if (!finalTask) { toast("报告生成超时", "error"); return; }
+      if (!finalTask) { toast("重点提问项生成超时", "error"); return; }
       if (finalTask.status === "failed") { reportReparseError(finalTask, c?.name); return; }
       setC(finalTask.candidate);
       loadEvaluations(c.id);
-      toast("✓ 报告已生成", "success");
-    } catch (e) { toast(e.response?.data?.message || e.message || "报告生成失败", "error"); }
+      toast(finalTask.evaluation?.reportStatus === "failed" ? "重点提问项生成失败，请重试" : "✓ 重点提问项已生成", finalTask.evaluation?.reportStatus === "failed" ? "error" : "success");
+    } catch (e) { toast(e.response?.data?.message || e.message || "重点提问项生成失败", "error"); }
     finally { setReportBusy(false); }
-  }
-
-  // HR 人工调整分类(AI 原始分类保留,写审计)
-  async function overrideClassification(classification, note) {
-    if (!c?.id) return;
-    try {
-      const { data } = await api.patch(`/candidates/${c.id}/evaluations/current/override`, { classification, note: note || undefined });
-      if (data.candidate) setC((prev) => (prev ? { ...prev, classification: data.candidate.classification, reviewPriority: data.candidate.reviewPriority } : prev));
-      await loadEvaluations(c.id);
-      toast(`分类已调整为 ${classification}`, "success");
-    } catch (e) { toast(e.response?.data?.message || e.message || "调整失败", "error"); throw e; }
   }
 
   async function changeStatus(newStatus) {
@@ -3270,17 +3255,16 @@ function CandidateDetail() {
         返回候选人列表
       </Link>
     </div>
-    <div className="flex flex-col xl:flex-row gap-4 xl:gap-5 items-start">
+    <div className="flex flex-col 2xl:flex-row gap-4 2xl:gap-5 items-start min-w-0">
 
       {/* ╔═══ LEFT COLUMN: Profile · Details · Documents ═══╗ */}
-      {/* 手机端用 display:contents 把本列「拍平」成父 flex 的直接子项,使「面试/评价/附件」块
-          能用 order-last 排到全页最底;桌面 xl:block 还原为原来的左侧 sticky 列 */}
-      <aside className="contents xl:block w-full xl:w-[360px] 2xl:w-[380px] xl:shrink-0 xl:space-y-4 xl:sticky xl:top-4 xl:self-start xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto xl:pr-1 xl:-mr-1">
+      {/* 窄屏把本列拍平成父 flex 子项,让面试/附件排在页面末尾 */}
+      <aside className="contents 2xl:block w-full 2xl:w-[350px] 2xl:shrink-0 2xl:space-y-4 2xl:sticky 2xl:top-4 2xl:self-start 2xl:max-h-[calc(100vh-2rem)] 2xl:overflow-y-auto 2xl:pr-1 2xl:-mr-1">
 
         {/* === Profile Card === */}
-        <Card className="w-full xl:w-auto p-4 md:p-5">
+        <Card className="w-full 2xl:w-auto p-4 md:p-5">
           <div className="mb-3 flex justify-end">
-            <p className="min-w-0 text-right text-[15px] leading-5 text-[#707EAE] break-words">
+            <p className="min-w-0 text-right text-[15px] leading-5 text-[#707EAE] [overflow-wrap:anywhere]">
               当前评分岗位：<span className="font-semibold text-[#52617E]">{currentScoringJobTitle}</span>
             </p>
           </div>
@@ -3396,7 +3380,7 @@ function CandidateDetail() {
                   <>
                     <div className="fixed inset-0 z-30" onClick={() => setJdPickerOpen(false)} />
                     <div
-                      className="absolute z-40 top-full left-1/2 -translate-x-1/2 mt-2 w-[240px] bg-white rounded-xl shadow-[14px_17px_40px_4px_rgba(112,144,176,0.18)] p-1.5"
+                      className="absolute z-40 top-full right-0 mt-2 w-[min(240px,calc(100vw-3rem))] bg-white rounded-xl shadow-[14px_17px_40px_4px_rgba(112,144,176,0.18)] p-1.5"
                       role="listbox"
                     >
                       <p className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-[#A3AED0]">选择/切换 JD</p>
@@ -3433,8 +3417,8 @@ function CandidateDetail() {
           </div>
         </Card>
 
-        {/* 手机端这组(面试评价 / 附件)用 order-last 排到全页最底;桌面 xl:order-none 还原 */}
-        <div className="w-full xl:w-auto space-y-4 order-last xl:order-none">
+        {/* 窄屏把面试评价和附件放在页面末尾 */}
+        <div className="w-full 2xl:w-auto space-y-4 order-last 2xl:order-none">
         {/* === 面试评价 === */}
         <InterviewEvalCard candidate={c} currentUser={me} />
 
@@ -3476,15 +3460,15 @@ function CandidateDetail() {
       </aside>
 
       {/* ╔═══ MIDDLE COLUMN: Actions + AI + Job overview + 经历 / 项目 / 教育 / 备注 ═══╗ */}
-      <div className="flex-1 min-w-0 space-y-4 xl:sticky xl:top-4 xl:self-start xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto xl:pr-1 xl:-mr-1">
+      <div className="w-full 2xl:flex-1 min-w-0 space-y-4">
 
         {/* === Action buttons === */}
-        {/* 手机:2 列网格(主操作 + 删除各占整行,无右侧空隙);桌面:flex 一行 + 右推删除 */}
-        <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
+        {/* 窄屏让操作按钮分行,桌面再横向排列 */}
+        <div className="grid grid-cols-1 min-[380px]:grid-cols-2 lg:flex lg:flex-wrap gap-2">
           {canEdit && (
-            <div className="relative col-span-2 sm:col-auto">
+            <div className="relative min-[380px]:col-span-2 lg:col-auto min-w-0">
               <Button
-                className="w-full sm:w-auto"
+                className="w-full lg:w-auto"
                 onClick={() => setStatusOpen(v => !v)}
                 disabled={statusSaving}
                 aria-haspopup="menu"
@@ -3517,13 +3501,13 @@ function CandidateDetail() {
               )}
             </div>
           )}
-          <Button variant="ghost" onClick={() => setJdDescOpen(true)} icon={<I name="file-text" size={14} />}>JD 详情</Button>
+          <Button variant="ghost" className="w-full lg:w-auto" onClick={() => setJdDescOpen(true)} icon={<I name="file-text" size={14} />}>JD 详情</Button>
           {canShare && (
-            <Button variant="ghost" onClick={() => setShareOpen(true)} icon={<I name="share-2" size={14} />}>分享</Button>
+            <Button variant="ghost" className="w-full lg:w-auto" onClick={() => setShareOpen(true)} icon={<I name="share-2" size={14} />}>分享</Button>
           )}
-          <div className="hidden sm:block sm:flex-1" />
+          <div className="hidden lg:block lg:flex-1" />
           {canDelete && (
-            <Button variant="danger" className="col-span-2 sm:col-auto" onClick={onDelete} icon={<I name="trash-2" size={14} />}>删除候选人</Button>
+            <Button variant="danger" className="w-full min-[380px]:col-span-2 lg:w-auto lg:col-auto" onClick={onDelete} icon={<I name="trash-2" size={14} />}>删除候选人</Button>
           )}
         </div>
 
@@ -3535,22 +3519,22 @@ function CandidateDetail() {
                 <I name="sparkles" size={16} className="text-[#422AFB]" />
                 AI 简历简报
               </h3>
-              <pre className="whitespace-pre-wrap text-xs font-mono text-[#1B254B] mt-3 leading-relaxed max-h-56 overflow-y-auto pr-2">{c.aiSummary}</pre>
+              <pre className="min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-xs font-mono text-[#1B254B] mt-3 leading-relaxed">{c.aiSummary}</pre>
             </div>
-            <div className="relative flex items-center gap-3 mt-3 pt-3 border-t border-[#E9ECEF]">
+            <div className="relative flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-[#E9ECEF]">
               <button
                 onClick={() => openR2Object(c.attachment, "原始简历")}
                 disabled={!c.attachment}
-                className="text-[#422AFB] text-xs font-bold hover:underline flex items-center gap-1 disabled:text-[#A3AED0] disabled:no-underline disabled:cursor-not-allowed"
+                className="w-full sm:w-auto text-[#422AFB] text-xs font-bold hover:underline flex items-center gap-1 disabled:text-[#A3AED0] disabled:no-underline disabled:cursor-not-allowed"
                 title={c.attachment ? "在新标签打开" : "候选人无原始简历"}
               >
                 <I name="file-text" size={12} /> 查看原始简历
               </button>
-              <div className="flex-1" />
-              {canEdit && <Button variant="ghost" size="sm" onClick={openReparse} disabled={reparsing} title="重新抽取简历信息，更新简报、教育及基础字段" icon={<I name={reparsing ? "loader" : "rotate-ccw"} size={12} className={reparsing ? "animate-spin" : ""} />}>
+              <div className="hidden sm:block sm:flex-1" />
+              {canEdit && <Button variant="ghost" size="sm" className="w-full sm:w-auto" onClick={openReparse} disabled={reparsing} title="重新抽取简历信息，更新简报、教育及基础字段" icon={<I name={reparsing ? "loader" : "rotate-ccw"} size={12} className={reparsing ? "animate-spin" : ""} />}>
                 {reparsing ? "抽取中" : "重新抽取简历信息"}
               </Button>}
-              {canEdit && <Button size="sm" onClick={openJdMatchConfirm} disabled={matching} title="确认或更换 JD 后重新评分" icon={<I name={matching ? "loader" : "sparkles"} size={12} className={matching ? "animate-spin" : ""} />}>
+              {canEdit && <Button size="sm" className="w-full sm:w-auto" onClick={openJdMatchConfirm} disabled={matching} title="确认或更换 JD 后重新评分" icon={<I name={matching ? "loader" : "sparkles"} size={12} className={matching ? "animate-spin" : ""} />}>
                 {matching ? "评分中" : "重新评分"}
               </Button>}
             </div>
@@ -3566,9 +3550,9 @@ function CandidateDetail() {
           matching={matching}
           reportBusy={reportBusy}
           canEdit={canEdit}
+          campusAutoEvaluation={evals.campusAutoEvaluation}
           onRunMatch={openJdMatchConfirm}
           onReport={runReport}
-          onOverride={overrideClassification}
         />
 
         {/* === Job Overview === */}
@@ -3577,7 +3561,7 @@ function CandidateDetail() {
           return (
             <Card className="p-5 md:p-6">
               <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-                <h3 className="text-base font-bold text-[#1B254B] flex items-center gap-2">
+                <h3 className="min-w-0 text-base font-bold text-[#1B254B] flex flex-wrap items-center gap-2 [overflow-wrap:anywhere]">
                   <I name="briefcase" size={16} className="text-[#422AFB]" />
                   岗位概览
                   {job && <span className="text-[11px] text-[#707EAE] font-medium">· {job.title}</span>}
@@ -3766,9 +3750,9 @@ function CandidateDetail() {
             return <NeedJobPlaceholder hasJob={!!c.jobId} onPickJob={() => setJdPickerOpen(true)} fieldName="教育背景" />;
           })()}
           {c.attachment && (
-            <div className="mt-6 pt-4 border-t border-[#E9ECEF] flex items-center gap-2 text-xs text-[#707EAE]">
-              <I name="paperclip" size={14} />
-              {c.attachment}
+            <div className="mt-6 pt-4 border-t border-[#E9ECEF] flex items-start gap-2 text-xs text-[#707EAE] min-w-0">
+              <I name="paperclip" size={14} className="shrink-0" />
+              <span className="min-w-0 break-all">{c.attachment}</span>
             </div>
           )}
         </Card>
@@ -3781,7 +3765,7 @@ function CandidateDetail() {
       </div>
 
       {/* ╔═══ RIGHT COLUMN: Reviews + Feedback History ═══╗ */}
-      <aside className="w-full xl:w-[340px] 2xl:w-[360px] shrink-0 space-y-4 xl:sticky xl:top-4 xl:self-start xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto xl:pr-1 xl:-mr-1">
+      <aside className="w-full 2xl:w-[320px] min-w-0 shrink-0 space-y-4 2xl:sticky 2xl:top-4 2xl:self-start 2xl:max-h-[calc(100vh-2rem)] 2xl:overflow-y-auto 2xl:pr-1 2xl:-mr-1">
         <ReviewsCard
           reviews={reviews} candidate={c} me={me} isAdmin={isAdmin}
           myVotes={myVotes} onVote={vote}
