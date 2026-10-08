@@ -39,7 +39,7 @@ export default function Jobs() {
   async function load() {
     setLoading(true);
     try {
-      const params = {};
+      const params = { recruitmentType: "social" };
       if (q) params.q = q;
       if (urgency) params.urgency = urgency;
       const { items } = await resources.jobs.list(params);
@@ -166,13 +166,13 @@ export default function Jobs() {
             />
           </div>
           <Button variant="ghost" onClick={load} icon={<I name="refresh-cw" size={14} />}>刷新</Button>
-          <Button onClick={openCreate} icon={<I name="plus" size={16} />}>新建岗位</Button>
+          <Button onClick={openCreate} icon={<I name="plus" size={16} />}>新建社招岗位</Button>
         </div>
 
         {loading ? (
           <LoadingBlock height="h-40" />
         ) : items.length === 0 ? (
-          <Empty title="暂无岗位" />
+          <Empty title="暂无社招岗位" />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {items.map((j) => (
@@ -249,7 +249,7 @@ export default function Jobs() {
       <Modal open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="max-w-3xl">
         <form onSubmit={onSubmit} className="p-8">
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-xl font-bold text-navy-700">{editing ? "编辑岗位" : "新建岗位"}</h3>
+            <h3 className="text-xl font-bold text-navy-700">{editing ? "编辑社招岗位" : "新建社招岗位"}</h3>
             <button type="button" onClick={() => setCreateOpen(false)} className="text-gray-400 hover:text-navy-700">
               <I name="x" size={20} />
             </button>

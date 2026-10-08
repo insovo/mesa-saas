@@ -7,7 +7,7 @@ async function listAvailableJobs() {
   const items = [];
   let page;
   do {
-    page = await resources.jobs.list({ skip: items.length, take: 200 });
+    page = await resources.jobs.list({ recruitmentType: "campus", skip: items.length, take: 200 });
     items.push(...page.items);
   } while (page.items.length && items.length < page.total);
   return items;

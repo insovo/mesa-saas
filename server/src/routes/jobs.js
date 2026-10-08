@@ -75,6 +75,7 @@ const LIST_QUERY = {
     q: { type: "string", maxLength: 100 },
     dept: { type: "string", maxLength: 100 },
     urgency: { type: "string", enum: ["high", "mid", "low"] },
+    recruitmentType: { type: "string", enum: ["social", "campus"] },
     skip: { type: "integer", minimum: 0, default: 0 },
     take: { type: "integer", minimum: 1, maximum: 200, default: 100 },
   },
@@ -101,10 +102,11 @@ export default async function jobsRoutes(app) {
   });
 
   app.get("/", { schema: { querystring: LIST_QUERY } }, async (req) => {
-    const { q, dept, urgency, skip = 0, take = 100 } = req.query;
+    const { q, dept, urgency, recruitmentType, skip = 0, take = 100 } = req.query;
     const where = {};
     if (dept) where.dept = dept;
     if (urgency) where.urgency = urgency;
+    if (recruitmentType) where.recruitmentType = recruitmentType;
     if (q) {
       where.OR = [
         { title: { contains: q, mode: "insensitive" } },
@@ -144,7 +146,7 @@ export default async function jobsRoutes(app) {
     if (!hasModule(access, "job.create")) {
       return reply.code(403).send({ error: "forbidden", message: "无创建岗位权限" });
     }
-    const data = { ...req.body };
+    const data = { ...req.body, recruitmentType: "social" };
     if (data.publishedAt) data.publishedAt = new Date(data.publishedAt);
     if (data.deadline) data.deadline = new Date(data.deadline);
     if (!prepareStructured(data, reply)) return;

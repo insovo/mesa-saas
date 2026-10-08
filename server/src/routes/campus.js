@@ -404,8 +404,8 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
     const s = await loadSession(req, reply, req.params.id);
     if (!s) return;
     const scopeWhere = await buildJobScopeWhere(req);
-    const job = await app.prisma.job.findFirst({ where: scopeWhere ? { AND: [{ id: req.body.jobId }, scopeWhere] } : { id: req.body.jobId }, select: { id: true } });
-    if (!job) return reply.code(404).send({ error: "job_not_found", message: "岗位不存在" });
+    const job = await app.prisma.job.findFirst({ where: scopeWhere ? { AND: [{ id: req.body.jobId, recruitmentType: "campus" }, scopeWhere] } : { id: req.body.jobId, recruitmentType: "campus" }, select: { id: true } });
+    if (!job) return reply.code(404).send({ error: "job_not_found", message: "校招岗位不存在或不可访问" });
     const dup = await app.prisma.campusSessionJob.findUnique({ where: { sessionId_jobId: { sessionId: s.id, jobId: job.id } } });
     if (dup) return reply.code(409).send({ error: "campus_job_exists", message: "该岗位已在专场中" });
     const max = await app.prisma.campusSessionJob.aggregate({ where: { sessionId: s.id }, _max: { sortOrder: true } });
@@ -506,7 +506,7 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
     if (!s) return;
     const { kind, matchEnabled, ...jd } = req.body;
     const created = await app.prisma.$transaction(async (tx) => {
-      const job = await tx.job.create({ data: { ...jobData(jd), status: "招聘中" } });
+      const job = await tx.job.create({ data: { ...jobData(jd), recruitmentType: "campus", status: "招聘中" } });
       // 创建者须能从已有岗位中再次找到自己新建的 JD(含移除后重新加入)。
       if (!access.isAdmin) await tx.userJobScope.create({ data: { userId: req.user.sub, jobId: job.id } });
       const max = await tx.campusSessionJob.aggregate({ where: { sessionId: s.id }, _max: { sortOrder: true } });
@@ -519,7 +519,7 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
     return reply.code(201).send({ item: sessionJobShape(created) });
   });
 
-  // 编辑校招 JD:改的是 Job 本身,其它专场 / 社招共用该岗位时同步生效(前端按 sessionsCount 提示)
+  // 编辑校招 JD:改的是 Job 本身,其它专场共用该岗位时同步生效(前端按 sessionsCount 提示)
   app.patch("/sessions/:id/jobs/:sjId/job", { schema: { body: CAMPUS_JOB_PATCH_BODY } }, async (req, reply) => {
     if (!(await requireManage(req, reply))) return;
     const sj = await app.prisma.campusSessionJob.findFirst({ where: { id: req.params.sjId, session: whereByIdOrExternal(req.params.id) } });

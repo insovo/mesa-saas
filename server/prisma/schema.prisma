@@ -235,6 +235,7 @@ model Job {
   urgency     Urgency @default(mid)
   status      String? @default("招聘中")
   description String? @db.Text // JD 详情(职责/要求/福利) — LLM 用作 JD 匹配度评估的素材
+  recruitmentType String @default("social") @map("recruitment_type") // social | campus;独立于 JD 原文的招聘类型
 
   // === V2 新字段(JD 详情弹窗 + 岗位概览 Card 用)===
   employment           String? // "全职" / "兼职" / "实习" / "合同制"
@@ -273,6 +274,7 @@ model Job {
 
   @@index([dept])
   @@index([urgency])
+  @@index([recruitmentType])
   @@map("jobs")
 }
 
@@ -820,7 +822,7 @@ model CandidateEvaluation {
 }
 
 // ─── 校招模块(2026-10-08)─────────────────────────────────────────────────
-// 设计:校招模块/校招模块设计规划.html §7。Candidate / Job 不加列,校招实体全部在此。
+// 设计:校招模块/校招模块设计规划.html §7。Job.recruitmentType 区分社招与校招,其余校招实体在此。
 // 专场:一次校招活动;status=live 的专场同一时刻只允许一个(上线接口事务内把其它 live 改 closed)
 model CampusSession {
   id                 String    @id @default(uuid()) @db.Uuid

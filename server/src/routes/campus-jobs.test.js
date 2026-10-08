@@ -10,7 +10,7 @@ const jobId2 = "10000000-0000-4000-8000-000000000004";
 const sjId2 = "10000000-0000-4000-8000-000000000005";
 const base = `/api/campus/sessions/${sessionId}/jobs`;
 
-async function fixture(t, { manage = true, page = true, linked = true, changed = false, failModel = false, applications = 0, twoJobs = false } = {}) {
+async function fixture(t, { manage = true, page = true, linked = true, changed = false, failModel = false, applications = 0, twoJobs = false, admin = false, lookupJobType = null } = {}) {
   const app = Fastify();
   const writes = [];
   let modelCalls = 0;
@@ -25,14 +25,14 @@ async function fixture(t, { manage = true, page = true, linked = true, changed =
       create: async ({ data }) => { writes.push({ type: "create", data }); Object.assign(job, data); return job; },
       update: async ({ where, data }) => { writes.push({ type: "update", where, data }); const target = jobs.find((item) => item.id === where.id); Object.assign(target, data); return target; },
       updateMany: async ({ where, data }) => { writes.push({ type: where.updatedAt ? "model" : "bulkJob", where, data }); const targets = where.id?.in ? jobs.filter((item) => where.id.in.includes(item.id)) : [job]; if (!changed || !where.updatedAt) targets.forEach((item) => Object.assign(item, data)); return { count: changed && where.updatedAt ? 0 : targets.length }; },
-      findFirst: async ({ where }) => { writes.push({ type: "lookup", where }); return null; },
+      findFirst: async ({ where }) => { writes.push({ type: "lookup", where }); return where.recruitmentType === lookupJobType ? { id: jobId } : null; },
     },
     campusSession: { findFirst: async () => ({ id: sessionId }) },
     campusApplication: { findMany: async () => [] },
     campusSessionJob: {
       findFirst: async () => linked ? sj : null,
       findMany: async ({ where }) => linked && where.sessionId === sessionId ? sessionJobs.filter((item) => where.id.in.includes(item.id)).map((item) => ({ id: item.id, jobId: item.jobId, job: item.job })) : [],
-      findUnique: async () => sj,
+      findUnique: async ({ where }) => where.sessionId_jobId ? null : sj,
       updateMany: async ({ where, data }) => { writes.push({ type: "bulkSessionJob", where, data }); const targets = sessionJobs.filter((item) => where.id.in.includes(item.id)); targets.forEach((item) => Object.assign(item, data)); return { count: targets.length }; },
       aggregate: async () => ({ _max: { sortOrder: 4 } }),
       create: async ({ data }) => { writes.push({ type: "attach", data }); Object.assign(sj, data); return sj; },
@@ -44,7 +44,7 @@ async function fixture(t, { manage = true, page = true, linked = true, changed =
   app.decorate("prisma", prisma);
   app.decorate("authenticate", async (req) => {
     req.user = { sub: "test-manager" };
-    req.permsCache = { access: { isActive: true, isAdmin: false, pageKeys: page ? ["campus"] : [], moduleKeys: manage ? ["campus.manage"] : [], departmentScopes: [], jobScopes: [] } };
+    req.permsCache = { access: { isActive: true, isAdmin: admin, pageKeys: page ? ["campus"] : [], moduleKeys: manage ? ["campus.manage"] : [], departmentScopes: [], jobScopes: [] } };
   });
   await app.register(campusRoutes, {
     prefix: "/api/campus",
@@ -67,6 +67,7 @@ test("campus manager can create a JD and attach it without social job permission
   assert.equal(r.json().item.kind, "referral");
   assert.equal(r.json().item.matchEnabled, false);
   assert.deepEqual(writes[0].data.responsibilities, ["开发功能"]);
+  assert.equal(writes[0].data.recruitmentType, "campus");
   assert.deepEqual(writes[1].data, { userId: "test-manager", jobId });
   assert.equal(writes[2].data.sortOrder, 5);
 });
@@ -158,7 +159,22 @@ test("existing jobs are checked against the user's job scope before attachment",
   const { app, writes } = await fixture(t);
   const r = await app.inject({ method: "POST", url: base, payload: { jobId } });
   assert.equal(r.statusCode, 404);
-  assert.deepEqual(writes[0].where, { AND: [{ id: jobId }, { id: { in: [] } }] });
+  assert.deepEqual(writes[0].where, { AND: [{ id: jobId, recruitmentType: "campus" }, { id: { in: [] } }] });
+});
+
+test("a campus session only accepts campus jobs", async (t) => {
+  const { app, writes } = await fixture(t, { admin: true, lookupJobType: "social" });
+  const denied = await app.inject({ method: "POST", url: base, payload: { jobId } });
+  assert.equal(denied.statusCode, 404);
+  assert.deepEqual(writes[0].where, { id: jobId, recruitmentType: "campus" });
+  assert.equal(writes.some((write) => write.type === "attach"), false);
+});
+
+test("an existing campus job can be reused in another campus session", async (t) => {
+  const { app, writes } = await fixture(t, { admin: true, lookupJobType: "campus" });
+  const response = await app.inject({ method: "POST", url: base, payload: { jobId } });
+  assert.equal(response.statusCode, 201);
+  assert.equal(writes.find((write) => write.type === "attach").data.jobId, jobId);
 });
 
 test("campus manager can generate and persist a model on the linked job", async (t) => {
