@@ -7,7 +7,7 @@
 // 已做的扁平化:
 //   ✓ 内联 lucide-react 图标 (动态 <I name="..."/>)
 //   ✓ 内联 Primitives (Card / Button / Avatar / StatusPill / AiBadge / MatchRing
-//                       / Tag / I / Modal / Empty / LoadingBlock / Input / toast)
+//                       / Tag / I / Modal / Empty / LoadingBlock / toast)
 //   ✓ 内联设计令牌 (品牌色用 arbitrary value 写, 不依赖 tailwind.config)
 //   ✓ 删除 react-router (useParams/useNavigate/Link → noop)
 //   ✓ 删除 axios + resources.* + api.* → 全部走 mock async functions
@@ -73,9 +73,6 @@ const STATUS_TONE = {
   已淘汰: { bg: "#FEE2E2", fg: "#B91C1C", dot: "#F53939" },
 };
 
-const INTERVIEW_ROUNDS = ["初筛", "一面", "二面", "终面", "HR 面", "加面"];
-
-
 function parseDur(s) {
   if (s === "forever") return Infinity;
   const m = /^(\d+)([smhd])$/.exec(s);
@@ -130,23 +127,6 @@ function Button({ children, variant = "primary", size = "md", icon, className = 
       {icon && <span className="inline-flex" style={{ lineHeight: 0 }}>{icon}</span>}
       {children}
     </button>
-  );
-}
-
-function Input({ label, id, type = "text", placeholder, value, onChange, className = "", containerClassName = "", ...rest }) {
-  return (
-    <div className={containerClassName}>
-      {label && (
-        <label htmlFor={id} className="text-sm text-[#1B254B] font-bold ml-3 block mb-2">
-          {label}
-        </label>
-      )}
-      <input
-        type={type} id={id} value={value} onChange={onChange} placeholder={placeholder}
-        className={`flex h-12 w-full items-center rounded-xl border border-[#E9ECEF] bg-white/0 p-3 text-sm outline-none placeholder:text-[#A0AEC0] focus:border-[#422AFB] text-[#1B254B] transition-colors ${className}`}
-        {...rest}
-      />
-    </div>
   );
 }
 
@@ -1259,356 +1239,6 @@ function NoteModal({ open, onClose, candidate, onCreated }) {
     </Modal>
   );
 }
-
-const INTERVIEW_CATEGORIES = ["技术", "文化", "HR", "综合", "Boss"];
-
-// 一个内置的"常用人选"小池子,用来给 PeopleChips 提供建议(生产代码请换成搜索 API)
-const PEOPLE_POOL = [
-  { name: "演示管理员", role: "HR 经理", animal: "fox" },
-  { name: "陈架构师", role: "技术总监", animal: "tiger" },
-  { name: "王浩", role: "高级工程师", animal: "panda" },
-  { name: "李四", role: "招聘主管", animal: "owl" },
-  { name: "王招聘官", role: "外部 HR", animal: "rabbit" },
-  { name: "刘经理", role: "业务方", animal: "koala" },
-];
-
-function PeopleChips({ value, onChange, label, placeholder = "输入名字后回车" }) {
-  const [draft, setDraft] = useState("");
-  const ids = new Set(value.map(v => v.name));
-  const suggestions = PEOPLE_POOL.filter(p => !ids.has(p.name) && (!draft || p.name.includes(draft)));
-
-  function add(person) {
-    if (!person || !person.name) return;
-    if (ids.has(person.name)) return;
-    onChange([...value, person]);
-    setDraft("");
-  }
-  function remove(name) {
-    onChange(value.filter(v => v.name !== name));
-  }
-  return (
-    <div>
-      <label className="text-sm text-[#1B254B] font-bold ml-3 block mb-2">{label} <span className="text-[10px] text-[#A3AED0] font-medium">· 可不选 / 单选 / 多选</span></label>
-      {value.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mb-2">
-          {value.map((p, i) => (
-            <span key={i} className="inline-flex items-center gap-1.5 pl-1 pr-2 py-1 rounded-full bg-[#F4F7FE] text-[#1B254B] text-[12px]">
-              <Avatar name={p.name} animal={p.animal} size={20} />
-              {p.name}
-              {p.role && <span className="text-[10px] text-[#A3AED0]">· {p.role}</span>}
-              <button onClick={() => remove(p.name)} type="button" className="ml-1 text-[#A3AED0] hover:text-red-500" aria-label={`移除 ${p.name}`}>
-                <I name="x" size={12} />
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
-      <div className="flex gap-2">
-        <input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && draft.trim()) {
-              e.preventDefault();
-              add({ name: draft.trim(), animal: "rabbit" });
-            }
-          }}
-          placeholder={placeholder}
-          className="flex-1 h-10 rounded-xl border border-[#E9ECEF] px-3 text-sm outline-none focus:border-[#422AFB]"
-        />
-        <button
-          type="button"
-          onClick={() => draft.trim() && add({ name: draft.trim(), animal: "rabbit" })}
-          disabled={!draft.trim()}
-          className="px-3 h-10 rounded-xl bg-[#F4F7FE] text-[#422AFB] text-sm font-bold hover:bg-[#E9E3FF] disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          添加
-        </button>
-      </div>
-      {suggestions.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mt-2">
-          <span className="text-[10px] text-[#A3AED0] self-center">建议:</span>
-          {suggestions.slice(0, 5).map((p, i) => (
-            <button
-              key={i}
-              type="button"
-              onClick={() => add(p)}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-white border border-[#E9ECEF] text-[#707EAE] text-[11px] hover:border-[#422AFB] hover:text-[#422AFB]"
-            >
-              <I name="plus" size={10} />
-              {p.name}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function EditInterviewModal({ open, onClose, interview, onSave }) {
-  const [round, setRound] = useState("一面");
-  const [category, setCategory] = useState("技术");
-  const [mode, setMode] = useState("线上");
-  const [scheduledAt, setScheduledAt] = useState("");
-  const [link, setLink] = useState("");
-  const [managers, setManagers] = useState([]);
-  const [interviewers, setInterviewers] = useState([]);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (!open || !interview) return;
-    setRound(interview.round || "一面");
-    setCategory(interview.category || "");
-    setMode(interview.mode || "线上");
-    // datetime-local needs "YYYY-MM-DDTHH:mm" format, strip Z and seconds
-    if (interview.scheduledAt) {
-      const d = new Date(interview.scheduledAt);
-      const pad = (n) => String(n).padStart(2, "0");
-      setScheduledAt(`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`);
-    } else {
-      setScheduledAt("");
-    }
-    setLink(interview.link || "");
-    setManagers(interview.managers || []);
-    setInterviewers(interview.interviewers || []);
-  }, [open, interview]);
-
-  async function submit() {
-    setSaving(true);
-    try {
-      const patch = {
-        round,
-        category,
-        mode,
-        scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : null,
-        link: link.trim(),
-        managers,
-        interviewers,
-      };
-      // 生产代码请改成 await resources.interviews.update(candidate.id, interview.id, patch);
-      onSave({ ...interview, ...patch });
-      toast("面试已更新", "success");
-      onClose();
-    } catch (e) { toast(e.message || "保存失败", "error"); }
-    finally { setSaving(false); }
-  }
-
-  if (!interview) return null;
-  return (
-    <Modal open={open} onClose={onClose} maxWidth="max-w-xl">
-      <div className="p-6">
-        <div className="flex items-center justify-between mb-5">
-          <h3 className="text-lg font-bold text-[#1B254B] flex items-center gap-2">
-            <I name="calendar-check" size={18} className="text-[#422AFB]" />
-            编辑面试
-          </h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-[#1B254B]"><I name="x" size={20} /></button>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-sm text-[#1B254B] font-bold ml-3 block mb-2">轮次</label>
-            <select value={round} onChange={(e) => setRound(e.target.value)} className="w-full h-11 rounded-xl border border-[#E9ECEF] px-3 text-sm outline-none focus:border-[#422AFB] bg-white">
-              {INTERVIEW_ROUNDS.map(r => <option key={r}>{r}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-sm text-[#1B254B] font-bold ml-3 block mb-2">类型</label>
-            <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full h-11 rounded-xl border border-[#E9ECEF] px-3 text-sm outline-none focus:border-[#422AFB] bg-white">
-              <option value="">— 不限 —</option>
-              {INTERVIEW_CATEGORIES.map(c => <option key={c}>{c}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-sm text-[#1B254B] font-bold ml-3 block mb-2">方式</label>
-            <select value={mode} onChange={(e) => setMode(e.target.value)} className="w-full h-11 rounded-xl border border-[#E9ECEF] px-3 text-sm outline-none focus:border-[#422AFB] bg-white">
-              <option>线上</option><option>线下</option><option>电话</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-sm text-[#1B254B] font-bold ml-3 block mb-2">时间</label>
-            <input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} className="w-full h-11 rounded-xl border border-[#E9ECEF] px-3 text-sm outline-none focus:border-[#422AFB]" />
-          </div>
-          <div className="col-span-2">
-            <label className="text-sm text-[#1B254B] font-bold ml-3 block mb-2">
-              链接 / 地点 <span className="text-[10px] text-[#A3AED0] font-medium">· 可填 URL, 也可写"会议室 A / 总部 5F"等文字</span>
-            </label>
-            <input
-              value={link}
-              onChange={(e) => setLink(e.target.value)}
-              placeholder="https://meet.example.com/... 或 上海办公室 5F 会议室 A"
-              className="w-full h-11 rounded-xl border border-[#E9ECEF] px-3 text-sm outline-none focus:border-[#422AFB]"
-            />
-          </div>
-          <div className="col-span-2">
-            <PeopleChips label="HR" value={managers} onChange={setManagers} placeholder="输入 HR 名字, 回车添加" />
-          </div>
-          <div className="col-span-2">
-            <PeopleChips label="面试官" value={interviewers} onChange={setInterviewers} placeholder="输入面试官名字, 回车添加" />
-          </div>
-        </div>
-
-        <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-[#E9ECEF]">
-          <Button variant="ghost" onClick={onClose} disabled={saving}>取消</Button>
-          <Button onClick={submit} disabled={saving} icon={<I name={saving ? "loader" : "check"} size={12} className={saving ? "animate-spin" : ""} />}>
-            {saving ? "保存中" : "保存"}
-          </Button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
-// 按方式给「面试地点 / 链接 / 电话」字段切换 label + placeholder
-const LINK_FIELD_BY_MODE = {
-  "线下": { label: "面试地点", placeholder: "如 北京朝阳区望京 SOHO T3 12 层 1201", icon: "map-pin" },
-  "视频": { label: "视频链接", placeholder: "如 https://meet.google.com/abc-defg-hij", icon: "video" },
-  "电话": { label: "联系电话",  placeholder: "如 138 0000 0000",                            icon: "phone" },
-};
-
-function InterviewModal({ open, onClose, candidate, jobs, reviews, onCreated }) {
-  const [jobId, setJobId] = useState("");
-  const [round, setRound] = useState("一面");
-  const [mode, setMode] = useState("线下");
-  const [scheduledAt, setScheduledAt] = useState("");
-  const [interviewer, setInterviewer] = useState("");
-  const [link, setLink] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    setJobId(candidate?.jobId || "");
-    setScheduledAt(new Date(Date.now() + 86400000).toISOString().slice(0, 16));
-    setLink("");
-    setInterviewer("");
-    setMode("线下");
-    setRound("一面");
-  }, [open, candidate?.jobId]);
-
-  // 从评论模块抽 unique authorName 做快捷选项 — 过滤空 / 公开「匿名」/ deleted
-  const reviewAuthors = (() => {
-    if (!Array.isArray(reviews)) return [];
-    const set = new Set();
-    for (const r of reviews) {
-      if (r?.deletedAt) continue;
-      const n = (r?.authorName || "").trim();
-      if (n && n !== "匿名") set.add(n);
-    }
-    return Array.from(set).slice(0, 12);
-  })();
-
-  async function submit() {
-    if (!scheduledAt) return toast("请选时间", "error");
-    setSaving(true);
-    try {
-      const created = await resources.interviews.create({
-        candidateId: candidate.id,
-        jobId: jobId || null,
-        round,
-        mode,
-        scheduledAt: new Date(scheduledAt).toISOString(),
-        interviewer: interviewer || null,
-        link: link.trim() || null,
-      });
-      toast("面试已安排", "success");
-      onCreated?.(created);
-      onClose();
-    } catch (e) { toast(e.message || "保存失败", "error"); }
-    finally { setSaving(false); }
-  }
-
-  const linkCfg = LINK_FIELD_BY_MODE[mode] || LINK_FIELD_BY_MODE["线下"];
-
-  return (
-    <Modal open={open} onClose={onClose} maxWidth="max-w-lg">
-      <div className="p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-[#1B254B] flex items-center gap-2">
-            <I name="calendar-plus" size={18} className="text-[#422AFB]" />
-            安排面试 — {candidate?.name}
-          </h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-[#1B254B]"><I name="x" size={20} /></button>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="col-span-2">
-            <label className="text-sm text-[#1B254B] font-bold ml-3 block mb-2">关联岗位</label>
-            <select value={jobId} onChange={(e) => setJobId(e.target.value)} className="w-full h-11 rounded-xl border border-[#E9ECEF] px-3 text-sm outline-none focus:border-[#422AFB] bg-white">
-              <option value="">— 无 / 候选人简历推断岗位 —</option>
-              {jobs.map((j) => <option key={j.id} value={j.id}>{j.title}{j.dept ? ` · ${j.dept}` : ""}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-sm text-[#1B254B] font-bold ml-3 block mb-2">轮次</label>
-            <select value={round} onChange={(e) => setRound(e.target.value)} className="w-full h-11 rounded-xl border border-[#E9ECEF] px-3 text-sm outline-none focus:border-[#422AFB] bg-white">
-              {INTERVIEW_ROUNDS.map((r) => <option key={r}>{r}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-sm text-[#1B254B] font-bold ml-3 block mb-2">方式</label>
-            <select value={mode} onChange={(e) => setMode(e.target.value)} className="w-full h-11 rounded-xl border border-[#E9ECEF] px-3 text-sm outline-none focus:border-[#422AFB] bg-white">
-              <option>线下</option><option>视频</option><option>电话</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-sm text-[#1B254B] font-bold ml-3 block mb-2">时间</label>
-            <input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} className="w-full h-11 rounded-xl border border-[#E9ECEF] px-3 text-sm outline-none focus:border-[#422AFB]" />
-          </div>
-          {/* 根据方式动态切换的输入框 (跨两列占满) */}
-          <div className="col-span-2">
-            <label className="text-sm text-[#1B254B] font-bold ml-3 block mb-2 flex items-center gap-1.5">
-              <I name={linkCfg.icon} size={13} className="text-[#422AFB]" />
-              {linkCfg.label}
-            </label>
-            <input
-              type="text"
-              value={link}
-              onChange={(e) => setLink(e.target.value)}
-              placeholder={linkCfg.placeholder}
-              className="w-full h-11 rounded-xl border border-[#E9ECEF] px-3 text-sm outline-none focus:border-[#422AFB]"
-            />
-          </div>
-          <div className="col-span-2">
-            <Input label="面试官" value={interviewer} onChange={(e) => setInterviewer(e.target.value)} placeholder="如 王浩 (多个面试官用逗号分隔)" />
-            {/* 快捷选评论作者 */}
-            {reviewAuthors.length > 0 && (
-              <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                <span className="text-[10px] text-[#A3AED0]">从评论人快选:</span>
-                {reviewAuthors.map((n) => {
-                  const already = interviewer.split(/[,，]/).map((s) => s.trim()).includes(n);
-                  return (
-                    <button
-                      key={n}
-                      type="button"
-                      onClick={() => {
-                        if (already) return;
-                        setInterviewer(interviewer ? `${interviewer.replace(/[,，]\s*$/, "")}, ${n}` : n);
-                      }}
-                      disabled={already}
-                      className={`text-[10px] px-2 py-0.5 rounded-full border transition ${
-                        already
-                          ? "bg-[#E9E3FF] text-[#422AFB] border-[#422AFB]/40 cursor-default"
-                          : "bg-white text-[#422AFB] border-[#422AFB]/40 hover:bg-[#E9E3FF]"
-                      }`}
-                    >
-                      {already ? "✓ " : "+ "}{n}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-        <div className="flex justify-end gap-2 mt-5">
-          <Button variant="ghost" onClick={onClose} disabled={saving}>取消</Button>
-          <Button onClick={submit} disabled={saving} icon={<I name={saving ? "loader" : "calendar-check"} size={12} className={saving ? "animate-spin" : ""} />}>
-            {saving ? "保存中" : "安排"}
-          </Button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
 
 // 公开页可见性 toggle 子组件 — ShareModal「已有 link」和「无 link」两个分支共用
 function ShareVisibilityToggles({ showContact, setShowContact, showResume, setShowResume, showNotes, setShowNotes, showReviews, setShowReviews, showAttachments, setShowAttachments, showInterviewEval, setShowInterviewEval, showInterviewEvalList, setShowInterviewEvalList }) {
@@ -3309,8 +2939,6 @@ function CandidateDetail() {
   const tagName = useTaxonomy();
   const [notes, setNotes] = useState([]);
   const [noteOpen, setNoteOpen] = useState(false);
-  const [interviewOpen, setInterviewOpen] = useState(false);
-  const [editingInterview, setEditingInterview] = useState(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
   const [statusSaving, setStatusSaving] = useState(false);
@@ -3345,7 +2973,6 @@ function CandidateDetail() {
     setJdDescOpen(false);
     setJdMatchOpen(false);
     setPendingJobId("");
-    setEditingInterview(null);
     setReplyTo(null);
     load();
     resources.jobs.list({ take: 200 }).then((d) => setJobs(d.items || [])).catch(() => {});
@@ -3806,81 +3433,9 @@ function CandidateDetail() {
           </div>
         </Card>
 
-        {/* 手机端这组(面试安排 / 面试评价 / 附件)用 order-last 排到全页最底;桌面 xl:order-none 还原 */}
+        {/* 手机端这组(面试评价 / 附件)用 order-last 排到全页最底;桌面 xl:order-none 还原 */}
         <div className="w-full xl:w-auto space-y-4 order-last xl:order-none">
-
-        {/* === Interviews (moved from middle column · 迭代 12) === */}
-        <Card className="p-5">
-          <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-            <h3 className="text-sm font-bold text-[#1B254B] flex items-center gap-2">
-              <I name="calendar-check" size={16} className="text-[#422AFB]" />
-              面试安排
-            </h3>
-            <p className="text-[10px] text-[#707EAE]">演示管理员 · {fmtDate(c.pushedAt)}</p>
-          </div>
-          {(c.interviews || []).length === 0 ? (
-            <div className="rounded-xl bg-[#F4F7FE] py-6 text-center">
-              <I name="calendar-x" size={24} className="text-[#A0AEC0] mx-auto mb-2" />
-              <p className="text-xs text-[#707EAE]">还没有面试安排</p>
-              <button onClick={() => setInterviewOpen(true)} className="mt-2 text-xs text-[#422AFB] font-bold hover:underline">+ 安排第一轮面试</button>
-            </div>
-          ) : (
-            <div className="space-y-2.5">
-              {c.interviews.map((iv, idx) => (
-                <div key={idx}>
-                  <div className="rounded-xl bg-[#F4F7FE] p-3">
-                    <p className="text-sm font-bold text-[#1B254B] flex items-center gap-2 flex-wrap">
-                      {iv.round}{iv.category ? ` · ${iv.category}` : ""}
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-bold">{iv.mode}</span>
-                    </p>
-                    <p className="text-[11px] text-[#707EAE] mt-1.5 flex items-center gap-1.5">
-                      <I name="clock" size={11} className="shrink-0" />
-                      {new Date(iv.scheduledAt).toLocaleString("zh-CN", { dateStyle: "short", timeStyle: "short" })}
-                    </p>
-                    <p className="text-[11px] text-[#707EAE] mt-1 flex items-center gap-1 min-w-0">
-                      <I name="video" size={11} className="shrink-0" />
-                      {iv.link
-                        ? (/^https?:\/\//.test(iv.link)
-                            ? <a href={iv.link} target="_blank" rel="noreferrer" className="text-[#422AFB] hover:underline truncate flex-1 min-w-0">{iv.link}</a>
-                            : <span className="text-[#1B254B] truncate flex-1 min-w-0">{iv.link}</span>)
-                        : <span className="text-[#A3AED0]">待填写</span>}
-                    </p>
-                    <div className="grid grid-cols-2 gap-3 mt-2.5">
-                      <div className="min-w-0">
-                        <p className="text-[10px] text-[#A3AED0] uppercase mb-1 tracking-wide">HR</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {iv.managers.map((p, j) => (
-                            <div key={j} className="inline-flex items-center gap-1 bg-white rounded-full pl-0.5 pr-2 py-0.5 max-w-full">
-                              <Avatar name={p.name} animal={p.animal} size={20} />
-                              <span className="text-[11px] text-[#1B254B] font-medium truncate" title={p.name}>{p.name}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-[10px] text-[#A3AED0] uppercase mb-1 tracking-wide">面试官</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {iv.interviewers.map((p, j) => (
-                            <div key={j} className="inline-flex items-center gap-1 bg-white rounded-full pl-0.5 pr-2 py-0.5 max-w-full">
-                              <Avatar name={p.name} animal={p.animal} size={20} />
-                              <span className="text-[11px] text-[#1B254B] font-medium truncate" title={p.name}>{p.name}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center mt-2 pt-2 border-t border-[#E9ECEF]">
-                    <div className="flex-1" />
-                    <button onClick={() => setEditingInterview(iv)} className="text-[11px] text-[#422AFB] font-bold hover:underline">编辑面试</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
-
-        {/* === 面试评价 (新增, 嵌入「面试安排」与「附件」之间) === */}
+        {/* === 面试评价 === */}
         <InterviewEvalCard candidate={c} currentUser={me} />
 
         {/* === 校招(仅校招来源候选人显示) === */}
@@ -3920,7 +3475,7 @@ function CandidateDetail() {
         </div>
       </aside>
 
-      {/* ╔═══ MIDDLE COLUMN: Actions + AI + Interview + Job overview + 经历 / 项目 / 教育 / 备注 ═══╗ */}
+      {/* ╔═══ MIDDLE COLUMN: Actions + AI + Job overview + 经历 / 项目 / 教育 / 备注 ═══╗ */}
       <div className="flex-1 min-w-0 space-y-4 xl:sticky xl:top-4 xl:self-start xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto xl:pr-1 xl:-mr-1">
 
         {/* === Action buttons === */}
@@ -4015,8 +3570,6 @@ function CandidateDetail() {
           onReport={runReport}
           onOverride={overrideClassification}
         />
-
-        {/* === Interviews moved to left aside (above Documents) === */}
 
         {/* === Job Overview === */}
         {(() => {
@@ -4254,17 +3807,6 @@ function CandidateDetail() {
 
     {/* Modals */}
     <NoteModal open={noteOpen} onClose={() => setNoteOpen(false)} candidate={c} onCreated={(n) => { setNotes((p) => [n, ...p]); setNoteOpen(false); }} />
-    <EditInterviewModal
-      open={!!editingInterview}
-      onClose={() => setEditingInterview(null)}
-      interview={editingInterview}
-      onSave={(updated) => {
-        setC(prev => prev ? ({
-          ...prev,
-          interviews: (prev.interviews || []).map(iv => iv.id === updated.id ? updated : iv),
-        }) : prev);
-      }}
-    />
     <JdDescModal
       open={jdDescOpen}
       onClose={() => setJdDescOpen(false)}
@@ -4304,7 +3846,6 @@ function CandidateDetail() {
       candidate={c} replyTo={replyTo}
       onCreated={(r) => { setReviews((p) => [...p, r]); setReviewOpen(false); setReplyTo(null); }}
     />
-    <InterviewModal open={interviewOpen} onClose={() => setInterviewOpen(false)} candidate={c} jobs={jobs} reviews={reviews} onCreated={load} />
     <ShareModal open={shareOpen} onClose={() => setShareOpen(false)} candidate={c} />
     </>
   );
