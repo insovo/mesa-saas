@@ -80,20 +80,22 @@ export function ErrorCard({ icon = "alert-triangle", title = "出错了", messag
 }
 
 export function BigButton({ to, onClick, icon, title, desc, tone = "brand" }) {
-  const cls = tone === "brand"
+  const branded = tone === "brand";
+  const cls = branded
     ? "bg-brand-gradient text-white shadow-button"
-    : "bg-white text-navy-700 shadow-card border border-gray-100";
+    : "bg-gradient-to-r from-white via-[#F8F7FF] to-[#EEE9FF] text-navy-700 border-2 border-brand shadow-button";
   const inner = (
-    <div className={`w-full text-left rounded-card p-5 flex items-center gap-4 transition-transform active:scale-[0.98] ${cls}`}>
-      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${tone === "brand" ? "bg-white/20" : "bg-lightPrimary text-brand"}`}><I name={icon} size={24} /></div>
+    <div className={`w-full min-h-[104px] text-left rounded-card p-5 flex items-center gap-4 transition-all hover:-translate-y-0.5 hover:shadow-xl active:scale-[0.98] ${cls}`}>
+      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${branded ? "bg-white/20" : "bg-brand text-white"}`}><I name={icon} size={24} /></div>
       <div className="flex-1 min-w-0">
         <p className="text-base font-bold">{title}</p>
-        <p className={`text-xs mt-0.5 ${tone === "brand" ? "text-white/80" : "text-gray-600"}`}>{desc}</p>
+        <p className={`text-xs mt-0.5 ${branded ? "text-white/80" : "text-gray-600"}`}>{desc}</p>
       </div>
-      <I name="chevron-right" size={18} className={tone === "brand" ? "text-white/70" : "text-gray-400"} />
+      <I name="chevron-right" size={18} className={branded ? "text-white/70" : "text-brand"} />
     </div>
   );
-  return to ? <Link to={to} className="block">{inner}</Link> : <button type="button" onClick={onClick} className="block w-full">{inner}</button>;
+  const className = "block w-full rounded-card focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand/30";
+  return to ? <Link to={to} className={className}>{inner}</Link> : <button type="button" onClick={onClick} className={className}>{inner}</button>;
 }
 
 export function Spinner({ label = "加载中…" }) {
