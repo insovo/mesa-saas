@@ -150,7 +150,7 @@ function JdFactsView({ facts }) {
   );
 }
 
-export default function JdDescModal({ open, onClose, job, canEdit = false, onSaved, initialTab = "desc" }) {
+export default function JdDescModal({ open, onClose, job, jobs, onSelectJob, linkedJobId, canEdit = false, onSaved, initialTab = "desc" }) {
   const [tab, setTab] = useState(initialTab);
   useEffect(() => { if (open) setTab(initialTab); }, [open, initialTab]);
   if (!job) return null;
@@ -164,6 +164,15 @@ export default function JdDescModal({ open, onClose, job, canEdit = false, onSav
   return (
     <Modal open={open} onClose={onClose} maxWidth={current === "eval" ? "max-w-4xl" : "max-w-2xl"}>
       <div className="p-6">
+        {jobs?.length > 0 && onSelectJob && (
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <label htmlFor="jd-desc-job" className="text-xs font-bold text-[#707EAE]">查看 JD</label>
+            <select id="jd-desc-job" value={job.id} onChange={(event) => onSelectJob(event.target.value)} className="min-w-0 flex-1 rounded-xl border border-[#E9ECEF] bg-white px-3 py-2 text-sm text-[#1B254B] outline-none focus:border-[#422AFB]">
+              {jobs.map((item) => <option key={item.id} value={item.id}>{item.title}{item.dept ? ` · ${item.dept}` : ""}</option>)}
+            </select>
+            {job.id === linkedJobId && <span className="rounded-full bg-brand/10 px-2 py-1 text-[11px] font-bold text-brand">当前关联</span>}
+          </div>
+        )}
         <div className="flex items-start justify-between gap-4 mb-4">
           <div className="min-w-0">
             <h3 className="text-lg font-bold text-[#1B254B] flex items-center gap-2 flex-wrap">

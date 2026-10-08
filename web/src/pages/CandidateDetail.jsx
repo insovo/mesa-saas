@@ -2892,6 +2892,15 @@ function TagsModule({ tags, suggestions, onChange }) {
   );
 }
 
+async function loadVisibleJobs() {
+  const jobs = [];
+  for (;;) {
+    const { items = [] } = await resources.jobs.list({ skip: jobs.length, take: 200 });
+    jobs.push(...items);
+    if (items.length < 200) return jobs;
+  }
+}
+
 function CandidateDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -2915,6 +2924,7 @@ function CandidateDetail() {
   const [statusSaving, setStatusSaving] = useState(false);
   const [jdPickerOpen, setJdPickerOpen] = useState(false);
   const [jdDescOpen, setJdDescOpen] = useState(false);
+  const [jdViewJobId, setJdViewJobId] = useState("");
   const [jdMatchOpen, setJdMatchOpen] = useState(false);
   const [pendingJobId, setPendingJobId] = useState(""); // ⬅ 切 JD 确认流
   const me = getUser() || { id: null, name: "未知用户", role: "VIEWER" };
@@ -2933,10 +2943,11 @@ function CandidateDetail() {
     setStatusOpen(false);
     setJdPickerOpen(false);
     setJdDescOpen(false);
+    setJdViewJobId("");
     setJdMatchOpen(false);
     setPendingJobId("");
     load();
-    resources.jobs.list({ take: 200 }).then((d) => setJobs(d.items || [])).catch(() => {});
+    loadVisibleJobs().then(setJobs).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -3139,7 +3150,7 @@ function CandidateDetail() {
 
   function openJdMatchConfirm() {
     setJdMatchOpen(true);
-    resources.jobs.list({ take: 200 }).then((data) => setJobs(data.items || [])).catch(() => {});
+    loadVisibleJobs().then(setJobs).catch(() => {});
   }
 
   async function confirmJdMatch(jobId, draft) {
@@ -3371,7 +3382,7 @@ function CandidateDetail() {
               )}
             </div>
           )}
-          <Button variant="ghost" className="w-full lg:w-auto" onClick={() => c.jobId ? setJdDescOpen(true) : openJdMatchConfirm()} disabled={!c.jobId && (!canEdit || matching)} icon={<I name="file-text" size={14} />}>JD 详情</Button>
+          <Button variant="ghost" className="w-full lg:w-auto" onClick={() => { setJdViewJobId(jobs.some((job) => job.id === c.jobId) ? c.jobId : jobs[0]?.id || ""); setJdDescOpen(true); }} disabled={jobs.length === 0} icon={<I name="file-text" size={14} />}>JD 详情</Button>
           {canShare && (
             <Button variant="ghost" className="w-full lg:w-auto" onClick={() => setShareOpen(true)} icon={<I name="share-2" size={14} />}>分享</Button>
           )}
@@ -3544,9 +3555,13 @@ function CandidateDetail() {
 
     {/* Modals */}
     <JdDescModal
+      key={jdViewJobId}
       open={jdDescOpen}
       onClose={() => setJdDescOpen(false)}
-      job={jobs.find(j => j.id === c.jobId)}
+      job={jobs.find(j => j.id === jdViewJobId)}
+      jobs={jobs}
+      onSelectJob={setJdViewJobId}
+      linkedJobId={c.jobId}
     />
     <JdSwitchConfirmModal
       open={!!pendingJobId}
