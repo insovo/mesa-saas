@@ -31,23 +31,14 @@ function fmtSource(s) {
   return t || "未提供";
 }
 
-// AI 评估分类 chip(A 高匹配 / B 较匹配 / C 待复核 / D 低匹配),分类为空不渲染
-const CLASS_META = {
-  A: { label: "高匹配", cls: "bg-green-100 text-green-700" },
-  B: { label: "较匹配", cls: "bg-blue-100 text-blue-700" },
-  C: { label: "待复核", cls: "bg-amber-100 text-amber-700" },
-  D: { label: "低匹配", cls: "bg-gray-100 text-gray-600" },
-};
-function ClassChip({ classification, reviewPriority }) {
-  const m = CLASS_META[classification];
-  if (!m) return null;
+function LinkedJobChip({ title }) {
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold shrink-0 whitespace-nowrap ${m.cls}`}
-      title={`AI 评估分类 ${classification} · ${m.label}${reviewPriority === "REVIEW" ? " · 建议人工复核" : ""}`}
+      className={`inline-flex max-w-[180px] items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold shrink-0 ${title ? "bg-lightPrimary text-navy-700" : "bg-gray-100 text-gray-500"}`}
+      title={title || "未关联 JD"}
     >
-      {classification} {m.label}
-      {reviewPriority === "REVIEW" && <span className="opacity-80">⚑ 复核</span>}
+      <I name="briefcase" size={10} className="shrink-0" />
+      <span className="truncate">{title || "未关联 JD"}</span>
     </span>
   );
 }
@@ -198,22 +189,6 @@ export default function Candidates() {
   function toggleSelectAll() {
     if (allSelected) setSelectedIds(new Set());
     else setSelectedIds(new Set(items.map((c) => c.id)));
-  }
-
-  // 单条 inline 关联:直接 PATCH /candidates/:id
-  async function onSingleAssign(id, patch) {
-    const actualPatch = { ...patch };
-    if ("jobId" in actualPatch) {
-      const job = actualPatch.jobId ? jobs.find((j) => j.id === actualPatch.jobId) : null;
-      actualPatch.appliedFor = job?.title || null;
-    }
-    try {
-      await api.patch(`/candidates/${id}`, actualPatch);
-      toast("关联已更新", "success");
-      load();
-    } catch (e) {
-      toast(e.response?.data?.message || "关联失败", "error");
-    }
   }
 
   // 批量关联 JD / 部门
@@ -455,6 +430,7 @@ export default function Candidates() {
           <ul className="divide-y divide-gray-200">
             {items.map((c) => {
               const isSelected = selectedIds.has(c.id);
+              const linkedJobTitle = c.jobId ? (c.job?.title || jobs.find((j) => j.id === c.jobId)?.title || c.appliedFor || "已关联 JD") : null;
               return (
               <li key={c.id} className={`py-4 group rounded-xl transition-colors duration-200 -mx-2 px-2 ${isSelected ? "bg-brand/5" : "hover:bg-lightPrimary/70"}`}>
                 {/* === 桌面端: 响应式单行列式(宽屏一行,中小屏 flex-wrap 自动换行) === */}
@@ -480,23 +456,6 @@ export default function Candidates() {
                       </p>
                     </div>
                   </div>
-                  {/* 岗位列 */}
-                  <div className="w-[140px] shrink-0">
-                    <p className="text-[10px] text-gray-400 mb-1">岗位</p>
-                    {c.jobId ? (
-                      <select disabled={campusInterviewer}
-                        value={c.jobId}
-                        onChange={(e) => onSingleAssign(c.id, { jobId: e.target.value || null })}
-                        className="h-7 w-full rounded-lg border border-gray-200 px-2 text-[11px] text-navy-700 outline-none focus:border-brand bg-white"
-                        title={c.job?.title ? `关联 JD: ${c.job.title}` : "关联 JD"}
-                      >
-                        <option value="">— 未关联 JD —</option>
-                        {jobs.map((j) => (<option key={j.id} value={j.id}>{j.title}</option>))}
-                      </select>
-                    ) : (
-                      <span className="text-[11px] text-gray-500">未关联 JD</span>
-                    )}
-                  </div>
                   {/* 来源列 — 中小屏隐藏 */}
                   <div className="hidden lg:block w-[150px] shrink-0">
                     <p className="text-[10px] text-gray-400 mb-1">来源</p>
@@ -508,7 +467,7 @@ export default function Candidates() {
                   </div>
                   {/* 右操作区:ml-auto 推到行尾 */}
                   <div className="flex items-center gap-2 shrink-0 ml-auto">
-                    <ClassChip classification={c.classification} reviewPriority={c.reviewPriority} />
+                    <LinkedJobChip title={linkedJobTitle} />
                     {c.jdMatch != null ? (
                       <div className="shrink-0 pr-0.5">
                         <LiquidLoader size={40} level={c.jdMatch} label={c.jdMatch} />
@@ -550,7 +509,7 @@ export default function Candidates() {
                     ) : (
                       <div className="w-12 shrink-0 text-center text-[10px] text-gray-400">
                         <I name="link-2-off" size={14} className="inline" />
-                        <p className="mt-0.5">未关联</p>
+                        <p className="mt-0.5">{c.jobId ? "未评分" : "未关联"}</p>
                       </div>
                     )}
                   </div>
@@ -561,14 +520,8 @@ export default function Candidates() {
                       {(c.tags || []).length > 4 && <span className="text-[10px] text-gray-600">+{c.tags.length - 4}</span>}
                     </div>
                   )}
-                  {/* 应聘岗位 */}
                   <div className="flex items-center gap-2 mt-2 pl-[56px] flex-wrap">
-                    {c.appliedFor && (
-                      <span className="text-[11px] text-gray-700 inline-flex items-center gap-1">
-                        <I name="briefcase" size={10} /> {c.appliedFor}
-                      </span>
-                    )}
-                    <ClassChip classification={c.classification} reviewPriority={c.reviewPriority} />
+                    <LinkedJobChip title={linkedJobTitle} />
                   </div>
                 </Link>
               </li>

@@ -3370,9 +3370,9 @@ function CandidateDetail() {
                 )}
               </div>
               <p className="text-[10px] text-[#707EAE] text-center mt-1.5 leading-tight w-[72px]">JD 匹配度</p>
-              {(evals.current?.manualOverride?.classification || c.classification) && (
-                <div className="mt-1"><ClassChip cls={evals.current?.manualOverride?.classification || c.classification} manual={!!evals.current?.manualOverride} /></div>
-              )}
+              <span className="mt-1 max-w-[160px] rounded-full bg-[#F4F7FE] px-2 py-0.5 text-center text-[10px] font-semibold text-[#52617E] break-words" title={c.jobId ? currentScoringJobTitle : "未关联 JD"}>
+                {c.jobId ? currentScoringJobTitle : "未关联 JD"}
+              </span>
             </div>
           </div>
           <CampusCandidateCard candidateId={c.id} currentUser={me} />
