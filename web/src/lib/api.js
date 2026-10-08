@@ -59,6 +59,7 @@ export const resources = {
   },
   jobs: {
     list: (params) => api.get("/jobs", { params }).then((r) => r.data),
+    parseText: (body) => api.post("/jobs/parse-text", body, { timeout: LONG_TIMEOUT }).then((r) => r.data),
     detail: (id) => api.get(`/jobs/${id}`).then((r) => r.data.job),
     create: (data) => api.post("/jobs", data).then((r) => r.data.job),
     update: (id, data) => api.patch(`/jobs/${id}`, data).then((r) => r.data.job),

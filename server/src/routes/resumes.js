@@ -99,7 +99,7 @@ export default async function resumesRoutes(app) {
     }
     return {
       provider: "kimi",
-      model: (await getEffective(SETTING_KEYS.KIMI_MODEL)) || "moonshot-v1-32k",
+      model: (await getEffective(SETTING_KEYS.KIMI_MODEL)) || "kimi-k2.6",
       configured,
       mode: "system",
       availableModels,

@@ -27,7 +27,7 @@ async function effectiveApiKey() {
   return (await getEffective(SETTING_KEYS.KIMI_API_KEY)) || "";
 }
 async function effectiveModel() {
-  return (await getEffective(SETTING_KEYS.KIMI_MODEL)) || "moonshot-v1-32k";
+  return (await getEffective(SETTING_KEYS.KIMI_MODEL)) || "kimi-k2.6";
 }
 
 // ─── 默认 PROMPT (admin 可在 UI 改) ─────────────────────────────
@@ -340,7 +340,7 @@ async function availableModels() {
 }
 function preferFromList(ids) {
   // 可关闭思考的素模型(kimi-k2.6 等)> moonshot-v1 > 其它;-highspeed / -code 只在别无选择时用
-  const prefs = [/^kimi-k2\.\d+$/i, /^moonshot-v1-32k$/i, /^moonshot-v1/i, /highspeed/i, /^kimi-k2\.\d+-code$/i, /^kimi-k2/i, /^kimi-k3/i];
+  const prefs = [/^kimi-k2\.\d+$/i, /^kimi-k3$/i, /highspeed/i, /^kimi-k2\.\d+-code$/i, /^kimi-k2/i];
   for (const re of prefs) {
     const m = ids.find((id) => re.test(id) && !isReasoningModel(id));
     if (m) return m;
@@ -349,11 +349,11 @@ function preferFromList(ids) {
 }
 async function resolveModel(requested, { avoidReasoning = false } = {}) {
   const ids = await availableModels();
-  const avail = (m) => !!m && (!ids.length || ids.includes(m));
+  const avail = (m) => !!m && !/^moonshot-v1/i.test(m) && (!ids.length || ids.includes(m));
   if (requested && avail(requested) && !(avoidReasoning && isReasoningModel(requested))) return requested;
   const configured = await effectiveModel();
   if (avail(configured) && !(avoidReasoning && isReasoningModel(configured))) return configured;
-  return preferFromList(ids) || configured || "moonshot-v1-32k";
+  return preferFromList(ids) || (/^moonshot-v1/i.test(configured) ? null : configured) || "kimi-k2.6";
 }
 async function pickModel(requested) {
   return resolveModel(requested);
@@ -942,7 +942,8 @@ export async function parseJobDescription({ buffer, filename, contentType, model
     const file = await uploadFile({ buffer, filename, contentType });
     extractedText = await getFileContent(file.id);
   }
-  const useModel = await pickModel(model);
+  const jdModel = model || await getEffective(SETTING_KEYS.KIMI_JD_MODEL);
+  const useModel = jdModel ? await pickModel(jdModel) : await pickParseModel();
 
   // v2(2026-09-20):同时输出旧展示字段 + jdFacts(jd.v1);admin 可用 kimi.jd_schema_prompt 覆盖
   const systemPrompt = (await getEffective(SETTING_KEYS.KIMI_JD_PROMPT)) || buildJdFactsPrompt();
@@ -1003,6 +1004,44 @@ ${extractedText}`;
     jdFactsWarnings: sanitizeJdFacts(j.jdFacts, extractedText).warnings,
     extractedText,
     meta: { model: useModel, usage: result.meta.usage, preExtracted: !!preExtractedText },
+  };
+}
+
+// 粘贴纯文本时只抽取岗位展示字段,保留原文作为 description;不运行较长的 jdFacts 评估 prompt。
+export async function parseJobText({ title, text }) {
+  const source = String(text || "").trim();
+  const jobTitle = String(title || "").trim();
+  if (!jobTitle || source.length < 10) throw Object.assign(new Error("请填写岗位名称及至少 10 字 JD 原文"), { statusCode: 400, code: "invalid_jd_text" });
+  const jdModel = await getEffective(SETTING_KEYS.KIMI_JD_MODEL);
+  const useModel = jdModel ? await pickModel(jdModel) : await pickParseModel();
+  const response = await kimiRequest("/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: useModel,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: "从招聘 JD 原文提取岗位字段,仅使用原文明确给出的信息,不得猜测。返回 JSON 对象:dept,location,employment,salary,level,levelRange,yearsExpRange,educationRequirement,languageRequirement,openings,responsibilities,requirements,nice,benefits。未知字符串填空字符串,未知 openings 填 null;四个列表为字符串数组,每条简洁且不改变原意。不要返回岗位名称或改写原文。" },
+        { role: "user", content: `岗位名称:${jobTitle}\nJD 原文:\n${source.slice(0, 20000)}` },
+      ],
+    }),
+  });
+  const data = await response.json();
+  const j = parseLlmJson(data?.choices?.[0]?.message?.content || "", "kimi parseJobText");
+  return { job: normalizeParsedJobText(j, jobTitle, source), meta: { model: useModel, usage: data?.usage } };
+}
+
+export function normalizeParsedJobText(j, jobTitle, source) {
+  if (!j || typeof j !== "object" || Array.isArray(j)) throw Object.assign(new Error("JD 抽取结果格式无效"), { statusCode: 422, code: "kimi_parse_error" });
+  const field = (key, max) => typeof j[key] === "string" ? j[key].trim().slice(0, max) : "";
+  const list = (key, max) => Array.isArray(j[key]) ? j[key].filter((v) => typeof v === "string").map((v) => v.trim().slice(0, max)).filter(Boolean).slice(0, 20) : [];
+  return {
+    title: jobTitle, description: source,
+    dept: field("dept", 100), location: field("location", 100), employment: field("employment", 50), salary: field("salary", 200),
+    level: field("level", 50), levelRange: field("levelRange", 50), yearsExpRange: field("yearsExpRange", 50),
+    educationRequirement: field("educationRequirement", 100), languageRequirement: field("languageRequirement", 200),
+    openings: Number.isInteger(j.openings) && j.openings >= 0 && j.openings <= 999 ? j.openings : null,
+    responsibilities: list("responsibilities", 500), requirements: list("requirements", 500), nice: list("nice", 500), benefits: list("benefits", 200),
   };
 }
 

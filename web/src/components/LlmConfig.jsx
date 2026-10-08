@@ -200,6 +200,15 @@ export default function LlmConfig({ className = "", onOpenChange }) {
     catch (e) { toast(e.response?.data?.message || "保存失败", "error"); }
   }
 
+  async function saveJdModel(modelId) {
+    try {
+      if (modelId) await api.put("/system/settings/kimi.jd_model", { value: modelId });
+      else await api.delete("/system/settings/kimi.jd_model");
+      toast(modelId ? `JD 抽取模型已改为 ${modelId}` : "JD 抽取模型已改为跟随系统默认", "success");
+      await refreshLlmStatus();
+    } catch (e) { toast(e.response?.data?.message || "保存失败", "error"); }
+  }
+
   async function testProvider(name) {
     setTesting(name);
     try {
@@ -307,6 +316,15 @@ export default function LlmConfig({ className = "", onOpenChange }) {
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-lightPrimary text-gray-700 font-bold">{modelRow?.source === "db" ? "DB" : "env"}</span>
                   </div>
                   <p className="text-[11px] text-gray-600 mt-1">配置的模型若不在账号可用列表,后端会自动按偏好回退 · 共 {llm.availableModels?.length || 0} 个可用</p>
+                </div>
+                <div className="p-3 bg-white rounded-lg">
+                  <label htmlFor="kimi-jd-model" className="text-xs font-bold text-gray-700 block mb-1">JD 抽取专用模型</label>
+                  <select id="kimi-jd-model" value={row("kimi.jd_model")?.source === "db" ? row("kimi.jd_model").maskedValue : ""} onChange={(e) => saveJdModel(e.target.value)} className="w-full bg-transparent text-sm text-navy-700 outline-none cursor-pointer">
+                    <option value="">跟随系统默认模型</option>
+                    {row("kimi.jd_model")?.source === "db" && !(llm.availableModels || []).some((m) => m.id === row("kimi.jd_model").maskedValue) && <option value={row("kimi.jd_model").maskedValue}>{row("kimi.jd_model").maskedValue}(不可用,会自动回退)</option>}
+                    {(llm.availableModels || []).map((m) => <option key={m.id} value={m.id}>{m.label}{m.id === "kimi-k2.6" ? " · JD 纯文本推荐" : ""}</option>)}
+                  </select>
+                  <p className="text-[11px] text-gray-600 mt-1">用于粘贴文本和上传文件后的 JD 抽取;纯文本无需文件解析。优先选非思考模型以减少输出 token。</p>
                 </div>
                 <PromptRow settingKey="kimi.prompt" />
                 <PromptRow settingKey="kimi.jd_schema_prompt" />

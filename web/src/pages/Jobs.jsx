@@ -16,7 +16,10 @@ import {
   Tag,
 } from "../components/Primitives.jsx";
 
-const EMPTY_FORM = { title: "", dept: "", owner: "", openings: 1, candidates: 0, level: "", location: "", urgency: "mid", description: "" };
+const EMPTY_FORM = { title: "", dept: "", owner: "", openings: 1, candidates: 0, level: "", location: "", urgency: "mid", description: "",
+  employment: "", salary: "", levelRange: "", yearsExpRange: "", educationRequirement: "", languageRequirement: "",
+  responsibilities: "", requirements: "", nice: "", benefits: "" };
+const lines = (value) => value.split("\n").map((item) => item.replace(/^\s*(?:[-•*]|\d+[.、)])\s*/, "").trim()).filter(Boolean);
 
 export default function Jobs() {
   const [items, setItems] = useState([]);
@@ -26,6 +29,7 @@ export default function Jobs() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [extracting, setExtracting] = useState(false);
   // 评估标准弹窗(JdDescModal 「评估标准」tab);编辑权限与「编辑岗位」同口径 job.edit
   const [evalJob, setEvalJob] = useState(null);
   const me = useMe();
@@ -69,17 +73,38 @@ export default function Jobs() {
       location: j.location || "",
       urgency: j.urgency || "mid",
       description: j.description || "",
+      employment: j.employment || "", salary: j.salary || "", levelRange: j.levelRange || "", yearsExpRange: j.yearsExpRange || "",
+      educationRequirement: j.educationRequirement || "", languageRequirement: j.languageRequirement || "",
+      responsibilities: (j.responsibilities || []).join("\n"), requirements: (j.requirements || []).join("\n"),
+      nice: (j.nice || []).join("\n"), benefits: (j.benefits || []).join("\n"),
     });
     setCreateOpen(true);
   }
 
+  async function extractText() {
+    if (!form.title.trim() || form.description.trim().length < 10) return toast("请填写岗位名称并粘贴至少 10 字 JD 原文", "error");
+    setExtracting(true);
+    try {
+      const { job: draft } = await resources.jobs.parseText({ title: form.title.trim(), text: form.description.trim() });
+      setForm((current) => ({ ...current, ...draft, openings: draft.openings ?? current.openings,
+        responsibilities: draft.responsibilities.join("\n"), requirements: draft.requirements.join("\n"),
+        nice: draft.nice.join("\n"), benefits: draft.benefits.join("\n") }));
+      toast("AI 已提取岗位信息,请核对后保存", "success");
+    } catch (e) { toast(e.response?.data?.message || "JD 抽取失败", "error"); }
+    finally { setExtracting(false); }
+  }
+
   async function onSubmit(e) {
     e.preventDefault();
-    if (!form.title) return;
+    if (!form.title || extracting) return;
+    const openings = Number(form.openings);
+    if (!Number.isInteger(openings) || openings < 0 || openings > 999) return toast("名额须为 0–999 的整数", "error");
     const payload = {
       ...form,
-      openings: Number(form.openings) || 1,
+      openings,
       candidates: Number(form.candidates) || 0,
+      responsibilities: lines(form.responsibilities), requirements: lines(form.requirements),
+      nice: lines(form.nice), benefits: lines(form.benefits),
     };
     try {
       if (editing) {
@@ -240,6 +265,7 @@ export default function Jobs() {
               <textarea
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
+                maxLength={20000}
                 rows={10}
                 placeholder={`示例 ——\n岗位职责:\n1. ...\n2. ...\n\n任职要求:\n1. 5 年以上 XX 经验\n2. 熟悉 ...\n3. 学历 ...\n\n加分项:\n- ...`}
                 className="w-full p-3 rounded-xl border-2 border-gray-200 text-sm text-navy-700 outline-none focus:border-brand resize-y font-mono leading-relaxed"
@@ -252,12 +278,22 @@ export default function Jobs() {
                 </p>
                 <p className="text-[11px] text-gray-600">上限 20,000</p>
               </div>
+              {!editing && <div className="mt-3 flex items-center gap-3">
+                <Button type="button" size="sm" disabled={extracting || !form.title.trim() || form.description.trim().length < 10} onClick={extractText} icon={<I name={extracting ? "loader" : "sparkles"} size={14} className={extracting ? "animate-spin" : ""} />}>{extracting ? "AI 抽取中…" : "AI 提取岗位信息"}</Button>
+                <span className="text-xs text-gray-600">填写岗位名并粘贴 JD,提取结果可在下方修改</span>
+              </div>}
             </div>
 
             <Input label="部门" value={form.dept} onChange={(e) => setForm({ ...form, dept: e.target.value })} />
             <Input label="负责人" value={form.owner} onChange={(e) => setForm({ ...form, owner: e.target.value })} />
             <Input label="职级" value={form.level} onChange={(e) => setForm({ ...form, level: e.target.value })} placeholder="如 P6–P7" />
+            <Input label="职级范围" value={form.levelRange} onChange={(e) => setForm({ ...form, levelRange: e.target.value })} />
             <Input label="工作地点" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
+            <Input label="用工类型" value={form.employment} onChange={(e) => setForm({ ...form, employment: e.target.value })} />
+            <Input label="薪资" value={form.salary} onChange={(e) => setForm({ ...form, salary: e.target.value })} />
+            <Input label="经验年限" value={form.yearsExpRange} onChange={(e) => setForm({ ...form, yearsExpRange: e.target.value })} />
+            <Input label="学历要求" value={form.educationRequirement} onChange={(e) => setForm({ ...form, educationRequirement: e.target.value })} />
+            <Input label="语言要求" value={form.languageRequirement} onChange={(e) => setForm({ ...form, languageRequirement: e.target.value })} />
             <Input label="名额" type="number" min="0" value={form.openings} onChange={(e) => setForm({ ...form, openings: e.target.value })} />
             <Input label="候选人数" type="number" min="0" value={form.candidates} onChange={(e) => setForm({ ...form, candidates: e.target.value })} />
             <div>
@@ -272,10 +308,14 @@ export default function Jobs() {
                 <option value="low">可缓</option>
               </select>
             </div>
+            {[["responsibilities", "岗位职责"], ["requirements", "任职要求"], ["nice", "加分项"], ["benefits", "福利待遇"]].map(([key, label]) => <div key={key}>
+              <label htmlFor={`job-${key}`} className="text-sm text-navy-700 font-bold ml-3 block mb-2">{label}</label>
+              <textarea id={`job-${key}`} value={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} rows={4} placeholder="每行一条" className="w-full p-3 rounded-xl border border-gray-200 text-sm text-navy-700 outline-none focus:border-brand resize-y" />
+            </div>)}
           </div>
           <div className="flex justify-end gap-3 mt-8">
             <Button type="button" variant="ghost" onClick={() => setCreateOpen(false)}>取消</Button>
-            <Button type="submit" icon={<I name="check" size={14} />}>保存</Button>
+            <Button type="submit" disabled={extracting} icon={<I name="check" size={14} />}>保存</Button>
           </div>
         </form>
       </Modal>

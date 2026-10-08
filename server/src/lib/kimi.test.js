@@ -1,7 +1,22 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildResumeDisplayFields } from "./kimi.js";
+import { buildResumeDisplayFields, normalizeParsedJobText } from "./kimi.js";
+
+test("JD text normalization preserves the supplied title and raw text while bounding extracted fields", () => {
+  const source = "负责 React 开发,上海办公";
+  const result = normalizeParsedJobText({ title: "模型改名", description: "模型改写", dept: " 研发 ", openings: "2",
+    responsibilities: [" 开发页面 ", null, ...Array(25).fill("x".repeat(600))], benefits: [" 五险一金 "] }, "前端工程师", source);
+  assert.equal(result.title, "前端工程师");
+  assert.equal(result.description, source);
+  assert.equal(result.dept, "研发");
+  assert.equal(result.openings, null);
+  assert.equal(result.responsibilities.length, 20);
+  assert.equal(result.responsibilities[0], "开发页面");
+  assert.equal(result.responsibilities[1].length, 500);
+  assert.deepEqual(result.benefits, ["五险一金"]);
+  assert.throws(() => normalizeParsedJobText(null, "前端工程师", source), { code: "kimi_parse_error" });
+});
 
 test("buildResumeDisplayFields keeps factual resume skills, experience, and education", () => {
   const fields = buildResumeDisplayFields({

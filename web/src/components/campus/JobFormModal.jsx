@@ -24,7 +24,8 @@ export default function JobFormModal({ open, onClose, session, sessionJob, onSav
   const job = sessionJob?.job || null;
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
-  const close = useCallback(() => { if (!saving) onClose(); }, [saving, onClose]);
+  const [extracting, setExtracting] = useState(false);
+  const close = useCallback(() => { if (!saving && !extracting) onClose(); }, [saving, extracting, onClose]);
   useEffect(() => {
     if (!open) return;
     setForm(job ? {
@@ -38,9 +39,24 @@ export default function JobFormModal({ open, onClose, session, sessionJob, onSav
   }, [open, sessionJob]); // eslint-disable-line react-hooks/exhaustive-deps
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
+  async function extractText() {
+    if (!form.title.trim() || form.description.trim().length < 10) return toast("请填写岗位名称并粘贴至少 10 字 JD 原文", "error");
+    setExtracting(true);
+    try {
+      const { job: draft } = await resources.jobs.parseText({ title: form.title.trim(), text: form.description.trim() });
+      setForm((f) => ({ ...f, ...draft,
+        employment: draft.employment || f.employment, openings: draft.openings ?? f.openings,
+        responsibilities: draft.responsibilities.join("\n"), requirements: draft.requirements.join("\n"),
+        nice: draft.nice.join("\n"), benefits: draft.benefits.join("\n"),
+      }));
+      toast("AI 已抽取字段,请核对后保存", "success");
+    } catch (err) { toast(errMsg(err, "JD 抽取失败"), "error"); }
+    finally { setExtracting(false); }
+  }
+
   async function submit(e) {
     e.preventDefault();
-    if (saving) return;
+    if (saving || extracting) return;
     if (!form.title.trim()) return toast("请填写岗位名称", "error");
     for (const [key, label, limit] of [["responsibilities", "岗位职责", 500], ["requirements", "任职要求", 500], ["nice", "加分项", 500], ["benefits", "福利待遇", 200]]) {
       const items = lines(form[key]);
@@ -83,6 +99,11 @@ export default function JobFormModal({ open, onClose, session, sessionJob, onSav
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Input id="campus-job-岗位名称" label="岗位名称" maxLength={200} required value={form.title} onChange={set("title")} placeholder="嵌入式软件工程师(2027 届)" containerClassName="md:col-span-2" />
+          {!job && <div className="md:col-span-2 space-y-2">
+            <TextArea maxLength={20000} label="粘贴 JD 原文" hint="填写岗位名称并粘贴原文,AI 可自动提取职责、要求和其他明确写出的信息" rows={8} value={form.description} onChange={set("description")} placeholder="粘贴完整岗位介绍、职责、要求、福利…" />
+            <Button type="button" size="sm" disabled={extracting || saving || !form.title.trim() || form.description.trim().length < 10} onClick={extractText} icon={<I name={extracting ? "loader" : "sparkles"} size={14} className={extracting ? "animate-spin" : ""} />}>{extracting ? "AI 抽取中…" : "AI 提取岗位信息"}</Button>
+            <p className="text-[11px] text-gray-500">抽取结果会回填下方字段,保存前可修改。</p>
+          </div>}
           {!job && (
             <div className="md:col-span-2 flex items-end gap-6 flex-wrap">
               <Field label="岗位类型" className="min-w-[200px]">
@@ -106,14 +127,14 @@ export default function JobFormModal({ open, onClose, session, sessionJob, onSav
           <TextArea label="任职要求" hint="每行一条;毕业批次 / 专业 / 技能写清楚,AI 结构化与匹配按这里判定" rows={5} value={form.requirements} onChange={set("requirements")} placeholder={"2027 届本科及以上,计算机 / 电子相关专业\n熟悉 C/C++,了解 Linux"} className="md:col-span-2" />
           <TextArea label="加分项" hint="每行一条" rows={3} value={form.nice} onChange={set("nice")} placeholder={"有竞赛获奖 / 开源项目经历"} />
           <TextArea label="福利待遇" hint="每行一条" rows={3} value={form.benefits} onChange={set("benefits")} placeholder={"六险一金\n海外轮岗机会"} />
-          <TextArea maxLength={20000} label="JD 全文 / 补充描述" hint="可直接粘贴完整 JD;职责 / 要求为空时学生端显示这里的内容。AI 结构化会同时读取以上所有字段" rows={8} value={form.description} onChange={set("description")} placeholder="粘贴完整 JD…" className="md:col-span-2" />
+          {job && <TextArea maxLength={20000} label="JD 全文 / 补充描述" hint="职责 / 要求为空时学生端显示这里的内容。AI 结构化会同时读取以上所有字段" rows={8} value={form.description} onChange={set("description")} placeholder="粘贴完整 JD…" className="md:col-span-2" />}
         </div>
 
         <div className="flex items-center justify-between gap-3 pt-2 flex-wrap">
           <p className="text-[11px] text-gray-500">{job?.hasEvaluationModel ? "JD 内容有变时,保存后请在岗位卡片点「重新生成评价模型」" : "保存后可在岗位卡片一键生成评价模型(校园招聘模板)"}</p>
           <div className="flex gap-3">
-            <Button type="button" variant="ghost" disabled={saving} onClick={close}>取消</Button>
-            <Button type="submit" disabled={saving} icon={<I name="check" size={14} />}>{saving ? "保存中…" : job ? "保存" : "创建并加入专场"}</Button>
+            <Button type="button" variant="ghost" disabled={saving || extracting} onClick={close}>取消</Button>
+            <Button type="submit" disabled={saving || extracting} icon={<I name="check" size={14} />}>{saving ? "保存中…" : job ? "保存" : "创建并加入专场"}</Button>
           </div>
         </div>
       </form>
