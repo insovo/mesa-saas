@@ -5,6 +5,7 @@ import { Select, KindTag, SessionStatusPill, fmtDate, fmtDateTime } from "./ui.j
 import { useSessionJobs } from "./useSessionJobs.js";
 import JobFormModal from "./JobFormModal.jsx";
 import BulkJobEditModal from "./BulkJobEditModal.jsx";
+import ModelGenerationNotice from "./ModelGenerationNotice.jsx";
 
 function JdBlock({ title, items }) {
   if (!items?.length) return null;
@@ -26,7 +27,7 @@ export default function CampusJobs({ sessions, canManage, onChanged }) {
   useEffect(() => {
     if (!sessions.some((s) => s.id === sessionId) && sessions.length) setSessionId((sessions.find((s) => s.status === "live") || sessions[0]).id);
   }, [sessions, sessionId]);
-  const { items, available, loading, error, busy, mutating, bulkProgress, load, add, patch, bulkPatch, remove, move, generateModel, bulkGenerateModels } = useSessionJobs(sessionId, onChanged, canManage);
+  const { items, available, loading, error, busy, mutating, bulkProgress, modelNotice, dismissModelNotice, load, add, patch, bulkPatch, remove, move, generateModel, bulkGenerateModels } = useSessionJobs(sessionId, onChanged, canManage);
   const [form, setForm] = useState(null); // { sj: null } 新建 | { sj } 编辑
   const [addId, setAddId] = useState("");
   const [addKind, setAddKind] = useState("onsite");
@@ -43,7 +44,8 @@ export default function CampusJobs({ sessions, canManage, onChanged }) {
   const toggleExpand = (id) => setExpanded((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const selected = items.filter((sj) => selectedIds.has(sj.id));
   const allSelected = items.length > 0 && selected.length === items.length;
-  const selectionBusy = loading || mutating || Object.values(busy).some(Boolean);
+  const modelBusy = Object.values(busy).some(Boolean);
+  const selectionBusy = loading || mutating || modelBusy;
   const toggleSelected = (id) => setSelectedIds((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
   async function onBulkSave(changes) {
     const done = await bulkPatch(selected.map((sj) => sj.id), changes);
@@ -69,13 +71,13 @@ export default function CampusJobs({ sessions, canManage, onChanged }) {
     <div className="space-y-5">
       <Card className="p-4 !flex-row items-center gap-3 flex-wrap">
         <I name="briefcase" size={18} className="text-brand" />
-        <Select small aria-label="选择校招专场" value={sessionId} disabled={mutating} onChange={(e) => { setSessionId(e.target.value); setExpanded(new Set()); }} className="w-full sm:w-auto sm:min-w-[240px]">
+        <Select small aria-label="选择校招专场" value={sessionId} disabled={mutating || modelBusy} onChange={(e) => { setSessionId(e.target.value); setExpanded(new Set()); }} className="w-full sm:w-auto sm:min-w-[240px]">
           {sessions.map((s) => <option key={s.id} value={s.id}>{s.name}{s.status === "live" ? "(上线中)" : s.status === "closed" ? "(已结束)" : "(草稿)"}</option>)}
         </Select>
         {session && <SessionStatusPill status={session.status} />}
         <span className="text-xs text-gray-600">{items.length} 个岗位 · 学生端按「现场面试 → 内推」分组、按此处顺序展示</span>
         <div className="sm:ml-auto flex items-center gap-2">
-          <Button size="sm" variant="ghost" icon={<I name="refresh-cw" size={14} className={loading ? "animate-spin" : ""} />} disabled={loading || mutating} onClick={load}>刷新</Button>
+          <Button size="sm" variant="ghost" icon={<I name="refresh-cw" size={14} className={loading ? "animate-spin" : ""} />} disabled={loading || mutating || modelBusy} onClick={load}>刷新</Button>
           {canManage && <Button size="sm" icon={<I name="plus" size={14} />} disabled={!session || loading || mutating} onClick={() => setForm({ sj: null })}>新建岗位 JD</Button>}
         </div>
       </Card>
@@ -147,7 +149,7 @@ export default function CampusJobs({ sessions, canManage, onChanged }) {
                 </label>
                 {canManage && <Button size="sm" variant="ghost" icon={<I name="pencil" size={14} />} disabled={loading || mutating || busy[sj.id]} onClick={() => setForm({ sj })}>编辑 JD</Button>}
                 {canManage && (
-                  <Button size="sm" variant={j.hasEvaluationModel ? "ghost" : "secondary"} disabled={loading || mutating || busy[sj.id]} onClick={() => generateModel(sj)} icon={<I name={busy[sj.id] ? "loader" : "sparkles"} size={13} className={busy[sj.id] ? "animate-spin" : ""} />}>
+                  <Button size="sm" variant={j.hasEvaluationModel ? "ghost" : "secondary"} disabled={loading || mutating || modelBusy} onClick={() => generateModel(sj)} icon={<I name={busy[sj.id] ? "loader" : "sparkles"} size={13} className={busy[sj.id] ? "animate-spin" : ""} />}>
                     {busy[sj.id] ? "生成中…" : j.hasEvaluationModel ? "重新生成评价模型" : "生成评价模型"}
                   </Button>
                 )}
@@ -174,6 +176,7 @@ export default function CampusJobs({ sessions, canManage, onChanged }) {
 
       <JobFormModal key={`${sessionId}:${form?.sj?.id || "new"}`} open={!!form} onClose={() => setForm(null)} session={session} sessionJob={form?.sj || null} onSaved={() => { load(); onChanged?.(); }} />
       {bulkOpen && <BulkJobEditModal selected={selected} onClose={() => setBulkOpen(false)} onSave={onBulkSave} />}
+      <ModelGenerationNotice notice={modelNotice} onDismiss={dismissModelNotice} />
     </div>
   );
 }

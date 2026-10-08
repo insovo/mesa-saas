@@ -4,11 +4,13 @@ import { useState } from "react";
 import { Button, I } from "../Primitives.jsx";
 import { Select, KindTag } from "./ui.jsx";
 import { useSessionJobs } from "./useSessionJobs.js";
+import ModelGenerationNotice from "./ModelGenerationNotice.jsx";
 
 export default function SessionJobsPanel({ session, canManage, onChanged }) {
-  const { items, available, loading, error, busy, mutating, load, add, patch, remove, move, generateModel } = useSessionJobs(session.id, onChanged, canManage);
+  const { items, available, loading, error, busy, mutating, modelNotice, dismissModelNotice, load, add, patch, remove, move, generateModel } = useSessionJobs(session.id, onChanged, canManage);
   const [addId, setAddId] = useState("");
   const [addKind, setAddKind] = useState("onsite");
+  const modelBusy = Object.values(busy).some(Boolean);
 
   async function onAdd() {
     if (!addId) return;
@@ -40,7 +42,7 @@ export default function SessionJobsPanel({ session, canManage, onChanged }) {
             <p className="text-[11px] text-gray-500 mt-0.5">{[sj.job?.dept, sj.job?.location, sj.job?.employment].filter(Boolean).join(" · ")}</p>
           </div>
           {!sj.job?.hasEvaluationModel && canManage && (
-            <Button size="sm" variant="ghost" disabled={loading || mutating || busy[sj.id]} onClick={() => generateModel(sj)} icon={<I name={busy[sj.id] ? "loader" : "sparkles"} size={13} className={busy[sj.id] ? "animate-spin" : ""} />}>{busy[sj.id] ? "生成中…" : "生成评价模型"}</Button>
+            <Button size="sm" variant="ghost" disabled={loading || mutating || modelBusy} onClick={() => generateModel(sj)} icon={<I name={busy[sj.id] ? "loader" : "sparkles"} size={13} className={busy[sj.id] ? "animate-spin" : ""} />}>{busy[sj.id] ? "生成中…" : "生成评价模型"}</Button>
           )}
           <Select small value={sj.kind} disabled={!canManage || loading || mutating || busy[sj.id]} onChange={(e) => patch(sj, { kind: e.target.value })}><option value="onsite">现场面试</option><option value="referral">内推</option></Select>
           <label className={`inline-flex items-center gap-1.5 text-xs text-navy-700 ${!sj.job?.hasEvaluationModel ? "opacity-50" : ""}`} title={!sj.job?.hasEvaluationModel ? "先生成评价模型才能开启匹配" : ""}>
@@ -56,6 +58,7 @@ export default function SessionJobsPanel({ session, canManage, onChanged }) {
           <Button size="sm" variant="secondary" disabled={!addId || loading || mutating} onClick={onAdd} icon={<I name="plus" size={14} />}>加入</Button>
         </div>
       )}
+      <ModelGenerationNotice notice={modelNotice} onDismiss={dismissModelNotice} />
     </div>
   );
 }
