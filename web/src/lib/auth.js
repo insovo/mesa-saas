@@ -67,6 +67,7 @@ export function addSavedAccount(token, user) {
   const slim = {
     id: user.id,
     email,
+    username: user.username || null,
     name: user.name || null,
     role: user.role || null,
     avatar: user.avatar || null,

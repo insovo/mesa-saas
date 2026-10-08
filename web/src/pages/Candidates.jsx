@@ -18,6 +18,7 @@ import {
 } from "../components/Primitives.jsx";
 import { STATUS_ORDER, candidateExpText, hasWorkExperience } from "../lib/constants.js";
 import ReparseConfirmModal from "../components/ReparseConfirmModal.jsx";
+import { useMe } from "../lib/authContext.jsx";
 
 // Helpers — Upload.jsx 已经有相同函数,后续可抽 lib/format.js 复用
 function fmtDateTime(iso) {
@@ -78,6 +79,7 @@ const EMPTY_FORM = {
 
 export default function Candidates() {
   const navigate = useNavigate();
+  const campusInterviewer = useMe()?.role === "CAMPUS_INTERVIEWER";
   const [items, setItems] = useState([]);
   const [jobs, setJobs] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -458,10 +460,10 @@ export default function Candidates() {
           <Button variant="ghost" onClick={load} icon={<I name="refresh-cw" size={14} />}>
             <span className="hidden sm:inline">刷新</span>
           </Button>
-          <Button onClick={() => setCreateOpen(true)} icon={<I name="user-plus" size={16} />}>
+          {!campusInterviewer && <Button onClick={() => setCreateOpen(true)} icon={<I name="user-plus" size={16} />}>
             <span className="hidden sm:inline">新建候选人</span>
             <span className="sm:hidden">新建</span>
-          </Button>
+          </Button>}
         </div>
 
         {err && <div className="text-sm text-red-500 bg-red-50 rounded-xl px-4 py-3 mb-4">{err}</div>}
@@ -469,19 +471,19 @@ export default function Candidates() {
         {loading ? (
           <LoadingBlock label="加载候选人..." height="h-40" />
         ) : items.length === 0 ? (
-          <Empty title="还没有候选人" desc="点上方「新建候选人」开始" />
+          <Empty title="还没有候选人" desc={campusInterviewer ? "暂无校招候选人" : "点上方「新建候选人」开始"} />
         ) : (
           <>
             {/* 批量操作浮条 */}
             <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-100">
-              <input
+              {!campusInterviewer && <input
                 type="checkbox"
                 checked={allSelected}
                 ref={(el) => { if (el) el.indeterminate = !allSelected && selectedIds.size > 0; }}
                 onChange={toggleSelectAll}
                 className="w-4 h-4 accent-brand cursor-pointer"
                 title={allSelected ? "取消全选" : "全选"}
-              />
+              />}
               <span className="text-[11px] text-gray-600">
                 {selectedIds.size > 0 ? `已选 ${selectedIds.size} / ${items.length}` : `共 ${items.length} 个`}
               </span>
@@ -553,12 +555,12 @@ export default function Candidates() {
                 <div className="hidden md:flex md:flex-wrap items-center gap-x-3 gap-y-2.5 md:gap-x-4">
                   {/* 身份组:checkbox + 头像 + 姓名块,flex-1 + min-width 防压成 0 */}
                   <div className="flex items-center gap-3 flex-1 min-w-[200px]">
-                    <input
+                    {!campusInterviewer && <input
                       type="checkbox"
                       checked={isSelected}
                       onChange={() => toggleSelect(c.id)}
                       className="w-4 h-4 accent-brand cursor-pointer shrink-0"
-                    />
+                    />}
                     <Avatar name={c.name} animal={c.animal} size={48} className="shrink-0" />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -575,7 +577,7 @@ export default function Candidates() {
                   {/* 岗位列 */}
                   <div className="w-[140px] shrink-0">
                     <p className="text-[10px] text-gray-400 mb-1">岗位</p>
-                    <select
+                    <select disabled={campusInterviewer}
                       value={c.jobId || ""}
                       onChange={(e) => onSingleAssign(c.id, { jobId: e.target.value || null })}
                       className="h-7 w-full rounded-lg border border-gray-200 px-2 text-[11px] text-navy-700 outline-none focus:border-brand bg-white"
@@ -596,7 +598,7 @@ export default function Candidates() {
                   </div>
                   {/* 右操作区:ml-auto 推到行尾 */}
                   <div className="flex items-center gap-2 shrink-0 ml-auto">
-                    <select
+                    <select disabled={campusInterviewer}
                       value={c.departmentId || ""}
                       onChange={(e) => onSingleAssign(c.id, { departmentId: e.target.value || null })}
                       className="hidden lg:block h-7 rounded-lg border border-gray-200 px-2 text-[11px] text-navy-700 outline-none focus:border-brand bg-white max-w-[110px]"
@@ -607,7 +609,7 @@ export default function Candidates() {
                     </select>
                     {c.parser && <AiBadge parser={c.parser} confidence={c.parserConfidence} />}
                     {/* 解析按钮 — LLM 已配且有附件时始终显示;已解析显示"重新解析" */}
-                    {llmStatus?.configured && c.attachment && (
+                    {!campusInterviewer && llmStatus?.configured && c.attachment && (
                       <button
                         onClick={() => openReparse(c)}
                         disabled={isReparsing}
@@ -632,9 +634,9 @@ export default function Candidates() {
                       <button onClick={() => navigate(`/candidates/${c.externalId || c.id}`)} className="w-7 h-7 rounded-full bg-lightPrimary text-gray-700 hover:text-brand flex items-center justify-center" title="查看详情">
                         <I name="arrow-right" size={12} />
                       </button>
-                      <button onClick={() => onDelete(c.id, c.name)} className="w-7 h-7 rounded-full bg-red-50 text-red-500 hover:bg-red-100 flex items-center justify-center" title="删除">
+                      {!campusInterviewer && <button onClick={() => onDelete(c.id, c.name)} className="w-7 h-7 rounded-full bg-red-50 text-red-500 hover:bg-red-100 flex items-center justify-center" title="删除">
                         <I name="trash-2" size={12} />
-                      </button>
+                      </button>}
                     </div>
                   </div>
                 </div>

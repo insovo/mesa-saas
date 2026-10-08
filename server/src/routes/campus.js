@@ -9,7 +9,8 @@
 import ExcelJS from "exceljs";
 import { createHash } from "node:crypto";
 import { whereByIdOrExternal } from "../lib/idLookup.js";
-import { assertPage, loadUserAccess, hasModule, buildJobScopeWhere } from "../lib/permissions.js";
+import { assertPage, assertCandidateAccess, loadUserAccess, hasModule, hasPage, buildJobScopeWhere } from "../lib/permissions.js";
+import { campusRouteAllowed } from "../lib/campusTabAccess.js";
 import { buildCampusJobModel } from "../lib/campus/jobModel.js";
 import { writeLog } from "../lib/audit.js";
 import { attachmentHeaderForFilename } from "../lib/interviewEvalExport.js";
@@ -239,8 +240,12 @@ const applicantInclude = {
 export default async function campusRoutes(app, { generateJobModel = buildCampusJobModel } = {}) {
   app.addHook("preHandler", app.authenticate);
   app.addHook("preHandler", async (req, reply) => {
+    if (req.user.role === "CAMPUS_INTERVIEWER" && req.method === "GET" && /^\/api\/campus\/by-candidate\/[^/?]+(?:\?.*)?$/.test(req.url)) return;
     const access = await assertPage(req, reply, "campus");
     if (!access) return reply;
+    if (!campusRouteAllowed(access, req.method, req.url)) {
+      return reply.code(403).send({ error: "forbidden", message: "未获授权访问此校招 tab" });
+    }
   });
 
   async function requireManage(req, reply) {
@@ -908,6 +913,8 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
 
   // ─── 候选人详情「校招」卡:按 candidateId 查学生摘要 ──────────────
   app.get("/by-candidate/:candidateId", async (req, reply) => {
+    const permitted = await assertCandidateAccess(req, reply, req.params.candidateId);
+    if (!permitted) return;
     const a = await app.prisma.campusApplicant.findUnique({ where: { candidateId: req.params.candidateId }, include: { ...applicantInclude, session: { select: { id: true, name: true, slug: true, school: true, status: true, scoreFloor: true } }, matchRuns: { orderBy: { startedAt: "desc" }, take: 1 } } });
     if (!a) return { applicant: null };
     const access = await loadUserAccess(req);
@@ -999,7 +1006,7 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
   }
   app.get("/settings", async (req, reply) => {
     const access = await loadUserAccess(req);
-    if (!access.isAdmin && !hasModule(access, "campus.manage")) return reply.code(403).send({ error: "forbidden" });
+    if (!access.isAdmin && !hasModule(access, "campus.manage") && !hasPage(access, "campus.settings")) return reply.code(403).send({ error: "forbidden" });
     return { settings: await readSettings() };
   });
   app.put("/settings", { schema: { body: SETTINGS_BODY } }, async (req, reply) => {

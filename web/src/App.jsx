@@ -6,6 +6,7 @@ import RequirePermission from "./components/RequirePermission.jsx";
 import { LoadingBlock } from "./components/Primitives.jsx";
 import Forbidden from "./pages/Forbidden.jsx"; // 已被 RequirePermission 静态依赖,lazy 无意义
 import { setUnauthorizedHandler } from "./lib/api.js";
+import { useMe } from "./lib/authContext.jsx";
 
 // 页面组件全部走 React.lazy 动态导入 → 每个页面单独 chunk,首屏只下载当前路由所需代码。
 // 新增页面只需在此追加一行 lazy() 并在下方挂路由,保持与原 import 列表一致的可读性。
@@ -54,6 +55,11 @@ function Page({ pageKey, element }) {
   return <RequirePermission pageKey={pageKey}>{element}</RequirePermission>;
 }
 
+function HomeRedirect() {
+  const me = useMe();
+  return <Navigate to={me?.role === "CAMPUS_INTERVIEWER" ? "/candidates" : "/dashboard"} replace />;
+}
+
 export default function App() {
   const navigate = useNavigate();
 
@@ -100,9 +106,9 @@ export default function App() {
         <Route path="/audit" element={<RequirePermission adminOnly><AuditLog /></RequirePermission>} />
         <Route path="/campus" element={<Page pageKey={PAGE.campus} element={<Campus />} />} />
         <Route path="/forbidden" element={<Forbidden />} />
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/" element={<HomeRedirect />} />
       </Route>
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      <Route path="*" element={<HomeRedirect />} />
       </Routes>
     </Suspense>
   );

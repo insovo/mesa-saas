@@ -7,7 +7,7 @@ import { SessionStatusPill, fmtDate, errMsg } from "./ui.jsx";
 import SessionFormModal from "./SessionFormModal.jsx";
 import SessionJobsPanel from "./SessionJobsPanel.jsx";
 
-export default function CampusSessions({ sessions, canManage, onChanged }) {
+export default function CampusSessions({ sessions, canManage, canManageJobs = canManage, onChanged }) {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [expanded, setExpanded] = useState(null);
@@ -61,7 +61,7 @@ export default function CampusSessions({ sessions, canManage, onChanged }) {
               </>}
             </div>
           </div>
-          {expanded === s.id && <div className="mt-4 pt-4 border-t border-gray-100"><SessionJobsPanel session={s} canManage={canManage} onChanged={onChanged} /></div>}
+          {expanded === s.id && <div className="mt-4 pt-4 border-t border-gray-100"><SessionJobsPanel session={s} canManage={canManageJobs} onChanged={onChanged} /></div>}
         </Card>
       ))}
 

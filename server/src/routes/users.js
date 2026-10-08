@@ -14,12 +14,17 @@ import {
   DEFAULT_NEW_USER_MODULE_KEYS,
   isValidPageKey,
   isValidModuleKey,
+  CAMPUS_TABS,
+  CAMPUS_INTERVIEWER_MODULE_KEYS,
+  campusInterviewerPageKeys,
 } from "../lib/permissionKeys.js";
 import { writeLog } from "../lib/audit.js";
 import { validatePassword } from "../lib/passwordPolicy.js";
 import { recordPassword } from "../lib/passwordHistory.js";
 
-const ROLES = ["ADMIN", "RECRUITER", "VIEWER"];
+const ROLES = ["ADMIN", "RECRUITER", "VIEWER", "CAMPUS_INTERVIEWER"];
+const USERNAME_PATTERN = /^[\p{L}\p{N}._-]{3,32}$/u;
+const CAMPUS_TABS_SCHEMA = { type: "array", uniqueItems: true, items: { type: "string", enum: CAMPUS_TABS } };
 
 const PAGE_KEY_SCHEMA = { type: "array", items: { type: "string", maxLength: 64 } };
 const MODULE_KEY_SCHEMA = { type: "array", items: { type: "string", maxLength: 64 } };
@@ -40,12 +45,14 @@ function shapeUser(u) {
         pageKeys: u.accessPolicy.pageKeys || [],
         moduleKeys: u.accessPolicy.moduleKeys || [],
         mustChangePassword: !!u.accessPolicy.mustChangePassword,
+        campusTabs: u.role === "CAMPUS_INTERVIEWER" ? CAMPUS_TABS.filter((tab) => u.accessPolicy.pageKeys?.includes(`campus.${tab}`)) : [],
       }
-    : { pageKeys: [], moduleKeys: [], mustChangePassword: false };
+    : { pageKeys: [], moduleKeys: [], mustChangePassword: false, campusTabs: [] };
 
   return {
     id: u.id,
     email: u.email,
+    username: u.username,
     name: u.name,
     role: u.role,
     avatar: u.avatar,
@@ -146,9 +153,10 @@ export default async function usersRoutes(app) {
       schema: {
         body: {
           type: "object",
-          required: ["email"],
+          additionalProperties: false,
           properties: {
             email: { type: "string", format: "email", maxLength: 200 },
+            username: { type: "string", minLength: 3, maxLength: 32 },
             name: { type: "string", maxLength: 80 },
             role: { type: "string", enum: ROLES },
             jobTitle: { type: "string", maxLength: 80 },
@@ -156,6 +164,7 @@ export default async function usersRoutes(app) {
             password: { type: "string", minLength: 8, maxLength: 200 },
             pageKeys: PAGE_KEY_SCHEMA,
             moduleKeys: MODULE_KEY_SCHEMA,
+            campusTabs: CAMPUS_TABS_SCHEMA,
             departmentScopes: {
               type: "array",
               items: {
@@ -182,14 +191,26 @@ export default async function usersRoutes(app) {
     async (req, reply) => {
       const body = req.body;
       const role = body.role || "RECRUITER";
+      const campusInterviewer = role === "CAMPUS_INTERVIEWER";
+      const username = campusInterviewer ? body.username?.trim().toLowerCase() : null;
+      if (campusInterviewer && (!USERNAME_PATTERN.test(username || "") || !body.password)) {
+        return reply.code(422).send({ error: "invalid_campus_account", message: "校招面试官需填写 3–32 位账户名和初始密码" });
+      }
+      if (!campusInterviewer && !body.email) {
+        return reply.code(422).send({ error: "email_required", message: "请输入邮箱" });
+      }
+      if (campusInterviewer && await app.prisma.user.findUnique({ where: { username } })) {
+        return reply.code(409).send({ error: "username_taken", message: "账户名已被使用" });
+      }
+      const email = campusInterviewer ? `campus-${crypto.randomUUID()}@accounts.insovo.invalid` : body.email.trim().toLowerCase();
 
-      const exist = await app.prisma.user.findUnique({ where: { email: body.email } });
+      const exist = await app.prisma.user.findUnique({ where: { email } });
       if (exist) return reply.code(409).send({ error: "email_taken" });
 
       const rawPassword = body.password || randomPassword(12);
       // admin 显式传 password 时才校验策略
       if (body.password) {
-        const policy = validatePassword(rawPassword, { email: body.email, name: body.name });
+        const policy = validatePassword(rawPassword, { email: campusInterviewer ? username : email, name: body.name });
         if (!policy.ok) {
           return reply.code(422).send({
             error: "password_policy_failed",
@@ -200,42 +221,51 @@ export default async function usersRoutes(app) {
       }
       const passwordHash = await bcrypt.hash(rawPassword, 10);
 
-      const pageKeys = role === "ADMIN" ? [] : sanitizePageKeys(body.pageKeys || DEFAULT_NEW_USER_PAGE_KEYS);
-      const moduleKeys = role === "ADMIN" ? [] : sanitizeModuleKeys(body.moduleKeys || DEFAULT_NEW_USER_MODULE_KEYS);
+      const pageKeys = role === "ADMIN" ? [] : campusInterviewer ? campusInterviewerPageKeys(body.campusTabs || []) : sanitizePageKeys(body.pageKeys || DEFAULT_NEW_USER_PAGE_KEYS);
+      const moduleKeys = role === "ADMIN" ? [] : campusInterviewer
+        ? [...CAMPUS_INTERVIEWER_MODULE_KEYS, ...((body.campusTabs || []).some((tab) => tab === "sessions" || tab === "jobs") ? ["campus.manage"] : [])]
+        : sanitizeModuleKeys(body.moduleKeys || DEFAULT_NEW_USER_MODULE_KEYS);
 
-      const created = await app.prisma.$transaction(async (tx) => {
-        const u = await tx.user.create({
-          data: {
-            email: body.email,
-            name: body.name || null,
-            role,
-            jobTitle: body.jobTitle || null,
-            avatar: body.avatar || null,
-            isActive: true,
-            passwordHash,
-            accessPolicy: {
-              create: {
-                pageKeys,
-                moduleKeys,
-                mustChangePassword: !body.password, // admin 没给密码 → 强制下次登录改
+      let created;
+      try {
+        created = await app.prisma.$transaction(async (tx) => {
+          const u = await tx.user.create({
+            data: {
+              email,
+              username,
+              name: body.name || null,
+              role,
+              jobTitle: body.jobTitle || null,
+              avatar: body.avatar || null,
+              isActive: true,
+              passwordHash,
+              accessPolicy: {
+                create: {
+                  pageKeys,
+                  moduleKeys,
+                  mustChangePassword: !body.password, // admin 没给密码 → 强制下次登录改
+                },
               },
+              departmentScopes: !campusInterviewer && body.departmentScopes?.length
+                ? {
+                    create: body.departmentScopes.map((s) => ({
+                      departmentId: s.departmentId,
+                      includeChildren: s.includeChildren !== false,
+                    })),
+                  }
+                : undefined,
+              jobScopes: !campusInterviewer && body.jobScopes?.length
+                ? { create: body.jobScopes.map((s) => ({ jobId: s.jobId })) }
+                : undefined,
             },
-            departmentScopes: body.departmentScopes?.length
-              ? {
-                  create: body.departmentScopes.map((s) => ({
-                    departmentId: s.departmentId,
-                    includeChildren: s.includeChildren !== false,
-                  })),
-                }
-              : undefined,
-            jobScopes: body.jobScopes?.length
-              ? { create: body.jobScopes.map((s) => ({ jobId: s.jobId })) }
-              : undefined,
-          },
-          include: USER_INCLUDE,
+            include: USER_INCLUDE,
+          });
+          return u;
         });
-        return u;
-      });
+      } catch (err) {
+        if (err.code === "P2002") return reply.code(409).send({ error: campusInterviewer ? "username_taken" : "email_taken" });
+        throw err;
+      }
 
       await recordPassword(app.prisma, created.id, passwordHash);
       writeLog(app.prisma, {
@@ -263,6 +293,7 @@ export default async function usersRoutes(app) {
           additionalProperties: false,
           properties: {
             email: { type: "string", format: "email", maxLength: 200 },
+            username: { type: "string", minLength: 3, maxLength: 32 },
             name: { type: "string", maxLength: 80 },
             role: { type: "string", enum: ROLES },
             jobTitle: { type: ["string", "null"], maxLength: 80 },
@@ -279,6 +310,22 @@ export default async function usersRoutes(app) {
 
       const target = await app.prisma.user.findUnique({ where: { id } });
       if (!target) return reply.code(404).send({ error: "not_found" });
+      if (body.role && body.role !== target.role && (body.role === "CAMPUS_INTERVIEWER" || target.role === "CAMPUS_INTERVIEWER")) {
+        return reply.code(422).send({ error: "campus_role_change", message: "校招面试官是独立账号类型，请新建对应账号" });
+      }
+      const username = body.username?.trim().toLowerCase();
+      if (body.username !== undefined && target.role !== "CAMPUS_INTERVIEWER") {
+        return reply.code(422).send({ error: "username_forbidden" });
+      }
+      if (username && !USERNAME_PATTERN.test(username)) {
+        return reply.code(422).send({ error: "invalid_username", message: "账户名需为 3–32 位文字、数字、点、下划线或短横线" });
+      }
+      if (username && username !== target.username && await app.prisma.user.findUnique({ where: { username } })) {
+        return reply.code(409).send({ error: "username_taken", message: "账户名已被使用" });
+      }
+      if (target.role === "CAMPUS_INTERVIEWER" && body.email && body.email !== target.email) {
+        return reply.code(422).send({ error: "email_forbidden" });
+      }
 
       // 降级 / 停用 最后 ADMIN 拦截
       const willDemote = body.role && body.role !== "ADMIN" && target.role === "ADMIN";
@@ -296,13 +343,14 @@ export default async function usersRoutes(app) {
         where: { id },
         data: {
           email: body.email ?? undefined,
+          username: username ?? undefined,
           name: body.name ?? undefined,
           role: body.role ?? undefined,
           jobTitle: body.jobTitle === null ? null : body.jobTitle ?? undefined,
           avatar: body.avatar === null ? null : body.avatar ?? undefined,
           isActive: body.isActive ?? undefined,
           // 停用时记录时间 + tokenVersion++ 让其当前 session 失效
-          ...(body.isActive === false ? { tokenVersion: { increment: 1 } } : {}),
+          ...(body.isActive === false || (body.role && body.role !== target.role) ? { tokenVersion: { increment: 1 } } : {}),
           deactivatedAt: body.isActive === false ? new Date() : (body.isActive === true ? null : undefined),
           // isActive 改成 true 时清空 reason;停用时若 body 传了 reason 用它
           deactivatedReason: body.isActive === true
@@ -339,6 +387,7 @@ export default async function usersRoutes(app) {
           properties: {
             pageKeys: PAGE_KEY_SCHEMA,
             moduleKeys: MODULE_KEY_SCHEMA,
+            campusTabs: CAMPUS_TABS_SCHEMA,
             mustChangePassword: { type: "boolean" },
             departmentScopes: {
               type: "array",
@@ -369,8 +418,14 @@ export default async function usersRoutes(app) {
       if (!target) return reply.code(404).send({ error: "not_found" });
 
       const isTargetAdmin = target.role === "ADMIN";
-      const pageKeys = isTargetAdmin ? [] : sanitizePageKeys(req.body.pageKeys || []);
-      const moduleKeys = isTargetAdmin ? [] : sanitizeModuleKeys(req.body.moduleKeys || []);
+      const campusInterviewer = target.role === "CAMPUS_INTERVIEWER";
+      if (campusInterviewer && (req.body.pageKeys || req.body.moduleKeys || req.body.departmentScopes || req.body.jobScopes)) {
+        return reply.code(422).send({ error: "campus_policy_fixed", message: "校招面试官仅可配置校招 tab" });
+      }
+      const pageKeys = isTargetAdmin ? [] : campusInterviewer ? campusInterviewerPageKeys(req.body.campusTabs || []) : sanitizePageKeys(req.body.pageKeys || []);
+      const moduleKeys = isTargetAdmin ? [] : campusInterviewer
+        ? [...CAMPUS_INTERVIEWER_MODULE_KEYS, ...((req.body.campusTabs || []).some((tab) => tab === "sessions" || tab === "jobs") ? ["campus.manage"] : [])]
+        : sanitizeModuleKeys(req.body.moduleKeys || []);
 
       const result = await app.prisma.$transaction(async (tx) => {
         await tx.userAccessPolicy.upsert({
@@ -449,7 +504,7 @@ export default async function usersRoutes(app) {
       const rawPassword = req.body?.password || randomPassword(12);
       // 若 admin 显式传 password,需校验策略;自动生成的 password 由 randomPassword 保证强度
       if (req.body?.password) {
-        const policy = validatePassword(rawPassword, { email: target.email, name: target.name });
+        const policy = validatePassword(rawPassword, { email: target.username || target.email, name: target.name });
         if (!policy.ok) {
           return reply.code(422).send({
             error: "password_policy_failed",

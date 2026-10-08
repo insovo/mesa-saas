@@ -35,7 +35,7 @@ const PAGE_TITLES = {
   "/campus": "校招",
 };
 
-const ROLE_LABEL = { ADMIN: "管理员", RECRUITER: "招聘官", VIEWER: "只读" };
+const ROLE_LABEL = { ADMIN: "管理员", RECRUITER: "招聘官", VIEWER: "只读", CAMPUS_INTERVIEWER: "校招面试官" };
 
 function pageTitleFor(pathname) {
   for (const [prefix, title] of Object.entries(PAGE_TITLES)) {
@@ -103,12 +103,13 @@ export default function Topbar({ navOpen = false }) {
       return;
     }
     if (switchToSavedAccount(email)) {
+      const destination = getSavedAccounts().find((account) => normEmail(account.email) === normEmail(email))?.user?.role === "CAMPUS_INTERVIEWER" ? "/candidates" : "/dashboard";
       // 整页 reload — 让 AuthProvider 用新 token 重拉 /auth/me 拿权限
       // 若当前已在 /dashboard,assign 同 URL 不会触发 reload,必须显式 reload()
-      if (window.location.pathname === "/dashboard") {
+      if (window.location.pathname === destination) {
         window.location.reload();
       } else {
-        window.location.assign("/dashboard");
+        window.location.assign(destination);
       }
     } else {
       toast("该账号已失效,请重新登录", "error");
@@ -171,10 +172,10 @@ export default function Topbar({ navOpen = false }) {
               onClick={() => setMenuOpen((v) => !v)}
               className="flex items-center gap-3 pl-1 pr-3 h-11 rounded-full bg-white shadow-card hover:shadow-glow hover:-translate-y-0.5 transition-all duration-200"
             >
-              <Avatar name={user?.name || user?.email || "U"} src={user?.avatar} size={36} />
+              <Avatar name={user?.name || user?.username || user?.email || "U"} src={user?.avatar} size={36} />
               <div className="text-left hidden sm:block">
                 <p className="text-xs font-medium text-gray-700 leading-tight">已登录</p>
-                <p className="text-sm font-bold text-navy-700 leading-tight">{user?.name || user?.email}</p>
+                <p className="text-sm font-bold text-navy-700 leading-tight">{user?.name || user?.username || user?.email}</p>
               </div>
               <I name="chevron-down" size={14} className="text-gray-400" />
             </button>
@@ -182,10 +183,10 @@ export default function Topbar({ navOpen = false }) {
               <div ref={popoverRef} className="absolute right-0 top-12 w-64 rounded-card bg-white shadow-glow-lg border border-white/60 overflow-hidden z-30">
                 <div className="px-4 py-3 border-b border-gray-200 tb-menu-item">
                   <div className="flex items-center gap-3">
-                    <Avatar name={user?.name || user?.email || "U"} src={user?.avatar} size={40} />
+                    <Avatar name={user?.name || user?.username || user?.email || "U"} src={user?.avatar} size={40} />
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-bold text-navy-700 truncate">{user?.name || "Overseas R&D 用户"}</p>
-                      <p className="text-xs text-gray-700 truncate mt-0.5">{user?.email}</p>
+                      <p className="text-xs text-gray-700 truncate mt-0.5">{user?.username || user?.email}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 mt-2">
@@ -206,20 +207,20 @@ export default function Topbar({ navOpen = false }) {
                   <I name="user-circle" size={16} className="text-brand" />
                   修改头像 / 昵称
                 </button>
-                <button
+                {user?.role !== "CAMPUS_INTERVIEWER" && <button
                   onClick={() => { setMenuOpen(false); setEmailOpen(true); }}
                   className="tb-menu-item w-full text-left px-4 py-2.5 text-sm text-navy-700 hover:bg-lightPrimary flex items-center gap-2"
                 >
                   <I name="mail" size={16} className="text-brand" />
                   修改邮箱
-                </button>
-                <button
+                </button>}
+                {user?.role !== "CAMPUS_INTERVIEWER" && <button
                   onClick={() => { setMenuOpen(false); setPasswordOpen(true); }}
                   className="tb-menu-item w-full text-left px-4 py-2.5 text-sm text-navy-700 hover:bg-lightPrimary flex items-center gap-2"
                 >
                   <I name="key-round" size={16} className="text-brand" />
                   修改密码
-                </button>
+                </button>}
                 <button
                   onClick={() => { setMenuOpen(false); setTotpOpen(true); }}
                   className="tb-menu-item w-full text-left px-4 py-2.5 text-sm text-navy-700 hover:bg-lightPrimary flex items-center justify-between gap-2"
@@ -275,7 +276,7 @@ export default function Topbar({ navOpen = false }) {
                         >
                           <Avatar name={a.user?.name || a.email} src={a.user?.avatar} size={28} />
                           <span className="flex-1 min-w-0">
-                            <span className="block text-sm text-navy-700 truncate">{a.email}</span>
+                            <span className="block text-sm text-navy-700 truncate">{a.user?.username || a.email}</span>
                             {a.user?.name && (
                               <span className="block text-[11px] text-gray-700 truncate">{a.user.name}</span>
                             )}

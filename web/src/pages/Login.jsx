@@ -86,12 +86,13 @@ export default function Login() {
       setAuth(data.token, data.user);
       writeLastEmail(email);
       if (remember) addSavedAccount(data.token, data.user);
-      await refetch();
-      navigate(from, { replace: true });
+      const currentUser = await refetch();
+      const campusDestination = from === "/candidates" || from.startsWith("/candidates/") || (from === "/campus" && currentUser?.pageKeys?.includes("campus")) ? from : "/candidates";
+      navigate(data.user?.role === "CAMPUS_INTERVIEWER" ? campusDestination : from, { replace: true });
     } catch (err) {
       const status = err.response?.status;
       if (status === 401) {
-        setError("邮箱或密码不正确");
+        setError("邮箱或账户名、密码不正确");
       } else if (status === 403 && err.response?.data?.error === "user_inactive") {
         setDeactivated({ reason: err.response.data.deactivatedReason || "" });
       } else {
@@ -106,11 +107,12 @@ export default function Login() {
     setAuth(data.token, data.user);
     writeLastEmail(email);
     if (remember) addSavedAccount(data.token, data.user);
-    await refetch();
+    const currentUser = await refetch();
     if (data.recoveryCodeUsed) {
       toast(`已用 1 个备份码登录,剩余 ${data.remainingRecoveryCodes} 个`, "info");
     }
-    navigate(from, { replace: true });
+    const campusDestination = from === "/candidates" || from.startsWith("/candidates/") || (from === "/campus" && currentUser?.pageKeys?.includes("campus")) ? from : "/candidates";
+    navigate(data.user?.role === "CAMPUS_INTERVIEWER" ? campusDestination : from, { replace: true });
   }
 
   return (
@@ -188,10 +190,10 @@ export default function Login() {
               <p className="text-sm text-white/55 mt-2 mb-8">海外研发招聘管理系统</p>
               <form onSubmit={onSubmit} className="space-y-5">
                 <div>
-                  <label htmlFor="email" className="text-xs font-bold text-white/70 ml-1 mb-2 block">email</label>
+                  <label htmlFor="email" className="text-xs font-bold text-white/70 ml-1 mb-2 block">邮箱 / 账户名</label>
                   <div className="relative">
                     <I name="mail" size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 pointer-events-none" />
-                    <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="请输入邮箱" autoComplete="email" required
+                    <input id="email" type="text" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="请输入邮箱或账户名" autoComplete="username" required
                       className="w-full h-[52px] rounded-2xl border border-white/15 bg-white/5 pl-11 pr-4 text-sm text-white placeholder:text-white/40 outline-none focus:border-brand focus:bg-white/10 focus:ring-4 focus:ring-brand/20 transition-all" />
                   </div>
                 </div>

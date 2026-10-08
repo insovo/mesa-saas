@@ -323,13 +323,9 @@ export default async function candidatesRoutes(app) {
     }
     const ok = await assertCandidateAccess(req, reply, req.params.id);
     if (!ok) return;
-    try {
-      await app.prisma.candidateNote.delete({ where: { id: req.params.noteId } });
-      return reply.code(204).send();
-    } catch (err) {
-      if (err.code === "P2025") return reply.code(404).send({ error: "not_found" });
-      throw err;
-    }
+    const result = await app.prisma.candidateNote.deleteMany({ where: { id: req.params.noteId, candidateId: req.params.id } });
+    if (!result.count) return reply.code(404).send({ error: "not_found" });
+    return reply.code(204).send();
   });
 
   // Delete — 需 candidate.delete + 数据范围内

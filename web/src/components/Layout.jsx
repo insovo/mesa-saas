@@ -33,7 +33,7 @@ export default function Layout() {
     <div className="flex min-h-screen bg-lightPrimary">
       <StaggeredMenu
         items={items}
-        footer={<LlmConfig className="w-full" />}
+        footer={me?.role === "CAMPUS_INTERVIEWER" ? null : <LlmConfig className="w-full" />}
         onMenuOpen={() => setMenuOpen(true)}
         onMenuClose={() => setMenuOpen(false)}
       />

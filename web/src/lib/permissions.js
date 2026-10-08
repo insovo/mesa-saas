@@ -17,6 +17,11 @@ export const PAGE_KEYS = Object.freeze([
   "share.settings",
   "audit",
   "campus",
+  "campus.ledger",
+  "campus.sessions",
+  "campus.jobs",
+  "campus.stats",
+  "campus.settings",
 ]);
 
 export const MODULE_KEYS = Object.freeze([
@@ -61,6 +66,11 @@ export const PAGE_LABELS = Object.freeze({
   "share.settings": "飞书 Bot 分享设置",
   "audit": "审计日志",
   "campus": "校招",
+  "campus.ledger": "校招 · 台账",
+  "campus.sessions": "校招 · 专场",
+  "campus.jobs": "校招 · 岗位",
+  "campus.stats": "校招 · 数据",
+  "campus.settings": "校招 · 设置",
 });
 
 export const MODULE_LABELS = Object.freeze({

@@ -36,6 +36,7 @@ export function AuthProvider({ children }) {
         setAuth(getToken(), {
           id: data.user.id,
           email: data.user.email,
+          username: data.user.username,
           name: data.user.name,
           role: data.user.role,
           avatar: data.user.avatar,

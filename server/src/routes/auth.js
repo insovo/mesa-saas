@@ -11,7 +11,7 @@ const LOGIN_SCHEMA = {
     type: "object",
     required: ["email", "password"],
     properties: {
-      email: { type: "string", format: "email", maxLength: 200 },
+      email: { type: "string", minLength: 3, maxLength: 200 },
       password: { type: "string", minLength: 6, maxLength: 200 },
     },
   },
@@ -64,6 +64,7 @@ function shapeMe(user, access) {
   return {
     id: user.id,
     email: user.email,
+    username: user.username,
     name: user.name,
     role: user.role,
     avatar: user.avatar,
@@ -90,8 +91,9 @@ function shapeMe(user, access) {
 
 export default async function authRoutes(app) {
   app.post("/login", { schema: LOGIN_SCHEMA }, async (req, reply) => {
-    const { email, password } = req.body;
-    const user = await app.prisma.user.findUnique({ where: { email } });
+    const { password } = req.body;
+    const email = req.body.email.trim().toLowerCase();
+    const user = await app.prisma.user.findUnique({ where: email.includes("@") ? { email } : { username: email } });
     if (!user) {
       writeLog(app.prisma, { req, action: "auth.login_failed", diff: { email, reason: "no_such_user" } });
       return reply.code(401).send({ error: "invalid_credentials" });
@@ -132,6 +134,7 @@ export default async function authRoutes(app) {
       user: {
         id: user.id,
         email: user.email,
+        username: user.username,
         name: user.name,
         role: user.role,
         avatar: user.avatar,
@@ -200,7 +203,7 @@ export default async function authRoutes(app) {
       return {
         token,
         user: {
-          id: user.id, email: user.email, name: user.name, role: user.role,
+          id: user.id, email: user.email, username: user.username, name: user.name, role: user.role,
           avatar: user.avatar, jobTitle: user.jobTitle,
         },
         ...(usedRecovery ? { recoveryCodeUsed: true, remainingRecoveryCodes: user.totpRecoveryCodes.length - 1 } : {}),

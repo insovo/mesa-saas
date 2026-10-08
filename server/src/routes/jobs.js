@@ -90,6 +90,7 @@ export default async function jobsRoutes(app) {
     }, additionalProperties: false } },
   }, async (req, reply) => {
     const access = await loadUserAccess(req);
+    if (access.role === "CAMPUS_INTERVIEWER" && !hasPage(access, "campus.jobs")) return reply.code(403).send({ error: "forbidden" });
     if (!access.isActive || (!hasModule(access, "job.create") && !(hasPage(access, "campus") && hasModule(access, "campus.manage")))) return reply.code(403).send({ error: "forbidden", message: "无新建岗位权限" });
     if (!(await isKimiConfigured())) return reply.code(424).send({ error: "kimi_not_configured", message: "请先配置 Kimi API Key" });
     try { return await parseJobText(req.body); }

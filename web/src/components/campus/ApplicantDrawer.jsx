@@ -177,7 +177,7 @@ export default function ApplicantDrawer({ applicantId, open, initialEdit = false
                 {uploading ? "上传中…" : `代传新版简历(剩 ${uploadsLeft} 次)`}
                 <input ref={fileRef} type="file" accept={RESUME_ACCEPT} className="hidden" onChange={onPickFile} />
               </label>
-              <Button size="sm" variant="ghost" icon={<I name="git-merge" size={14} />} onClick={() => setMergeOpen(true)}>合并电脑端上传</Button>
+              {me?.role !== "CAMPUS_INTERVIEWER" && <Button size="sm" variant="ghost" icon={<I name="git-merge" size={14} />} onClick={() => setMergeOpen(true)}>合并电脑端上传</Button>}
               <Link to={`/candidates/${a.candidateId}`} className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border border-gray-200 text-xs font-medium text-navy-700 hover:bg-lightPrimary"><I name="qr-code" size={14} />面试评价二维码</Link>
               {canManage && <Button size="sm" variant="ghost" className="text-red-600 ml-auto" icon={<I name="trash-2" size={14} />} onClick={removeApplicant}>删除登记</Button>}
             </div>

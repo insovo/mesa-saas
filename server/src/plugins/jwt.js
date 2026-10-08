@@ -13,6 +13,7 @@
 
 import fp from "fastify-plugin";
 import fastifyJwt from "@fastify/jwt";
+import { campusInterviewerApiAllowed } from "../lib/campusInterviewerApi.js";
 
 export default fp(async (app) => {
   await app.register(fastifyJwt, {
@@ -39,7 +40,7 @@ export default fp(async (app) => {
     }
     const u = await req.server.prisma.user.findUnique({
       where: { id: req.user.sub },
-      select: { id: true, isActive: true, tokenVersion: true, deactivatedReason: true },
+      select: { id: true, role: true, isActive: true, tokenVersion: true, deactivatedReason: true },
     });
     if (!u) return reply.code(401).send({ error: "session_invalid", message: "账号不存在" });
     if (u.isActive === false) {
@@ -52,6 +53,10 @@ export default fp(async (app) => {
     const payloadTv = req.user.tv ?? 0;
     if (u.tokenVersion !== payloadTv) {
       return reply.code(401).send({ error: "session_invalid", message: "会话已失效,请重新登录" });
+    }
+    req.user.role = u.role;
+    if (u.role === "CAMPUS_INTERVIEWER" && !campusInterviewerApiAllowed(req.method, req.url)) {
+      return reply.code(403).send({ error: "forbidden", message: "校招面试官无此功能权限" });
     }
   });
 }, { name: "jwt", dependencies: [] });

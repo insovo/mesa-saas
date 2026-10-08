@@ -9,6 +9,9 @@ import {
   CANDIDATE_FIELD_MODULE_MAP,
   ALL_PAGE_KEYS_SET,
   ALL_MODULE_KEYS_SET,
+  CAMPUS_TABS,
+  CAMPUS_INTERVIEWER_MODULE_KEYS,
+  campusInterviewerPageKeys,
 } from "./permissionKeys.js";
 
 export function isAdmin(userOrRole) {
@@ -52,13 +55,19 @@ export async function loadUserAccess(req) {
   });
 
   const admin = isAdmin(user?.role);
+  const campusInterviewer = user?.role === "CAMPUS_INTERVIEWER";
+  const campusTabs = campusInterviewer
+    ? CAMPUS_TABS.filter((tab) => user?.accessPolicy?.pageKeys?.includes(`campus.${tab}`))
+    : [];
   const access = {
     userId: user?.id || userId,
     role: user?.role || null,
     isActive: user?.isActive !== false,
     isAdmin: admin,
-    pageKeys: admin ? Array.from(ALL_PAGE_KEYS_SET) : (user?.accessPolicy?.pageKeys || []),
-    moduleKeys: admin ? Array.from(ALL_MODULE_KEYS_SET) : (user?.accessPolicy?.moduleKeys || []),
+    pageKeys: admin ? Array.from(ALL_PAGE_KEYS_SET) : campusInterviewer ? campusInterviewerPageKeys(campusTabs) : (user?.accessPolicy?.pageKeys || []),
+    moduleKeys: admin ? Array.from(ALL_MODULE_KEYS_SET) : campusInterviewer
+      ? [...CAMPUS_INTERVIEWER_MODULE_KEYS, ...(campusTabs.some((tab) => tab === "sessions" || tab === "jobs") ? ["campus.manage"] : [])]
+      : (user?.accessPolicy?.moduleKeys || []),
     departmentScopes: user?.departmentScopes || [],
     jobScopes: user?.jobScopes || [],
   };
@@ -165,6 +174,7 @@ async function loadDepartmentNames(req, deptIds) {
 export async function buildCandidateScopeWhere(req) {
   const access = await loadUserAccess(req);
   if (access.isAdmin) return null;
+  if (access.role === "CAMPUS_INTERVIEWER") return { campusApplicant: { isNot: null } };
 
   const deptIds = await expandDepartmentScope(req, access);
   const jobIds = access.jobScopes.map((s) => s.jobId);
@@ -181,6 +191,7 @@ export async function buildCandidateScopeWhere(req) {
 export async function buildJobScopeWhere(req) {
   const access = await loadUserAccess(req);
   if (access.isAdmin) return null;
+  if (access.role === "CAMPUS_INTERVIEWER") return { campusSessionJobs: { some: {} } };
 
   const deptIds = await expandDepartmentScope(req, access);
   const deptNames = await loadDepartmentNames(req, deptIds);

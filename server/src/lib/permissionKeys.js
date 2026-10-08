@@ -19,7 +19,22 @@ export const PAGE_KEYS = Object.freeze([
   "share.settings",
   "audit",
   "campus",
+  "campus.ledger",
+  "campus.sessions",
+  "campus.jobs",
+  "campus.stats",
+  "campus.settings",
 ]);
+
+export const CAMPUS_TABS = Object.freeze(["ledger", "sessions", "jobs", "stats", "settings"]);
+export const CAMPUS_INTERVIEWER_MODULE_KEYS = Object.freeze([
+  "candidate.contact", "candidate.attachments", "candidate.aiInsights",
+  "candidate.reviews", "candidate.notes", "candidate.jdMatch",
+]);
+export function campusInterviewerPageKeys(tabs = []) {
+  const selected = CAMPUS_TABS.filter((tab) => tabs.includes(tab));
+  return ["candidates", "candidate.detail", ...(selected.length ? ["campus"] : []), ...selected.map((tab) => `campus.${tab}`)];
+}
 
 // 模块 key — 控制候选人详情 / share / 操作按钮等粒度
 export const MODULE_KEYS = Object.freeze([

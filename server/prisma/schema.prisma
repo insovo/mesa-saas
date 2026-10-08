@@ -15,6 +15,7 @@ enum Role {
   ADMIN
   RECRUITER
   VIEWER
+  CAMPUS_INTERVIEWER
 }
 
 enum Urgency {
@@ -26,6 +27,7 @@ enum Urgency {
 model User {
   id                String    @id @default(uuid()) @db.Uuid
   email             String    @unique
+  username          String?   @unique
   passwordHash      String    @map("password_hash")
   name              String?
   role              Role      @default(RECRUITER)

@@ -5,7 +5,7 @@
 //   3. ContentType 严格白名单,防止伪装可执行文件
 
 import { randomUUID } from "node:crypto";
-import { loadUserAccess, hasModule } from "../lib/permissions.js";
+import { loadUserAccess, hasModule, hasPage } from "../lib/permissions.js";
 
 const ALLOWED_MIME = new Set([
   "application/pdf",
@@ -48,6 +48,9 @@ export default async function storageRoutes(app) {
     }
     // 上传简历/附件需要 candidate.attachments 模块权限
     const access = await loadUserAccess(req);
+    if (access.role === "CAMPUS_INTERVIEWER" && !hasPage(access, "campus.ledger")) {
+      return reply.code(403).send({ error: "forbidden" });
+    }
     if (!hasModule(access, "candidate.attachments")) {
       return reply.code(403).send({ error: "forbidden", message: "无附件上传权限" });
     }
@@ -74,6 +77,8 @@ export default async function storageRoutes(app) {
     },
   }, async (req, reply) => {
     if (!app.r2) return reply.code(503).send({ error: "r2_not_configured" });
+    const access = await loadUserAccess(req);
+    if (access.role === "CAMPUS_INTERVIEWER" && !hasPage(access, "campus.ledger")) return reply.code(403).send({ error: "forbidden" });
     const publicUrl = app.r2.publicBase ? `${app.r2.publicBase}/${req.body.key}` : null;
     return { key: req.body.key, publicUrl };
   });
@@ -91,6 +96,14 @@ export default async function storageRoutes(app) {
     const access = await loadUserAccess(req);
     if (!hasModule(access, "candidate.attachments")) {
       return reply.code(403).send({ error: "forbidden", message: "无附件查看权限" });
+    }
+    if (access.role === "CAMPUS_INTERVIEWER") {
+      const key = req.body.key;
+      const [candidate, version] = await Promise.all([
+        app.prisma.candidate.findFirst({ where: { attachment: key, campusApplicant: { isNot: null } }, select: { id: true } }),
+        app.prisma.campusResumeVersion.findFirst({ where: { attachmentKey: key }, select: { id: true } }),
+      ]);
+      if (!candidate && !version) return reply.code(404).send({ error: "not_found" });
     }
     const url = await app.r2.presignGet({ key: req.body.key, expiresIn: 600 });
     return { url, expiresIn: 600 };

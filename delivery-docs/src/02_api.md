@@ -41,6 +41,8 @@ date: "2026-07-17"
 
 ## 2.1 POST /api/auth/login
 
+`email` 字段兼容邮箱或校招面试官账户名。校招面试官使用管理员设置的账户名和密码登录；响应的 `user` 增加 `username`，`/api/auth/me` 返回其实际页面与模块权限。
+
 请求体:
 ```json
 { "email": "admin@mesa.local", "password": "mesa-dev-2026" }
@@ -60,6 +62,14 @@ date: "2026-07-17"
 ```json
 { "user": { "id": "uuid", "email": "...", "role": "ADMIN", "createdAt": "..." } }
 ```
+
+## 2.3 校招面试官账户与权限
+
+管理员在 `POST /api/users` 提交 `role: "CAMPUS_INTERVIEWER"`、`username`（3–32 位文字、数字、`.`、`_`、`-`）、`password` 和可选 `campusTabs`。`campusTabs` 可选 `ledger`、`sessions`、`jobs`、`stats`、`settings`，默认空数组；无需邮箱。账户名按小写唯一保存。此角色不能通过普通用户的角色编辑切换创建；忘记密码时由管理员在用户管理页重置。
+
+管理员在 `PATCH /api/users/:id/policy` 提交 `{ "campusTabs": ["ledger", "jobs"] }` 整体覆盖 tab 授权。校招面试官的基础页面固定为 `candidates`、`candidate.detail`；选中至少一个 tab 才开放 `campus` 页面。其候选人列表及详情始终仅返回与校招学生关联的记录，不能通过普通页面或 API 修改这一范围。校招 tab 的读写接口按各自授权校验；`settings` 只可查看，修改仍限管理员。校招面试官不能访问其他业务 API，校招台账导出仍需单独的 `campus.export` 权限，因而此角色不可导出。
+
+这项变更使用迁移 `20261008030000_campus_interviewer` 增加角色和可选 `username` 字段。既有邮箱账户和邮箱登录保持可用。
 
 # 3. Candidates · 候选人
 
@@ -1057,7 +1067,7 @@ Header 必填:`X-Perf-Access-Key: <明文密钥>`
 | `Interview.status` | `已安排` `已完成` `已取消` `已改期` | 面试状态 |
 | `Review.visibility` | `public` `internal` `admin` | 评价可见范围 |
 | `Review.stance` | `approve` `reject` `null` | 回复表态 |
-| `User.role` | `ADMIN` `RECRUITER` `VIEWER` | 系统角色 |
+| `User.role` | `ADMIN` `RECRUITER` `VIEWER` `CAMPUS_INTERVIEWER` | 系统角色；校招面试官仅可访问校招候选人和授权 tab |
 | `InterviewEvaluation.status` | `link_sent` `draft` `submitted` `revoked` | 面试评价状态机(详见 §17) |
 | `InterviewEvaluation.recommendation` | `建议录用` `建议复试` `谨慎考虑` `不建议录用` | 提交时按 totalScore 自动推断 |
 | `PerformanceEvaluation.status` | `draft` `self_done` `submitted` `revoked` | 员工绩效评价(详见 §18) |

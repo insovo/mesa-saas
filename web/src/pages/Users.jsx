@@ -19,11 +19,15 @@ import {
 import { POLICY_TEMPLATES, TEMPLATE_LIST } from "../lib/policyTemplates.js";
 import { useAuth } from "../lib/authContext.jsx";
 
-const ROLE_LABEL = { ADMIN: "管理员", RECRUITER: "招聘官", VIEWER: "只读" };
+const ROLE_LABEL = { ADMIN: "管理员", RECRUITER: "招聘官", VIEWER: "只读", CAMPUS_INTERVIEWER: "校招面试官" };
+const CAMPUS_TAB_OPTIONS = [
+  ["ledger", "台账"], ["sessions", "专场"], ["jobs", "岗位"], ["stats", "数据"], ["settings", "设置"],
+];
 const ROLE_TONE = {
   ADMIN: "bg-brand-50 text-brand",
   RECRUITER: "bg-emerald-50 text-emerald-700",
   VIEWER: "bg-gray-100 text-gray-700",
+  CAMPUS_INTERVIEWER: "bg-sky-50 text-sky-700",
 };
 
 export default function UsersPage() {
@@ -155,7 +159,7 @@ export default function UsersPage() {
                   <Avatar name={u.name || u.email} src={u.avatar} size={42} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <p className="font-bold text-navy-700 truncate">{u.name || u.email.split("@")[0]}</p>
+                      <p className="font-bold text-navy-700 truncate">{u.name || u.username || u.email.split("@")[0]}</p>
                       <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${ROLE_TONE[u.role] || "bg-gray-100"}`}>
                         {ROLE_LABEL[u.role] || u.role}
                       </span>
@@ -168,7 +172,7 @@ export default function UsersPage() {
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-gray-700 truncate mt-0.5">{u.email}</p>
+                    <p className="text-xs text-gray-700 truncate mt-0.5">{u.username || u.email}</p>
                     {u.isActive === false && u.deactivatedReason && (
                       <p className="text-[11px] text-red-500 mt-0.5 truncate">原因:{u.deactivatedReason}</p>
                     )}
@@ -212,7 +216,7 @@ export default function UsersPage() {
             loadUsers();
             setSelectedId(user.id);
             if (generatedPassword) {
-              setGeneratedCred({ email: user.email, password: generatedPassword, kind: "create" });
+              setGeneratedCred({ account: user.username || user.email, password: generatedPassword, kind: "create", username: !!user.username });
             }
           }}
         />
@@ -225,7 +229,7 @@ export default function UsersPage() {
           onDone={(password) => {
             setResetTarget(null);
             if (password) {
-              setGeneratedCred({ email: resetTarget.email, password, kind: "reset" });
+              setGeneratedCred({ account: resetTarget.username || resetTarget.email, password, kind: "reset", username: !!resetTarget.username });
             }
           }}
         />
@@ -262,7 +266,8 @@ function UserDetailPanel({ user, meId, departments, jobs, onReload, onDeleted, o
   return (
     <div className="space-y-5">
       <UserBasicCard user={user} isSelf={isSelf} onReload={onReload} onDeleted={onDeleted} onResetPassword={onResetPassword} />
-      {!isAdminRole && (
+      {user.role === "CAMPUS_INTERVIEWER" && <CampusInterviewerPolicyCard user={user} onReload={onReload} />}
+      {!isAdminRole && user.role !== "CAMPUS_INTERVIEWER" && (
         <UserPolicyCard user={user} departments={departments} jobs={jobs} onReload={onReload} />
       )}
       {isAdminRole && (
@@ -282,11 +287,35 @@ function UserDetailPanel({ user, meId, departments, jobs, onReload, onDeleted, o
   );
 }
 
+function CampusInterviewerPolicyCard({ user, onReload }) {
+  const [tabs, setTabs] = useState(user.access?.campusTabs || []);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { setTabs(user.access?.campusTabs || []); }, [user.id, user.access?.campusTabs]);
+  async function save() {
+    setSaving(true);
+    try {
+      await api.patch(`/users/${user.id}/policy`, { campusTabs: tabs });
+      toast("校招 tab 权限已保存", "success");
+      onReload();
+    } catch (e) { toast(e.response?.data?.message || "保存失败", "error"); }
+    finally { setSaving(false); }
+  }
+  return <div className="bg-white rounded-card shadow-card p-5 space-y-4">
+    <div><h3 className="text-lg font-bold text-navy-700">校招访问权限</h3>
+      <p className="text-xs text-gray-600 mt-1">默认只可访问校招候选人列表及详情。勾选后可进入对应校招 tab。</p></div>
+    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">{CAMPUS_TAB_OPTIONS.map(([key, label]) => <label key={key} className="flex items-center gap-2 p-3 rounded-xl border border-gray-200 text-sm cursor-pointer">
+      <input type="checkbox" checked={tabs.includes(key)} onChange={() => setTabs((current) => current.includes(key) ? current.filter((v) => v !== key) : [...current, key])} />{label}
+    </label>)}</div>
+    <Button onClick={save} disabled={saving}>{saving ? "保存中" : "保存权限"}</Button>
+  </div>;
+}
+
 function UserBasicCard({ user, isSelf, onReload, onDeleted, onResetPassword }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState(() => ({
     name: user.name || "",
     email: user.email,
+    username: user.username || "",
     role: user.role,
     jobTitle: user.jobTitle || "",
     avatar: user.avatar || "",
@@ -297,6 +326,7 @@ function UserBasicCard({ user, isSelf, onReload, onDeleted, onResetPassword }) {
     setForm({
       name: user.name || "",
       email: user.email,
+      username: user.username || "",
       role: user.role,
       jobTitle: user.jobTitle || "",
       avatar: user.avatar || "",
@@ -304,7 +334,7 @@ function UserBasicCard({ user, isSelf, onReload, onDeleted, onResetPassword }) {
       deactivatedReason: user.deactivatedReason || "",
     });
     setEditing(false);
-  }, [user.id]);
+  }, [user.id, user.updatedAt]);
 
   const [saving, setSaving] = useState(false);
 
@@ -313,7 +343,7 @@ function UserBasicCard({ user, isSelf, onReload, onDeleted, onResetPassword }) {
     try {
       const body = {
         name: form.name || undefined,
-        email: form.email,
+        ...(user.role === "CAMPUS_INTERVIEWER" ? { username: form.username } : { email: form.email }),
         role: form.role,
         jobTitle: form.jobTitle || null,
         avatar: form.avatar || null,
@@ -332,7 +362,7 @@ function UserBasicCard({ user, isSelf, onReload, onDeleted, onResetPassword }) {
   }
 
   async function remove() {
-    if (!confirm(`确定删除用户「${user.email}」?候选人 ownerId 会变 NULL,分享链接会保留但 createdBy 变空。此操作不可恢复。`)) return;
+    if (!confirm(`确定删除用户「${user.username || user.email}」?候选人 ownerId 会变 NULL,分享链接会保留但 createdBy 变空。此操作不可恢复。`)) return;
     try {
       await api.delete(`/users/${user.id}`);
       toast("用户已删除", "success");
@@ -368,7 +398,7 @@ function UserBasicCard({ user, isSelf, onReload, onDeleted, onResetPassword }) {
       {!editing ? (
         <div className="grid grid-cols-2 gap-x-5 gap-y-3 text-sm">
           <KV label="昵称" value={user.name || "—"} />
-          <KV label="邮箱" value={user.email} />
+          <KV label={user.username ? "账户名" : "邮箱"} value={user.username || user.email} />
           <KV label="角色" value={ROLE_LABEL[user.role] || user.role} />
           <KV label="内部职位" value={user.jobTitle || "—"} />
           <KV label="状态" value={user.isActive === false ? "已停用" : "正常"} valueClass={user.isActive === false ? "text-red-600" : "text-emerald-600"} />
@@ -385,12 +415,14 @@ function UserBasicCard({ user, isSelf, onReload, onDeleted, onResetPassword }) {
           <Field label="昵称">
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="如:张小明" />
           </Field>
-          <Field label="邮箱">
+          {user.role === "CAMPUS_INTERVIEWER" ? <Field label="账户名">
+            <Input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
+          </Field> : <Field label="邮箱">
             <Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} type="email" />
-          </Field>
+          </Field>}
           <div className="grid grid-cols-2 gap-3">
             <Field label="角色">
-              <select
+              <select disabled={user.role === "CAMPUS_INTERVIEWER"}
                 className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm outline-none focus:border-brand bg-white"
                 value={form.role}
                 onChange={(e) => setForm({ ...form, role: e.target.value })}
@@ -398,6 +430,7 @@ function UserBasicCard({ user, isSelf, onReload, onDeleted, onResetPassword }) {
                 <option value="ADMIN">管理员</option>
                 <option value="RECRUITER">招聘官</option>
                 <option value="VIEWER">只读</option>
+                {user.role === "CAMPUS_INTERVIEWER" && <option value="CAMPUS_INTERVIEWER">校招面试官</option>}
               </select>
             </Field>
             <Field label="内部职位">
@@ -788,6 +821,8 @@ function Field({ label, required, children }) {
 function UserCreateModal({ onClose, onCreated, departments, jobs }) {
   const [form, setForm] = useState({
     email: "",
+    username: "",
+    campusTabs: [],
     name: "",
     role: "RECRUITER",
     jobTitle: "",
@@ -797,23 +832,28 @@ function UserCreateModal({ onClose, onCreated, departments, jobs }) {
   const [saving, setSaving] = useState(false);
 
   const tmpl = POLICY_TEMPLATES[form.templateId];
+  const campusInterviewer = form.role === "CAMPUS_INTERVIEWER";
 
   async function submit() {
-    if (!form.email.includes("@")) {
+    if (!campusInterviewer && !form.email.includes("@")) {
       toast("请输入合法邮箱", "error");
+      return;
+    }
+    if (campusInterviewer && (!/^[\p{L}\p{N}._-]{3,32}$/u.test(form.username.trim()) || !form.password)) {
+      toast("请填写 3–32 位账户名和初始密码", "error");
       return;
     }
     setSaving(true);
     try {
       const body = {
-        email: form.email.trim(),
+        ...(campusInterviewer ? { username: form.username.trim(), campusTabs: form.campusTabs } : { email: form.email.trim() }),
         name: form.name || undefined,
         role: form.role,
         jobTitle: form.jobTitle || undefined,
         password: form.password || undefined,
       };
       // ADMIN 不用模板;普通用户套模板
-      if (form.role !== "ADMIN" && tmpl) {
+      if (form.role !== "ADMIN" && !campusInterviewer && tmpl) {
         body.pageKeys = tmpl.pageKeys;
         body.moduleKeys = tmpl.moduleKeys;
       }
@@ -833,12 +873,7 @@ function UserCreateModal({ onClose, onCreated, departments, jobs }) {
         <h3 className="text-lg font-bold text-navy-700 flex items-center gap-2">
           <I name="user-plus" size={18} className="text-brand" /> 新建用户
         </h3>
-        <p className="text-xs text-gray-600">
-          创建后默认 ownerId 只能看到自己上传的候选人。需在右侧权限策略给具体页面/模块/数据范围。
-        </p>
-        <Field label="邮箱" required>
-          <Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="user@example.com" type="email" />
-        </Field>
+        <p className="text-xs text-gray-600">{campusInterviewer ? "默认仅可访问校招候选人列表；可在下方授予校招 tab。" : "创建后默认 ownerId 只能看到自己上传的候选人。需在右侧权限策略给具体页面/模块/数据范围。"}</p>
         <Field label="昵称">
           <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="如:张小明" />
         </Field>
@@ -852,17 +887,29 @@ function UserCreateModal({ onClose, onCreated, departments, jobs }) {
               <option value="ADMIN">管理员</option>
               <option value="RECRUITER">招聘官</option>
               <option value="VIEWER">只读</option>
+              <option value="CAMPUS_INTERVIEWER">校招面试官</option>
             </select>
           </Field>
           <Field label="内部职位">
             <Input value={form.jobTitle} onChange={(e) => setForm({ ...form, jobTitle: e.target.value })} placeholder="如:HR 负责人" />
           </Field>
         </div>
-        <Field label="初始密码(留空 = 自动生成一次性显示)">
-          <Input value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="至少 8 位" type="password" />
+        {campusInterviewer ? <Field label="账户名" required>
+          <Input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} placeholder="3–32 位文字或数字" autoComplete="off" />
+        </Field> : <Field label="邮箱" required>
+          <Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="user@example.com" type="email" />
+        </Field>}
+        <Field label={campusInterviewer ? "初始密码" : "初始密码(留空 = 自动生成一次性显示)"} required={campusInterviewer}>
+          <Input value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="至少 10 位" type="password" />
         </Field>
 
-        {form.role !== "ADMIN" && (
+        {campusInterviewer && <div className="border-2 border-brand/10 bg-brand-50/40 rounded-xl p-3 space-y-2">
+          <p className="text-xs font-bold text-navy-700">允许访问的校招 tab（默认全不选）</p>
+          <div className="grid grid-cols-3 gap-2">{CAMPUS_TAB_OPTIONS.map(([key, label]) => <label key={key} className="flex items-center gap-2 text-xs cursor-pointer">
+            <input type="checkbox" checked={form.campusTabs.includes(key)} onChange={() => setForm((current) => ({ ...current, campusTabs: current.campusTabs.includes(key) ? current.campusTabs.filter((v) => v !== key) : [...current.campusTabs, key] }))} />{label}
+          </label>)}</div>
+        </div>}
+        {form.role !== "ADMIN" && !campusInterviewer && (
           <div className="border-2 border-brand/10 bg-brand-50/40 rounded-xl p-3 space-y-2">
             <p className="text-xs font-bold text-navy-700">应用权限模板</p>
             <div className="grid grid-cols-3 gap-1.5">
@@ -904,7 +951,7 @@ function UserCreateModal({ onClose, onCreated, departments, jobs }) {
 // ============================================================
 function ResetPasswordModal({ user, onClose, onDone }) {
   const [password, setPassword] = useState("");
-  const [mustChange, setMustChange] = useState(true);
+  const [mustChange, setMustChange] = useState(user.role !== "CAMPUS_INTERVIEWER");
   const [saving, setSaving] = useState(false);
 
   async function submit() {
@@ -930,15 +977,15 @@ function ResetPasswordModal({ user, onClose, onDone }) {
           <I name="key-round" size={18} className="text-brand" /> 重置密码
         </h3>
         <p className="text-xs text-gray-600">
-          目标账号:<strong className="text-navy-700">{user.email}</strong>。系统不存明文密码,只能重置,不能查看原密码。
+          目标账号:<strong className="text-navy-700">{user.username || user.email}</strong>。系统不存明文密码,只能重置,不能查看原密码。
         </p>
         <Field label="新密码(留空 = 自动生成,一次性显示给你转交)">
           <Input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="至少 8 位" type="password" />
         </Field>
-        <label className="flex items-center gap-2 text-xs text-gray-700">
+        {user.role !== "CAMPUS_INTERVIEWER" && <label className="flex items-center gap-2 text-xs text-gray-700">
           <input type="checkbox" checked={mustChange} onChange={(e) => setMustChange(e.target.checked)} />
           <span>要求该用户下次登录时强制改密</span>
-        </label>
+        </label>}
         <div className="flex justify-end gap-2 pt-2 border-t border-gray-200">
           <Button variant="ghost" onClick={onClose} disabled={saving}>取消</Button>
           <Button onClick={submit} disabled={saving} icon={<I name={saving ? "loader" : "check"} size={12} className={saving ? "animate-spin" : ""} />}>
@@ -954,11 +1001,11 @@ function ResetPasswordModal({ user, onClose, onDone }) {
 // 一次性凭证展示弹窗 — 关闭后无法再看到
 // ============================================================
 function CredentialModal({ credential, onClose }) {
-  const { email, password, kind } = credential;
+  const { account, password, kind, username } = credential;
   const [copied, setCopied] = useState(false);
 
   function copy() {
-    navigator.clipboard.writeText(`邮箱: ${email}\n密码: ${password}`);
+    navigator.clipboard.writeText(`${username ? "账户名" : "邮箱"}: ${account}\n密码: ${password}`);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   }
@@ -972,7 +1019,7 @@ function CredentialModal({ credential, onClose }) {
         <div className="bg-amber-50 border-2 border-amber-200 rounded-xl p-4 space-y-2 text-sm">
           <p className="text-xs font-bold text-amber-900">⚠ 此密码仅此一次显示,关闭后无法再查看。请立即复制并发给该用户。</p>
           <div className="font-mono text-xs bg-white rounded-lg p-3 space-y-1">
-            <div><span className="text-gray-700">邮箱:</span> <strong className="text-navy-700">{email}</strong></div>
+            <div><span className="text-gray-700">{username ? "账户名" : "邮箱"}:</span> <strong className="text-navy-700">{account}</strong></div>
             <div><span className="text-gray-700">密码:</span> <strong className="text-navy-700 select-all">{password}</strong></div>
           </div>
         </div>

@@ -3657,7 +3657,7 @@ function CandidateDetail() {
             </div>
           )}
           {/* 重新解析 banner — 仅在 parser 为空(LLM 上传时降级入库)且有附件、且非解析中时显示 */}
-          {!c.parser && !c.parsing && c.attachment && (
+          {canEdit && !c.parser && !c.parsing && c.attachment && (
             <div className="mb-3 -mt-1 rounded-xl bg-amber-50 border border-amber-200 p-2.5 flex items-start gap-2">
               <I name="alert-triangle" size={13} className="text-amber-600 mt-0.5 shrink-0" />
               <div className="flex-1 min-w-0">
@@ -4047,12 +4047,12 @@ function CandidateDetail() {
                 <I name="file-text" size={12} /> 查看原始简历
               </button>
               <div className="flex-1" />
-              <Button variant="ghost" size="sm" onClick={openReparse} disabled={reparsing} title="重新抽取简历信息，更新简报、教育及基础字段" icon={<I name={reparsing ? "loader" : "rotate-ccw"} size={12} className={reparsing ? "animate-spin" : ""} />}>
+              {canEdit && <Button variant="ghost" size="sm" onClick={openReparse} disabled={reparsing} title="重新抽取简历信息，更新简报、教育及基础字段" icon={<I name={reparsing ? "loader" : "rotate-ccw"} size={12} className={reparsing ? "animate-spin" : ""} />}>
                 {reparsing ? "抽取中" : "重新抽取简历信息"}
-              </Button>
-              <Button size="sm" onClick={openJdMatchConfirm} disabled={matching} title="确认或更换 JD 后重新评估匹配度" icon={<I name={matching ? "loader" : "sparkles"} size={12} className={matching ? "animate-spin" : ""} />}>
+              </Button>}
+              {canEdit && <Button size="sm" onClick={openJdMatchConfirm} disabled={matching} title="确认或更换 JD 后重新评估匹配度" icon={<I name={matching ? "loader" : "sparkles"} size={12} className={matching ? "animate-spin" : ""} />}>
                 {matching ? "重评中" : "重评 JD"}
-              </Button>
+              </Button>}
             </div>
           </Card>
         )}
