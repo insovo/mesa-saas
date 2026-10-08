@@ -1124,6 +1124,8 @@ Header 必填:`X-Perf-Access-Key: <明文密钥>`
 
 ## 19.3 台账
 
+台账学生姓名区域点击后进入对应候选人详情页；行尾「编辑」打开学生信息抽屉并直接显示编辑表单。
+
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/sessions/:id/ledger` | query `q jobId kind source status school degree gradYear parse(done\|running\|pending\|failed\|none) contact(confirmed\|unconfirmed) skip take`;返回 `{ items[], total, stats{ applicants withResume confirmed applications byStatus onsiteInterview passed }, showContact, gate{ running queued } }`。`items[].bestMatchScore` 为当前简历最近一次未过期、已完成匹配的全部 JD 中最高展示分,无有效分数时为 `null` |

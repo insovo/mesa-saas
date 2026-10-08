@@ -32,7 +32,7 @@ export default function ReparseConfirmModal({ open, onClose, onConfirm, currentJ
         <div className="flex items-start justify-between gap-4 mb-4">
           <h3 className="text-lg font-bold text-[#1B254B] flex items-center gap-2">
             <I name="sparkles" size={18} className="text-[#422AFB]" />
-            重新解析简历
+            {mode === "reevaluate" ? "重新评估" : mode === "full" ? "重新识别简历文档" : "重新抽取简历信息"}
           </h3>
           <button onClick={onClose} disabled={reparsing} className="text-gray-400 hover:text-[#1B254B] disabled:opacity-30"><I name="x" size={20} /></button>
         </div>

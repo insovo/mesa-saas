@@ -1,5 +1,6 @@
 // 校招台账:专场选择 + KPI + 筛选 + 表格 + 学生抽屉 + 登记 / 导出
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { gsap } from "gsap";
 import { resources } from "../../lib/api.js";
 import { useHasModule } from "../../lib/authContext.jsx";
@@ -45,6 +46,7 @@ export default function CampusLedger({ sessions, onSessionsChanged }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [drawerId, setDrawerId] = useState(null);
+  const [drawerInitialEdit, setDrawerInitialEdit] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [selected, setSelected] = useState(() => new Set());
   const [bulkStatus, setBulkStatus] = useState("");
@@ -177,9 +179,9 @@ export default function CampusLedger({ sessions, onSessionsChanged }) {
                   const ids = apps.map((a) => a.id);
                   const checked = ids.length > 0 && ids.every((id) => selected.has(id));
                   return (
-                    <tr key={it.id} className="border-b border-gray-50 hover:bg-lightPrimary/40 cursor-pointer" onClick={() => setDrawerId(it.id)}>
-                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><input type="checkbox" className="accent-brand" checked={checked} disabled={ids.length === 0} onChange={() => toggleRow(it)} /></td>
-                      <td className="px-3 py-3"><div className="flex items-center gap-2 min-w-[140px]"><Avatar name={it.name || "?"} size={32} /><div className="min-w-0"><p className="font-bold text-navy-700 truncate">{it.name || <span className="text-gray-400 font-normal">未填姓名</span>}</p><p className="text-[11px] text-gray-500">{it.degree || ""}{it.gradYear ? ` · ${it.gradYear} 届` : ""}</p></div></div></td>
+                    <tr key={it.id} className="border-b border-gray-50 hover:bg-lightPrimary/40">
+                      <td className="px-4 py-3"><input type="checkbox" className="accent-brand" checked={checked} disabled={ids.length === 0} onChange={() => toggleRow(it)} /></td>
+                      <td className="px-3 py-3"><Link to={`/candidates/${it.candidateId}`} className="flex items-center gap-2 min-w-[140px] rounded-lg hover:text-brand focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand" title="打开候选人详情"><Avatar name={it.name || "?"} size={32} /><div className="min-w-0"><p className="font-bold text-navy-700 truncate hover:text-brand">{it.name || <span className="text-gray-400 font-normal">未填姓名</span>}</p><p className="text-[11px] text-gray-500">{it.degree || ""}{it.gradYear ? ` · ${it.gradYear} 届` : ""}</p></div></Link></td>
                       <td className="px-3 py-3 text-xs text-navy-700 min-w-[140px]"><p className="truncate">{it.school || <span className="text-gray-400">—</span>}</p><p className="text-gray-500 truncate">{it.major || ""}</p></td>
                       <td className="px-3 py-3 text-xs text-navy-700 min-w-[130px]"><p className="inline-flex items-center gap-1">{it.phone}{it.contactConfirmedAt && <I name="check" size={11} className="text-green-600" />}</p><p className="text-gray-500 truncate max-w-[180px]">{it.email || ""}</p></td>
                       <td className="px-3 py-3 min-w-[200px]">
@@ -191,7 +193,7 @@ export default function CampusLedger({ sessions, onSessionsChanged }) {
                       <td className="px-3 py-3"><div className="flex flex-col gap-1 items-start"><ParseTag status={it.currentVersion?.parseStatus} />{it.currentVersion && <span className="text-[10px] text-gray-500">v{it.currentVersion.version} / {it.uploadsAllowed}</span>}</div></td>
                       <td className="px-3 py-3"><div className="flex flex-col gap-1 items-start">{apps.length === 0 ? <span className="text-xs text-gray-400">—</span> : apps.map((a) => <AppStatusPill key={a.id} status={a.status} />)}</div></td>
                       <td className="px-3 py-3 text-[11px] text-gray-500 whitespace-nowrap">{fmtDateTime(it.createdAt)}</td>
-                      <td className="px-3 py-3 text-gray-400"><I name="chevron-right" size={14} /></td>
+                      <td className="px-3 py-3"><button type="button" onClick={() => { setDrawerId(it.id); setDrawerInitialEdit(true); }} className="inline-flex items-center gap-1 text-xs font-bold text-brand hover:underline whitespace-nowrap" aria-label={`编辑${it.name || "学生"}信息`}><I name="pencil" size={12} />编辑</button></td>
                     </tr>
                   );
                 })}
@@ -203,7 +205,7 @@ export default function CampusLedger({ sessions, onSessionsChanged }) {
       </Card>
 
       {bulkIv && <InterviewModal apps={items.flatMap((it) => it.applications).filter((a) => selected.has(a.id))} session={session} onClose={() => setBulkIv(false)} onDone={() => { setBulkIv(false); load(); }} />}
-      <ApplicantDrawer applicantId={drawerId} open={!!drawerId} onClose={() => setDrawerId(null)} sessionJobs={sessionJobs} onChanged={() => { load(); onSessionsChanged?.(); }} />
+      <ApplicantDrawer key={drawerId || "closed"} applicantId={drawerId} open={!!drawerId} initialEdit={drawerInitialEdit} onClose={() => { setDrawerId(null); setDrawerInitialEdit(false); }} sessionJobs={sessionJobs} onChanged={() => { load(); onSessionsChanged?.(); }} />
       {session && <ApplicantCreateModal open={createOpen} onClose={() => setCreateOpen(false)} session={session} sessionJobs={sessionJobs} onCreated={() => { load(); onSessionsChanged?.(); }} />}
     </div>
   );

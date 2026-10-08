@@ -1120,6 +1120,90 @@ function JdSwitchConfirmModal({ open, onClose, onConfirm, currentJob, targetJob,
   );
 }
 
+function JdMatchConfirmModal({ open, onClose, onConfirm, jobs, currentJobId, candidateName, matching, canEditJob }) {
+  const [selectedJobId, setSelectedJobId] = useState(currentJobId || "");
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState({ title: "", description: "", requirements: "", responsibilities: "" });
+  useEffect(() => { if (open) setSelectedJobId(currentJobId || ""); }, [open, currentJobId]);
+  useEffect(() => { if (open) setEditing(false); }, [open, selectedJobId]);
+  if (!open) return null;
+
+  const job = jobs.find((j) => j.id === selectedJobId);
+  function startEditing() {
+    setDraft({
+      title: job.title || "",
+      description: job.description || "",
+      requirements: (job.requirements || []).join("\n"),
+      responsibilities: (job.responsibilities || []).join("\n"),
+    });
+    setEditing(true);
+  }
+  return (
+    <Modal open={open} onClose={matching ? () => {} : onClose} maxWidth="max-w-xl">
+      <div className="p-6">
+        <div className="flex items-start justify-between gap-4 mb-4">
+          <h3 className="text-lg font-bold text-[#1B254B] flex items-center gap-2">
+            <I name="sparkles" size={18} className="text-[#422AFB]" />确认重评 JD
+          </h3>
+          <button onClick={onClose} disabled={matching} className="text-gray-400 hover:text-[#1B254B] disabled:opacity-30"><I name="x" size={20} /></button>
+        </div>
+        <p className="text-sm text-[#707EAE] mb-4">
+          请确认 <span className="font-bold text-[#1B254B]">{candidateName || "候选人"}</span> 本次评估使用的 JD；可更换岗位{canEditJob ? "或修改 JD 内容" : ""}后重评。
+        </p>
+        <label htmlFor="jd-match-job" className="text-[11px] font-bold text-[#707EAE] mb-1.5 block">本次评估使用的 JD</label>
+        <select
+          id="jd-match-job"
+          value={selectedJobId}
+          onChange={(e) => setSelectedJobId(e.target.value)}
+          disabled={matching}
+          className="w-full h-10 px-3 rounded-xl border border-[#E9ECEF] text-sm text-[#1B254B] bg-white focus:border-[#422AFB] focus:ring-2 focus:ring-[#422AFB]/20 outline-none disabled:opacity-50"
+        >
+          <option value="">— 请选择 JD —</option>
+          {jobs.map((j) => <option key={j.id} value={j.id}>{j.title}{j.dept ? ` · ${j.dept}` : ""}</option>)}
+        </select>
+        {job && !editing && (
+          <div className="mt-4 rounded-xl border border-[#E9ECEF] p-4 max-h-[40vh] overflow-y-auto text-xs text-[#1B254B] space-y-3">
+            <p className="text-sm font-bold">{job.title}{job.dept ? ` · ${job.dept}` : ""}</p>
+            {job.description && <p className="whitespace-pre-wrap leading-relaxed">{job.description}</p>}
+            {job.requirements?.length > 0 && <div><p className="font-bold mb-1">任职要求</p><ul className="list-disc pl-4 space-y-1">{job.requirements.map((item, index) => <li key={index}>{item}</li>)}</ul></div>}
+            {job.responsibilities?.length > 0 && <div><p className="font-bold mb-1">岗位职责</p><ul className="list-disc pl-4 space-y-1">{job.responsibilities.map((item, index) => <li key={index}>{item}</li>)}</ul></div>}
+            {!job.description && !job.requirements?.length && !job.responsibilities?.length && <p className="text-amber-700">该 JD 暂无描述或要求，评估准确度可能受影响。</p>}
+          </div>
+        )}
+        {job && canEditJob && !editing && <button type="button" onClick={startEditing} className="mt-3 text-xs font-bold text-[#422AFB] hover:underline flex items-center gap-1"><I name="pencil" size={12} />修改此 JD</button>}
+        {job && editing && (
+          <div className="mt-4 max-h-[45vh] overflow-y-auto space-y-3 pr-1">
+            {[
+              { key: "title", label: "岗位名称", multiline: false },
+              { key: "description", label: "JD 原文", multiline: true },
+              { key: "responsibilities", label: "岗位职责（每行一项）", multiline: true },
+              { key: "requirements", label: "任职要求（每行一项）", multiline: true },
+            ].map(({ key, label, multiline }) => (
+              <label key={key} className="block text-[11px] font-bold text-[#707EAE]">
+                {label}
+                {multiline ? (
+                  <textarea value={draft[key]} onChange={(e) => setDraft((prev) => ({ ...prev, [key]: e.target.value }))} disabled={matching} rows={key === "description" ? 5 : 3} className="mt-1 w-full rounded-xl border border-[#E9ECEF] px-3 py-2 text-sm font-normal text-[#1B254B] outline-none focus:border-[#422AFB] resize-y" />
+                ) : (
+                  <input value={draft[key]} onChange={(e) => setDraft((prev) => ({ ...prev, [key]: e.target.value }))} disabled={matching} className="mt-1 w-full h-10 rounded-xl border border-[#E9ECEF] px-3 text-sm font-normal text-[#1B254B] outline-none focus:border-[#422AFB]" />
+                )}
+              </label>
+            ))}
+            <p className="text-[11px] text-amber-700">保存后岗位内容会同步更新，评估标准将在本次重评时重建；其他候选人的已有评分不会自动更新。</p>
+            <button type="button" onClick={() => setEditing(false)} disabled={matching} className="text-xs text-[#707EAE] hover:underline">取消修改</button>
+          </div>
+        )}
+        {job && selectedJobId !== currentJobId && <p className="text-[11px] text-amber-700 mt-3">确认后将切换候选人关联的 JD，并更新匹配结果。</p>}
+        <div className="flex justify-end gap-2 mt-5">
+          <Button variant="ghost" onClick={onClose} disabled={matching}>取消</Button>
+          <Button onClick={() => onConfirm(selectedJobId, editing ? draft : null)} disabled={!job || matching || (editing && !draft.title.trim())} icon={<I name={matching ? "loader" : "sparkles"} size={12} className={matching ? "animate-spin" : ""} />}>
+            {matching ? "重评中" : editing ? "保存并重评" : "确认并重评"}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function NoteModal({ open, onClose, candidate, onCreated }) {
   const [content, setContent] = useState("");
   const [saving, setSaving] = useState(false);
@@ -3202,6 +3286,7 @@ function CandidateDetail() {
   const canShare = useHasModule("candidate.share");
   const canDelete = useHasModule("candidate.delete");
   const canEdit = useHasModule("candidate.edit");
+  const canEditJob = useHasModule("job.edit");
   const [c, setC] = useState(null);
   const [err, setErr] = useState("");
   const [jobs, setJobs] = useState([]);
@@ -3220,6 +3305,7 @@ function CandidateDetail() {
   const [statusOpen, setStatusOpen] = useState(false);
   const [jdPickerOpen, setJdPickerOpen] = useState(false);
   const [jdDescOpen, setJdDescOpen] = useState(false);
+  const [jdMatchOpen, setJdMatchOpen] = useState(false);
   const [pendingJobId, setPendingJobId] = useState(""); // ⬅ 切 JD 确认流
   const [reviews, setReviews] = useState([]);
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -3246,6 +3332,7 @@ function CandidateDetail() {
     setStatusOpen(false);
     setJdPickerOpen(false);
     setJdDescOpen(false);
+    setJdMatchOpen(false);
     setPendingJobId("");
     setEditingInterview(null);
     setReplyTo(null);
@@ -3472,15 +3559,36 @@ function CandidateDetail() {
     }
   }
 
-  async function runJdMatch() {
-    // 简报卡「重新生成」直接调本函数,此时 matchingJobId 可能没走过选择流程仍为空 →
-    // fallback 到候选人当前已关联的 jobId,避免明明关联了 JD 却报「请选 JD」
-    const jobId = matchingJobId || c?.jobId;
-    if (!jobId || !c?.id) return toast("请选 JD", "error");
+  function openJdMatchConfirm() {
+    setJdMatchOpen(true);
+    resources.jobs.list({ take: 200 }).then((data) => setJobs(data.items || [])).catch(() => {});
+  }
+
+  async function confirmJdMatch(jobId, draft) {
+    if (!jobId || !c?.id) return;
     setMatching(true);
     try {
+      if (draft) {
+        const current = jobs.find((job) => job.id === jobId);
+        const lines = (value) => value.split("\n").map((item) => item.trim()).filter(Boolean);
+        const changes = {
+          title: draft.title.trim(),
+          description: draft.description.trim(),
+          responsibilities: lines(draft.responsibilities),
+          requirements: lines(draft.requirements),
+        };
+        if (!current) throw new Error("未找到所选 JD，请刷新后重试");
+        const changed = Object.entries(changes).some(([key, value]) => JSON.stringify(value) !== JSON.stringify(current[key] || (Array.isArray(value) ? [] : "")));
+        if (changed) {
+          const updated = await resources.jobs.update(jobId, { ...changes, jdFacts: null, evaluationModel: null });
+          setJobs((prev) => prev.map((job) => job.id === jobId ? updated : job));
+        }
+      }
       const finalTask = await runMatchTask(jobId);
-      if (finalTask) toast(`✓ 评估完成: JD 匹配度 ${finalTask.candidate.jdMatch ?? "—"}${finalTask.evaluation?.classification ? ` · ${finalTask.evaluation.classification} 类` : ""}`, "success");
+      if (finalTask) {
+        setJdMatchOpen(false);
+        toast(`✓ 评估完成: JD 匹配度 ${finalTask.candidate.jdMatch ?? "—"}${finalTask.evaluation?.classification ? ` · ${finalTask.evaluation.classification} 类` : ""}`, "success");
+      }
     } catch (e) { toast(e.response?.data?.message || e.message || "评估失败", "error"); }
     finally { setMatching(false); }
   }
@@ -3939,10 +4047,10 @@ function CandidateDetail() {
                 <I name="file-text" size={12} /> 查看原始简历
               </button>
               <div className="flex-1" />
-              <Button variant="ghost" size="sm" onClick={openReparse} disabled={reparsing} title="重新解析简历, 重出简报/教育/基础字段" icon={<I name={reparsing ? "loader" : "rotate-ccw"} size={12} className={reparsing ? "animate-spin" : ""} />}>
-                {reparsing ? "解析中" : "重新解析"}
+              <Button variant="ghost" size="sm" onClick={openReparse} disabled={reparsing} title="重新抽取简历信息，更新简报、教育及基础字段" icon={<I name={reparsing ? "loader" : "rotate-ccw"} size={12} className={reparsing ? "animate-spin" : ""} />}>
+                {reparsing ? "抽取中" : "重新抽取简历信息"}
               </Button>
-              <Button size="sm" onClick={runJdMatch} disabled={matching} title="基于简报重新评估与当前 JD 的匹配度" icon={<I name={matching ? "loader" : "sparkles"} size={12} className={matching ? "animate-spin" : ""} />}>
+              <Button size="sm" onClick={openJdMatchConfirm} disabled={matching} title="确认或更换 JD 后重新评估匹配度" icon={<I name={matching ? "loader" : "sparkles"} size={12} className={matching ? "animate-spin" : ""} />}>
                 {matching ? "重评中" : "重评 JD"}
               </Button>
             </div>
@@ -3958,7 +4066,7 @@ function CandidateDetail() {
           matching={matching}
           reportBusy={reportBusy}
           canEdit={canEdit}
-          onRunMatch={runJdMatch}
+          onRunMatch={openJdMatchConfirm}
           onReport={runReport}
           onOverride={overrideClassification}
         />
@@ -4225,6 +4333,16 @@ function CandidateDetail() {
       currentJob={jobs.find(j => j.id === c.jobId)}
       targetJob={jobs.find(j => j.id === pendingJobId)}
       candidateName={c.name}
+    />
+    <JdMatchConfirmModal
+      open={jdMatchOpen}
+      onClose={() => setJdMatchOpen(false)}
+      onConfirm={confirmJdMatch}
+      jobs={jobs}
+      currentJobId={c.jobId}
+      candidateName={c.name}
+      matching={matching}
+      canEditJob={canEditJob}
     />
     <ReparseConfirmModal
       open={reparseOpen}

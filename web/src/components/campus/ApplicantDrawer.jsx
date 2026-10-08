@@ -8,7 +8,7 @@ import { CAMPUS_APP_STATUS, CAMPUS_APP_STATUS_LABEL } from "../../lib/constants.
 import { Button, Input, Modal, I, LiquidLoader, toast, Avatar } from "../Primitives.jsx";
 import { Field, Select, Toggle, KindTag, AppStatusPill, ParseTag, sourceLabel, fmtDateTime, fmtSize, uploadResumeToR2, errMsg, RESUME_ACCEPT, DEGREE_OPTIONS } from "./ui.jsx";
 
-export default function ApplicantDrawer({ applicantId, open, onClose, sessionJobs, onChanged }) {
+export default function ApplicantDrawer({ applicantId, open, initialEdit = false, onClose, sessionJobs, onChanged }) {
   const [data, setData] = useState(null);
   const [tab, setTab] = useState("applications");
   const [editing, setEditing] = useState(false);
@@ -19,6 +19,7 @@ export default function ApplicantDrawer({ applicantId, open, onClose, sessionJob
   const [ivFor, setIvFor] = useState(null);     // 正在安排面试的投递
   const [mergeOpen, setMergeOpen] = useState(false);
   const fileRef = useRef(null);
+  const initialEditDone = useRef(false);
   const me = useMe();
   const hasManage = useHasModule("campus.manage");
   const canManage = isAdmin(me) || hasManage;
@@ -30,7 +31,7 @@ export default function ApplicantDrawer({ applicantId, open, onClose, sessionJob
     catch (e) { toast(errMsg(e, "加载失败"), "error"); }
   }, [applicantId]);
 
-  useEffect(() => { if (open) { setEditing(false); setTab("applications"); load(); } }, [open, load]);
+  useEffect(() => { if (open) { initialEditDone.current = false; setData(null); setEditing(false); setTab("applications"); load(); } }, [open, load]);
 
   // 有解析中的版本 → 3s 轮询
   const running = !!data?.applicant?.versions?.some((v) => v.parseStatus === "running") || !!data?.matchRuns?.some((r) => r.status === "running" || r.status === "queued");
@@ -41,6 +42,12 @@ export default function ApplicantDrawer({ applicantId, open, onClose, sessionJob
   }, [open, running, load]);
 
   const a = data?.applicant;
+  useEffect(() => {
+    if (open && initialEdit && a?.id === applicantId && !initialEditDone.current) {
+      initialEditDone.current = true;
+      startEdit();
+    }
+  }, [open, initialEdit, a, applicantId]);
   const session = data?.session;
   const activeApps = useMemo(() => (a?.applications || []).filter((x) => x.status !== "withdrawn"), [a]);
   const quotaLeft = session ? Math.max(0, session.maxApplyJobs - activeApps.filter((x) => x.status !== "rejected").length) : 0;

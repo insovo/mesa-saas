@@ -189,6 +189,8 @@ UploadShareLink · SystemSetting · AuditLog · UserAccessPolicy · …
 - 未产出简历事实字段时,这三个 section 显示「重新解析简历后自动生成」引导
 - 强 prompt:禁用"可能/或许"含糊词,无强匹配点必须写"未发现"
 - 触发时机:Upload 时关联 JD 自动跑;或 ReparseConfirmModal 用户切 JD 时跑;或 `POST /api/resumes/match` 显式 sync 调用
+- 候选人详情「重评 JD」先展示当前 JD 及其描述,可选择其他岗位;有岗位编辑权限的用户还能修改岗位名称/JD 原文/职责/要求,保存时清空旧结构化 JD 和评估标准以便重评重建;确认后才提交异步匹配任务,切换岗位后同步更新候选人的 JD 关联
+- 候选人详情简报卡将重新抽取入口标为「重新抽取简历信息」,便于和只重评 JD 的入口区分
 
 ## 5A.3 分享给招聘官(公开页 `/share/<token>`)
 
