@@ -3,6 +3,7 @@ import { resources } from "../lib/api.js";
 import { useMe } from "../lib/authContext.jsx";
 import { hasModule, isAdmin } from "../lib/permissions.js";
 import JdDescModal from "../components/JdDescModal.jsx";
+import JobQuickOptions, { appendQuickLine } from "../components/JobQuickOptions.jsx";
 import {
   Card,
   Button,
@@ -16,7 +17,7 @@ import {
   Tag,
 } from "../components/Primitives.jsx";
 
-const EMPTY_FORM = { title: "", dept: "", owner: "", openings: 1, candidates: 0, level: "", location: "", urgency: "mid", description: "",
+const EMPTY_FORM = { title: "", dept: "", owner: "", openings: 1, candidates: 0, level: "", location: "芜湖", urgency: "mid", description: "",
   employment: "", salary: "", levelRange: "", yearsExpRange: "", educationRequirement: "", languageRequirement: "",
   responsibilities: "", requirements: "", nice: "", benefits: "" };
 const lines = (value) => value.split("\n").map((item) => item.replace(/^\s*(?:[-•*]|\d+[.、)])\s*/, "").trim()).filter(Boolean);
@@ -67,7 +68,7 @@ export default function Jobs() {
       title: j.title || "",
       dept: j.dept || "",
       owner: j.owner || "",
-      openings: j.openings || 1,
+      openings: j.openings ?? 1,
       candidates: j.candidates || 0,
       level: j.level || "",
       location: j.location || "",
@@ -86,7 +87,7 @@ export default function Jobs() {
     setExtracting(true);
     try {
       const { job: draft } = await resources.jobs.parseText({ title: form.title.trim(), text: form.description.trim() });
-      setForm((current) => ({ ...current, ...draft, openings: draft.openings ?? current.openings,
+      setForm((current) => ({ ...current, ...draft, location: draft.location || current.location, openings: draft.openings ?? current.openings,
         responsibilities: draft.responsibilities.join("\n"), requirements: draft.requirements.join("\n"),
         nice: draft.nice.join("\n"), benefits: draft.benefits.join("\n") }));
       toast("AI 已提取岗位信息,请核对后保存", "success");
@@ -98,7 +99,7 @@ export default function Jobs() {
     e.preventDefault();
     if (!form.title || extracting) return;
     const openings = Number(form.openings);
-    if (!Number.isInteger(openings) || openings < 0 || openings > 999) return toast("名额须为 0–999 的整数", "error");
+    if (form.openings === "" || !Number.isInteger(openings) || openings < 0 || openings > 999) return toast("名额须为 1–999 的整数,或选择不限制", "error");
     const payload = {
       ...form,
       openings,
@@ -203,7 +204,7 @@ export default function Jobs() {
                 <div className="grid grid-cols-3 gap-2 mt-4 text-xs">
                   <div className="bg-white rounded-xl p-2.5">
                     <p className="text-gray-700 text-[11px]">名额</p>
-                    <p className="text-lg font-bold text-navy-700 mt-0.5">{j.openings}</p>
+                    <p className="text-lg font-bold text-navy-700 mt-0.5">{j.openings === 0 ? "不限" : j.openings}</p>
                   </div>
                   <div className="bg-white rounded-xl p-2.5" title="已关联此 JD 的候选人数 (实时统计)">
                     <p className="text-gray-700 text-[11px]">候选人</p>
@@ -288,13 +289,16 @@ export default function Jobs() {
             <Input label="负责人" value={form.owner} onChange={(e) => setForm({ ...form, owner: e.target.value })} />
             <Input label="职级" value={form.level} onChange={(e) => setForm({ ...form, level: e.target.value })} placeholder="如 P6–P7" />
             <Input label="职级范围" value={form.levelRange} onChange={(e) => setForm({ ...form, levelRange: e.target.value })} />
-            <Input label="工作地点" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
+            <div><Input label="工作地点" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} /><JobQuickOptions field="location" value={form.location} onPick={(value) => setForm((current) => ({ ...current, location: value }))} disabled={extracting} /></div>
             <Input label="用工类型" value={form.employment} onChange={(e) => setForm({ ...form, employment: e.target.value })} />
             <Input label="薪资" value={form.salary} onChange={(e) => setForm({ ...form, salary: e.target.value })} />
             <Input label="经验年限" value={form.yearsExpRange} onChange={(e) => setForm({ ...form, yearsExpRange: e.target.value })} />
-            <Input label="学历要求" value={form.educationRequirement} onChange={(e) => setForm({ ...form, educationRequirement: e.target.value })} />
-            <Input label="语言要求" value={form.languageRequirement} onChange={(e) => setForm({ ...form, languageRequirement: e.target.value })} />
-            <Input label="名额" type="number" min="0" value={form.openings} onChange={(e) => setForm({ ...form, openings: e.target.value })} />
+            <div><Input label="学历要求" value={form.educationRequirement} onChange={(e) => setForm({ ...form, educationRequirement: e.target.value })} /><JobQuickOptions field="educationRequirement" value={form.educationRequirement} onPick={(value) => setForm((current) => ({ ...current, educationRequirement: value }))} disabled={extracting} /></div>
+            <div><Input label="语言要求" value={form.languageRequirement} onChange={(e) => setForm({ ...form, languageRequirement: e.target.value })} /><JobQuickOptions field="languageRequirement" value={form.languageRequirement} onPick={(value) => setForm((current) => ({ ...current, languageRequirement: value }))} disabled={extracting} /></div>
+            <div className="space-y-2">
+              <Input label="名额" type="number" min="1" max="999" disabled={form.openings !== "" && Number(form.openings) === 0} value={form.openings !== "" && Number(form.openings) === 0 ? "" : form.openings} onChange={(e) => setForm({ ...form, openings: e.target.value })} />
+              <label className="inline-flex items-center gap-2 text-xs text-navy-700 ml-3"><input type="checkbox" className="accent-brand" checked={form.openings !== "" && Number(form.openings) === 0} onChange={(e) => setForm({ ...form, openings: e.target.checked ? 0 : 1 })} />招聘名额不限制</label>
+            </div>
             <Input label="候选人数" type="number" min="0" value={form.candidates} onChange={(e) => setForm({ ...form, candidates: e.target.value })} />
             <div>
               <label className="text-sm text-navy-700 font-bold ml-3 block mb-2">优先级</label>
@@ -311,6 +315,7 @@ export default function Jobs() {
             {[["responsibilities", "岗位职责"], ["requirements", "任职要求"], ["nice", "加分项"], ["benefits", "福利待遇"]].map(([key, label]) => <div key={key}>
               <label htmlFor={`job-${key}`} className="text-sm text-navy-700 font-bold ml-3 block mb-2">{label}</label>
               <textarea id={`job-${key}`} value={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} rows={4} placeholder="每行一条" className="w-full p-3 rounded-xl border border-gray-200 text-sm text-navy-700 outline-none focus:border-brand resize-y" />
+              {(key === "nice" || key === "benefits") && <JobQuickOptions field={key} value={form[key]} onPick={(value) => setForm((current) => ({ ...current, [key]: appendQuickLine(current[key], value) }))} disabled={extracting} />}
             </div>)}
           </div>
           <div className="flex justify-end gap-3 mt-8">

@@ -183,6 +183,7 @@ export const resources = {
     listSessionJobs: (id) => api.get(`/campus/sessions/${id}/jobs`).then((r) => r.data.items),
     addSessionJob: (id, body) => api.post(`/campus/sessions/${id}/jobs`, body).then((r) => r.data.item),
     updateSessionJob: (id, sjId, body) => api.patch(`/campus/sessions/${id}/jobs/${sjId}`, body).then((r) => r.data.item),
+    bulkUpdateSessionJobs: (id, ids, changes) => api.patch(`/campus/sessions/${id}/jobs/bulk`, { ids, changes }).then((r) => r.data),
     removeSessionJob: (id, sjId) => api.delete(`/campus/sessions/${id}/jobs/${sjId}`),
     reorderSessionJobs: (id, ids) => api.post(`/campus/sessions/${id}/jobs/reorder`, { ids }).then((r) => r.data),
     createSessionJob: (id, body) => api.post(`/campus/sessions/${id}/jobs/new`, body).then((r) => r.data.item), // 新建 JD + 挂到专场

@@ -1,9 +1,10 @@
 // 校招岗位 tab:按专场管理岗位与 JD —— 新建 / 编辑 JD、从已有岗位加入、类型 / 参与匹配 / 排序、生成评价模型、学生端预览
 import { useEffect, useState } from "react";
-import { Card, Button, I, Empty, LoadingBlock } from "../Primitives.jsx";
+import { Card, Button, I, Empty, LoadingBlock, toast } from "../Primitives.jsx";
 import { Select, KindTag, SessionStatusPill, fmtDate, fmtDateTime } from "./ui.jsx";
 import { useSessionJobs } from "./useSessionJobs.js";
 import JobFormModal from "./JobFormModal.jsx";
+import BulkJobEditModal from "./BulkJobEditModal.jsx";
 
 function JdBlock({ title, items }) {
   if (!items?.length) return null;
@@ -25,18 +26,35 @@ export default function CampusJobs({ sessions, canManage, onChanged }) {
   useEffect(() => {
     if (!sessions.some((s) => s.id === sessionId) && sessions.length) setSessionId((sessions.find((s) => s.status === "live") || sessions[0]).id);
   }, [sessions, sessionId]);
-  const { items, available, loading, error, busy, mutating, load, add, patch, remove, move, generateModel } = useSessionJobs(sessionId, onChanged, canManage);
+  const { items, available, loading, error, busy, mutating, bulkProgress, load, add, patch, bulkPatch, remove, move, generateModel, bulkGenerateModels } = useSessionJobs(sessionId, onChanged, canManage);
   const [form, setForm] = useState(null); // { sj: null } 新建 | { sj } 编辑
   const [addId, setAddId] = useState("");
   const [addKind, setAddKind] = useState("onsite");
   const [expanded, setExpanded] = useState(() => new Set());
-  useEffect(() => { setAddId(""); setForm(null); setExpanded(new Set()); }, [sessionId]);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [bulkOpen, setBulkOpen] = useState(false);
+  useEffect(() => { setAddId(""); setForm(null); setExpanded(new Set()); setSelectedIds(new Set()); setBulkOpen(false); }, [sessionId]);
+  useEffect(() => { setSelectedIds((prev) => new Set([...prev].filter((id) => items.some((sj) => sj.id === id)))); }, [items]);
 
   if (!sessions.length) {
     return <Card className="p-6"><Empty icon="briefcase" title="还没有校招专场" desc="先到「专场」tab 新建一个专场,再回来配置岗位与 JD" /></Card>;
   }
 
   const toggleExpand = (id) => setExpanded((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const selected = items.filter((sj) => selectedIds.has(sj.id));
+  const allSelected = items.length > 0 && selected.length === items.length;
+  const selectionBusy = loading || mutating || Object.values(busy).some(Boolean);
+  const toggleSelected = (id) => setSelectedIds((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
+  async function onBulkSave(changes) {
+    const done = await bulkPatch(selected.map((sj) => sj.id), changes);
+    if (done) toast(`已更新 ${selected.length} 个岗位${Object.keys(changes).some((key) => key !== "kind") ? ",JD 变更后请重新生成评价模型" : ""}`, "success");
+    return done;
+  }
+  async function onBulkGenerate() {
+    if (!confirm(`为选中的 ${selected.length} 个岗位生成评价模型?已有模型的岗位也会重新生成。`)) return;
+    const failed = await bulkGenerateModels(selected);
+    if (failed) setSelectedIds(new Set(failed));
+  }
   async function onAdd() {
     if (!addId) return;
     if (await add(addId, addKind)) setAddId("");
@@ -51,7 +69,7 @@ export default function CampusJobs({ sessions, canManage, onChanged }) {
     <div className="space-y-5">
       <Card className="p-4 !flex-row items-center gap-3 flex-wrap">
         <I name="briefcase" size={18} className="text-brand" />
-        <Select small aria-label="选择校招专场" value={sessionId} onChange={(e) => { setSessionId(e.target.value); setExpanded(new Set()); }} className="w-full sm:w-auto sm:min-w-[240px]">
+        <Select small aria-label="选择校招专场" value={sessionId} disabled={mutating} onChange={(e) => { setSessionId(e.target.value); setExpanded(new Set()); }} className="w-full sm:w-auto sm:min-w-[240px]">
           {sessions.map((s) => <option key={s.id} value={s.id}>{s.name}{s.status === "live" ? "(上线中)" : s.status === "closed" ? "(已结束)" : "(草稿)"}</option>)}
         </Select>
         {session && <SessionStatusPill status={session.status} />}
@@ -62,6 +80,20 @@ export default function CampusJobs({ sessions, canManage, onChanged }) {
         </div>
       </Card>
 
+      {canManage && items.length > 0 && !error && (
+        <Card className="p-4 !flex-row items-center gap-3 flex-wrap">
+          <label className="inline-flex items-center gap-2 text-sm font-medium text-navy-700">
+            <input type="checkbox" className="accent-brand" aria-label="全选本专场岗位" disabled={selectionBusy} checked={allSelected} onChange={() => setSelectedIds(allSelected ? new Set() : new Set(items.map((sj) => sj.id)))} />全选本专场
+          </label>
+          <span className="text-xs text-gray-600">已选 {selected.length} / {items.length}</span>
+          {bulkProgress && <span role="status" className="text-xs text-brand">评价模型生成中 {bulkProgress.done}/{bulkProgress.total}</span>}
+          <div className="sm:ml-auto flex items-center gap-2 flex-wrap">
+            <Button size="sm" variant="secondary" disabled={!selected.length || selectionBusy} onClick={() => setBulkOpen(true)} icon={<I name="pencil" size={13} />}>批量编辑</Button>
+            <Button size="sm" disabled={!selected.length || selectionBusy} onClick={onBulkGenerate} icon={<I name="sparkles" size={13} />}>批量生成评价模型</Button>
+          </div>
+        </Card>
+      )}
+
       {error ? <Card className="p-6"><p role="alert" className="text-sm text-red-600">{error}</p><Button className="mt-3 self-start" size="sm" onClick={load}>重新加载</Button></Card> : loading && items.length === 0 ? <LoadingBlock height="h-40" /> : items.length === 0 ? (
         <Card className="p-6"><Empty icon="briefcase" title="该专场还没有岗位" desc={canManage ? "点右上「新建岗位 JD」,或在下方从已有岗位加入" : "请联系有校招配置权限的同事添加"} /></Card>
       ) : items.map((sj, idx) => {
@@ -70,6 +102,7 @@ export default function CampusJobs({ sessions, canManage, onChanged }) {
         return (
           <Card key={sj.id} className="p-5">
             <div className="flex items-start gap-4 flex-wrap">
+              {canManage && <label className="pt-1" title={`选择${j.title || "岗位"}`}><input type="checkbox" className="accent-brand" aria-label={`选择岗位${j.title || "岗位"}`} disabled={selectionBusy} checked={selectedIds.has(sj.id)} onChange={() => toggleSelected(sj.id)} /></label>}
               <div className="flex flex-col text-gray-400 pt-1">
                 <button type="button" disabled={!canManage || loading || mutating || idx === 0} onClick={() => move(idx, -1)} className="hover:text-brand disabled:opacity-30" title="上移"><I name="chevron-up" size={14} /></button>
                 <button type="button" disabled={!canManage || loading || mutating || idx === items.length - 1} onClick={() => move(idx, 1)} className="hover:text-brand disabled:opacity-30" title="下移"><I name="chevron-down" size={14} /></button>
@@ -89,7 +122,7 @@ export default function CampusJobs({ sessions, canManage, onChanged }) {
                   {j.salary && <Chip icon="dollar-sign">{j.salary}</Chip>}
                   {j.educationRequirement && <Chip icon="graduation-cap">{j.educationRequirement}</Chip>}
                   {j.languageRequirement && <Chip icon="globe">{j.languageRequirement}</Chip>}
-                  {j.openings > 0 && <Chip icon="users">{j.openings} 人</Chip>}
+                  {j.openings != null && <Chip icon="users">{j.openings === 0 ? "名额不限" : `${j.openings} 人`}</Chip>}
                   {j.deadline && <Chip icon="calendar-x">截止 {fmtDate(j.deadline)}</Chip>}
                 </div>
                 {open && (
@@ -140,6 +173,7 @@ export default function CampusJobs({ sessions, canManage, onChanged }) {
       )}
 
       <JobFormModal key={`${sessionId}:${form?.sj?.id || "new"}`} open={!!form} onClose={() => setForm(null)} session={session} sessionJob={form?.sj || null} onSaved={() => { load(); onChanged?.(); }} />
+      {bulkOpen && <BulkJobEditModal selected={selected} onClose={() => setBulkOpen(false)} onSave={onBulkSave} />}
     </div>
   );
 }

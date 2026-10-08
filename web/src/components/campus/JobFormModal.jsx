@@ -2,11 +2,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { resources } from "../../lib/api.js";
 import { Button, Input, Modal, I, toast } from "../Primitives.jsx";
+import JobQuickOptions, { appendQuickLine } from "../JobQuickOptions.jsx";
 import { Field, Select, Toggle, errMsg, fmtDate } from "./ui.jsx";
 
 const EMPLOYMENTS = ["全职", "实习", "兼职", "合同制"];
 const EMPTY = {
-  title: "", dept: "", location: "", employment: "全职", salary: "", educationRequirement: "", languageRequirement: "", openings: 1, deadline: "",
+  title: "", dept: "", location: "芜湖", employment: "全职", salary: "", educationRequirement: "", languageRequirement: "", openings: 1, deadline: "",
   responsibilities: "", requirements: "", nice: "", benefits: "", description: "",
   kind: "onsite", matchEnabled: true,
 };
@@ -45,7 +46,7 @@ export default function JobFormModal({ open, onClose, session, sessionJob, onSav
     try {
       const { job: draft } = await resources.jobs.parseText({ title: form.title.trim(), text: form.description.trim() });
       setForm((f) => ({ ...f, ...draft,
-        employment: draft.employment || f.employment, openings: draft.openings ?? f.openings,
+        location: draft.location || f.location, employment: draft.employment || f.employment, openings: draft.openings ?? f.openings,
         responsibilities: draft.responsibilities.join("\n"), requirements: draft.requirements.join("\n"),
         nice: draft.nice.join("\n"), benefits: draft.benefits.join("\n"),
       }));
@@ -64,7 +65,7 @@ export default function JobFormModal({ open, onClose, session, sessionJob, onSav
       if (items.some((item) => item.length > limit)) return toast(`${label}每条最多 ${limit} 字`, "error");
     }
     const openings = Number(form.openings);
-    if (!Number.isInteger(openings) || openings < 0 || openings > 999) return toast("招聘名额须为 0–999 的整数", "error");
+    if (form.openings === "" || !Number.isInteger(openings) || openings < 0 || openings > 999) return toast("招聘名额须为 1–999 的整数,或选择不限制", "error");
     const body = {
       title: form.title.trim(), dept: str(form.dept), location: str(form.location), employment: str(form.employment), salary: str(form.salary),
       educationRequirement: str(form.educationRequirement), languageRequirement: str(form.languageRequirement),
@@ -113,20 +114,23 @@ export default function JobFormModal({ open, onClose, session, sessionJob, onSav
             </div>
           )}
           <Input id="campus-job-部门" label="部门" maxLength={100} value={form.dept} onChange={set("dept")} placeholder="海外研发中心" />
-          <Input id="campus-job-工作地点" label="工作地点" maxLength={100} value={form.location} onChange={set("location")} placeholder="南京 / 上海" />
+          <div><Input id="campus-job-工作地点" label="工作地点" maxLength={100} value={form.location} onChange={set("location")} placeholder="芜湖 / 合肥 / 上海" /><JobQuickOptions field="location" value={form.location} onPick={(value) => setForm((f) => ({ ...f, location: value }))} disabled={saving || extracting} /></div>
           <Field label="用工类型">
             <Select aria-label="用工类型" value={form.employment} onChange={set("employment")}>{(EMPLOYMENTS.includes(form.employment) ? EMPLOYMENTS : [...EMPLOYMENTS, form.employment]).map((x) => <option key={x} value={x}>{x}</option>)}</Select>
           </Field>
           <Input id="campus-job-薪资" label="薪资" maxLength={200} value={form.salary} onChange={set("salary")} placeholder="15K-20K · 14 薪(是否对学生展示由专场开关控制)" />
-          <Input id="campus-job-学历要求" label="学历要求" maxLength={100} value={form.educationRequirement} onChange={set("educationRequirement")} placeholder="本科及以上" />
-          <Input id="campus-job-语言要求" label="语言要求" maxLength={200} value={form.languageRequirement} onChange={set("languageRequirement")} placeholder="英语 CET-6 / 可工作交流" />
-          <Input id="campus-job-openings" label="招聘名额" type="number" min="0" max="999" value={form.openings} onChange={set("openings")} />
+          <div><Input id="campus-job-学历要求" label="学历要求" maxLength={100} value={form.educationRequirement} onChange={set("educationRequirement")} placeholder="全日制本科及以上" /><JobQuickOptions field="educationRequirement" value={form.educationRequirement} onPick={(value) => setForm((f) => ({ ...f, educationRequirement: value }))} disabled={saving || extracting} /></div>
+          <div><Input id="campus-job-语言要求" label="语言要求" maxLength={200} value={form.languageRequirement} onChange={set("languageRequirement")} placeholder="英语 CET-6 / 可工作交流" /><JobQuickOptions field="languageRequirement" value={form.languageRequirement} onPick={(value) => setForm((f) => ({ ...f, languageRequirement: value }))} disabled={saving || extracting} /></div>
+          <div className="space-y-2">
+            <Input id="campus-job-openings" label="招聘名额" type="number" min="1" max="999" disabled={form.openings !== "" && Number(form.openings) === 0} value={form.openings !== "" && Number(form.openings) === 0 ? "" : form.openings} onChange={set("openings")} />
+            <label className="inline-flex items-center gap-2 text-xs text-navy-700 ml-3"><input type="checkbox" className="accent-brand" checked={Number(form.openings) === 0 && form.openings !== ""} onChange={(e) => setForm((prev) => ({ ...prev, openings: e.target.checked ? 0 : 1 }))} />招聘名额不限制</label>
+          </div>
           <Input id="campus-job-deadline" label="投递截止日期" type="date" value={form.deadline} onChange={set("deadline")} />
 
           <TextArea label="岗位职责" hint="每行一条,学生端按列表展示" rows={5} value={form.responsibilities} onChange={set("responsibilities")} placeholder={"负责车载娱乐系统功能模块开发\n参与需求分析与技术方案设计"} className="md:col-span-2" />
           <TextArea label="任职要求" hint="每行一条;毕业批次 / 专业 / 技能写清楚,AI 结构化与匹配按这里判定" rows={5} value={form.requirements} onChange={set("requirements")} placeholder={"2027 届本科及以上,计算机 / 电子相关专业\n熟悉 C/C++,了解 Linux"} className="md:col-span-2" />
-          <TextArea label="加分项" hint="每行一条" rows={3} value={form.nice} onChange={set("nice")} placeholder={"有竞赛获奖 / 开源项目经历"} />
-          <TextArea label="福利待遇" hint="每行一条" rows={3} value={form.benefits} onChange={set("benefits")} placeholder={"六险一金\n海外轮岗机会"} />
+          <div><TextArea label="加分项" hint="每行一条" rows={3} value={form.nice} onChange={set("nice")} placeholder={"竞赛获奖\n开源项目经历"} /><JobQuickOptions field="nice" value={form.nice} onPick={(value) => setForm((f) => ({ ...f, nice: appendQuickLine(f.nice, value) }))} disabled={saving || extracting} /></div>
+          <div><TextArea label="福利待遇" hint="每行一条" rows={3} value={form.benefits} onChange={set("benefits")} placeholder={"六险一金\n海外轮岗机会"} /><JobQuickOptions field="benefits" value={form.benefits} onPick={(value) => setForm((f) => ({ ...f, benefits: appendQuickLine(f.benefits, value) }))} disabled={saving || extracting} /></div>
           {job && <TextArea maxLength={20000} label="JD 全文 / 补充描述" hint="职责 / 要求为空时学生端显示这里的内容。AI 结构化会同时读取以上所有字段" rows={8} value={form.description} onChange={set("description")} placeholder="粘贴完整 JD…" className="md:col-span-2" />}
         </div>
 

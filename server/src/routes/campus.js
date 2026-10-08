@@ -83,6 +83,20 @@ const CAMPUS_JOB_CREATE_BODY = {
   additionalProperties: false,
 };
 const CAMPUS_JOB_PATCH_BODY = { type: "object", minProperties: 1, properties: CAMPUS_JOB_FIELDS, additionalProperties: false };
+const CAMPUS_JOB_BULK_FIELDS = Object.fromEntries(
+  ["dept", "location", "employment", "salary", "educationRequirement", "languageRequirement", "openings", "deadline"].map((key) => [key, CAMPUS_JOB_FIELDS[key]]),
+);
+const CAMPUS_JOB_APPEND_FIELDS = {
+  niceAdd: { type: "array", minItems: 1, maxItems: 20, items: { type: "string", maxLength: 500, pattern: "\\S" } },
+  benefitsAdd: { type: "array", minItems: 1, maxItems: 20, items: { type: "string", maxLength: 200, pattern: "\\S" } },
+};
+const CAMPUS_JOB_BULK_BODY = {
+  type: "object", required: ["ids", "changes"], additionalProperties: false,
+  properties: {
+    ids: { type: "array", minItems: 1, maxItems: 200, uniqueItems: true, items: { type: "string", format: "uuid" } },
+    changes: { type: "object", minProperties: 1, additionalProperties: false, properties: { kind: { type: "string", enum: JOB_KINDS }, ...CAMPUS_JOB_BULK_FIELDS, ...CAMPUS_JOB_APPEND_FIELDS } },
+  },
+};
 function jobData(body) {
   const data = Object.fromEntries(Object.entries(body).map(([key, value]) => [key,
     typeof value === "string" ? value.trim() : Array.isArray(value) ? value.map((item) => item.trim()).filter(Boolean) : value,
@@ -382,6 +396,54 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
       include: { job: { select: jobSelect }, _count: { select: { applications: true } } },
     });
     return reply.code(201).send({ item: sessionJobShape(created) });
+  });
+
+  app.patch("/sessions/:id/jobs/bulk", { schema: { body: CAMPUS_JOB_BULK_BODY } }, async (req, reply) => {
+    if (!(await requireManage(req, reply))) return;
+    const s = await loadSession(req, reply, req.params.id);
+    if (!s) return;
+    const { ids, changes } = req.body;
+    if (!Object.keys(changes).length) return reply.code(400).send({ error: "empty_changes", message: "请选择要修改的字段" });
+    const { kind, niceAdd, benefitsAdd, ...jobFields } = changes;
+    try {
+      await app.prisma.$transaction(async (tx) => {
+        const selected = await tx.campusSessionJob.findMany({ where: { sessionId: s.id, id: { in: ids } }, select: { id: true, jobId: true, job: { select: { title: true, nice: true, benefits: true } } } });
+        if (selected.length !== ids.length) throw new Error("campus_jobs_changed");
+        const additions = selected.map((sj) => {
+          const data = {};
+          for (const [field, incoming] of [["nice", niceAdd], ["benefits", benefitsAdd]]) {
+            if (!incoming) continue;
+            const current = sj.job[field] || [];
+            const next = [...current];
+            const known = new Set(current.map((item) => item.trim()));
+            for (const item of incoming) {
+              const value = item.trim();
+              if (!known.has(value)) { next.push(value); known.add(value); }
+            }
+            if (next.length > 20) throw Object.assign(new Error("campus_job_items_limit"), { title: sj.job.title, field });
+            if (next.length !== current.length) data[field] = next;
+          }
+          return { jobId: sj.jobId, data };
+        });
+        if (kind !== undefined) {
+          const result = await tx.campusSessionJob.updateMany({ where: { sessionId: s.id, id: { in: ids } }, data: { kind } });
+          if (result.count !== ids.length) throw new Error("campus_jobs_changed");
+        }
+        if (Object.keys(jobFields).length) {
+          const result = await tx.job.updateMany({ where: { id: { in: selected.map((sj) => sj.jobId) } }, data: jobData(jobFields) });
+          if (result.count !== selected.length) throw new Error("campus_jobs_changed");
+        }
+        for (const addition of additions) {
+          if (Object.keys(addition.data).length) await tx.job.update({ where: { id: addition.jobId }, data: addition.data });
+        }
+      });
+    } catch (err) {
+      if (err.message === "campus_jobs_changed") return reply.code(409).send({ error: "campus_jobs_changed", message: "所选岗位已变化,请刷新后重试" });
+      if (err.message === "campus_job_items_limit") return reply.code(409).send({ error: "campus_job_items_limit", message: `「${err.title}」的${err.field === "nice" ? "加分项" : "福利待遇"}添加后会超过 20 条,本次未保存` });
+      throw err;
+    }
+    await writeLog(app.prisma, { req, action: "campus.job.bulk_update", entityType: "CampusSession", entityId: s.id, diff: { count: ids.length, fields: Object.keys(changes) } });
+    return { updated: ids.length };
   });
 
   app.patch("/sessions/:id/jobs/:sjId", { schema: { body: SESSION_JOB_BODY } }, async (req, reply) => {

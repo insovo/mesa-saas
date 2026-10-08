@@ -1108,12 +1108,15 @@ Header 必填:`X-Perf-Access-Key: <明文密钥>`
 | --- | --- | --- |
 | GET / POST | `/sessions/:id/jobs` | 列表 / 加入 `{ jobId, kind: onsite\|referral, matchEnabled, sortOrder }`;已有岗位须在当前账号的岗位数据范围内;重复 409 `campus_job_exists` |
 | PATCH / DELETE | `/sessions/:id/jobs/:sjId` | 改 kind / matchEnabled / sortOrder(不允许改 jobId)/ 移除(已有投递 409 `campus_job_has_applications`)|
+| PATCH | `/sessions/:id/jobs/bulk` | 批量编辑当前专场岗位;body `{ ids: [sessionJobId], changes: { kind?, dept?, location?, employment?, salary?, educationRequirement?, languageRequirement?, openings?, deadline?, niceAdd?, benefitsAdd? } }`;`niceAdd` / `benefitsAdd` 为待追加的字符串数组。1–200 个唯一 id,仅修改传入字段,事务内校验全部属于该专场,否则 409 `campus_jobs_changed`;追加后任一岗位超过 20 条则 409 `campus_job_items_limit`,整批不保存;返回 `{ updated }` |
 | POST | `/sessions/:id/jobs/reorder` | `{ ids[] }` 按顺序写 sortOrder |
 | POST | `/sessions/:id/jobs/new` | 新建 Job 并事务内加入专场;`title` 必填,另收 JD 字段与 `kind / matchEnabled`;返回 201 `{ item }` |
 | PATCH | `/sessions/:id/jobs/:sjId/job` | 编辑共享 Job 的 JD 字段,同步所有引用它的专场与系统岗位页;返回 `{ item }` |
 | POST | `/sessions/:id/jobs/:sjId/evaluation-model` | body `{}`;从当前 JD 重新抽取事实并生成校园招聘模板,一次落库;仅需 `campus.manage`,不需 `job.edit` |
 
 返回的 `job` 含 JD 编辑字段、`hasJdFacts / hasEvaluationModel / evaluationModelUpdatedAt / updatedAt / sessionsCount`。JD 字段为 `title dept owner location employment salary educationRequirement languageRequirement openings deadline description responsibilities requirements nice benefits`。标题不可全空白;职责 / 要求 / 加分项最多 20 条、每条 500 字;福利最多 20 条、每条 200 字。前端超限时提示,不截断内容。
+
+`openings=0` 表示「名额不限」,校招与普通岗位页均按此回显;`deadline=null` 表示不设截止日期。批量编辑中的 `kind` 仅影响本专场关联记录,其他 JD 字段修改共享 Job,会同步系统岗位页与其他专场。`niceAdd` / `benefitsAdd` 保留每个岗位原有条目并去重,每次最多追加 20 条,条目长度分别不超过 500 / 200 字。批量生成评价模型复用单岗位接口逐个执行,逐项返回成功或失败。
 
 新建、编辑与生成均要求页面 `campus` + 模块 `campus.manage`。新建 Job 时给非管理员创建者增加该岗位的数据范围,因此移除专场绑定后仍可从已有岗位重新加入。已有岗位的加入遵循原岗位数据范围;查看与编辑已绑定专场岗位遵循校招权限。
 
