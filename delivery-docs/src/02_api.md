@@ -1206,7 +1206,7 @@ Header 必填:`X-Perf-Access-Key: <明文密钥>`
 
 AuthGuard 外,学生**不注册不登录**。会话:首次上传前 `POST /auth/start`(勾选告知)匿名建档并签发学生 JWT `{ sub: applicantId, aud: "campus-public", sid, tv }`(有效期 `campus.auth.jwt_ttl`,默认 30d),前端存 localStorage 并以 `Authorization: Bearer` 携带;后台 `authenticate` 拒绝该 aud(401 `bad_audience`),这里只收该 aud。限流档 90 次 / 分钟(含 2s 轮询)。学生入口链接:首页 `/campus/:slug`、直接投递 `/campus/:slug/jobs`、智能匹配 `/campus/:slug/match`(后台专场二维码弹窗三选一)。
 
-学生上传简历后,联系方式页只要求填写有效手机号和邮箱;提交后前端确保当前简历版本的匹配任务已启动(已有有效结果或进行中的任务则复用),学生可直接关闭页面,后台任务继续执行。返回同一设备可从首页或「我的投递」查看岗位匹配度;更换设备可用手机号 + 邮箱验证码找回。结果页以与后台候选人资料卡一致的小球展示本专场各岗位的最新展示分、岗位名及硬筛状态;重新进入或页面保持打开时会获取最新一次匹配任务,包括招聘人员在后台重新发起的结果。匹配启动失败不影响联系方式保存,学生可从结果页重试。
+学生上传简历后,联系方式页只要求填写有效手机号和邮箱;提交后前端确保当前简历版本的匹配任务已启动(已有有效结果或进行中的任务则复用),学生可直接关闭页面,后台任务继续执行。返回同一设备可从首页或「我的投递」查看岗位匹配度;更换设备可用手机号 + 邮箱验证码找回。结果页以小球展示本专场各参与匹配岗位的最新展示分和岗位名,每个岗位都可投递(仍受专场额度、重复投递等通用规则约束);学生只看到「符合」「较为符合」的亮点,不展示硬筛结论、缺项和劣势。后台仍保留完整评估供招聘人员查看。重新进入或页面保持打开时会获取最新一次匹配任务,包括招聘人员在后台重新发起的结果。匹配启动失败不影响联系方式保存,学生可从结果页重试。
 
 | 方法 | 路径 | 鉴权 | 说明 |
 | --- | --- | --- | --- |
@@ -1224,7 +1224,7 @@ AuthGuard 外,学生**不注册不登录**。会话:首次上传前 `POST /auth/
 | POST | `/resumes/:versionId/cancel-parse` | 学生 | 取消进行中的抽取:置任务 `cancelRequested`,流水线在阶段边界退出不落库;版本立即 `cancelled`;已结束的原样返回 |
 | POST | `/resumes/:versionId/reparse` | 学生 | 取消 / 失败 / 未解析后重跑当前版本(不计上传次数);非当前版 409 `campus_not_current_version`;running 409 `campus_parse_in_progress`;Kimi 未配置 424 |
 | POST | `/match-runs` | 学生 | 发起智能匹配(门禁同投递;专场 `matchEnabled`;同学生同时只允许 1 个 409 `campus_match_in_progress`;无可匹配岗位 409 `campus_no_match_jobs`;Kimi 未配置 424)→ `202 { run }` |
-| GET | `/match-runs/latest` · `/match-runs/:id` | 学生 | `{ run: { id, status(queued\|running\|done\|failed\|cancelled), stale, progress(0–100), stage, done, total, queuePosition, results?[{ jobId, kind, title, dept, location, scoreShown, excluded, reasons[], error }] } }`;results 仅 done 时返回,只含展示分 |
+| GET | `/match-runs/latest` · `/match-runs/:id` | 学生 | `{ run: { id, status(queued\|running\|done\|failed\|cancelled), stale, progress(0–100), stage, done, total, queuePosition, results?[{ jobId, kind, title, dept, location, scoreShown, reasons[] }] } }`;results 仅 done 时返回,只含展示分和正向匹配理由,不下发硬筛与劣势信息 |
 | POST | `/match-runs/:id/cancel` | 学生 | 协作式取消(岗位之间检查),run 立即 `cancelled` |
 | POST | `/applications` | 学生 | `{ jobId, source: direct\|match, matchRunId? }`;`source=match` 时从 run.results 取分数写入投递;门禁 428 `campus_resume_required` → 428 `campus_contact_unconfirmed`;409 额度 / 重复;专场未开放 410 |
 | GET | `/applications` | 学生 | 我的投递 |

@@ -143,8 +143,6 @@ export default function CampusMatch() {
   const results = run.results || [];
   const appliedSet = new Set((me?.applications || []).filter((a) => a.status !== "withdrawn").map((a) => a.jobId));
   const quotaLeft = Math.max(0, (session?.maxApplyJobs ?? 3) - (me?.applied ?? 0));
-  const visible = results.filter((r) => !r.excluded && !r.error);
-  const hidden = results.filter((r) => r.excluded || r.error);
   const groups = [["onsite", "现场面试岗位", "投递后可在现场参加面试"], ["referral", "内推岗位", "由内推人跟进,不安排现场面试"]];
   return (
     <Shell title="匹配结果" back>
@@ -153,16 +151,16 @@ export default function CampusMatch() {
           <h2 className="text-sm font-bold">岗位匹配度</h2>
           <span className="text-[11px] text-gray-500">最近更新：{run.finishedAt ? new Date(run.finishedAt).toLocaleString("zh-CN", { hour12: false }) : "刚刚"}</span>
         </div>
-        <CampusScoreBalls matches={results} showStatus />
+        <CampusScoreBalls matches={results} className="justify-between" />
         <p className="mt-3 text-[11px] text-gray-500">招聘方重新匹配后，此处会显示最新结果。</p>
       </section>
       <div className="mt-4 flex items-center justify-between px-1">
         <p className="text-xs text-gray-600">按匹配度排序,现场面试岗位优先 · 还可投 {quotaLeft} 个</p>
         {run.stale ? <button type="button" onClick={start} className="text-xs text-brand font-bold">简历已更新,重新匹配</button> : <button type="button" onClick={start} disabled={busy} className="text-xs text-gray-500">重新匹配</button>}
       </div>
-      {visible.length === 0 && <div className="mt-4"><ErrorCard icon="inbox" title="暂无匹配岗位" message={hidden.length ? "以下岗位有硬性条件不符,仍可直接浏览岗位列表投递" : "本专场暂无参与匹配的岗位"} /></div>}
+      {results.length === 0 && <div className="mt-4"><ErrorCard icon="inbox" title="暂无匹配岗位" message="本专场暂无参与匹配的岗位" /></div>}
       {groups.map(([kind, title, desc]) => {
-        const items = visible.filter((r) => r.kind === kind);
+        const items = results.filter((r) => r.kind === kind);
         if (!items.length) return null;
         return (
           <section key={kind} className="mt-5">
@@ -170,19 +168,20 @@ export default function CampusMatch() {
             <div className="space-y-3">
               {items.map((r) => {
                 const applied = appliedSet.has(r.jobId);
+                const strengths = (r.reasons || []).filter((reason) => reason.kind === "match" && /^(符合|较为符合):/.test(reason.text));
                 return (
                   <div key={r.jobId} className="bg-white rounded-card shadow-card p-4">
                     <div className="flex items-center gap-3">
-                      <LiquidLoader size={56} level={r.scoreShown ?? 0} label={r.scoreShown ?? ""} instant />
+                      {r.scoreShown == null ? <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-400">—</span> : <LiquidLoader size={56} level={r.scoreShown} label={r.scoreShown} instant />}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2"><Link to={`${base(slug)}/jobs/${r.jobId}`} className="font-bold text-sm truncate">{r.title}</Link><KindTag kind={r.kind} /></div>
                         <p className="text-[11px] text-gray-500 mt-0.5 truncate">{[r.dept, r.location].filter(Boolean).join(" · ")}</p>
                       </div>
                       <Button size="sm" className="!h-9 shrink-0" disabled={applied || applying === r.jobId || quotaLeft === 0} onClick={() => apply(r)}>{applied ? "已投递" : applying === r.jobId ? "投递中…" : "投递"}</Button>
                     </div>
-                    {r.reasons?.length > 0 && (
+                    {strengths.length > 0 && (
                       <ul className="mt-3 space-y-1">
-                        {r.reasons.map((x, i) => <li key={i} className={`flex items-start gap-1.5 text-xs ${x.kind === "match" ? "text-green-700" : "text-gray-600"}`}><I name={x.kind === "match" ? "check" : "info"} size={12} className="mt-0.5 shrink-0" />{x.text}</li>)}
+                        {strengths.map((x, i) => <li key={i} className="flex items-start gap-1.5 text-xs text-green-700"><I name="check" size={12} className="mt-0.5 shrink-0" />{x.text}</li>)}
                       </ul>
                     )}
                   </div>
@@ -192,14 +191,6 @@ export default function CampusMatch() {
           </section>
         );
       })}
-      {hidden.length > 0 && (
-        <details className="mt-5 bg-white/60 rounded-card p-4">
-          <summary className="text-xs font-bold text-gray-600 cursor-pointer">暂不匹配的岗位({hidden.length})</summary>
-          <ul className="mt-2 space-y-2">
-            {hidden.map((r) => <li key={r.jobId} className="text-xs text-gray-600"><span className="font-bold text-navy-700">{r.title}</span> · {r.error ? "评估未完成,可直接投递" : r.reasons?.[0]?.text}</li>)}
-          </ul>
-        </details>
-      )}
       <p className="mt-6 text-[11px] text-gray-400 text-center">匹配度仅供参考,最终以 HR 筛选与面试为准</p>
     </Shell>
   );

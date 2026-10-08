@@ -15,13 +15,21 @@ import { reconcileCampusAutoEvaluation } from "./autoEvaluation.js";
 
 const TIER_ORDER = { MUST: 0, CORE: 1, PREFERRED: 2, STABILITY: 3, BONUS: 4 };
 
-// 从评估逐项判定生成 3 条理由:2 条「符合」+ 1 条「可补充」
+export function buildStrengthReasons(evaluation) {
+  const items = Array.isArray(evaluation?.items) ? evaluation.items : [];
+  const byTier = (a, b) => (TIER_ORDER[a.tier] ?? 9) - (TIER_ORDER[b.tier] ?? 9);
+  const matched = items.filter((i) => i.verdict === "满足").sort(byTier).slice(0, 2);
+  const partial = items.filter((i) => i.verdict === "部分满足").sort(byTier).slice(0, matched.length ? 1 : 2);
+  return [...matched, ...partial]
+    .map((i) => ({ kind: "match", text: `${i.verdict === "满足" ? "符合" : "较为符合"}:${i.label}` }));
+}
+
+// 后台保留缺项理由;学生端只下发 buildStrengthReasons。
 export function buildReasons(evaluation) {
   const items = Array.isArray(evaluation?.items) ? evaluation.items : [];
   const byTier = (a, b) => (TIER_ORDER[a.tier] ?? 9) - (TIER_ORDER[b.tier] ?? 9);
-  const ok = items.filter((i) => i.verdict === "满足").sort(byTier).slice(0, 2).map((i) => ({ kind: "match", text: `符合:${i.label}` }));
-  const gap = items.filter((i) => i.verdict === "不满足" || i.verdict === "未提及" || i.verdict === "部分满足").sort(byTier)[0];
-  const out = [...ok];
+  const gap = items.filter((i) => i.verdict === "不满足" || i.verdict === "未提及").sort(byTier)[0];
+  const out = buildStrengthReasons(evaluation);
   if (gap) out.push({ kind: "gap", text: `${gap.verdict === "未提及" ? "简历未体现" : "可补充"}:${gap.label}` });
   if (out.length === 0) out.push({ kind: "info", text: "已完成评估,详情以 HR 沟通为准" });
   return out;
@@ -126,7 +134,7 @@ async function runMatch(app, runId) {
         const ev = await app.prisma.candidateEvaluation.findUnique({ where: { id: st.evaluation.id } });
         if (ev) {
           const excluded = ev.hardFilter?.result === "FAIL";
-          item = { ...item, scoreRaw: ev.versions?.rawOverallScore ?? ev.overallScore, scoreShown: shownScore(ev.overallScore, session.scoreFloor), classification: ev.classification, hardFilter: ev.hardFilter?.result || null, excluded, reasons: excluded ? [{ kind: "gap", text: excludedReason(ev.hardFilter) }] : buildReasons(ev), evaluationId: ev.id, engine: ev.engine };
+          item = { ...item, scoreRaw: ev.versions?.rawOverallScore ?? ev.overallScore, scoreShown: shownScore(ev.overallScore, session.scoreFloor), classification: ev.classification, hardFilter: ev.hardFilter?.result || null, excluded, reasons: excluded ? [{ kind: "gap", text: excludedReason(ev.hardFilter) }, ...buildReasons(ev)] : buildReasons(ev), evaluationId: ev.id, engine: ev.engine };
           if (ev.costs?.cached) jevCached++;
         }
       } else {
@@ -162,7 +170,7 @@ export function runShape(run, task, { student = true } = {}) {
   return {
     id: run.id, status: run.status, stale: run.stale, startedAt: run.startedAt, finishedAt: run.finishedAt, error: run.error,
     resumeVersionId: run.resumeVersionId, ...p,
-    results: run.status === "done" ? results.map((r) => (student ? { jobId: r.jobId, kind: r.kind, title: r.title, dept: r.dept, location: r.location, scoreShown: shownScore(r.scoreShown ?? r.scoreRaw, 60), excluded: r.excluded, reasons: r.reasons, error: r.error ? "evaluate_failed" : null } : { ...r, scoreShown: shownScore(r.scoreShown ?? r.scoreRaw, 60) })) : undefined,
+    results: run.status === "done" ? results.map((r) => (student ? { jobId: r.jobId, kind: r.kind, title: r.title, dept: r.dept, location: r.location, scoreShown: shownScore(r.scoreShown ?? r.scoreRaw, 60), reasons: (r.reasons || []).filter((reason) => reason.kind === "match" && /^(符合|较为符合):/.test(reason.text)) } : { ...r, scoreShown: shownScore(r.scoreShown ?? r.scoreRaw, 60) })) : undefined,
     ...(student ? {} : { costs: run.costs }),
   };
 }

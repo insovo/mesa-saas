@@ -10,7 +10,7 @@ import { SETTING_KEYS, getEffective, getEffectiveNumber, getEffectiveJson, getEf
 import { issueCode, consumeCode } from "../lib/verificationCodes.js";
 import { isEmailConfigured } from "../lib/email.js";
 import { startExtraction, cancelExtraction } from "../lib/campus/extract.js";
-import { startMatchRun, cancelMatchRun, runShape } from "../lib/campus/match.js";
+import { startMatchRun, cancelMatchRun, runShape, buildStrengthReasons } from "../lib/campus/match.js";
 import { getTask } from "../lib/parseTaskStore.js";
 import { ensureCandidate, createVersionTx, createApplicationTx, findSessionForPublic, httpError } from "../lib/campus/service.js";
 import { reconcileCampusAutoEvaluation } from "../lib/campus/autoEvaluation.js";
@@ -101,6 +101,20 @@ export default async function campusPublicRoutes(app) {
   function requireOpen(session, reply) {
     if (!sessionOpen(session)) { reply.code(410).send({ error: "campus_session_inactive", message: "本专场未开放或已结束" }); return false; }
     return true;
+  }
+  async function studentRunShape(run, task, candidateId) {
+    const shaped = runShape(run, task);
+    if (run.status !== "done") return shaped;
+    const results = Array.isArray(run.results) ? run.results : [];
+    const legacy = results.filter((result) => result.excluded && result.evaluationId && !shaped.results.find((item) => item.jobId === result.jobId)?.reasons.length);
+    if (!legacy.length) return shaped;
+    const evaluations = await app.prisma.candidateEvaluation.findMany({ where: { id: { in: legacy.map((result) => result.evaluationId) }, candidateId }, select: { id: true, items: true } });
+    const strengths = new Map(evaluations.map((evaluation) => [evaluation.id, buildStrengthReasons(evaluation)]));
+    shaped.results = shaped.results.map((result) => {
+      const source = legacy.find((item) => item.jobId === result.jobId);
+      return source ? { ...result, reasons: strengths.get(source.evaluationId) || [] } : result;
+    });
+    return shaped;
   }
   function sendErr(reply, err) {
     if (err?.statusCode) return reply.code(err.statusCode).send({ error: err.code, message: err.message, ...(err.payload || {}) });
@@ -354,7 +368,7 @@ export default async function campusPublicRoutes(app) {
     try {
       const run = await startMatchRun(app, { applicant: a, session: a.session, concurrency: await concurrency() });
       const task = run.taskId ? await getTask(app, run.taskId) : null;
-      return reply.code(202).send({ run: runShape(run, task) });
+      return reply.code(202).send({ run: await studentRunShape(run, task, a.candidateId) });
     } catch (err) { return sendErr(reply, err); }
   });
   app.get("/match-runs/latest", async (req, reply) => {
@@ -363,7 +377,7 @@ export default async function campusPublicRoutes(app) {
     const run = await app.prisma.campusMatchRun.findFirst({ where: { applicantId: a.id }, orderBy: { startedAt: "desc" } });
     if (!run) return { run: null };
     const task = run.taskId ? await getTask(app, run.taskId) : null;
-    return { run: runShape(run, task) };
+    return { run: await studentRunShape(run, task, a.candidateId) };
   });
   app.get("/match-runs/:id", async (req, reply) => {
     const a = await requireStudent(req, reply);
@@ -371,7 +385,7 @@ export default async function campusPublicRoutes(app) {
     const run = await app.prisma.campusMatchRun.findFirst({ where: { id: req.params.id, applicantId: a.id } });
     if (!run) return reply.code(404).send({ error: "not_found" });
     const task = run.taskId ? await getTask(app, run.taskId) : null;
-    return { run: runShape(run, task) };
+    return { run: await studentRunShape(run, task, a.candidateId) };
   });
   app.post("/match-runs/:id/cancel", async (req, reply) => {
     const a = await requireStudent(req, reply);
