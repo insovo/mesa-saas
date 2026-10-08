@@ -598,15 +598,6 @@ export default function Candidates() {
                   </div>
                   {/* 右操作区:ml-auto 推到行尾 */}
                   <div className="flex items-center gap-2 shrink-0 ml-auto">
-                    <select disabled={campusInterviewer}
-                      value={c.departmentId || ""}
-                      onChange={(e) => onSingleAssign(c.id, { departmentId: e.target.value || null })}
-                      className="hidden lg:block h-7 rounded-lg border border-gray-200 px-2 text-[11px] text-navy-700 outline-none focus:border-brand bg-white max-w-[110px]"
-                      title={c.department?.name ? `关联部门: ${c.department.name}` : "点击关联部门"}
-                    >
-                      <option value="">— 未关联部门 —</option>
-                      {departments.map((d) => (<option key={d.id} value={d.id}>{d.name}</option>))}
-                    </select>
                     {c.parser && <AiBadge parser={c.parser} confidence={c.parserConfidence} />}
                     {/* 解析按钮 — LLM 已配且有附件时始终显示;已解析显示"重新解析" */}
                     {!campusInterviewer && llmStatus?.configured && c.attachment && (

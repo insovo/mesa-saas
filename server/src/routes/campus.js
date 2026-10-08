@@ -822,7 +822,7 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
     const a = await loadApplicant(req, reply, req.params.id);
     if (!a) return;
     try {
-      const run = await startMatchRun(app, { applicant: a, session: a.session, concurrency: await concurrency(), staff: true });
+      const run = await startMatchRun(app, { applicant: a, session: a.session, concurrency, staff: true });
       await writeLog(app.prisma, { req, action: "campus.match.start", entityType: "CampusMatchRun", entityId: run.id, diff: { applicantId: a.id } });
       return reply.code(202).send({ run: runShape(run, await getTask(app, run.taskId), { student: false }) });
     } catch (err) {
@@ -959,7 +959,7 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
     const a = await app.prisma.campusApplicant.findUnique({ where: { candidateId: req.params.candidateId }, include: { session: true } });
     if (!a) return reply.code(404).send({ error: "not_found" });
     try {
-      const run = await startMatchRun(app, { applicant: a, session: a.session, concurrency: await concurrency(), staff: true });
+      const run = await startMatchRun(app, { applicant: a, session: a.session, concurrency, staff: true });
       await writeLog(app.prisma, { req, action: "campus.match.start", entityType: "CampusMatchRun", entityId: run.id, diff: { applicantId: a.id } });
       return reply.code(202).send({ run: runShape(run, await getTask(app, run.taskId), { student: false }) });
     } catch (err) {

@@ -56,10 +56,11 @@ export async function startMatchRun(app, { applicant, session, concurrency = 3, 
   const jobsCount = await app.prisma.campusSessionJob.count({ where: { sessionId: session.id, matchEnabled: true, job: { evaluationModel: { not: null } } } });
   if (jobsCount === 0) throw httpError("本专场暂无可匹配的岗位", 409, "campus_no_match_jobs");
 
+  const limit = typeof concurrency === "function" ? await concurrency() : concurrency;
   const task = await createTask(app, applicant.candidateId, "campus_match");
-  await updateTask(app, task.id, { queuedAhead: gateStatus().queued + Math.max(0, gateStatus().running - concurrency + 1) });
+  await updateTask(app, task.id, { queuedAhead: gateStatus().queued + Math.max(0, gateStatus().running - limit + 1) });
   const run = await app.prisma.campusMatchRun.create({ data: { applicantId: applicant.id, resumeVersionId: applicant.currentResumeVersionId, taskId: task.id, status: "queued" } });
-  setImmediate(() => withGate(concurrency, () => runMatch(app, run.id)));
+  setImmediate(() => withGate(limit, () => runMatch(app, run.id)));
   return run;
 }
 

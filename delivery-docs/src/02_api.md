@@ -89,6 +89,8 @@ Query:
 
 响应每条 candidate 自动 include `job: {id, title, dept}` + `department: {id, name, code}`(V3 加,给前端 chip 显示用)。
 
+候选人列表的单行操作不再显示「关联部门」下拉框；需要调整部门时，选择候选人后使用「批量关联部门」。接口中的 `department` 字段及部门权限范围不变。
+
 ## 3.2 GET /api/candidates/:id
 
 `:id` 可以是 UUID 或 externalId(如 `c-001`)。
