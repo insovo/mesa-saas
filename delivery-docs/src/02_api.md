@@ -1114,6 +1114,8 @@ Header 必填:`X-Perf-Access-Key: <明文密钥>`
 | GET / PATCH / DELETE | `/sessions/:id` | 详情(含 `jobs[]`)/ 更新 / 删除(已有学生 409 `campus_session_not_empty`)|
 | POST | `/sessions/:id/live` · `/close` · `/draft` | 上线(事务内把其它 live 改 closed)/ 结束 / 退回草稿 |
 
+编辑专场时,`school`、`location`、`heroTitle`、`heroSubtitle` 等可选字段的 `null` 值在表单中显示为空,留空保存后仍按 `null` 提交。
+
 ## 19.2 专场岗位
 
 | 方法 | 路径 | 说明 |
