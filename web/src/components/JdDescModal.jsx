@@ -150,7 +150,7 @@ function JdFactsView({ facts }) {
   );
 }
 
-export default function JdDescModal({ open, onClose, job, jobs, onSelectJob, linkedJobId, canEdit = false, onSaved, initialTab = "desc" }) {
+export default function JdDescModal({ open, onClose, job, jobs, onSelectJob, linkedJobId, showHeaderClose = true, canEdit = false, onSaved, initialTab = "desc" }) {
   const [tab, setTab] = useState(initialTab);
   useEffect(() => { if (open) setTab(initialTab); }, [open, initialTab]);
   if (!job) return null;
@@ -187,7 +187,7 @@ export default function JdDescModal({ open, onClose, job, jobs, onSelectJob, lin
             </h3>
             {current === "desc" && job.description && <p className="text-sm text-[#707EAE] mt-1.5 leading-relaxed whitespace-pre-wrap">{job.description}</p>}
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-[#1B254B] shrink-0"><I name="x" size={20} /></button>
+          {showHeaderClose && <button onClick={onClose} className="text-gray-400 hover:text-[#1B254B] shrink-0"><I name="x" size={20} /></button>}
         </div>
 
         {tabs.length > 0 && (

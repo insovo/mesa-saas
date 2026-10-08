@@ -3415,8 +3415,8 @@ function CandidateDetail() {
               {canEdit && <Button variant="ghost" size="sm" className="w-full sm:w-auto" onClick={openReparse} disabled={reparsing} title="重新抽取简历信息，更新简报、教育及基础字段" icon={<I name={reparsing ? "loader" : "rotate-ccw"} size={12} className={reparsing ? "animate-spin" : ""} />}>
                 {reparsing ? "抽取中" : "重新抽取简历信息"}
               </Button>}
-              {canEdit && <Button size="sm" className="w-full sm:w-auto" onClick={openJdMatchConfirm} disabled={matching} title="确认或更换 JD 后重新评分" icon={<I name={matching ? "loader" : "sparkles"} size={12} className={matching ? "animate-spin" : ""} />}>
-                {matching ? "评分中" : "重新评分"}
+              {canEdit && <Button size="sm" className="w-full sm:w-auto" onClick={openJdMatchConfirm} disabled={matching} title="确认或更换 JD 后进行详细 JD 适配分析" icon={<I name={matching ? "loader" : "sparkles"} size={12} className={matching ? "animate-spin" : ""} />}>
+                {matching ? "分析中" : "详细JD适配分析"}
               </Button>}
             </div>
           </Card>
@@ -3558,6 +3558,7 @@ function CandidateDetail() {
       key={jdViewJobId}
       open={jdDescOpen}
       onClose={() => setJdDescOpen(false)}
+      showHeaderClose={false}
       job={jobs.find(j => j.id === jdViewJobId)}
       jobs={jobs}
       onSelectJob={setJdViewJobId}
