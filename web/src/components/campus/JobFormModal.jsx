@@ -1,4 +1,4 @@
-// 校招岗位 JD 新建 / 编辑:新建 = 创建 Job 并挂到当前专场;编辑 = 改 Job 本身(其它专场 / 社招共用时同步生效)
+// 校招岗位 JD 新建 / 编辑:新建 = 创建 Job 并挂到当前专场;编辑 = 改 Job 本身(其它专场共用时同步生效)
 import { useCallback, useEffect, useState } from "react";
 import { resources } from "../../lib/api.js";
 import { Button, Input, Modal, I, toast } from "../Primitives.jsx";
@@ -93,7 +93,7 @@ export default function JobFormModal({ open, onClose, session, sessionJob, onSav
         <div className="flex items-start justify-between">
           <div>
             <h3 className="text-lg font-bold text-navy-700">{job ? "编辑岗位 JD" : "新建岗位 JD"}</h3>
-            <p className="text-xs text-gray-600 mt-0.5">{job ? `岗位会同步到系统「岗位」页${sharedElsewhere ? `,且另有 ${job.sessionsCount - 1} 个专场共用该岗位,修改一并生效` : ""}` : `创建后自动加入「${session?.name || ""}」,并出现在系统「岗位」页`}</p>
+            <p className="text-xs text-gray-600 mt-0.5">{job ? (sharedElsewhere ? `另有 ${job.sessionsCount - 1} 个专场共用该岗位,修改会同步生效` : "修改会更新当前校招岗位") : `创建后自动加入「${session?.name || ""}」,并可加入其他校招专场`}</p>
           </div>
           <button type="button" aria-label="关闭岗位表单" disabled={saving} onClick={close} className="p-1.5 rounded-lg hover:bg-lightPrimary text-gray-500"><I name="x" size={16} /></button>
         </div>

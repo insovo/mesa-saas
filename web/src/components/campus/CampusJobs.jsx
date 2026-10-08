@@ -62,7 +62,7 @@ export default function CampusJobs({ sessions, canManage, onChanged }) {
     if (await add(addId, addKind)) setAddId("");
   }
   function onRemove(sj) {
-    if (!confirm(`从「${session?.name}」移除「${sj.job?.title}」?\n岗位本身不会删除,仍在系统「岗位」页。`)) return;
+    if (!confirm(`从「${session?.name}」移除「${sj.job?.title}」?\n岗位本身不会删除,仍可加入其他校招专场。`)) return;
     remove(sj);
   }
   const hasJdDetail = (j) => j.responsibilities?.length || j.requirements?.length || j.nice?.length || j.benefits?.length || j.description;
@@ -97,7 +97,7 @@ export default function CampusJobs({ sessions, canManage, onChanged }) {
       )}
 
       {error ? <Card className="p-6"><p role="alert" className="text-sm text-red-600">{error}</p><Button className="mt-3 self-start" size="sm" onClick={load}>重新加载</Button></Card> : loading && items.length === 0 ? <LoadingBlock height="h-40" /> : items.length === 0 ? (
-        <Card className="p-6"><Empty icon="briefcase" title="该专场还没有岗位" desc={canManage ? "点右上「新建岗位 JD」,或在下方从已有岗位加入" : "请联系有校招配置权限的同事添加"} /></Card>
+        <Card className="p-6"><Empty icon="briefcase" title="该专场还没有岗位" desc={canManage ? "点右上「新建岗位 JD」,或在下方从已有校招岗位加入" : "请联系有校招配置权限的同事添加"} /></Card>
       ) : items.map((sj, idx) => {
         const j = sj.job || {};
         const open = expanded.has(sj.id);
@@ -167,8 +167,8 @@ export default function CampusJobs({ sessions, canManage, onChanged }) {
 
       {canManage && !error && (
         <Card className="p-4 !flex-row items-center gap-2 flex-wrap">
-          <span className="text-xs text-gray-600 inline-flex items-center gap-1"><I name="corner-down-right" size={12} />从已有岗位加入</span>
-          <Select small aria-label="选择已有岗位" disabled={loading || mutating} value={addId} onChange={(e) => setAddId(e.target.value)} className="flex-1 min-w-[240px]"><option value="">选择系统「岗位」页里已有的岗位…</option>{available.map((x) => <option key={x.id} value={x.id}>{x.title}{x.dept ? ` · ${x.dept}` : ""}</option>)}</Select>
+          <span className="text-xs text-gray-600 inline-flex items-center gap-1"><I name="corner-down-right" size={12} />从已有校招岗位加入</span>
+          <Select small aria-label="选择已有校招岗位" disabled={loading || mutating} value={addId} onChange={(e) => setAddId(e.target.value)} className="flex-1 min-w-[240px]"><option value="">选择其他专场或已移除的校招岗位…</option>{available.map((x) => <option key={x.id} value={x.id}>{x.title}{x.dept ? ` · ${x.dept}` : ""}</option>)}</Select>
           <Select small aria-label="加入岗位类型" disabled={loading || mutating} value={addKind} onChange={(e) => setAddKind(e.target.value)}><option value="onsite">现场面试</option><option value="referral">内推</option></Select>
           <Button size="sm" variant="secondary" disabled={!addId || loading || mutating} onClick={onAdd} icon={<I name="plus" size={14} />}>加入</Button>
         </Card>
