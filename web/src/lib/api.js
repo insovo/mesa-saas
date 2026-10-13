@@ -173,6 +173,8 @@ export const resources = {
   },
   // 校招模块(后台)— /api/campus/*
   campus: {
+    summary: (params) => api.get("/campus/summary", { params }).then((r) => r.data),
+    updateSummary: (id, body) => api.patch(`/campus/summary/${id}`, body).then((r) => r.data),
     listSessions: () => api.get("/campus/sessions").then((r) => r.data.items),
     getSession: (id) => api.get(`/campus/sessions/${id}`).then((r) => r.data),
     createSession: (body) => api.post("/campus/sessions", body).then((r) => r.data.session),

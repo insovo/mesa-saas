@@ -1,4 +1,4 @@
-// 校招模块后台:台账 · 专场 · 岗位 · 数据 · 设置(设计:校招模块/校招模块设计规划.html §6)
+// 校招模块后台:台账 · 汇总 · 专场 · 岗位 · 数据 · 设置(设计:校招模块/校招模块设计规划.html §6)
 // 学生端公开页 /campus/:slug 在 Phase 1 加入(pages/campus/public/*)。
 import { useCallback, useEffect, useState } from "react";
 import { resources } from "../lib/api.js";
@@ -10,6 +10,7 @@ import CampusSessions from "../components/campus/CampusSessions.jsx";
 import CampusJobs from "../components/campus/CampusJobs.jsx";
 import CampusSettings from "../components/campus/CampusSettings.jsx";
 import CampusStats from "../components/campus/CampusStats.jsx";
+import CampusSummary from "../components/campus/CampusSummary.jsx";
 
 export default function Campus() {
   const me = useMe();
@@ -27,6 +28,7 @@ export default function Campus() {
 
   const tabs = [
     { key: "ledger", label: "台账", icon: "table-2" },
+    { key: "summary", label: "汇总", icon: "layout-list" },
     { key: "sessions", label: "专场", icon: "calendar-days" },
     { key: "jobs", label: "岗位", icon: "briefcase" },
     { key: "stats", label: "数据", icon: "bar-chart-3" },
@@ -46,6 +48,7 @@ export default function Campus() {
       {sessions === null ? <LoadingBlock height="h-48" /> : (
         <>
           {activeTab === "ledger" && <CampusLedger sessions={sessions} onSessionsChanged={loadSessions} />}
+          {activeTab === "summary" && <CampusSummary sessions={sessions} />}
           {activeTab === "sessions" && <CampusSessions sessions={sessions} canManage={canManage} canManageJobs={!campusInterviewer || hasPage(me, "campus.jobs")} onChanged={loadSessions} />}
           {activeTab === "jobs" && <CampusJobs sessions={sessions} canManage={canManage} onChanged={loadSessions} />}
           {activeTab === "stats" && <CampusStats sessions={sessions} />}
