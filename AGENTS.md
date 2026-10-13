@@ -11,7 +11,7 @@
 
 **MESA Recruit · 已上线 SaaS**:
 - 站点 **https://insovo.top** + 监控 **https://monitor.insovo.top**
-- 香港 VPS `114.134.188.7` (4 核 8G,Ubuntu 22.04) · Docker Compose 编排 6 容器
+- 海外 VPS `103.106.190.191` (4 核 8G,Ubuntu 22.04,SSH 端口 `10526`) · Docker Compose 编排 6 容器
 - 前后端 + 数据库 + 缓存 + 监控全栈生产化
 - GitHub Actions 自动 build → GHCR → SSH 滚动部署(1-2 分钟)
 - 每日 03:00 UTC `systemd timer` 自动 PG 全量备份 → Cloudflare R2
@@ -21,7 +21,8 @@
 | 子系统 | 关键能力 |
 |--------|---------|
 | 招聘工作台 | 候选人 / 社招岗位 / 校招专场岗位 / 部门 / 员工 / 面试 / 概览统计 CRUD;岗位归属由 Job.recruitmentType 持久区分 |
-| 校招面试官权限 | 管理员用账户名和密码创建独立角色;默认仅见校招候选人,可逐项授予校招台账 / 专场 / 岗位 / 数据 / 设置 tab |
+| 校招面试官权限 | 管理员用账户名和密码创建独立角色;默认仅见校招候选人,可逐项授予校招台账 / 汇总(只读) / 专场 / 岗位 / 数据 / 设置 tab |
+| 校招汇总 | 全部专场候选人 23 列登记信息、15 项组合筛选、分页及补录编辑;人工值独立存于 `CampusApplicant.summaryData`,不受简历解析覆盖;手机卡片布局;API §19.3.1 |
 | 候选人详情页(V2)| 三列布局(profile sticky · 中间 · 评价+洞察 sticky)· 15+ 新组件:DocsModule / TagsModule / InlineSource / PeopleChips / JdSwitchConfirmModal / JdDescModal / FeedbackHistoryCard / OverviewTile 等 |
 | LLM 简历解析 | Kimi (Moonshot AI) · 一次 chat 输出 JSON(含 HR 友好简报 + 结构化字段)· admin 在 UI 编辑 API Key/模型/Prompt |
 | JD 匹配评估 | 二次 LLM 调用,基于候选人简报 + JD 描述输出 jdMatch + risks/highlights + V2 新字段(matchedFor / againstFor / aiSuggestedTags / insights[kind=up/down]) |
@@ -223,9 +224,9 @@ gh run watch  # 想盯过程的话
 ### 7.3 关键密钥与开关
 | 类型 | 位置 | 值 |
 |------|------|----|
-| GitHub Secret | `VPS_HOST` | `114.134.188.7` |
+| GitHub Secret | `VPS_HOST` | `103.106.190.191` |
 | GitHub Secret | `VPS_USER` | `deploy` |
-| GitHub Secret | `VPS_SSH_PORT` | `36724`(**VPS 厂商默认非 22**) |
+| GitHub Secret | `VPS_SSH_PORT` | `10526`(**VPS 厂商默认非 22**) |
 | GitHub Secret | `VPS_SSH_KEY` | mac `~/.ssh/id_ed25519` 私钥 |
 | GitHub Secret | `VPS_DEPLOY_DIR` | `/opt/mesa` |
 | GitHub Variable | `DEPLOY_ENABLED` | `true`(关掉变 CI-only) |
@@ -237,7 +238,7 @@ gh run watch  # 想盯过程的话
 | # | 坑 | 现象 | 修复 |
 |---|---|------|------|
 | 1 | `openssl rand -base64` 含 `/+=` 破坏 DATABASE_URL | Prisma 报 P1000 `mesa:945` 端口解析错 | 改用 `openssl rand -hex` 生成 URL 安全密码 |
-| 2 | VPS sshd 监听 36724 而非 22 | `Connection timed out during banner exchange` | UFW 必须放行 36724;mac `~/.ssh/config` 设 `Port 36724` |
+| 2 | VPS sshd 监听非 22 端口 | `Connection timed out during banner exchange` | 当前 VPS 使用 `10526`;UFW 与本机 `~/.ssh/config` 均须使用实际端口 |
 | 3 | docker volume 名跨 compose 共享 | dev 与 prod compose 共享 `mesa_pg_data` 卷,密码冲突 | prod 卷改名 `mesa_pg_prod_data` |
 | 4 | GHCR 私有镜像 deploy job 无法 pull | `pull access denied for ...` | deploy.yml SSH 时透传 `GITHUB_TOKEN` 临时 `docker login ghcr.io` |
 | 5 | VPS 上 docker-compose.yml 滞后 | 改了 compose 后部署,VPS 仍跑旧版 | deploy 脚本前置 `git reset --hard origin/main` |

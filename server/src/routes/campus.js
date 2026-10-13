@@ -23,6 +23,7 @@ import { reconcileCampusAutoEvaluation } from "../lib/campus/autoEvaluation.js";
 import { mapStatusToStage, candidateToEmployeeData } from "../lib/candidateToEmployee.js";
 import { displayName } from "../lib/taxonomy/index.js";
 import { randomBytes } from "node:crypto";
+import campusSummaryRoutes from "./campus-summary.js";
 import {
   JOB_KINDS, APP_STATUS, QUOTA_STATUS, ALLOWED_RESUME_MIME, RESUME_MAX_SIZE,
   maskPhone, maskEmail, normalizeSlug, normalizePhone, uploadsAllowed, shownScore,
@@ -305,6 +306,8 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
     return a;
   }
   async function concurrency() { return getEffectiveNumber(SETTING_KEYS.CAMPUS_MATCH_CONCURRENCY, 3); }
+
+  await app.register(campusSummaryRoutes);
 
   // ─── 专场 ────────────────────────────────────────────────────────
   app.get("/sessions", async () => {

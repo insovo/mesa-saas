@@ -20,13 +20,14 @@ export const PAGE_KEYS = Object.freeze([
   "audit",
   "campus",
   "campus.ledger",
+  "campus.summary",
   "campus.sessions",
   "campus.jobs",
   "campus.stats",
   "campus.settings",
 ]);
 
-export const CAMPUS_TABS = Object.freeze(["ledger", "sessions", "jobs", "stats", "settings"]);
+export const CAMPUS_TABS = Object.freeze(["ledger", "summary", "sessions", "jobs", "stats", "settings"]);
 export const CAMPUS_INTERVIEWER_MODULE_KEYS = Object.freeze([
   "candidate.contact", "candidate.attachments", "candidate.aiInsights",
   "candidate.reviews", "candidate.notes", "candidate.jdMatch",

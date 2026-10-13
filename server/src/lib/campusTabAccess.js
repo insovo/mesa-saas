@@ -7,6 +7,7 @@ export function campusRouteAllowed(access, method, rawUrl) {
   if (method === "POST" && /^\/by-candidate\/[^/]+\/match-runs$/.test(path)) return true;
   const has = (tab) => access.pageKeys.includes(`campus.${tab}`);
   const any = CAMPUS_TABS.some(has);
+  if (/^\/summary(?:\/[^/]+)?$/.test(path)) return has("summary") && method === "GET" && path === "/summary";
   if (method === "GET" && (path === "/sessions" || /^\/sessions\/[^/]+$/.test(path))) return any;
   if (method === "GET" && /^\/sessions\/[^/]+\/jobs$/.test(path)) return has("ledger") || has("sessions") || has("jobs");
   if (/^\/sessions\/[^/]+\/ledger(?:\/export\.xlsx)?$/.test(path)) return has("ledger") && method === "GET";

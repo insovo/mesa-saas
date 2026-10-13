@@ -21,7 +21,7 @@ import { useAuth } from "../lib/authContext.jsx";
 
 const ROLE_LABEL = { ADMIN: "管理员", RECRUITER: "招聘官", VIEWER: "只读", CAMPUS_INTERVIEWER: "校招面试官" };
 const CAMPUS_TAB_OPTIONS = [
-  ["ledger", "台账"], ["sessions", "专场"], ["jobs", "岗位"], ["stats", "数据"], ["settings", "设置"],
+  ["ledger", "台账"], ["summary", "汇总"], ["sessions", "专场"], ["jobs", "岗位"], ["stats", "数据"], ["settings", "设置"],
 ];
 const ROLE_TONE = {
   ADMIN: "bg-brand-50 text-brand",
