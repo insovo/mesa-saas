@@ -66,3 +66,32 @@ test("campus ledger shows the highest JD score from the current completed match,
   assert.equal(detail.statusCode, 200);
   assert.equal(detail.json().applicant.bestMatchScore, 89);
 });
+
+test("概览按筛选结果分页，全选跨页且包含未投递人员；解析状态筛选先筛后分页", async (t) => {
+  const app = Fastify();
+  const sessionId = "10000000-0000-4000-8000-000000000900";
+  const session = { id: sessionId, maxResumeUploads: 3 };
+  const rows = Array.from({ length: 105 }, (_, index) => ({ id: `10000000-0000-4000-8000-${String(index+1).padStart(12,"0")}`, candidateId: `candidate-${index}`, sessionId, candidate: { name: `学生${index}` }, applications: [], resumeVersions: index === 104 ? [] : [{ id: `version-${index}`, parseStatus: "done" }], currentResumeVersionId: index === 104 ? null : `version-${index}` }));
+  app.decorate("authenticate", async (req) => { req.user = { sub: "admin", role: "ADMIN" }; req.permsCache = { access: { isActive: true, isAdmin: true, role: "ADMIN" } }; });
+  app.decorate("prisma", {
+    campusSession: { findFirst: async () => session, findUnique: async () => session },
+    campusApplicant: { findMany: async ({ skip = 0, take = 100000 }) => rows.slice(skip, skip + take), count: async () => rows.length },
+    campusApplication: { groupBy: async () => [] },
+  });
+  await app.register(campusRoutes, { prefix: "/api/campus" });
+  t.after(() => app.close());
+  const base = `/api/campus/sessions/${sessionId}/ledger`;
+  const page = await app.inject({ url: `${base}?skip=100&take=2` });
+  assert.equal(page.statusCode, 200, page.body);
+  assert.equal(page.json().items.length, 2);
+  assert.equal(page.json().total, 105);
+  const all = await app.inject({ url: `${base}?selection=all&skip=100&take=2` });
+  assert.equal(all.json().selection.length, 105);
+  assert.equal(all.json().selection[104].applications.length, 0);
+  const parsed = await app.inject({ url: `${base}?parse=done&skip=100&take=2` });
+  assert.equal(parsed.json().items.length, 2);
+  assert.equal(parsed.json().total, 104);
+  const none = await app.inject({ url: `${base}?parse=none&selection=all` });
+  assert.equal(none.json().selection.length, 1);
+  assert.equal(none.json().selection[0].id, rows[104].id);
+});

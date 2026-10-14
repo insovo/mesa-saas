@@ -67,7 +67,7 @@ export const PAGE_LABELS = Object.freeze({
   "share.settings": "飞书 Bot 分享设置",
   "audit": "审计日志",
   "campus": "校招",
-  "campus.ledger": "校招 · 台账",
+  "campus.ledger": "校招 · 概览",
   "campus.summary": "校招 · 汇总",
   "campus.sessions": "校招 · 专场",
   "campus.jobs": "校招 · 岗位",

@@ -83,7 +83,7 @@ const CAMPUS_JOB_FIELDS = {
   responsibilities: { type: "array", items: { type: "string", maxLength: 500 }, maxItems: 20 },
   requirements: { type: "array", items: { type: "string", maxLength: 500 }, maxItems: 20 },
   nice: { type: "array", items: { type: "string", maxLength: 500 }, maxItems: 20 },
-  benefits: { type: "array", items: { type: "string", maxLength: 200 }, maxItems: 20 },
+  benefits: { type: "array", items: { type: "string", maxLength: 200 } },
 };
 const CAMPUS_JOB_CREATE_BODY = {
   type: "object",
@@ -97,7 +97,7 @@ const CAMPUS_JOB_BULK_FIELDS = Object.fromEntries(
 );
 const CAMPUS_JOB_APPEND_FIELDS = {
   niceAdd: { type: "array", minItems: 1, maxItems: 20, items: { type: "string", maxLength: 500, pattern: "\\S" } },
-  benefitsAdd: { type: "array", minItems: 1, maxItems: 20, items: { type: "string", maxLength: 200, pattern: "\\S" } },
+  benefitsAdd: { type: "array", minItems: 1, items: { type: "string", maxLength: 200, pattern: "\\S" } },
 };
 const CAMPUS_JOB_BULK_BODY = {
   type: "object", required: ["ids", "changes"], additionalProperties: false,
@@ -516,7 +516,7 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
               const value = item.trim();
               if (!known.has(value)) { next.push(value); known.add(value); }
             }
-            if (next.length > 20) throw Object.assign(new Error("campus_job_items_limit"), { title: job.title, field });
+            if (field === "nice" && next.length > 20) throw Object.assign(new Error("campus_job_items_limit"), { title: job.title, field });
             if (next.length !== current.length) data[field] = next;
           }
           return { id: job.id, data };
@@ -629,6 +629,7 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
       contact: { type: "string", enum: ["confirmed", "unconfirmed"] },
       skip: { type: "integer", minimum: 0, default: 0 },
       take: { type: "integer", minimum: 1, maximum: 500, default: 100 },
+      selection: { type: "string", enum: ["all"] },
     },
   };
 
@@ -652,14 +653,16 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
     const include = includeBestMatch ? { ...applicantInclude, matchRuns: { where: { status: "done", stale: false }, orderBy: { startedAt: "desc" }, take: 1, select: { resumeVersionId: true, results: true } } } : applicantInclude;
     const [session, rows, total] = await Promise.all([
       app.prisma.campusSession.findUnique({ where: { id: sessionId } }),
-      app.prisma.campusApplicant.findMany({ where, orderBy: { createdAt: "desc" }, skip: q.skip ?? 0, take: q.take ?? 100, include }),
+      app.prisma.campusApplicant.findMany({ where, orderBy: { createdAt: "desc" }, ...(!q.parse && !q.selection ? { skip: q.skip ?? 0, take: q.take ?? 100 } : {}), include }),
       app.prisma.campusApplicant.count({ where }),
     ]);
     let items = rows.map((a) => ({ ...applicantShape(a, { showContact, versionsAllowed: uploadsAllowed(session, a) }), ...(includeBestMatch ? { bestMatchScore: bestMatchScore(a.matchRuns?.[0], a.currentResumeVersionId), matchScores: matchScores(a.matchRuns?.[0], a.currentResumeVersionId) } : {}) }));
     if (q.parse) {
       items = items.filter((it) => (q.parse === "none" ? !it.currentVersion : it.currentVersion?.parseStatus === q.parse));
     }
-    return { items, total, session };
+    const filteredTotal = q.parse ? items.length : total;
+    if (q.parse && !q.selection) items = items.slice(q.skip ?? 0, (q.skip ?? 0) + (q.take ?? 100));
+    return { items, total: filteredTotal, session };
   }
 
   async function ledgerStats(sessionId) {
@@ -679,6 +682,10 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
     if (!s) return;
     const access = await loadUserAccess(req);
     const showContact = hasModule(access, "candidate.contact");
+    if (req.query.selection === "all") {
+      const { items, total } = await queryLedger(s.id, req.query, { showContact, includeBestMatch: false });
+      return { total, selection: items.map(({ id, applications }) => ({ id, applications })) };
+    }
     const [{ items, total }, stats] = await Promise.all([queryLedger(s.id, req.query, { showContact }), ledgerStats(s.id)]);
     return { items, total, stats, showContact, gate: gateStatus() };
   });

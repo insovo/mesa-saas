@@ -50,6 +50,7 @@ api.interceptors.response.use(
 
 // 资源便捷方法 — 把常用 CRUD 收口,页面直接调用。
 export const resources = {
+  downloadResumes: (body) => api.post("/storage/resumes/archive", body, { responseType: "blob", timeout: 0 }),
   candidates: {
     list: (params) => api.get("/candidates", { params }).then((r) => r.data),
     detail: (id) => api.get(`/candidates/${id}`).then((r) => r.data.candidate),

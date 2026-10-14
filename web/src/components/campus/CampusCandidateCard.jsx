@@ -143,7 +143,7 @@ export default function CampusCandidateCard({ campus }) {
           <p className="text-sm font-bold text-navy-700 truncate" title={session?.name || session?.school || ""}>校招{session?.name ? ` · ${session.name}` : ""}</p>
           <p className="text-[11px] text-gray-500 truncate" title={a.source || ""}>来源：{a.source || "—"}</p>
         </div>
-        <Link to="/campus" className="shrink-0 text-[11px] text-brand font-bold hover:underline inline-flex items-center gap-1">台账 <I name="chevron-right" size={12} /></Link>
+        <Link to="/campus" className="shrink-0 text-[11px] text-brand font-bold hover:underline inline-flex items-center gap-1">概览 <I name="chevron-right" size={12} /></Link>
       </div>
       <div className="flex items-center gap-2 text-[11px] text-gray-600 mb-3 flex-wrap">
         <span>{a.contactConfirmedAt ? "联系方式已确认" : "联系方式未确认"}</span>

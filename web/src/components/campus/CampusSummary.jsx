@@ -3,6 +3,9 @@ import { Link } from "react-router-dom";
 import { resources } from "../../lib/api.js";
 import { Card, Button, Input, I, Empty, LoadingBlock, Modal, toast } from "../Primitives.jsx";
 import { Select, errMsg } from "./ui.jsx";
+import { useHasModule } from "../../lib/authContext.jsx";
+import ResumeDownloadButton from "../ResumeDownloadButton.jsx";
+import SummaryColumnFilter from "./SummaryColumnFilter.jsx";
 
 const PAGE_SIZE = 50;
 const resultTone = { "通过": "bg-green-50 text-green-700", "淘汰": "bg-red-50 text-red-600", "待定": "bg-amber-50 text-amber-700" };
@@ -102,6 +105,9 @@ export default function CampusSummary({ sessions }) {
   const [filter, setFilter] = useState({});
   const [skip, setSkip] = useState(0);
   const [expanded, setExpanded] = useState(false);
+  const [columnFilters, setColumnFilters] = useState({});
+  const [filteringColumn, setFilteringColumn] = useState(null);
+  const canDownload = useHasModule("candidate.attachments");
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -118,7 +124,7 @@ export default function CampusSummary({ sessions }) {
     const timer = setTimeout(async () => {
       try {
         const params = Object.fromEntries(Object.entries(filter).filter(([, value]) => value));
-        const result = await resources.campus.summary({ ...params, skip, take: PAGE_SIZE });
+        const result = await resources.campus.summary({ ...params, columnFilters: JSON.stringify(columnFilters), skip, take: PAGE_SIZE });
         if (requestId.current !== current) return;
         setData(result);
         if (skip && skip >= result.total) setSkip(Math.max(0, Math.ceil(result.total / PAGE_SIZE) - 1) * PAGE_SIZE);
@@ -127,15 +133,20 @@ export default function CampusSummary({ sessions }) {
       } finally { if (requestId.current === current) setLoading(false); }
     }, 200);
     return () => { clearTimeout(timer); requestId.current++; };
-  }, [filter, skip, refresh]);
+  }, [filter, columnFilters, skip, refresh]);
   const columns = data?.columns || [];
-  const filterColumns = columns.filter((column) => column.filter);
-  const activeCount = Object.entries(filter).filter(([key, value]) => value && key !== "q" && key !== "sessionId").length;
+  const filterColumns = columns.filter((column) => column.key !== "sequence");
+  const activeCount = Object.keys(columnFilters).length;
+  const canSelect = data?.canEdit || canDownload;
   const pageItems = data?.items || [];
   const selectedItems = Object.values(selected);
   const pageSelected = pageItems.length > 0 && pageItems.every((row) => selected[row.id]);
   const clearSelection = () => { selectionGeneration.current++; setSelected({}); };
   const updateFilter = (key, value) => { setSkip(0); clearSelection(); setFilter((current) => ({ ...current, [key]: value })); };
+  const applyColumnFilter = (key, values) => {
+    setSkip(0); clearSelection(); setFilteringColumn(null);
+    setColumnFilters((current) => { const next = { ...current }; if (values == null) delete next[key]; else next[key] = values; return next; });
+  };
   const reload = () => { clearSelection(); setRefresh((value) => value + 1); };
   const toggleSelected = (row) => setSelected((current) => {
     const next = { ...current };
@@ -155,7 +166,7 @@ export default function CampusSummary({ sessions }) {
     const currentGeneration = selectionGeneration.current;
     setSelectingAll(true);
     try {
-      const result = await resources.campus.summary({ ...Object.fromEntries(Object.entries(filter).filter(([, value]) => value)), selection: "all" });
+      const result = await resources.campus.summary({ ...Object.fromEntries(Object.entries(filter).filter(([, value]) => value)), columnFilters: JSON.stringify(columnFilters), selection: "all" });
       if (selectionGeneration.current === currentGeneration) setSelected(Object.fromEntries(result.selection.map((item) => [item.id, item])));
     } catch (error) { toast(errMsg(error, "全选失败"), "error"); }
     finally { setSelectingAll(false); }
@@ -174,36 +185,35 @@ export default function CampusSummary({ sessions }) {
       </div>
       {expanded && <div id="summary-filters" className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3 border-t border-gray-100 pt-4">
         {filterColumns.map((column) => <div key={column.key} className="min-w-0">
-          <label htmlFor={`summary-filter-${column.key}`} className="mb-1.5 block text-xs font-medium text-gray-700">{column.label}</label>
-          <Select id={`summary-filter-${column.key}`} small className="w-full" value={filter[column.key] || ""} onChange={(event) => updateFilter(column.key, event.target.value)}><option value="">全部</option>{(data.options[column.key] || []).map((option) => <option key={option} value={option}>{option}</option>)}</Select>
+          <button type="button" disabled={loading} onClick={() => setFilteringColumn(column)} className={`flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-left text-xs ${columnFilters[column.key] ? "bg-brand/10 text-brand" : "bg-lightPrimary text-gray-700"}`}>{column.label}<I name="filter" size={13} /></button>
         </div>)}
       </div>}
-      {Object.values(filter).some(Boolean) && <div className="flex flex-wrap items-center gap-2 text-xs">
-        {filterColumns.filter((column) => filter[column.key]).map((column) => <button type="button" key={column.key} onClick={() => updateFilter(column.key, "")} className="inline-flex items-center gap-1 rounded-full bg-lightPrimary px-3 py-1.5 text-brand">{column.label}：{filter[column.key]}<I name="x" size={12} /></button>)}
-        <button type="button" className="text-gray-600 hover:text-brand" onClick={() => { setSkip(0); clearSelection(); setFilter({}); }}>清空筛选</button>
+      {(Object.values(filter).some(Boolean) || activeCount > 0) && <div className="flex flex-wrap items-center gap-2 text-xs">
+        {filterColumns.filter((column) => columnFilters[column.key]).map((column) => <button type="button" key={column.key} onClick={() => setFilteringColumn(column)} className="inline-flex items-center gap-1 rounded-full bg-lightPrimary px-3 py-1.5 text-brand">{column.label}：{columnFilters[column.key].length} 项<I name="filter" size={12} /></button>)}
+        <button type="button" className="text-gray-600 hover:text-brand" onClick={() => { setSkip(0); clearSelection(); setFilter({}); setColumnFilters({}); }}>清空筛选</button>
       </div>}
-      {data?.canEdit && <div className="flex flex-wrap items-center gap-3 border-t border-gray-100 pt-3 text-xs text-navy-700">
+      {canSelect && <div className="flex flex-wrap items-center gap-3 border-t border-gray-100 pt-3 text-xs text-navy-700">
         <label className="inline-flex items-center gap-2"><input type="checkbox" className="accent-brand" aria-label="全选当前页候选人" checked={pageSelected} disabled={loading || !pageItems.length} onChange={togglePage} />全选当前页</label>
-        {data.total > pageItems.length && <button type="button" className="text-brand hover:underline" disabled={selectingAll || loading} onClick={selectAllFiltered}>{selectingAll ? "选择中…" : `全选筛选结果（${data.total} 人）`}</button>}
-        {selectedItems.length > 0 && <><span>已选 {selectedItems.length} 人</span><Button size="sm" disabled={selectedItems.length > 1000 || selectingAll} onClick={() => setBulkEditing({ items: selectedItems })}>批量编辑资料</Button><Button size="sm" disabled={selectedItems.length > 1000 || selectingAll} onClick={() => setBulkEditing({ field: "source", items: selectedItems })}>更正来源</Button><Button size="sm" variant="secondary" disabled={selectedItems.length > 1000 || selectingAll} onClick={() => setBulkEditing({ field: "schoolType", items: selectedItems })}>更正学校类型</Button><button type="button" className="text-gray-600 hover:text-brand" onClick={clearSelection}>取消选择</button>{selectedItems.length > 1000 && <span className="text-amber-700">每次最多更正 1000 人</span>}</>}
+        {data?.total > pageItems.length && <button type="button" className="text-brand hover:underline" disabled={selectingAll || loading} onClick={selectAllFiltered}>{selectingAll ? "选择中…" : `全选筛选结果（${data.total} 人）`}</button>}
+        {selectedItems.length > 0 && <><span>已选 {selectedItems.length} 人</span>{canDownload && <ResumeDownloadButton campus ids={selectedItems.map(({ id }) => id)} disabled={selectingAll || loading} />}{data?.canEdit && <><Button size="sm" disabled={selectedItems.length > 1000 || selectingAll} onClick={() => setBulkEditing({ items: selectedItems })}>批量编辑资料</Button><Button size="sm" disabled={selectedItems.length > 1000 || selectingAll} onClick={() => setBulkEditing({ field: "source", items: selectedItems })}>更正来源</Button><Button size="sm" variant="secondary" disabled={selectedItems.length > 1000 || selectingAll} onClick={() => setBulkEditing({ field: "schoolType", items: selectedItems })}>更正学校类型</Button></>}<button type="button" className="text-gray-600 hover:text-brand" onClick={clearSelection}>取消选择</button>{selectedItems.length > 1000 && <span className="text-amber-700">每次最多处理 1000 人，请缩小筛选范围</span>}</>}
       </div>}
     </Card>
     {error ? <Card className="p-6"><Empty icon="alert-circle" title={error} /><Button variant="ghost" onClick={reload}>重试</Button></Card> : !data ? <LoadingBlock height="h-48" /> : <Card className={`overflow-hidden ${loading ? "opacity-60" : ""}`}>
       <div className="hidden md:block w-full overflow-x-auto" aria-busy={loading}>
         <table className="w-full min-w-[2800px] text-sm text-left">
-          <thead><tr className="bg-lightPrimary/50 text-xs text-gray-700">{data.canEdit && <th scope="col" className="sticky left-0 z-20 bg-lightPrimary px-3 py-4"><span className="sr-only">选择</span></th>}{columns.map((column) => <th key={column.key} scope="col" className={`px-4 py-4 font-medium whitespace-nowrap ${column.key === "sequence" ? `sticky ${data.canEdit ? "left-10" : "left-0"} z-20 bg-lightPrimary` : column.key === "name" ? `sticky ${data.canEdit ? "left-[104px]" : "left-16"} z-20 bg-lightPrimary min-w-[120px]` : ""}`}>{column.label}</th>)}{data.canEdit && <th scope="col" className="px-4 py-4">操作</th>}</tr></thead>
-          <tbody>{data.items.map((row) => <tr key={row.id} className="border-t border-gray-100 hover:bg-lightPrimary/20">{data.canEdit && <td className="sticky left-0 z-10 bg-white px-3 py-4 align-top"><input type="checkbox" className="accent-brand" aria-label={`选择${row.name || "候选人"}`} checked={Boolean(selected[row.id])} disabled={loading} onChange={() => toggleSelected(row)} /></td>}{columns.map((column) => <td key={column.key} className={`px-4 py-4 align-top text-navy-700 max-w-[240px] ${column.key === "sequence" ? `sticky ${data.canEdit ? "left-10" : "left-0"} z-10 bg-white w-16` : column.key === "name" ? `sticky ${data.canEdit ? "left-[104px]" : "left-16"} z-10 bg-white` : ""}`}>{["source", "schoolType"].includes(column.key) && data.canEdit ? <button type="button" onClick={() => setBulkEditing({ field: column.key, items: [{ id: row.id, updatedAt: row.updatedAt, [column.key]: row[column.key] }] })} className="text-left text-brand hover:underline" title={`更正${column.label}`}>{row[column.key] || "填写"}</button> : <Value column={column} row={row} />}</td>)}{data.canEdit && <td className="px-4 py-4 align-top"><button type="button" onClick={() => setEditing(row)} className="whitespace-nowrap text-brand hover:underline">编辑</button></td>}</tr>)}</tbody>
+          <thead><tr className="bg-lightPrimary/50 text-xs text-gray-700">{canSelect && <th scope="col" className="sticky left-0 z-20 bg-lightPrimary px-3 py-4"><span className="sr-only">选择</span></th>}{columns.map((column) => <th key={column.key} scope="col" className={`px-4 py-4 font-medium whitespace-nowrap ${column.key === "sequence" ? `sticky ${canSelect ? "left-10" : "left-0"} z-20 bg-lightPrimary` : column.key === "name" ? `sticky ${canSelect ? "left-[104px]" : "left-16"} z-20 bg-lightPrimary min-w-[120px]` : ""}`}>{column.key === "sequence" ? column.label : <button type="button" aria-label={`筛选${column.label}`} disabled={loading} onClick={() => setFilteringColumn(column)} className={`inline-flex items-center gap-2 ${columnFilters[column.key] ? "text-brand font-bold" : "hover:text-brand"}`}>{column.label}<I name="filter" size={12} /></button>}</th>)}{data.canEdit && <th scope="col" className="px-4 py-4">操作</th>}</tr></thead>
+          <tbody>{data.items.map((row) => <tr key={row.id} className="border-t border-gray-100 hover:bg-lightPrimary/20">{canSelect && <td className="sticky left-0 z-10 bg-white px-3 py-4 align-top"><input type="checkbox" className="accent-brand" aria-label={`选择${row.name || "候选人"}`} checked={Boolean(selected[row.id])} disabled={loading} onChange={() => toggleSelected(row)} /></td>}{columns.map((column) => <td key={column.key} className={`px-4 py-4 align-top text-navy-700 max-w-[240px] ${column.key === "sequence" ? `sticky ${canSelect ? "left-10" : "left-0"} z-10 bg-white w-16` : column.key === "name" ? `sticky ${canSelect ? "left-[104px]" : "left-16"} z-10 bg-white` : ""}`}>{["source", "schoolType"].includes(column.key) && data.canEdit ? <button type="button" onClick={() => setBulkEditing({ field: column.key, items: [{ id: row.id, updatedAt: row.updatedAt, [column.key]: row[column.key] }] })} className="text-left text-brand hover:underline" title={`更正${column.label}`}>{row[column.key] || "填写"}</button> : <Value column={column} row={row} />}</td>)}{data.canEdit && <td className="px-4 py-4 align-top"><button type="button" onClick={() => setEditing(row)} className="whitespace-nowrap text-brand hover:underline">编辑</button></td>}</tr>)}</tbody>
         </table>
       </div>
       <div className="md:hidden divide-y divide-gray-100" aria-busy={loading}>
         {data.items.map((row) => <article key={row.id} className="p-4">
-          <div className="flex items-start justify-between gap-3"><div className="min-w-0 flex items-start gap-2">{data.canEdit && <input type="checkbox" className="mt-0.5 accent-brand" aria-label={`选择${row.name || "候选人"}`} checked={Boolean(selected[row.id])} disabled={loading} onChange={() => toggleSelected(row)} />}<div><p className="text-sm"><span className="mr-2 text-gray-400">{row.sequence}</span><Value column={{ key: "name" }} row={row} /></p><p className="text-xs text-gray-600 mt-1 break-words">{[row.school, row.degree, row.gradYear && `${row.gradYear}届`].filter(Boolean).join(" · ") || "学校资料待补充"}</p></div></div>{data.canEdit && <button type="button" onClick={() => setEditing(row)} className="shrink-0 px-2 py-1 text-xs text-brand">编辑</button>}</div>
+          <div className="flex items-start justify-between gap-3"><div className="min-w-0 flex items-start gap-2">{canSelect && <input type="checkbox" className="mt-0.5 accent-brand" aria-label={`选择${row.name || "候选人"}`} checked={Boolean(selected[row.id])} disabled={loading} onChange={() => toggleSelected(row)} />}<div><p className="text-sm"><span className="mr-2 text-gray-400">{row.sequence}</span><Value column={{ key: "name" }} row={row} /></p><p className="text-xs text-gray-600 mt-1 break-words">{[row.school, row.degree, row.gradYear && `${row.gradYear}届`].filter(Boolean).join(" · ") || "学校资料待补充"}</p></div></div>{data.canEdit && <button type="button" onClick={() => setEditing(row)} className="shrink-0 px-2 py-1 text-xs text-brand">编辑</button>}</div>
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">{["source", "schoolType"].map((field) => <p key={field}>{field === "source" ? "简历来源" : "学校类型"}：{data.canEdit ? <button type="button" onClick={() => setBulkEditing({ field, items: [{ id: row.id, updatedAt: row.updatedAt, [field]: row[field] }] })} className="text-brand hover:underline">{row[field] || "填写"}</button> : <span>{row[field] || "—"}</span>}</p>)}</div>
           <p className="mt-3 text-xs text-navy-700 break-words">{row.jobDirection || "岗位方向待补充"}{row.status && <span className="ml-2 text-brand">{row.status}</span>}</p>
           <details className="mt-3"><summary className="cursor-pointer text-xs text-gray-700">全部登记信息</summary><dl className="grid grid-cols-2 gap-x-4 gap-y-3 mt-3">{columns.filter((column) => !["sequence", "name"].includes(column.key)).map((column) => <div key={column.key} className="min-w-0"><dt className="text-[11px] text-gray-600 mb-1">{column.label}</dt><dd className="text-xs text-navy-700 break-words"><Value column={column} row={row} /></dd></div>)}</dl></details>
         </article>)}
       </div>
-      {!data.items.length && <div className="p-8"><Empty icon="table-2" title="暂无符合条件的候选人" desc="调整筛选条件，或先在台账中登记学生" /></div>}
+      {!data.items.length && <div className="p-8"><Empty icon="table-2" title="暂无符合条件的候选人" desc="调整筛选条件，或先在概览中登记学生" /></div>}
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 px-4 py-3 text-xs text-gray-700">
         <span>{data.total ? `${skip + 1}–${Math.min(skip + PAGE_SIZE, data.total)} / ${data.total}` : "0 位候选人"}</span><div className="flex items-center gap-2"><Button size="sm" variant="ghost" disabled={loading || skip === 0} onClick={() => setSkip(skip - PAGE_SIZE)}>上一页</Button><Button size="sm" variant="ghost" disabled={loading || skip + PAGE_SIZE >= data.total} onClick={() => setSkip(skip + PAGE_SIZE)}>下一页</Button></div>
       </div>
@@ -211,5 +221,6 @@ export default function CampusSummary({ sessions }) {
     {editing && <EditSummary row={editing} columns={columns} options={data.options} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />}
     {bulkEditing && !bulkEditing.field && <EditSummary items={bulkEditing.items} columns={columns} options={data.options} onClose={() => setBulkEditing(null)} onSaved={() => { setBulkEditing(null); reload(); }} />}
     {bulkEditing?.field && <FieldEditor field={bulkEditing.field} items={bulkEditing.items} options={data.options[bulkEditing.field] || []} onClose={() => setBulkEditing(null)} onSaved={() => { setBulkEditing(null); reload(); }} />}
+    {filteringColumn && <SummaryColumnFilter key={filteringColumn.key} column={filteringColumn} options={data?.filterValues?.[filteringColumn.key] || []} values={columnFilters[filteringColumn.key]} onApply={(values) => applyColumnFilter(filteringColumn.key, values)} onClose={() => setFilteringColumn(null)} />}
   </div>;
 }

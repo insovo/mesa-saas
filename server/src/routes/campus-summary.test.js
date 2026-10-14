@@ -76,6 +76,26 @@ test("汇总提供模板的23列与15项筛选，并在组合筛选后分页", a
   assert.equal(otherSession.json().total, 0);
 });
 
+test("Excel 列筛选同列多选、列间交集、空白值和人工值覆盖，并对全部筛选结果分页/全选", async (t) => {
+  const rows = Array.from({ length: 65 }, (_, index) => ({ ...applicant(index), summaryData: { major: index % 2 ? "机械" : "计算机", source: index % 3 ? "线下宣讲" : "", gender: index % 2 ? "女" : "男" } }));
+  const app = await setup(t, { rows });
+  const query = (filters) => `columnFilters=${encodeURIComponent(JSON.stringify(filters))}`;
+  const filters = { major: ["计算机", "机械"], source: [""], gender: ["女"] };
+  const expected = rows.filter((row, index) => index % 3 === 0 && index % 2 === 1);
+  const response = await app.inject({ url: `/api/campus/summary?${query(filters)}&skip=5&take=3&selection=all` });
+  assert.equal(response.statusCode, 200, response.body);
+  assert.equal(response.json().total, expected.length);
+  assert.equal(response.json().items.length, 3);
+  assert.deepEqual(response.json().selection.map(({ id }) => id), expected.map(({ id }) => id));
+  assert.deepEqual(new Set(response.json().filterValues.gender.map(({ value }) => value)), new Set(["女", "男"]));
+  assert.ok(response.json().filterValues.source.some(({ value }) => value === ""));
+  const none = await app.inject({ url: `/api/campus/summary?${query({ name: [] })}` });
+  assert.equal(none.json().total, 0);
+  assert.equal(none.json().filterValues.name.length, 65);
+  for (const filters of [{ sequence: ["1"] }, { name: "坏格式" }, null, ["a"], { school: [1] }]) assert.equal((await app.inject({ url: `/api/campus/summary?${query(filters)}` })).statusCode, 400);
+  assert.equal((await app.inject({ url: "/api/campus/summary?columnFilters=%7Bbroken" })).statusCode, 400);
+});
+
 test("简历来源和学校类型支持多选批量更正，保留其他补录，并拦截重复和过期记录", async (t) => {
   const first = applicant(1);
   const second = applicant(2);

@@ -69,7 +69,7 @@ export default function BulkJobEditModal({ selected, onClose, onSave }) {
         const items = [...new Set(form[key].split("\n").map((line) => line.replace(/^\s*(?:[-•*]|\d+[.、)])\s*/, "").trim()).filter(Boolean))];
         const limit = key === "niceAdd" ? 500 : 200;
         const label = key === "niceAdd" ? "加分项" : "福利待遇";
-        if (!items.length || items.length > 20 || items.some((item) => item.length > limit)) return toast(`${label}请填写 1–20 条,每条不超过 ${limit} 字`, "error");
+        if (!items.length || (key === "niceAdd" && items.length > 20) || items.some((item) => item.length > limit)) return toast(`${label}${key === "niceAdd" ? "请填写 1–20 条" : "请至少填写 1 条"},每条不超过 ${limit} 字`, "error");
         changes[key] = items;
       } else {
         changes[key] = key === "employment" && form[key] === "__clear__" ? null : form[key].trim() || null;
