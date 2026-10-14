@@ -28,6 +28,7 @@ const PAGE_TITLES = {
   "/staff": "现有人员",
   "/newhire": "入职管理",
   "/departments": "部门管理",
+  "/interviews/schedule": "面试日程",
   "/interviews": "面试排队",
   "/performance": "绩效评价",
   "/reports": "数据报表",

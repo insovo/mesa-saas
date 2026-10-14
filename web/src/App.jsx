@@ -21,6 +21,8 @@ const EmployeeDetail = lazy(() => import("./pages/EmployeeDetail.jsx"));
 const NewHire = lazy(() => import("./pages/NewHire.jsx"));
 const Departments = lazy(() => import("./pages/Departments.jsx"));
 const Interviews = lazy(() => import("./pages/Interviews.jsx"));
+const InterviewQueue = lazy(() => import("./pages/InterviewQueue.jsx"));
+const PublicInterviewQueue = lazy(() => import("./pages/PublicInterviewQueue.jsx"));
 const Performance = lazy(() => import("./pages/Performance.jsx"));
 const Reports = lazy(() => import("./pages/Reports.jsx"));
 const SharedCandidate = lazy(() => import("./pages/SharedCandidate.jsx"));
@@ -65,6 +67,7 @@ export default function App() {
 
   useEffect(() => {
     setUnauthorizedHandler(() => {
+      if (/^\/interview-queue\/(register|share|mine)(\/|$)/.test(window.location.pathname)) return;
       navigate("/login", { replace: true });
     });
   }, [navigate]);
@@ -81,6 +84,10 @@ export default function App() {
       <Route path="/performance-eval/:token" element={<PublicPerformanceEval />} />
       {/* 校招学生端 — 不在 AuthGuard 内,手机号 + 邮箱验证码会话;后台 /campus 仍在下方 Layout 内 */}
       <Route path="/campus/:slug/*" element={<CampusPublic />} />
+      <Route path="/interview-queue/register/:token" element={<PublicInterviewQueue mode="register" />} />
+      <Route path="/interview-queue/share/:token" element={<PublicInterviewQueue mode="share" />} />
+      <Route path="/interview-queue/mine" element={<PublicInterviewQueue mode="mine" />} />
+      <Route path="/interview-queue/screen/:sessionId" element={<AuthGuard><Page pageKey={PAGE.interviews} element={<InterviewQueue screen />} /></AuthGuard>} />
       <Route
         element={
           <AuthGuard>
@@ -98,7 +105,9 @@ export default function App() {
         <Route path="/newhire" element={<Page pageKey={PAGE.newhire} element={<NewHire />} />} />
         <Route path="/newhire/:id" element={<Page pageKey={PAGE.newhire} element={<EmployeeDetail />} />} />
         <Route path="/departments" element={<Page pageKey={PAGE.departments} element={<Departments />} />} />
-        <Route path="/interviews" element={<Page pageKey={PAGE.interviews} element={<Interviews />} />} />
+        <Route path="/interviews" element={<Page pageKey={PAGE.interviews} element={<InterviewQueue />} />} />
+        <Route path="/interviews/schedule" element={<Page pageKey={PAGE.interviews} element={<Interviews />} />} />
+        <Route path="/interviews/:sessionId" element={<Page pageKey={PAGE.interviews} element={<InterviewQueue />} />} />
         <Route path="/performance" element={<Page pageKey={PAGE.performance} element={<Performance />} />} />
         <Route path="/reports" element={<Page pageKey={PAGE.reports} element={<Reports />} />} />
         <Route path="/share-settings" element={<Page pageKey={PAGE.shareSettings} element={<ShareSettings />} />} />

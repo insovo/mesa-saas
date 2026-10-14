@@ -74,6 +74,7 @@ export function renderVerificationEmail({ code, purpose, expiresMinutes = 5 }) {
     CHANGE_PASSWORD: "修改密码",
     RESET_PASSWORD: "重置密码",
     CAMPUS_RECOVER: "校招找回投递记录",
+    INTERVIEW_QUEUE_RECOVER: "找回面试排队记录",
   }[purpose] || "邮箱验证";
   const subject = `【MESA Recruit】${purposeLabel}验证码 ${code}`;
   const html = `

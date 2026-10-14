@@ -17,6 +17,8 @@
 
 ### 1.1 已实现核心子系统
 
+大学专场面试排队 `/interviews`：匿名登记、三类角色分享与撤销、多选群面共同计时、HR 批量定薪、四阶段实时大屏、邮箱验证码找回；原面试日程保留 `/interviews/schedule`。详见 `delivery-docs/src/07_interview_queue.md`。
+
 校招岗位统一供所有专场使用，福利待遇无条数上限；概览（原台账）、汇总和候选人列表支持多选/跨页全选下载原始简历 ZIP，汇总支持逐列内容多选筛选；汇总全部登记字段可批量人工编辑并优先显示在候选人详情，重新解析不覆盖人工值。各子系统能力与设计细节见 skill `mesa-subsystems`(`.claude/skills/mesa-subsystems/SKILL.md`);改模块时同步更新那里。
 
 ---

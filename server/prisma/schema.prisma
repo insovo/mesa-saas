@@ -867,12 +867,74 @@ model CampusSession {
 
   jobs       CampusSessionJob[]
   applicants CampusApplicant[]
+  interviewQueue InterviewQueue?
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([status])
   @@map("campus_sessions")
+}
+
+model InterviewQueue {
+  id        String @id @default(uuid()) @db.Uuid
+  sessionId String @unique @map("session_id") @db.Uuid
+  session   CampusSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  revision  Int @default(0)
+  entries   InterviewQueueEntry[]
+  links     InterviewQueueLink[]
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  @@map("interview_queues")
+}
+
+model InterviewQueueEntry {
+  id           String @id @default(uuid()) @db.Uuid
+  queueId      String @map("queue_id") @db.Uuid
+  queue        InterviewQueue @relation(fields: [queueId], references: [id], onDelete: Cascade)
+  name         String
+  school       String
+  major        String
+  degree       String
+  gradYear     Int @default(2027) @map("grad_year")
+  languageAbility String @map("language_ability")
+  phone        String
+  email        String
+  jobDirection String @map("job_direction")
+  stage        String @default("professional")
+  professionalResult String? @map("professional_result")
+  cultureResult String? @map("culture_result")
+  salaryStatus String? @map("salary_status")
+  salaryBase   Decimal @default(8700) @map("salary_base") @db.Decimal(12, 2)
+  salaryFactor Decimal @default(13.5) @map("salary_factor") @db.Decimal(6, 2)
+  professionalStartedAt DateTime? @map("professional_started_at")
+  cultureStartedAt DateTime? @map("culture_started_at")
+  cultureGroupId String? @map("culture_group_id") @db.Uuid
+  phaseEnteredAt DateTime @default(now()) @map("phase_entered_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  @@unique([queueId, email])
+  @@index([queueId, stage, phaseEnteredAt])
+  @@index([email])
+  @@map("interview_queue_entries")
+}
+
+model InterviewQueueLink {
+  id        String @id @default(uuid()) @db.Uuid
+  queueId   String @map("queue_id") @db.Uuid
+  queue     InterviewQueue @relation(fields: [queueId], references: [id], onDelete: Cascade)
+  kind      String
+  token     String @unique
+  active    Boolean @default(true)
+  expiresAt DateTime? @map("expires_at")
+  requireKey Boolean @default(false) @map("require_key")
+  keyHash   String? @map("key_hash")
+  keyEnc    String? @map("key_enc")
+  tokenVersion Int @default(0) @map("token_version")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  @@unique([queueId, kind])
+  @@map("interview_queue_links")
 }
 
 // 专场岗位:专场 × Job,kind 区分现场面试 / 内推
