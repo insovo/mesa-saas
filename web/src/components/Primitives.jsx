@@ -292,11 +292,11 @@ function pickMesaLiquidPalette(value) {
   return MESA_LIQUID_PALETTES.red;
 }
 
-export function LiquidLoader({ size = 56, level = 0, label = "", loading = false, instant = false }) {
+export function LiquidLoader({ size = 56, level = 0, label = "", loading = false, instant = false, tone, ariaLabel }) {
   const fillPct = Math.max(0, Math.min(100, level));
   const numericLabel = typeof label === "number" ? label : (label === "" ? "" : String(label));
   const paletteValue = typeof label === "number" ? label : fillPct;
-  const palette = pickMesaLiquidPalette(paletteValue);
+  const palette = MESA_LIQUID_PALETTES[tone] || pickMesaLiquidPalette(paletteValue);
   // 小尺寸下数字字号 / 波浪高度自适应
   const waveH = Math.max(8, Math.round(size * 0.22));
   const showBubbles = size >= 48;
@@ -309,7 +309,7 @@ export function LiquidLoader({ size = 56, level = 0, label = "", loading = false
         animation: loading ? "mesaLiquidPulse 1.6s ease-out infinite" : undefined,
         "--mesa-pulse": palette.glow,
       }}
-      aria-label={loading ? "评估中" : `匹配度 ${numericLabel}`}
+      aria-label={ariaLabel || (loading ? "评估中" : `匹配度 ${numericLabel}`)}
       role={loading ? "status" : "img"}
     >
       <div

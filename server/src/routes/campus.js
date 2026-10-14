@@ -382,6 +382,7 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
     if (!s) return;
     const n = await app.prisma.campusApplicant.count({ where: { sessionId: s.id } });
     if (n > 0) return reply.code(409).send({ error: "campus_session_not_empty", message: `专场已有 ${n} 位学生,不能删除(可改为「结束」)` });
+    if (await app.prisma.interviewQueue.findUnique({ where: { sessionId: s.id }, select: { id: true } })) return reply.code(409).send({ error: "campus_session_has_queue", message: "专场已创建面试排队，不能删除（可改为「结束」）" });
     await app.prisma.campusSession.delete({ where: { id: s.id } });
     await writeLog(app.prisma, { req, action: "campus.session.delete", entityType: "CampusSession", entityId: s.id, diff: { name: s.name } });
     return reply.code(204).send();

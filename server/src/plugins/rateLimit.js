@@ -1,5 +1,6 @@
 import fp from "fastify-plugin";
 import rateLimit from "@fastify/rate-limit";
+import crypto from "node:crypto";
 
 // 全局限流 —— 堵公开 token 端点的枚举/刷量,以及整体滥用。
 //
@@ -17,6 +18,7 @@ export default fp(async (app) => {
   const tier = (req) => {
     const u = req.url || "";
     if (u.startsWith("/api/health")) return 10000;
+    if (u.startsWith("/api/public/interview-queues/")) return 600;
     if (u.startsWith("/api/public/")) return 40;
     if (u.startsWith("/api/campus/public/")) return 90; // 学生端:含 2s 轮询(抽取 / 匹配进度),比 token 公开页宽
     if (u.startsWith("/api/feishu")) return 60;
@@ -28,10 +30,16 @@ export default fp(async (app) => {
     max: tier,
     timeWindow: "1 minute",
     redis: app.redis, // undefined 时 @fastify/rate-limit 自动用内存 store
-    keyGenerator: (req) =>
-      req.headers["cf-connecting-ip"] ||
-      (req.headers["x-forwarded-for"] || "").split(",")[0].trim() ||
-      req.ip,
+    keyGenerator: (req) => {
+      const ip = req.headers["cf-connecting-ip"] || (req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.ip;
+      if (req.url.startsWith("/api/public/interview-queues/") && req.headers.authorization?.startsWith("Bearer ")) {
+        try {
+          const actor = app.jwt.verify(req.headers.authorization.slice(7));
+          if (["interview-queue-student", "interview-queue-share"].includes(actor.aud)) return `${ip}:queue:${crypto.createHash("sha256").update(String(actor.sub)).digest("hex")}`;
+        } catch { /* 无效凭证仍按 IP 限流 */ }
+      }
+      return ip;
+    },
     // 必须带 statusCode:429 —— 否则被当作无状态码的 error 抛出,index.js 的全局
     // errorHandler 会按 `statusCode || 500` 误判成 500(且 CF 会拦 5xx,见坑#20)。
     errorResponseBuilder: (req, ctx) => ({

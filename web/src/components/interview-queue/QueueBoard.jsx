@@ -1,0 +1,124 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Button, Card, I, Input, Modal, LoadingBlock, toast } from "../Primitives.jsx";
+import SummaryColumnFilter from "../campus/SummaryColumnFilter.jsx";
+import QueueTimer from "./QueueTimer.jsx";
+import { QUEUE_STAGE_LABELS, queueResult, queueErrorMessage } from "../../lib/interviewQueueApi.js";
+
+const identityColumns = [
+  ["name", "姓名"], ["school", "学校"], ["major", "专业"], ["degree", "学历"],
+  ["languageAbility", "语言能力"], ["phone", "联系电话"], ["jobDirection", "岗位方向"],
+];
+function columnsFor(stage, role) {
+  const columns = [...identityColumns];
+  if (["salary", "pending"].includes(stage)) columns.splice(4, 0, ["gradYear", "毕业时间"]);
+  if (stage === "professional") columns.push(["professionalResult", "专业面试结果"]);
+  if (stage === "culture") columns.push(["cultureResult", "文化面试结果"]);
+  if (stage === "salary") columns.push(["salaryBase", "基础薪资"], ["salaryFactor", "基数"], ["salaryStatus", "是否接受薪资"], ["email", "邮箱"]);
+  if (stage === "pending") columns.push(["professionalResult", "专业面试结果"], ["cultureResult", "文化面试结果"], ["salaryStatus", "是否接受薪资"], ["email", "邮箱"]);
+  return columns.filter(([key]) => !["professional", "culture"].includes(role) || !["salaryBase", "salaryFactor", "salaryStatus", "email"].includes(key)).map(([key, label]) => ({ key, label }));
+}
+function valueOf(row, key) {
+  if (["professionalResult", "cultureResult", "salaryStatus"].includes(key)) return row[key] ? queueResult(row[key]) : "";
+  return row[key] == null ? "" : String(row[key]);
+}
+const snapshots = (rows) => rows.map(({ id, updatedAt }) => ({ id, updatedAt }));
+
+export default function QueueBoard({ read, write, role = "staff", canWrite = true, screen = false, onFatal }) {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState("");
+  const [tab, setTab] = useState(role === "hr" ? "salary" : role === "staff" ? "professional" : role);
+  const [selected, setSelected] = useState(new Set());
+  const [filters, setFilters] = useState({});
+  const [filterColumn, setFilterColumn] = useState(null);
+  const [confirmation, setConfirmation] = useState(null);
+  const [directionRow, setDirectionRow] = useState(null);
+  const [direction, setDirection] = useState("");
+  const [salaryRows, setSalaryRows] = useState(null);
+  const [salaryFields, setSalaryFields] = useState({});
+  const [salaryValues, setSalaryValues] = useState({ salaryBase: 8700, salaryFactor: 13.5, salaryStatus: "accepted" });
+  const [busy, setBusy] = useState(false);
+  const [clock, setClock] = useState(new Date());
+  const revision = useRef(undefined);
+  const pendingRead = useRef(false);
+  const alive = useRef(true);
+  const refresh = useCallback(async (force = false) => {
+    if (pendingRead.current) return;
+    pendingRead.current = true;
+    try {
+      const result = await read(force ? undefined : revision.current);
+      if (!alive.current) return;
+      if (!result.unchanged) { setData(result); revision.current = result.revision; }
+      setError("");
+    } catch (err) {
+      if (!alive.current) return;
+      setError(queueErrorMessage(err));
+      if ([401, 403, 410].includes(err.response?.status)) onFatal?.(err);
+    } finally { pendingRead.current = false; }
+  }, [read, onFatal]);
+  useEffect(() => {
+    alive.current = true; revision.current = undefined; refresh(true);
+    const timer = setInterval(() => refresh(), 2000);
+    return () => { alive.current = false; clearInterval(timer); };
+  }, [refresh]);
+  useEffect(() => { const timer = setInterval(() => setClock(new Date()), 1000); return () => clearInterval(timer); }, []);
+  const entries = data?.entries || [];
+  const stageRows = entries.filter((entry) => entry.stage === tab);
+  useEffect(() => {
+    setSelected((current) => new Set([...current].filter((id) => entries.some((entry) => entry.id === id && entry.stage === tab))));
+  }, [data, tab]);
+  const columns = columnsFor(tab, role).filter(({ key }) => screen || tab !== "professional" || key !== "professionalResult");
+  const activeFilters = filters[tab] || {};
+  const visible = stageRows.filter((row) => Object.entries(activeFilters).every(([key, values]) => values.includes(valueOf(row, key))));
+  const selectedRows = stageRows.filter((row) => selected.has(row.id));
+  const permitted = canWrite && !screen && !error && (role === "staff" || tab === (role === "hr" ? "salary" : role));
+  const selectable = permitted && ["culture", "salary"].includes(tab);
+  const currentProfessional = stageRows[0];
+  const tableRows = visible.filter((row) => screen || tab !== "professional" || row.id !== currentProfessional?.id);
+  const activeGroups = tab === "culture" ? [...new Set(stageRows.map((row) => row.cultureGroupId).filter(Boolean))] : [];
+  const groupStartedAt = selectedRows.length && selectedRows.every((row) => row.cultureStartedAt === selectedRows[0].cultureStartedAt && row.cultureGroupId === selectedRows[0].cultureGroupId) ? selectedRows[0].cultureStartedAt : null;
+  async function submit(body) {
+    setBusy(true);
+    try { await write(body); setConfirmation(null); setDirectionRow(null); setSalaryRows(null); if (!body.action.endsWith("timer")) setSelected(new Set()); await refresh(true); toast(body.action.endsWith("timer") ? "计时已开始，刷新后继续" : "已保存，排队阶段已同步", "success"); }
+    catch (err) { toast(queueErrorMessage(err), "error"); if (err.response?.status === 409) { setConfirmation(null); setSalaryRows(null); setDirectionRow(null); setSelected(new Set()); } await refresh(true); }
+    finally { setBusy(false); }
+  }
+  function confirmResult(rows, result) {
+    setConfirmation({ rows, title: `${QUEUE_STAGE_LABELS[tab]} · 确认${queueResult(result)}`, description: result === "passed" ? `确认后转入${tab === "professional" ? "文化面试" : "定薪"}。` : "确认后转入待定。", body: { items: snapshots(rows), action: `${tab}-result`, result, confirmed: true } });
+  }
+  function toggle(id) { setSelected((current) => { const next = new Set(current); next.has(id) ? next.delete(id) : next.add(id); return next; }); }
+  function selectAll() {
+    const all = visible.length > 0 && visible.every((row) => selected.has(row.id));
+    setSelected((current) => { const next = new Set(current); visible.forEach((row) => all ? next.delete(row.id) : next.add(row.id)); return next; });
+  }
+  function openSalary(rows) { setSalaryRows(rows); setSalaryFields({}); setSalaryValues({ salaryBase: rows.length === 1 ? rows[0].salaryBase : 8700, salaryFactor: rows.length === 1 ? rows[0].salaryFactor : 13.5, salaryStatus: rows.length === 1 && rows[0].salaryStatus ? rows[0].salaryStatus : "accepted" }); }
+  function salaryConfirm(event) {
+    event.preventDefault();
+    const body = { action: "salary", items: snapshots(salaryRows), confirmed: true };
+    Object.keys(salaryFields).filter((key) => salaryFields[key]).forEach((key) => { body[key] = key === "salaryStatus" ? salaryValues[key] : Number(salaryValues[key]); });
+    setConfirmation({ rows: salaryRows, title: "确认定薪修改", description: Object.keys(body).filter((key) => key.startsWith("salary")).map((key) => `${{ salaryBase: "基础薪资", salaryFactor: "基数", salaryStatus: "是否接受薪资" }[key]}：${key === "salaryStatus" ? queueResult(body[key]) : body[key]}`).join(" · ") + (body.salaryStatus === "abandoned" ? "；放弃后转入待定。" : ""), body });
+    setSalaryRows(null);
+  }
+  function resultButtons(row) {
+    return <div className="flex gap-2"><Button size="sm" disabled={busy} onClick={() => confirmResult([row], "passed")}>通过</Button><Button size="sm" variant="secondary" disabled={busy} onClick={() => confirmResult([row], "pending")}>待定</Button></div>;
+  }
+  if (!data) return error ? <Card className="p-6"><p className="text-red-500">{error}</p><Button className="mt-3" onClick={() => refresh(true)}>重试</Button></Card> : <LoadingBlock height="h-64" label="加载面试排队…" />;
+  const shell = screen ? "min-h-screen bg-[#081326] text-slate-100 p-4 md:p-8" : "space-y-5 text-navy-700";
+  return <div className={shell}>
+    <header className={`flex flex-wrap items-start justify-between gap-3 ${screen ? "mb-6" : ""}`}><div><p className={`text-xs ${screen ? "text-cyan-300" : "text-gray-600"}`}>MESA · 大学专场面试排队{role !== "staff" ? ` · ${{ professional: "专业面试官", culture: "文化面试官", hr: "HR" }[role]}` : ""}</p><h1 className={`${screen ? "text-3xl md:text-4xl" : "text-2xl"} font-bold mt-1`}>{data.queue.session.name}</h1><p className={`text-sm mt-2 ${error ? "text-red-400" : screen ? "text-emerald-300" : "text-green-600"}`}>{error || "● 实时同步 · 每 2 秒更新"}</p></div><div className="flex items-center gap-3"><time className="font-mono tabular-nums">{clock.toLocaleTimeString("zh-CN", { hour12: false })}</time>{screen && <Button size="sm" variant="secondary" onClick={() => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen().catch(() => toast("当前浏览器不支持全屏", "error"))}>全屏</Button>}<Button size="sm" variant="secondary" onClick={() => refresh(true)}>刷新</Button></div></header>
+    <div className={`flex flex-wrap gap-2 ${screen ? "mb-5" : ""}`}>
+      {Object.entries(QUEUE_STAGE_LABELS).filter(([key]) => role === "staff" || key === "pending" || key === (role === "hr" ? "salary" : role)).map(([key, label]) => <button key={key} onClick={() => { setTab(key); setSelected(new Set()); setFilterColumn(null); }} className={`rounded-xl px-4 py-3 font-bold ${tab === key ? screen ? "bg-cyan-500 text-slate-950" : "bg-brand text-white shadow-button" : screen ? "bg-slate-800 text-slate-300" : "bg-white text-gray-700"}`}>{label} <span className="ml-2 opacity-75">{entries.filter((row) => row.stage === key).length}</span></button>)}
+    </div>
+    {!screen && tab === "professional" && currentProfessional && <Card className="p-5 gap-4"><div className="flex flex-wrap justify-between gap-5"><div className="min-w-0 flex-1"><p className="text-sm text-gray-600 mb-2">当前待面试人员</p><h2 className="text-2xl font-bold">{currentProfessional.name}</h2><div className="grid sm:grid-cols-2 gap-x-6 gap-y-2 text-sm mt-3">{identityColumns.slice(1).map(([key, label]) => <p key={key} className="break-words"><span className="text-gray-600">{label}：</span>{currentProfessional[key]}{key === "jobDirection" && permitted && <button className="text-brand ml-2" onClick={() => { setDirectionRow(currentProfessional); setDirection(currentProfessional.jobDirection); }}>修改</button>}</p>)}</div></div><QueueTimer startedAt={currentProfessional.professionalStartedAt} disabled={!permitted || busy} onStart={() => submit({ action: "professional-timer", items: snapshots([currentProfessional]) })} /></div>{permitted && <div className="border-t border-gray-100 pt-4 flex flex-wrap items-center gap-4"><strong className="text-sm">专业面试结果</strong>{resultButtons(currentProfessional)}</div>}</Card>}
+    {!screen && tab === "culture" && <Card className="p-5 gap-4"><div className="flex flex-wrap items-center justify-between gap-5"><div><h2 className="font-bold">当前群面 · 已选 {selectedRows.length} 人</h2><p className="text-sm text-gray-600 mt-2">{selectedRows.map((row) => row.name).join("、") || "勾选下方人员，共用计时并批量确认结果"}</p>{activeGroups.length > 0 && <div className="flex flex-wrap gap-2 mt-3">{activeGroups.map((group, index) => <button key={group} className="rounded-lg px-3 py-2 bg-lightPrimary text-xs text-brand" onClick={() => setSelected(new Set(stageRows.filter((row) => row.cultureGroupId === group).map((row) => row.id)))}>进入计时组 {index + 1} · {stageRows.filter((row) => row.cultureGroupId === group).length} 人</button>)}</div>}</div><QueueTimer culture startedAt={groupStartedAt} disabled={!permitted || busy || !selectedRows.length || selectedRows.some((row) => row.cultureStartedAt)} onStart={() => submit({ action: "culture-timer", items: snapshots(selectedRows) })} /></div>{permitted && <div className="flex flex-wrap gap-3 border-t border-gray-100 pt-4"><Button size="sm" disabled={busy || !selectedRows.length} onClick={() => confirmResult(selectedRows, "passed")}>所选人员通过</Button><Button size="sm" variant="secondary" disabled={busy || !selectedRows.length} onClick={() => confirmResult(selectedRows, "pending")}>所选人员待定</Button></div>}</Card>}
+    <section className={`${screen ? "rounded-xl border border-slate-700 bg-slate-900/80" : "bg-white rounded-card shadow-card"} min-w-0 overflow-hidden`}>
+      <div className="p-4 flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-bold">{tab === "professional" && !screen ? "后续待面试人员" : tab === "salary" ? "当前待定薪人员（全量）" : QUEUE_STAGE_LABELS[tab]} <span className="text-sm font-normal opacity-70">{tableRows.length} 人{Object.keys(activeFilters).length ? " · 已筛选" : ""}</span></h2><p className="text-xs opacity-60 mt-1">点击表头按列内容筛选</p></div><div className="flex flex-wrap gap-3 items-center">{Object.keys(activeFilters).length > 0 && <button className={screen ? "text-cyan-300 text-sm" : "text-brand text-sm"} onClick={() => setFilters((current) => ({ ...current, [tab]: {} }))}>清除筛选</button>}{selectable && <><label className="flex gap-2 items-center text-sm"><input type="checkbox" className="accent-brand" checked={visible.length > 0 && visible.every((row) => selected.has(row.id))} onChange={selectAll} />全选筛选结果</label><span className="text-sm">已选 {selectedRows.length}</span>{tab === "salary" && <Button size="sm" disabled={busy || !selectedRows.length} onClick={() => openSalary(selectedRows)}>批量修改定薪</Button>}</>}</div></div>
+      <div className="overflow-x-auto"><table className={`w-full text-left whitespace-nowrap ${screen ? "text-lg" : "text-sm"}`}><thead className={screen ? "bg-slate-800 text-slate-300" : "bg-lightPrimary text-gray-700"}><tr>{selectable && <th className="px-4 py-4">选择</th>}{columns.map((column) => <th key={column.key} className="px-4 py-4"><button className="inline-flex items-center gap-2" onClick={() => setFilterColumn(column)} aria-label={`筛选${column.label}`}>{column.label}<I name="filter" size={14} className={activeFilters[column.key] ? screen ? "text-cyan-300" : "text-brand" : "opacity-40"} /></button></th>)}{permitted && tab === "salary" && <th className="px-4 py-4">操作</th>}</tr></thead><tbody>
+        {tableRows.map((row) => <tr key={row.id} className={`border-t ${screen ? "border-slate-700" : selected.has(row.id) ? "border-gray-100 bg-lightPrimary/60" : "border-gray-100 hover:bg-lightPrimary/30"}`}>{selectable && <td className="p-4"><input type="checkbox" className="accent-brand" checked={selected.has(row.id)} onChange={() => toggle(row.id)} aria-label={`选择${row.name}`} /></td>}{columns.map(({ key }) => <td key={key} className={`p-4 ${key === "name" ? "font-bold" : ""}`}>{permitted && key === "cultureResult" && selected.has(row.id) ? resultButtons(row) : permitted && key === "jobDirection" && tab === "professional" ? <button className="text-brand" onClick={() => { setDirectionRow(row); setDirection(row.jobDirection); }}>{row.jobDirection}</button> : valueOf(row, key) || "—"}</td>)}{permitted && tab === "salary" && <td className="p-4"><button className="text-brand" disabled={busy} onClick={() => openSalary([row])}>修改定薪</button></td>}</tr>)}
+      </tbody></table></div>{visible.length === 0 || (tab === "professional" && !screen && visible.length === 1 && visible[0].id === currentProfessional?.id) ? <p className="text-center py-12 opacity-60">{stageRows.length && !visible.length ? "没有符合筛选条件的人员" : tab === "professional" && currentProfessional ? "暂无后续待面试人员" : "暂无人员"}</p> : null}
+    </section>
+    {filterColumn && <SummaryColumnFilter key={`${tab}-${filterColumn.key}`} column={filterColumn} options={[...new Set(stageRows.map((row) => valueOf(row, filterColumn.key)))].sort((a, b) => a.localeCompare(b, "zh-CN", { numeric: true })).map((value) => ({ value, count: stageRows.filter((row) => valueOf(row, filterColumn.key) === value).length }))} values={activeFilters[filterColumn.key]} onClose={() => setFilterColumn(null)} onApply={(values) => { setFilters((current) => { const next = { ...(current[tab] || {}) }; values === null ? delete next[filterColumn.key] : next[filterColumn.key] = values; return { ...current, [tab]: next }; }); setFilterColumn(null); }} />}
+    {directionRow && <Modal open onClose={() => setDirectionRow(null)} maxWidth="max-w-md"><form className="p-6 space-y-4" onSubmit={(e) => { e.preventDefault(); setConfirmation({ rows: [directionRow], title: "确认修改岗位方向", description: `${directionRow.jobDirection} → ${direction.trim()}`, body: { action: "direction", jobDirection: direction.trim(), items: snapshots([directionRow]), confirmed: true } }); setDirectionRow(null); }}><h2 className="font-bold text-xl">修改岗位方向 · {directionRow.name}</h2><Input label="岗位方向" aria-label="岗位方向" list="queue-job-options" value={direction} required maxLength={200} onChange={(e) => setDirection(e.target.value)} /><datalist id="queue-job-options">{data.jobs.map((job) => <option key={job.id} value={job.title} />)}</datalist><div className="flex justify-end gap-3"><Button variant="ghost" type="button" onClick={() => setDirectionRow(null)}>取消</Button><Button type="submit">下一步确认</Button></div></form></Modal>}
+    {salaryRows && <Modal open onClose={() => setSalaryRows(null)} maxWidth="max-w-md"><form onSubmit={salaryConfirm} className="p-6 space-y-4"><h2 className="font-bold text-xl">修改定薪 · {salaryRows.length} 人</h2><p className="text-sm text-gray-600">勾选要修改的字段，统一应用到所选人员。</p>{[["salaryBase", "基础薪资"], ["salaryFactor", "基数"], ["salaryStatus", "是否接受薪资"]].map(([key, label]) => <div key={key} className="space-y-2"><label className="text-sm flex gap-2 items-center"><input type="checkbox" className="accent-brand" checked={Boolean(salaryFields[key])} onChange={(e) => setSalaryFields((current) => ({ ...current, [key]: e.target.checked }))} />{label}</label>{key === "salaryStatus" ? <select aria-label={label} disabled={!salaryFields[key]} className="border border-gray-200 rounded-xl p-3 w-full text-navy-700" value={salaryValues[key]} onChange={(e) => setSalaryValues((current) => ({ ...current, [key]: e.target.value }))}><option value="accepted">接受</option><option value="abandoned">放弃</option></select> : <Input type="number" step="0.01" min={0} max={key === "salaryBase" ? 10000000 : 1000} required aria-label={label} disabled={!salaryFields[key]} value={salaryValues[key]} onChange={(e) => setSalaryValues((current) => ({ ...current, [key]: e.target.value }))} />}</div>)}<div className="flex justify-end gap-3"><Button variant="ghost" type="button" onClick={() => setSalaryRows(null)}>取消</Button><Button type="submit" disabled={!Object.values(salaryFields).some(Boolean)}>下一步确认</Button></div></form></Modal>}
+    {confirmation && <Modal open onClose={() => !busy && setConfirmation(null)} maxWidth="max-w-md"><div className="p-6 space-y-4 text-navy-700"><h2 className="font-bold text-xl">{confirmation.title}</h2><p className="text-sm break-words">{confirmation.rows.map((row) => row.name).join("、")}（{confirmation.rows.length} 人）</p><p className="text-sm text-gray-600">{confirmation.description}</p><div className="flex justify-end gap-3"><Button variant="ghost" disabled={busy} onClick={() => setConfirmation(null)}>取消</Button><Button disabled={busy} onClick={() => submit(confirmation.body)}>{busy ? "保存中…" : "确认提交"}</Button></div></div></Modal>}
+  </div>;
+}
