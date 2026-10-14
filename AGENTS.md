@@ -22,7 +22,7 @@
 |--------|---------|
 | 招聘工作台 | 候选人 / 社招岗位 / 校招专场岗位 / 部门 / 员工 / 面试 / 概览统计 CRUD;岗位归属由 Job.recruitmentType 持久区分 |
 | 校招面试官权限 | 管理员用账户名和密码创建独立角色;默认仅见校招候选人,可逐项授予校招台账 / 汇总(只读) / 专场 / 岗位 / 数据 / 设置 tab |
-| 校招汇总 | 全部专场候选人 23 列登记信息、15 项组合筛选、分页及补录编辑;人工值独立存于 `CampusApplicant.summaryData`,不受简历解析覆盖;手机卡片布局;API §19.3.1 |
+| 校招汇总 | 全部专场候选人 23 列登记信息、15 项组合筛选、分页及补录编辑;简历来源/学校类型支持多选、跨页全选批量更正;人工值独立存于 `CampusApplicant.summaryData`,不受简历解析覆盖;手机卡片布局;API §19.3.1 |
 | 候选人详情页(V2)| 三列布局(profile sticky · 中间 · 评价+洞察 sticky)· 15+ 新组件:DocsModule / TagsModule / InlineSource / PeopleChips / JdSwitchConfirmModal / JdDescModal / FeedbackHistoryCard / OverviewTile 等 |
 | LLM 简历解析 | Kimi (Moonshot AI) · 一次 chat 输出 JSON(含 HR 友好简报 + 结构化字段)· admin 在 UI 编辑 API Key/模型/Prompt |
 | JD 匹配评估 | 二次 LLM 调用,基于候选人简报 + JD 描述输出 jdMatch + risks/highlights + V2 新字段(matchedFor / againstFor / aiSuggestedTags / insights[kind=up/down]) |

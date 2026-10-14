@@ -45,7 +45,7 @@ function EditSummary({ row, columns, options, onClose, onSaved }) {
               <label htmlFor={`summary-edit-${column.key}`} className="text-xs font-bold text-navy-700">{column.label}</label>
               {(row.manualFields.includes(column.key) || form[column.key] !== row[column.key]) && <button type="button" onClick={() => setForm((current) => ({ ...current, [column.key]: null }))} className="text-[11px] text-brand">恢复自动</button>}
             </div>
-            {choices ? <Select id={`summary-edit-${column.key}`} small className="w-full" value={value} onChange={(event) => setForm({ ...form, [column.key]: event.target.value })}>
+            {choices && column.key !== "schoolType" ? <Select id={`summary-edit-${column.key}`} small className="w-full" value={value} onChange={(event) => setForm({ ...form, [column.key]: event.target.value })}>
               <option value="">未填写</option>{value && !choices.includes(value) && <option value={value}>{value}</option>}{choices.map((option) => <option key={option} value={option}>{option}</option>)}
             </Select> : <>
               <input id={`summary-edit-${column.key}`} list={options[column.key]?.length ? `summary-options-${column.key}` : undefined} value={value} maxLength={column.key === "cancellationReason" ? 1000 : 500} onChange={(event) => setForm({ ...form, [column.key]: event.target.value })} className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-navy-700 outline-none focus:border-brand" />
@@ -62,6 +62,38 @@ function EditSummary({ row, columns, options, onClose, onSaved }) {
   </Modal>;
 }
 
+function FieldEditor({ field, items, options, onClose, onSaved }) {
+  const label = field === "source" ? "简历来源" : "学校类型";
+  const [value, setValue] = useState(items.length === 1 ? items[0][field] || "" : "");
+  const [restoreAuto, setRestoreAuto] = useState(false);
+  const [saving, setSaving] = useState(false);
+  async function save(event) {
+    event.preventDefault();
+    if (!restoreAuto && !value.trim()) return;
+    setSaving(true);
+    try {
+      const result = await resources.campus.updateSummaryBulk({ items: items.map(({ id, updatedAt }) => ({ id, updatedAt })), field, value: restoreAuto ? null : value.trim() });
+      toast(`已更正 ${result.count} 位候选人的${label}`, "success");
+      onSaved();
+    } catch (error) { toast(errMsg(error, `更正${label}失败`), "error"); }
+    finally { setSaving(false); }
+  }
+  return <Modal open onClose={() => !saving && onClose()}>
+    <form onSubmit={save} className="p-5 sm:p-6">
+      <div className="flex items-start justify-between gap-3">
+        <div><h2 className="text-lg font-bold text-navy-700">更正{label}</h2><p className="mt-1 text-xs text-gray-600">将应用到 {items.length} 位候选人的汇总资料</p></div>
+        <button type="button" aria-label="关闭更正" disabled={saving} onClick={onClose} className="p-2 text-gray-600 hover:text-brand"><I name="x" size={18} /></button>
+      </div>
+      <label htmlFor={`summary-${field}-value`} className="mt-5 mb-1.5 block text-sm font-bold text-navy-700">{label}</label>
+      <input id={`summary-${field}-value`} list={`summary-${field}-options`} value={value} maxLength={500} disabled={saving || restoreAuto} onChange={(event) => setValue(event.target.value)} placeholder="输入或选择" className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-navy-700 outline-none focus:border-brand disabled:bg-gray-100" />
+      <datalist id={`summary-${field}-options`}>{options.map((option) => <option key={option} value={option} />)}</datalist>
+      {field === "schoolType" && <div className="mt-2 flex flex-wrap gap-1.5">{options.slice(0, 9).map((option) => <button type="button" key={option} disabled={saving || restoreAuto} onClick={() => setValue(option)} className={`rounded-full border px-2.5 py-1 text-xs ${value === option ? "border-brand bg-lightPrimary text-brand" : "border-gray-200 text-gray-700"}`}>{option}</button>)}</div>}
+      <label className="mt-3 inline-flex items-center gap-2 text-xs text-gray-700"><input type="checkbox" className="accent-brand" checked={restoreAuto} disabled={saving} onChange={(event) => setRestoreAuto(event.target.checked)} />恢复自动{label}</label>
+      <div className="mt-6 flex justify-end gap-2"><Button type="button" variant="ghost" disabled={saving} onClick={onClose}>取消</Button><Button type="submit" disabled={saving || (!restoreAuto && !value.trim())}>{saving ? "保存中…" : `保存 ${items.length} 条`}</Button></div>
+    </form>
+  </Modal>;
+}
+
 export default function CampusSummary({ sessions }) {
   const [filter, setFilter] = useState({});
   const [skip, setSkip] = useState(0);
@@ -71,7 +103,11 @@ export default function CampusSummary({ sessions }) {
   const [error, setError] = useState("");
   const [refresh, setRefresh] = useState(0);
   const [editing, setEditing] = useState(null);
+  const [bulkEditing, setBulkEditing] = useState(null);
+  const [selected, setSelected] = useState({});
+  const [selectingAll, setSelectingAll] = useState(false);
   const requestId = useRef(0);
+  const selectionGeneration = useRef(0);
   useEffect(() => {
     const current = ++requestId.current;
     setLoading(true); setError("");
@@ -91,8 +127,35 @@ export default function CampusSummary({ sessions }) {
   const columns = data?.columns || [];
   const filterColumns = columns.filter((column) => column.filter);
   const activeCount = Object.entries(filter).filter(([key, value]) => value && key !== "q" && key !== "sessionId").length;
-  const updateFilter = (key, value) => { setSkip(0); setFilter((current) => ({ ...current, [key]: value })); };
-  const reload = () => setRefresh((value) => value + 1);
+  const pageItems = data?.items || [];
+  const selectedItems = Object.values(selected);
+  const pageSelected = pageItems.length > 0 && pageItems.every((row) => selected[row.id]);
+  const clearSelection = () => { selectionGeneration.current++; setSelected({}); };
+  const updateFilter = (key, value) => { setSkip(0); clearSelection(); setFilter((current) => ({ ...current, [key]: value })); };
+  const reload = () => { clearSelection(); setRefresh((value) => value + 1); };
+  const toggleSelected = (row) => setSelected((current) => {
+    const next = { ...current };
+    if (next[row.id]) delete next[row.id];
+    else next[row.id] = { id: row.id, updatedAt: row.updatedAt, source: row.source, schoolType: row.schoolType };
+    return next;
+  });
+  const togglePage = () => setSelected((current) => {
+    const next = { ...current };
+    for (const row of pageItems) {
+      if (pageSelected) delete next[row.id];
+      else next[row.id] = { id: row.id, updatedAt: row.updatedAt, source: row.source, schoolType: row.schoolType };
+    }
+    return next;
+  });
+  async function selectAllFiltered() {
+    const currentGeneration = selectionGeneration.current;
+    setSelectingAll(true);
+    try {
+      const result = await resources.campus.summary({ ...Object.fromEntries(Object.entries(filter).filter(([, value]) => value)), selection: "all" });
+      if (selectionGeneration.current === currentGeneration) setSelected(Object.fromEntries(result.selection.map((item) => [item.id, item])));
+    } catch (error) { toast(errMsg(error, "全选失败"), "error"); }
+    finally { setSelectingAll(false); }
+  }
 
   return <div className="min-w-0 w-full space-y-4">
     <Card className="p-4 sm:p-5 gap-4">
@@ -113,19 +176,25 @@ export default function CampusSummary({ sessions }) {
       </div>}
       {Object.values(filter).some(Boolean) && <div className="flex flex-wrap items-center gap-2 text-xs">
         {filterColumns.filter((column) => filter[column.key]).map((column) => <button type="button" key={column.key} onClick={() => updateFilter(column.key, "")} className="inline-flex items-center gap-1 rounded-full bg-lightPrimary px-3 py-1.5 text-brand">{column.label}：{filter[column.key]}<I name="x" size={12} /></button>)}
-        <button type="button" className="text-gray-600 hover:text-brand" onClick={() => { setSkip(0); setFilter({}); }}>清空筛选</button>
+        <button type="button" className="text-gray-600 hover:text-brand" onClick={() => { setSkip(0); clearSelection(); setFilter({}); }}>清空筛选</button>
+      </div>}
+      {data?.canEdit && <div className="flex flex-wrap items-center gap-3 border-t border-gray-100 pt-3 text-xs text-navy-700">
+        <label className="inline-flex items-center gap-2"><input type="checkbox" className="accent-brand" aria-label="全选当前页候选人" checked={pageSelected} disabled={loading || !pageItems.length} onChange={togglePage} />全选当前页</label>
+        {data.total > pageItems.length && <button type="button" className="text-brand hover:underline" disabled={selectingAll || loading} onClick={selectAllFiltered}>{selectingAll ? "选择中…" : `全选筛选结果（${data.total} 人）`}</button>}
+        {selectedItems.length > 0 && <><span>已选 {selectedItems.length} 人</span><Button size="sm" disabled={selectedItems.length > 1000 || selectingAll} onClick={() => setBulkEditing({ field: "source", items: selectedItems })}>更正来源</Button><Button size="sm" variant="secondary" disabled={selectedItems.length > 1000 || selectingAll} onClick={() => setBulkEditing({ field: "schoolType", items: selectedItems })}>更正学校类型</Button><button type="button" className="text-gray-600 hover:text-brand" onClick={clearSelection}>取消选择</button>{selectedItems.length > 1000 && <span className="text-amber-700">每次最多更正 1000 人</span>}</>}
       </div>}
     </Card>
     {error ? <Card className="p-6"><Empty icon="alert-circle" title={error} /><Button variant="ghost" onClick={reload}>重试</Button></Card> : !data ? <LoadingBlock height="h-48" /> : <Card className={`overflow-hidden ${loading ? "opacity-60" : ""}`}>
       <div className="hidden md:block w-full overflow-x-auto" aria-busy={loading}>
         <table className="w-full min-w-[2800px] text-sm text-left">
-          <thead><tr className="bg-lightPrimary/50 text-xs text-gray-700">{columns.map((column) => <th key={column.key} scope="col" className={`px-4 py-4 font-medium whitespace-nowrap ${column.key === "sequence" ? "sticky left-0 z-20 bg-lightPrimary" : column.key === "name" ? "sticky left-16 z-20 bg-lightPrimary min-w-[120px]" : ""}`}>{column.label}</th>)}{data.canEdit && <th scope="col" className="px-4 py-4">操作</th>}</tr></thead>
-          <tbody>{data.items.map((row) => <tr key={row.id} className="border-t border-gray-100 hover:bg-lightPrimary/20">{columns.map((column) => <td key={column.key} className={`px-4 py-4 align-top text-navy-700 max-w-[240px] ${column.key === "sequence" ? "sticky left-0 z-10 bg-white w-16" : column.key === "name" ? "sticky left-16 z-10 bg-white" : ""}`}><Value column={column} row={row} /></td>)}{data.canEdit && <td className="px-4 py-4 align-top"><button type="button" onClick={() => setEditing(row)} className="whitespace-nowrap text-brand hover:underline">编辑</button></td>}</tr>)}</tbody>
+          <thead><tr className="bg-lightPrimary/50 text-xs text-gray-700">{data.canEdit && <th scope="col" className="sticky left-0 z-20 bg-lightPrimary px-3 py-4"><span className="sr-only">选择</span></th>}{columns.map((column) => <th key={column.key} scope="col" className={`px-4 py-4 font-medium whitespace-nowrap ${column.key === "sequence" ? `sticky ${data.canEdit ? "left-10" : "left-0"} z-20 bg-lightPrimary` : column.key === "name" ? `sticky ${data.canEdit ? "left-[104px]" : "left-16"} z-20 bg-lightPrimary min-w-[120px]` : ""}`}>{column.label}</th>)}{data.canEdit && <th scope="col" className="px-4 py-4">操作</th>}</tr></thead>
+          <tbody>{data.items.map((row) => <tr key={row.id} className="border-t border-gray-100 hover:bg-lightPrimary/20">{data.canEdit && <td className="sticky left-0 z-10 bg-white px-3 py-4 align-top"><input type="checkbox" className="accent-brand" aria-label={`选择${row.name || "候选人"}`} checked={Boolean(selected[row.id])} disabled={loading} onChange={() => toggleSelected(row)} /></td>}{columns.map((column) => <td key={column.key} className={`px-4 py-4 align-top text-navy-700 max-w-[240px] ${column.key === "sequence" ? `sticky ${data.canEdit ? "left-10" : "left-0"} z-10 bg-white w-16` : column.key === "name" ? `sticky ${data.canEdit ? "left-[104px]" : "left-16"} z-10 bg-white` : ""}`}>{["source", "schoolType"].includes(column.key) && data.canEdit ? <button type="button" onClick={() => setBulkEditing({ field: column.key, items: [{ id: row.id, updatedAt: row.updatedAt, [column.key]: row[column.key] }] })} className="text-left text-brand hover:underline" title={`更正${column.label}`}>{row[column.key] || "填写"}</button> : <Value column={column} row={row} />}</td>)}{data.canEdit && <td className="px-4 py-4 align-top"><button type="button" onClick={() => setEditing(row)} className="whitespace-nowrap text-brand hover:underline">编辑</button></td>}</tr>)}</tbody>
         </table>
       </div>
       <div className="md:hidden divide-y divide-gray-100" aria-busy={loading}>
         {data.items.map((row) => <article key={row.id} className="p-4">
-          <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-sm"><span className="mr-2 text-gray-400">{row.sequence}</span><Value column={{ key: "name" }} row={row} /></p><p className="text-xs text-gray-600 mt-1 break-words">{[row.school, row.degree, row.gradYear && `${row.gradYear}届`].filter(Boolean).join(" · ") || "学校资料待补充"}</p></div>{data.canEdit && <button type="button" onClick={() => setEditing(row)} className="shrink-0 px-2 py-1 text-xs text-brand">编辑</button>}</div>
+          <div className="flex items-start justify-between gap-3"><div className="min-w-0 flex items-start gap-2">{data.canEdit && <input type="checkbox" className="mt-0.5 accent-brand" aria-label={`选择${row.name || "候选人"}`} checked={Boolean(selected[row.id])} disabled={loading} onChange={() => toggleSelected(row)} />}<div><p className="text-sm"><span className="mr-2 text-gray-400">{row.sequence}</span><Value column={{ key: "name" }} row={row} /></p><p className="text-xs text-gray-600 mt-1 break-words">{[row.school, row.degree, row.gradYear && `${row.gradYear}届`].filter(Boolean).join(" · ") || "学校资料待补充"}</p></div></div>{data.canEdit && <button type="button" onClick={() => setEditing(row)} className="shrink-0 px-2 py-1 text-xs text-brand">编辑</button>}</div>
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">{["source", "schoolType"].map((field) => <p key={field}>{field === "source" ? "简历来源" : "学校类型"}：{data.canEdit ? <button type="button" onClick={() => setBulkEditing({ field, items: [{ id: row.id, updatedAt: row.updatedAt, [field]: row[field] }] })} className="text-brand hover:underline">{row[field] || "填写"}</button> : <span>{row[field] || "—"}</span>}</p>)}</div>
           <p className="mt-3 text-xs text-navy-700 break-words">{row.jobDirection || "岗位方向待补充"}{row.status && <span className="ml-2 text-brand">{row.status}</span>}</p>
           <details className="mt-3"><summary className="cursor-pointer text-xs text-gray-700">全部登记信息</summary><dl className="grid grid-cols-2 gap-x-4 gap-y-3 mt-3">{columns.filter((column) => !["sequence", "name"].includes(column.key)).map((column) => <div key={column.key} className="min-w-0"><dt className="text-[11px] text-gray-600 mb-1">{column.label}</dt><dd className="text-xs text-navy-700 break-words"><Value column={column} row={row} /></dd></div>)}</dl></details>
         </article>)}
@@ -136,5 +205,6 @@ export default function CampusSummary({ sessions }) {
       </div>
     </Card>}
     {editing && <EditSummary row={editing} columns={columns} options={data.options} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />}
+    {bulkEditing && <FieldEditor field={bulkEditing.field} items={bulkEditing.items} options={data.options[bulkEditing.field] || []} onClose={() => setBulkEditing(null)} onSaved={() => { setBulkEditing(null); reload(); }} />}
   </div>;
 }
