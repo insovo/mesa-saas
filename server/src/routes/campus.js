@@ -24,6 +24,7 @@ import { mapStatusToStage, candidateToEmployeeData } from "../lib/candidateToEmp
 import { displayName } from "../lib/taxonomy/index.js";
 import { randomBytes } from "node:crypto";
 import campusSummaryRoutes from "./campus-summary.js";
+import campusJobShareRoutes from "./campus-job-shares.js";
 import { activeCampusJob, catalogTransaction, attachCatalogToSession, attachJobToSessions } from "../lib/campus/catalog.js";
 import {
   JOB_KINDS, APP_STATUS, QUOTA_STATUS, ALLOWED_RESUME_MIME, RESUME_MAX_SIZE,
@@ -103,7 +104,7 @@ const CAMPUS_JOB_BULK_BODY = {
   type: "object", required: ["ids", "changes"], additionalProperties: false,
   properties: {
     ids: { type: "array", minItems: 1, maxItems: 200, uniqueItems: true, items: { type: "string", format: "uuid" } },
-    changes: { type: "object", minProperties: 1, additionalProperties: false, properties: { kind: { type: "string", enum: JOB_KINDS }, ...CAMPUS_JOB_BULK_FIELDS, ...CAMPUS_JOB_APPEND_FIELDS } },
+    changes: { type: "object", minProperties: 1, additionalProperties: false, properties: { kind: { type: "string", enum: JOB_KINDS }, matchEnabled: { type: "boolean" }, ...CAMPUS_JOB_BULK_FIELDS, ...CAMPUS_JOB_APPEND_FIELDS } },
   },
 };
 function jobData(body) {
@@ -310,6 +311,7 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
   async function concurrency() { return getEffectiveNumber(SETTING_KEYS.CAMPUS_MATCH_CONCURRENCY, 3); }
 
   await app.register(campusSummaryRoutes);
+  await app.register(campusJobShareRoutes);
 
   // ─── 专场 ────────────────────────────────────────────────────────
   app.get("/sessions", async () => {
@@ -501,7 +503,7 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
     const { ids, changes } = req.body;
     if (!Object.keys(changes).length) return reply.code(400).send({ error: "empty_changes", message: "请选择要修改的字段" });
     const where = await catalogWhere(req, { id: { in: ids } });
-    const { kind, niceAdd, benefitsAdd, ...fields } = changes;
+    const { kind, matchEnabled, niceAdd, benefitsAdd, ...fields } = changes;
     try {
       await catalogTransaction(app.prisma, async (tx) => {
         const selected = await tx.job.findMany({ where, select: { id: true, title: true, nice: true, benefits: true } });
@@ -522,9 +524,9 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
           }
           return { id: job.id, data };
         });
-        const data = { ...jobData(fields), ...(kind !== undefined ? { campusKind: kind } : {}) };
+        const data = { ...jobData(fields), ...(kind !== undefined ? { campusKind: kind } : {}), ...(matchEnabled !== undefined ? { campusMatchEnabled: matchEnabled } : {}) };
         if (Object.keys(data).length) await tx.job.updateMany({ where, data });
-        if (kind !== undefined) await tx.campusSessionJob.updateMany({ where: { jobId: { in: ids } }, data: { kind } });
+        if (kind !== undefined || matchEnabled !== undefined) await tx.campusSessionJob.updateMany({ where: { jobId: { in: ids } }, data: { ...(kind !== undefined ? { kind } : {}), ...(matchEnabled !== undefined ? { matchEnabled } : {}) } });
         for (const addition of additions) if (Object.keys(addition.data).length) await tx.job.update({ where: { id: addition.id }, data: addition.data });
       });
     } catch (err) {

@@ -119,7 +119,7 @@ export default async function interviewQueueRoutes(app) {
 export async function publicInterviewQueueRoutes(app) {
   app.addHook("onSend", async (_req, reply, payload) => { reply.header("Cache-Control", "no-store"); return payload; });
   async function fromLink(req, kind) {
-    return assertQueueLink(await app.prisma.interviewQueueLink.findUnique({ where: { token: req.headers["x-queue-link"] }, include: { queue: { include: { session: { select: { id: true, name: true, school: true } } } } } }), kind);
+    return assertQueueLink(await app.prisma.interviewQueueLink.findUnique({ where: { token: req.headers["x-queue-link"] }, include: { queue: { include: { session: { select: { id: true, name: true, school: true, showSalaryOnsite: true, showSalaryReferral: true } } } } } }), kind);
   }
   async function shareActor(req, prisma = app.prisma) {
     let actor;
@@ -131,8 +131,20 @@ export async function publicInterviewQueueRoutes(app) {
   }
   app.get("/link", { schema: { headers: linkHeaders } }, async (req) => {
     const link = await fromLink(req);
-    const jobs = link.kind === "registration" ? await app.prisma.job.findMany({ where: { recruitmentType: "campus", campusActive: true }, select: { title: true }, orderBy: { campusSortOrder: "asc" } }) : [];
-    return { kind: link.kind, requireKey: link.requireKey, expiresAt: link.expiresAt, session: link.queue.session, queueId: link.queueId, jobs };
+    const jobs = link.kind === "registration" ? await app.prisma.job.findMany({ where: { recruitmentType: "campus", campusActive: true }, select: { id: true, title: true, location: true, employment: true, educationRequirement: true, campusKind: true }, orderBy: [{ campusSortOrder: "asc" }, { createdAt: "asc" }] }) : [];
+    const { id, name, school } = link.queue.session;
+    return { kind: link.kind, requireKey: link.requireKey, expiresAt: link.expiresAt, session: { id, name, school }, queueId: link.queueId, jobs: jobs.map(({ campusKind, ...job }) => ({ ...job, kind: campusKind })) };
+  });
+  app.get("/registration/jobs/:jobId", { schema: { headers: linkHeaders, params: { type: "object", required: ["jobId"], properties: { jobId: uuid } } } }, async (req) => {
+    const link = await fromLink(req, "registration");
+    const job = await app.prisma.job.findFirst({ where: { id: req.params.jobId, recruitmentType: "campus", campusActive: true }, select: {
+      id: true, title: true, dept: true, location: true, employment: true, educationRequirement: true, languageRequirement: true,
+      description: true, responsibilities: true, requirements: true, nice: true, benefits: true, salary: true, campusKind: true,
+    } });
+    if (!job) throw queueError("校招岗位已移除或不存在", 404, "queue_job_not_found");
+    const { campusKind, salary, ...detail } = job;
+    const showSalary = campusKind === "referral" ? link.queue.session.showSalaryReferral : link.queue.session.showSalaryOnsite;
+    return { job: { ...detail, kind: campusKind, salary: showSalary ? salary : null } };
   });
   app.post("/share/open", { config: limited, schema: { headers: linkHeaders, body: { type: "object", additionalProperties: false, properties: { accessKey: { type: "string", maxLength: 64 } } } } }, async (req) => {
     const link = await fromLink(req);
@@ -162,6 +174,8 @@ export async function publicInterviewQueueRoutes(app) {
         await tx.interviewQueue.update({ where: { id: link.queueId }, data: { revision: { increment: 1 } } });
         const currentLink = assertQueueLink(await tx.interviewQueueLink.findUnique({ where: { id: link.id } }), "registration");
         if (currentLink.token !== req.headers["x-queue-link"]) throw queueError("登记链接已更新，请重新扫码", 410, "queue_link_inactive");
+        const job = await tx.job.findFirst({ where: { title: data.jobDirection, recruitmentType: "campus", campusActive: true, campusKind: "onsite" }, select: { id: true } });
+        if (!job) throw queueError("请选择当前标记为现场面试的校招岗位", 422, "queue_job_not_onsite");
         return tx.interviewQueueEntry.create({ data: { queueId: link.queueId, ...data } });
       });
     } catch (err) {

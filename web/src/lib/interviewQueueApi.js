@@ -19,6 +19,7 @@ const linkConfig = (token) => ({ headers: { "X-Queue-Link": token } });
 const bearer = (token) => ({ headers: { Authorization: `Bearer ${token}` } });
 export const publicQueueApi = {
   link: (token) => publicApi.get("/link", linkConfig(token)).then((r) => r.data),
+  job: (token, jobId) => publicApi.get(`/registration/jobs/${jobId}`, linkConfig(token)).then((r) => r.data.job),
   open: (token, accessKey) => publicApi.post("/share/open", accessKey ? { accessKey } : {}, linkConfig(token)).then((r) => r.data),
   data: (token, revision) => publicApi.get("/share/data", { ...bearer(token), params: { revision } }).then((r) => r.data),
   action: (token, body) => publicApi.post("/share/actions", body, bearer(token)).then((r) => r.data),

@@ -111,6 +111,19 @@ test("编辑 JD 和批量资料应用到统一岗位且保留未选择字段", a
   assert.equal(links.every((row) => row.kind === "referral"), true);
 });
 
+test("批量参与匹配可统一开启和关闭，并同步所有专场且保留 JD 内容", async (t) => {
+  const { app, job, job2, links } = await fixture(t, { twoJobs: true });
+  job2.campusMatchEnabled = false;
+  for (const matchEnabled of [false, true]) {
+    const response = await app.inject({ method: "PATCH", url: `${base}/bulk`, payload: { ids: [jobId, jobId2], changes: { matchEnabled } } });
+    assert.equal(response.statusCode, 200, response.body);
+    assert.equal(job.campusMatchEnabled, matchEnabled); assert.equal(job2.campusMatchEnabled, matchEnabled);
+    assert.equal(links.every((row) => row.matchEnabled === matchEnabled), true);
+    assert.equal(job.title, "校招工程师"); assert.equal(job.campusKind, "onsite");
+  }
+  assert.equal((await app.inject({ method: "PATCH", url: `${base}/bulk`, payload: { ids: [jobId], changes: { matchEnabled: "invalid" } } })).statusCode, 400);
+});
+
 test("批量追加分别保留各岗位原资料并去重；任一超限则整批拒绝", async (t) => {
   const { app, job, job2, writes } = await fixture(t, { twoJobs: true });
   job.nice = [" 沟通能力 "]; job.benefits = ["餐补"];

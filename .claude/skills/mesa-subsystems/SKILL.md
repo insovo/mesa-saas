@@ -11,6 +11,7 @@ description: MESA Recruit 各子系统的实现速查(候选人详情 / 解析�
 
 | 子系统 | 关键能力 |
 |--------|---------|
+| **校招岗位 HR 协作(2026-10-15)** | 岗位多选／全选生成 HR 链接和二维码（默认三天、自定义期限、可停止）；独立 CampusJobShare/Item 范围表，公开页 `/campus-job-review/:token` 查看 JD、批量标记现场面试／内推、只填名称/职责/要求新建 JD，固定芜湖/全职/全日制本科及以上/不限名额/37条福利并全专场同步。分享人权限实时复核、撤销与写入同锁、API 头传 token、Nginx 屏蔽凭证日志。登记页浏览全部校招 JD、只选 onsite，按链接 sessionStorage 草稿成功后清除；批量编辑 matchEnabled 同步 Job 和全部专场。详见 `delivery-docs/src/08_campus_job_sharing.md`。 |
 | **大学专场面试排队(2026-10-15)** | `/interviews` 在候选人之后，关联全部 CampusSession（含草稿/已结束）；独立 queue/entry/link 三表。匿名九项登记（学校默认专场、毕业 2027），邮箱验证码找回；专业/文化/HR 分享默认无密钥三天，可仅密钥/仅期限/两者，停止分享即时失效。专业单人、文化多选共用计时（LiquidLoader 十分钟满红）、结果二次确认；HR 默认 8700/13.5，多选统一改薪/基数/接受或放弃。四阶段实时大屏和逐列筛选，2s revision 轮询，事务锁与人员版本防覆盖；VIEWER 只读且不下发分享凭证；匿名 JWT audience 与后台隔离。原日程保留 `/interviews/schedule`，详见 `delivery-docs/src/07_interview_queue.md` 和 API §20。 |
 | 招聘工作台 | 候选人 / 社招岗位 / 校招专场岗位 / 部门 / 员工 / 面试 / 概览统计 CRUD;`Job.recruitmentType` 持久区分 `social` 与 `campus` |
 | 候选人详情页(V2)| 三列布局(profile sticky · 中间 · 评价+洞察 sticky)· 15+ 新组件:DocsModule / TagsModule / InlineSource / PeopleChips / JdSwitchConfirmModal / JdDescModal / FeedbackHistoryCard / OverviewTile / **ReparseConfirmModal** / **MarkdownBullets** / **NeedJobPlaceholder** 等。**阶段进度条**:7 tab 等宽两端对齐 + 填充对齐 active tab 中心。**附件区**勾选式列表 + 「下载选中(N)」+「下载全部」,LLM 解析的原始简历自动同步到「简历」分类 |

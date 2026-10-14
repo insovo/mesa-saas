@@ -19,6 +19,8 @@
 
 大学专场面试排队 `/interviews`：匿名登记、三类角色分享与撤销、多选群面共同计时、HR 批量定薪、四阶段实时大屏、邮箱验证码找回；原面试日程保留 `/interviews/schedule`。详见 `delivery-docs/src/07_interview_queue.md`。
 
+校招岗位可多选分享给 HR（链接／二维码，默认三天，可停止），HR 查看 JD、批量确认现场面试／内推、只填三项新建 JD，固定默认信息和 37 条福利同步全专场。排队登记浏览全部 JD、仅选现场岗位，并保存当前标签页草稿；岗位批量编辑支持匹配开关。详见 `delivery-docs/src/08_campus_job_sharing.md`。
+
 校招岗位统一供所有专场使用，福利待遇无条数上限；概览（原台账）、汇总和候选人列表支持多选/跨页全选下载原始简历 ZIP，汇总支持逐列内容多选筛选；汇总全部登记字段可批量人工编辑并优先显示在候选人详情，重新解析不覆盖人工值。各子系统能力与设计细节见 skill `mesa-subsystems`(`.claude/skills/mesa-subsystems/SKILL.md`);改模块时同步更新那里。
 
 ---

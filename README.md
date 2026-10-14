@@ -100,6 +100,7 @@ mesa/
 | [`src/05_feishu_resume_ingest.md`](./delivery-docs/src/05_feishu_resume_ingest.md) | 飞书入库(**已生产化**) |
 | [`src/06_performance_evaluation.md`](./delivery-docs/src/06_performance_evaluation.md) | **员工绩效评价** as-built |
 | [`src/07_interview_queue.md`](./delivery-docs/src/07_interview_queue.md) | 大学专场面试排队、角色分享、群面计时、定薪和实时大屏 |
+| [`src/08_campus_job_sharing.md`](./delivery-docs/src/08_campus_job_sharing.md) | 多选岗位分享给 HR、三项新建 JD、现场面试标记与全专场同步 |
 | [`textin+kimi+jev架构/*.html`](./textin+kimi+jev架构/) | **TextIn + Kimi + Jev 三层解析评估**:00 方案评估 · 02 Jev 接入 · 03 简历/JD 抽取协议 · 04 实施记录与验收(单文件 HTML,源在 `src/`,生成器 `tools/md2html`) |
 
 设计规划稿(迭代前)见 [`delivery-docs/dev-plans/`](./delivery-docs/dev-plans/README.md)。

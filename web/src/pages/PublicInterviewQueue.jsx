@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Button, Card, Input, LoadingBlock, toast } from "../components/Primitives.jsx";
 import QueueBoard from "../components/interview-queue/QueueBoard.jsx";
+import RegistrationJobPicker from "../components/interview-queue/RegistrationJobPicker.jsx";
+import { readQueueRegistrationDraft, saveQueueRegistrationDraft, clearQueueRegistrationDraft } from "../lib/queueRegistrationDraft.js";
 import { publicQueueApi, studentQueueToken, QUEUE_ROLE_LABELS, QUEUE_STAGE_LABELS, queueResult, queueErrorMessage } from "../lib/interviewQueueApi.js";
 
 function PublicShell({ children }) {
@@ -9,7 +11,8 @@ function PublicShell({ children }) {
 }
 
 export default function PublicInterviewQueue({ mode }) {
-  return <PublicShell>{mode === "share" ? <SharePage /> : mode === "register" ? <RegisterPage /> : <MinePage />}</PublicShell>;
+  const { token } = useParams();
+  return <PublicShell>{mode === "share" ? <SharePage /> : mode === "register" ? <RegisterPage key={token} /> : <MinePage />}</PublicShell>;
 }
 
 function SharePage() {
@@ -56,16 +59,21 @@ function RegisterPage() {
   const [info, setInfo] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState({ name: "", school: "", major: "", degree: "本科", gradYear: 2027, languageAbility: "", phone: "", jobDirection: "", email: "" });
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [form, setForm] = useState(() => readQueueRegistrationDraft(token));
   useEffect(() => {
     let active = true;
-    publicQueueApi.link(token).then((result) => { if (active) { if (result.kind !== "registration") { setError("此链接用于面试官，请打开排队登记链接"); return; } setInfo(result); setForm((current) => ({ ...current, school: result.session.school || result.session.name })); } }).catch((err) => { if (active) setError(queueErrorMessage(err)); });
+    publicQueueApi.link(token).then((result) => { if (active) { if (result.kind !== "registration") { setError("此链接用于面试官，请打开排队登记链接"); return; } setInfo(result); setForm((current) => ({ ...current, school: current.school || result.session.school || result.session.name })); } }).catch((err) => { if (active) setError(queueErrorMessage(err)); });
     return () => { active = false; };
   }, [token]);
+  useEffect(() => { if (info) saveQueueRegistrationDraft(token, form); }, [token, form, info]);
+  const onsiteJobs = (info?.jobs || []).filter((job) => job.kind === "onsite");
   const change = (key, value) => setForm((current) => ({ ...current, [key]: value }));
   async function submit(event) {
-    event.preventDefault(); setBusy(true); setError("");
-    try { const result = await publicQueueApi.register(token, { ...form, gradYear: Number(form.gradYear) }); studentQueueToken.set(result.token); navigate("/interview-queue/mine", { replace: true }); toast("登记成功，可随时回来查看阶段和结果", "success"); }
+    event.preventDefault();
+    if (!onsiteJobs.some((job) => job.title === form.jobDirection)) { setError("请选择当前标记为现场面试的校招岗位"); return; }
+    setBusy(true); setError("");
+    try { const result = await publicQueueApi.register(token, { ...form, gradYear: Number(form.gradYear) }); studentQueueToken.set(result.token); clearQueueRegistrationDraft(token); navigate("/interview-queue/mine", { replace: true }); toast("登记成功，可随时回来查看阶段和结果", "success"); }
     catch (err) { setError(queueErrorMessage(err)); } finally { setBusy(false); }
   }
   if (!info) return error ? <Card className="max-w-lg mx-auto p-6 text-red-500">{error}<Link to="/interview-queue/mine" className="text-brand mt-4">找回已有记录</Link></Card> : <LoadingBlock height="h-60" />;
@@ -75,10 +83,10 @@ function RegisterPage() {
     <Input id="queue-gradYear" label="毕业时间" type="number" required min={2000} max={2100} value={form.gradYear} onChange={(e) => change("gradYear", e.target.value)} />
     <div><Input id="queue-languageAbility" label="语言能力" required list="queue-language-options" maxLength={200} value={form.languageAbility} onChange={(e) => change("languageAbility", e.target.value)} placeholder="可选择或自行填写" /><datalist id="queue-language-options">{["CET-4", "CET-6", "雅思", "托福"].map((language) => <option key={language} value={language} />)}</datalist><div className="flex flex-wrap gap-1 mt-2">{["CET-4", "CET-6", "雅思", "托福"].map((language) => <button key={language} type="button" className="text-xs px-2 py-1 rounded-lg bg-lightPrimary text-brand" onClick={() => change("languageAbility", language)}>{language}</button>)}</div></div>
     <Input id="queue-phone" label="联系电话" type="tel" required maxLength={30} value={form.phone} onChange={(e) => change("phone", e.target.value)} />
-    <div><Input id="queue-jobDirection" label="岗位方向" list="queue-register-jobs" required maxLength={200} value={form.jobDirection} onChange={(e) => change("jobDirection", e.target.value)} placeholder="选择岗位或自行填写" /><datalist id="queue-register-jobs">{info.jobs.map((job, index) => <option key={index} value={job.title} />)}</datalist></div>
+    <div><label htmlFor="queue-jobDirection" className="text-sm font-bold ml-3 block mb-2">岗位方向<span className="text-red-500"> *</span></label><select id="queue-jobDirection" aria-label="岗位方向" required disabled={busy} className="w-full border border-gray-200 rounded-xl p-3 bg-white text-sm" value={form.jobDirection} onChange={(e) => change("jobDirection", e.target.value)}><option value="" disabled>请选择现场面试岗位</option>{form.jobDirection && !onsiteJobs.some((job) => job.title === form.jobDirection) && <option value={form.jobDirection} disabled>{form.jobDirection}（请重新选择）</option>}{onsiteJobs.map((job) => <option key={job.id} value={job.title}>{job.title}</option>)}</select><button type="button" disabled={busy} className="text-sm text-brand font-medium mt-2" onClick={() => setPickerOpen(true)}>浏览校招岗位与 JD →</button></div>
     <Input id="queue-email" label="邮箱" type="email" required maxLength={254} value={form.email} onChange={(e) => change("email", e.target.value)} containerClassName="sm:col-span-2" />
     <p className="text-xs text-gray-600 sm:col-span-2">邮箱用于清理缓存、更换设备后找回记录，以及查看当前面试阶段和结果。</p>{error && <p className="text-sm text-red-500 sm:col-span-2">{error}</p>}<Button type="submit" disabled={busy} className="sm:col-span-2">{busy ? "登记中…" : "提交排队登记"}</Button>
-  </form></Card>;
+  </form>{pickerOpen && <RegistrationJobPicker token={token} jobs={info.jobs} selectedTitle={form.jobDirection} onClose={() => setPickerOpen(false)} onSelect={(title) => { change("jobDirection", title); setPickerOpen(false); }} />}</Card>;
 }
 
 function MinePage() {
