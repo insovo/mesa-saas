@@ -27,7 +27,7 @@ export default function Campus() {
   useEffect(() => { loadSessions(); }, [loadSessions]);
 
   const tabs = [
-    { key: "ledger", label: "台账", icon: "table-2" },
+    { key: "ledger", label: "概览", icon: "table-2" },
     { key: "summary", label: "汇总", icon: "layout-list" },
     { key: "sessions", label: "专场", icon: "calendar-days" },
     { key: "jobs", label: "岗位", icon: "briefcase" },

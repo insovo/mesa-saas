@@ -117,6 +117,7 @@ const LIST_QUERY = {
     orderBy: { type: "string", enum: ["createdAt", "updatedAt"], default: "updatedAt" },
     skip: { type: "integer", minimum: 0, default: 0 },
     take: { type: "integer", minimum: 1, maximum: 200, default: 50 },
+    selection: { type: "string", enum: ["all"] },
   },
 };
 
@@ -223,6 +224,11 @@ export default async function candidatesRoutes(app) {
 
     const scopeWhere = await buildCandidateScopeWhere(req);
     const finalWhere = scopeWhere ? { AND: [where, scopeWhere] } : where;
+
+    if (req.query.selection === "all") {
+      const selection = await app.prisma.candidate.findMany({ where: finalWhere, orderBy: { [orderBy]: "desc" }, select: { id: true } });
+      return { selection, total: selection.length };
+    }
 
     const [items, total] = await Promise.all([
       app.prisma.candidate.findMany({

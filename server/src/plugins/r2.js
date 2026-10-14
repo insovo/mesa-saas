@@ -53,9 +53,9 @@ export default fp(async (app) => {
     },
 
     /** 服务端读取对象为 Buffer（导出嵌入签名等） */
-    async getObjectBuffer(key) {
+    async getObjectBuffer(key, { timeoutMs } = {}) {
       const cmd = new GetObjectCommand({ Bucket: process.env.R2_BUCKET, Key: key });
-      const obj = await client.send(cmd);
+      const obj = await client.send(cmd, timeoutMs ? { abortSignal: AbortSignal.timeout(timeoutMs) } : {});
       const chunks = [];
       for await (const chunk of obj.Body) chunks.push(chunk);
       return Buffer.concat(chunks.map((c) => (Buffer.isBuffer(c) ? c : Buffer.from(c))));

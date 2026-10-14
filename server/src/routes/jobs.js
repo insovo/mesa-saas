@@ -41,7 +41,7 @@ const JOB_BODY = {
     responsibilities: { type: "array", items: { type: "string", maxLength: 500 }, maxItems: 20 },
     requirements: { type: "array", items: { type: "string", maxLength: 500 }, maxItems: 20 },
     nice: { type: "array", items: { type: "string", maxLength: 500 }, maxItems: 20 },
-    benefits: { type: "array", items: { type: "string", maxLength: 200 }, maxItems: 20 },
+    benefits: { type: "array", items: { type: "string", maxLength: 200 } },
     // 三层架构(2026-09-20):JD 事实层 + 评价模型层(结构由 lib/jd/normalize.js 与 lib/evaluation/templates.js 校验)
     jdFacts: { type: "object", nullable: true, additionalProperties: true },
     evaluationModel: { type: "object", nullable: true, additionalProperties: true },

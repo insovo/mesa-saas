@@ -42,6 +42,7 @@ const querySchema = {
     skip: { type: "integer", minimum: 0, default: 0 },
     take: { type: "integer", minimum: 1, maximum: 100, default: 50 },
     selection: { type: "string", enum: ["all"] },
+    columnFilters: { type: "string", maxLength: 100000 },
     ...Object.fromEntries(FILTERS.map(({ key }) => [key, { type: "string", maxLength: 500 }])),
   },
 };
@@ -135,29 +136,42 @@ function filterOptions(rows) {
     return [key, key === "schoolType" ? [...new Set([...options, ...present])] : options || [...new Set(present)].sort((a, b) => a.localeCompare(b, "zh-CN"))];
   }));
 }
-function matches(row, query) {
+function matches(row, query, columnFilters = {}, exceptKey) {
   if (query.q && !FIELDS.some(({ key }) => row[key].toLowerCase().includes(query.q.trim().toLowerCase()))) return false;
-  return FILTERS.every(({ key }) => !query[key] || (key === "englishLevel" || key.endsWith("Interviewer") ? row[key].split(" / ").includes(query[key]) : row[key] === query[key]));
+  return FILTERS.every(({ key }) => key === exceptKey || !query[key] || (key === "englishLevel" || key.endsWith("Interviewer") ? row[key].split(" / ").includes(query[key]) : row[key] === query[key]))
+    && Object.entries(columnFilters).every(([key, values]) => key === exceptKey || values.includes(row[key]));
 }
 function canEditSummary(access) {
   return access.role !== "CAMPUS_INTERVIEWER" && (access.isAdmin || hasModule(access, "campus.manage") || hasModule(access, "candidate.edit"));
 }
 
 export default async function campusSummaryRoutes(app) {
-  app.get("/summary", { schema: { querystring: querySchema } }, async (req) => {
+  app.get("/summary", { schema: { querystring: querySchema } }, async (req, reply) => {
+    let columnFilters = {};
+    try {
+      columnFilters = req.query.columnFilters ? JSON.parse(req.query.columnFilters) : {};
+      if (!columnFilters || Array.isArray(columnFilters) || typeof columnFilters !== "object" || Object.entries(columnFilters).some(([key, values]) => !FIELDS.some((field) => field.key === key) || !Array.isArray(values) || values.length > 1000 || values.some((value) => typeof value !== "string" || value.length > 1000))) throw new Error("invalid_filters");
+    } catch {
+      return reply.code(400).send({ error: "invalid_column_filters", message: "列筛选条件无效，请重新选择" });
+    }
     const applicants = await app.prisma.campusApplicant.findMany({
       where: req.query.sessionId ? { sessionId: req.query.sessionId } : {},
       orderBy: [{ createdAt: "desc" }, { id: "asc" }], include: summaryInclude,
     });
     const rows = applicants.map(summaryRow);
-    const filtered = rows.filter((row) => matches(row, req.query));
+    const filtered = rows.filter((row) => matches(row, req.query, columnFilters));
+    const filterValues = Object.fromEntries(FIELDS.map(({ key }) => {
+      const counts = new Map();
+      for (const row of rows) if (matches(row, req.query, columnFilters, key)) counts.set(row[key], (counts.get(row[key]) || 0) + 1);
+      return [key, [...counts].sort(([a], [b]) => a.localeCompare(b, "zh-CN")).map(([value, count]) => ({ value, count }))];
+    }));
     const skip = req.query.skip;
     const access = await loadUserAccess(req);
     return {
       items: filtered.slice(skip, skip + req.query.take).map((row, index) => ({ ...row, sequence: skip + index + 1 })),
-      total: filtered.length, columns: SUMMARY_COLUMNS, options: filterOptions(rows),
+      total: filtered.length, columns: SUMMARY_COLUMNS, options: filterOptions(rows), filterValues,
       canEdit: canEditSummary(access),
-      ...(req.query.selection === "all" ? { selection: filtered.map(({ id, updatedAt }) => ({ id, updatedAt })) } : {}),
+      ...(req.query.selection === "all" ? { selection: filtered.map(({ id, candidateId, updatedAt }) => ({ id, candidateId, updatedAt })) } : {}),
     };
   });
 

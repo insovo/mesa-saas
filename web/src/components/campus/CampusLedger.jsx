@@ -10,6 +10,7 @@ import { Select, KindTag, SessionStatusPill, fmtDateTime, errMsg } from "./ui.js
 import CampusScoreBalls from "./CampusScoreBalls.jsx";
 import ApplicantDrawer, { InterviewModal } from "./ApplicantDrawer.jsx";
 import ApplicantCreateModal from "./ApplicantCreateModal.jsx";
+import ResumeDownloadButton from "../ResumeDownloadButton.jsx";
 
 function Kpi({ icon, label, value, accent = "#422AFB", active, onClick }) {
   const ref = useRef(null); const prev = useRef(0);
@@ -49,10 +50,15 @@ export default function CampusLedger({ sessions, onSessionsChanged }) {
   const [drawerId, setDrawerId] = useState(null);
   const [drawerInitialEdit, setDrawerInitialEdit] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
-  const [selected, setSelected] = useState(() => new Set());
+  const [selected, setSelected] = useState({});
+  const [skip, setSkip] = useState(0);
+  const [selectingAll, setSelectingAll] = useState(false);
+  const selectionGeneration = useRef(0);
+  const requestGeneration = useRef(0);
   const [bulkStatus, setBulkStatus] = useState("");
   const [bulkIv, setBulkIv] = useState(false);
   const canExport = useHasModule("campus.export");
+  const canDownload = useHasModule("candidate.attachments");
   const session = sessions.find((s) => s.id === sessionId) || null;
 
   useEffect(() => {
@@ -61,14 +67,17 @@ export default function CampusLedger({ sessions, onSessionsChanged }) {
 
   const load = useCallback(async () => {
     if (!sessionId) return;
+    const generation = ++requestGeneration.current;
     setLoading(true);
     try {
       const params = Object.fromEntries(Object.entries(filter).filter(([, v]) => v !== ""));
-      const [ledger, jobs] = await Promise.all([resources.campus.ledger(sessionId, { ...params, take: 300 }), resources.campus.listSessionJobs(sessionId)]);
-      setData(ledger); setSessionJobs(jobs); setSelected(new Set());
-    } catch (e) { toast(errMsg(e, "加载台账失败"), "error"); }
-    finally { setLoading(false); }
-  }, [sessionId, filter]);
+      const [ledger, jobs] = await Promise.all([resources.campus.ledger(sessionId, { ...params, skip, take: 100 }), resources.campus.listSessionJobs(sessionId)]);
+      if (generation !== requestGeneration.current) return;
+      setData(ledger); setSessionJobs(jobs);
+    } catch (e) { if (generation === requestGeneration.current) toast(errMsg(e, "加载概览失败"), "error"); }
+    finally { if (generation === requestGeneration.current) setLoading(false); }
+  }, [sessionId, filter, skip]);
+  useEffect(() => { selectionGeneration.current++; setSelected({}); setSkip(0); }, [sessionId, filter]);
   useEffect(() => { load(); }, [load]);
 
   // 有解析或 AI 报告中的学生时刷新状态
@@ -86,21 +95,35 @@ export default function CampusLedger({ sessions, onSessionsChanged }) {
     const byJob = new Map((applicant.matchScores || []).map((score) => [score.jobId, score.scoreShown]));
     return matchJobs.map((sessionJob) => ({ jobId: sessionJob.jobId, title: sessionJob.job?.title || "岗位", scoreShown: byJob.get(sessionJob.jobId) ?? null }));
   };
-  const allAppIds = useMemo(() => items.flatMap((it) => it.applications.filter((a) => a.status !== "withdrawn").map((a) => a.id)), [items]);
+  const selectedItems = Object.values(selected);
+  const selectedApps = useMemo(() => selectedItems.flatMap((it) => it.applications.filter((a) => a.status !== "withdrawn")), [selected]);
+  const allAppIds = selectedApps.map((a) => a.id);
+  const pageSelected = items.length > 0 && items.every((it) => selected[it.id]);
 
   function toggleRow(it) {
     setSelected((prev) => {
-      const next = new Set(prev); const ids = it.applications.filter((a) => a.status !== "withdrawn").map((a) => a.id);
-      const all = ids.every((id) => next.has(id));
-      ids.forEach((id) => (all ? next.delete(id) : next.add(id)));
+      const next = { ...prev };
+      if (next[it.id]) delete next[it.id]; else next[it.id] = it;
       return next;
     });
   }
+  function togglePage() {
+    setSelected((current) => { const next = { ...current }; items.forEach((it) => { if (pageSelected) delete next[it.id]; else next[it.id] = it; }); return next; });
+  }
+  async function selectAllFiltered() {
+    const generation = selectionGeneration.current;
+    setSelectingAll(true);
+    try {
+      const result = await resources.campus.ledger(sessionId, { ...Object.fromEntries(Object.entries(filter).filter(([, value]) => value)), selection: "all" });
+      if (generation === selectionGeneration.current) setSelected(Object.fromEntries(result.selection.map((it) => [it.id, it])));
+    } catch (error) { toast(errMsg(error, "全选失败"), "error"); }
+    finally { setSelectingAll(false); }
+  }
   async function applyBulk() {
-    if (!bulkStatus || selected.size === 0) return;
-    if (!confirm(`将选中的 ${selected.size} 条投递状态改为「${CAMPUS_APP_STATUS_LABEL[bulkStatus]}」?`)) return;
+    if (!bulkStatus || allAppIds.length === 0) return;
+    if (!confirm(`将选中的 ${allAppIds.length} 条投递状态改为「${CAMPUS_APP_STATUS_LABEL[bulkStatus]}」?`)) return;
     const advance = bulkStatus === "passed" ? confirm("是否同时把这些候选人状态改为「待入职」并进入入职管理?\n确定 = 是   取消 = 只改投递状态") : false;
-    try { const r = await resources.campus.bulkStatus(Array.from(selected), bulkStatus, advance); toast(`已更新 ${r.updated} 条`, "success"); setBulkStatus(""); load(); }
+    try { const r = await resources.campus.bulkStatus(allAppIds, bulkStatus, advance); toast(`已更新 ${r.updated} 条`, "success"); setBulkStatus(""); setSelected({}); load(); }
     catch (e) { toast(errMsg(e), "error"); }
   }
   async function exportXlsx() {
@@ -155,13 +178,19 @@ export default function CampusLedger({ sessions, onSessionsChanged }) {
           <Select small value={filter.contact} onChange={(e) => setFilter({ ...filter, contact: e.target.value })}><option value="">联系方式</option><option value="confirmed">已确认</option><option value="unconfirmed">未确认</option></Select>
           {Object.values(filter).some(Boolean) && <Button size="sm" variant="ghost" onClick={() => setFilter(EMPTY_FILTER)} icon={<I name="x" size={14} />}>清除</Button>}
         </div>
-        {selected.size > 0 && (
-          <div className="mt-3 flex items-center gap-2 p-2.5 rounded-xl bg-brand-50/60 text-xs text-navy-700">
-            <span className="font-bold">已选 {selected.size} 条投递</span>
+        <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-gray-100 pt-3 text-xs text-navy-700">
+          <label className="inline-flex items-center gap-2"><input type="checkbox" aria-label="全选当前页学生" className="accent-brand" checked={pageSelected} disabled={loading || !items.length} onChange={togglePage} />全选当前页</label>
+          {data?.total > items.length && <button type="button" disabled={loading || selectingAll} className="text-brand" onClick={selectAllFiltered}>{selectingAll ? "选择中…" : `全选筛选结果（${data.total} 人）`}</button>}
+        </div>
+        {selectedItems.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 p-2.5 rounded-xl bg-brand-50/60 text-xs text-navy-700">
+            <span className="font-bold">已选 {selectedItems.length} 人 · {allAppIds.length} 条投递</span>
+            {canDownload && <ResumeDownloadButton campus ids={selectedItems.map(({ id }) => id)} disabled={loading || selectingAll} />}
             <Select small value={bulkStatus} onChange={(e) => setBulkStatus(e.target.value)}><option value="">批量改状态…</option>{CAMPUS_APP_STATUS.map((s) => <option key={s} value={s}>{CAMPUS_APP_STATUS_LABEL[s]}</option>)}</Select>
-            <Button size="sm" disabled={!bulkStatus} onClick={applyBulk}>应用</Button>
-            <Button size="sm" variant="secondary" icon={<I name="calendar-plus" size={14} />} onClick={() => setBulkIv(true)}>批量安排现场面试</Button>
-            <button type="button" className="ml-auto text-gray-500 hover:text-navy-700" onClick={() => setSelected(new Set())}>取消选择</button>
+            <Button size="sm" disabled={!bulkStatus || !allAppIds.length || allAppIds.length > 500 || loading || selectingAll} onClick={applyBulk}>应用</Button>
+            <Button size="sm" variant="secondary" disabled={!allAppIds.length || allAppIds.length > 200 || loading || selectingAll} icon={<I name="calendar-plus" size={14} />} onClick={() => setBulkIv(true)}>批量安排现场面试</Button>
+            <button type="button" className="ml-auto text-gray-500 hover:text-navy-700" onClick={() => { selectionGeneration.current++; setSelected({}); }}>取消选择</button>
+            {selectedItems.length > 1000 && <span className="text-amber-700">每次最多下载 1000 人，请缩小筛选范围</span>}
           </div>
         )}
       </Card>
@@ -175,18 +204,17 @@ export default function CampusLedger({ sessions, onSessionsChanged }) {
             <table className="hidden md:table w-full text-sm">
               <thead>
                 <tr className="text-left text-[11px] text-gray-600 border-b border-gray-100">
-                  <th className="px-4 py-3 w-8"><input type="checkbox" className="accent-brand" checked={allAppIds.length > 0 && allAppIds.every((id) => selected.has(id))} onChange={(e) => setSelected(e.target.checked ? new Set(allAppIds) : new Set())} /></th>
+                  <th className="px-4 py-3 w-8"><input type="checkbox" aria-label="选择当前页全部学生" className="accent-brand" checked={pageSelected} disabled={loading} onChange={togglePage} /></th>
                   <th className="px-3 py-3">学生</th><th className="px-3 py-3">学校 / 专业</th><th className="px-3 py-3">联系方式</th><th className="px-3 py-3">投递岗位</th><th className="px-3 py-3">岗位匹配度</th><th className="px-3 py-3">登记时间</th><th className="px-3 py-3"></th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((it) => {
                   const apps = it.applications.filter((a) => a.status !== "withdrawn");
-                  const ids = apps.map((a) => a.id);
-                  const checked = ids.length > 0 && ids.every((id) => selected.has(id));
+                  const checked = Boolean(selected[it.id]);
                   return (
                     <tr key={it.id} className="border-b border-gray-50 hover:bg-lightPrimary/40">
-                      <td className="px-4 py-3"><input type="checkbox" className="accent-brand" checked={checked} disabled={ids.length === 0} onChange={() => toggleRow(it)} /></td>
+                      <td className="px-4 py-3"><input type="checkbox" aria-label={`选择${it.name || "学生"}`} className="accent-brand" checked={checked} disabled={loading} onChange={() => toggleRow(it)} /></td>
                       <td className="px-3 py-3"><Link to={`/candidates/${it.candidateId}`} className="flex items-center gap-2 min-w-[140px] rounded-lg hover:text-brand focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand" title="打开候选人详情"><Avatar name={it.name || "?"} size={32} /><div className="min-w-0"><p className="font-bold text-navy-700 truncate hover:text-brand">{it.name || <span className="text-gray-400 font-normal">未填姓名</span>}</p><p className="text-[11px] text-gray-500">{it.degree || ""}{it.gradYear ? ` · ${it.gradYear} 届` : ""}</p></div></Link></td>
                       <td className="px-3 py-3 text-xs text-navy-700 min-w-[140px]"><p className="truncate">{it.school || <span className="text-gray-400">—</span>}</p><p className="text-gray-500 truncate">{it.major || ""}</p></td>
                       <td className="px-3 py-3 text-xs text-navy-700 min-w-[130px]"><p className="inline-flex items-center gap-1">{it.phone}{it.contactConfirmedAt && <I name="check" size={11} className="text-green-600" />}</p><p className="text-gray-500 truncate max-w-[180px]">{it.email || ""}</p></td>
@@ -206,11 +234,10 @@ export default function CampusLedger({ sessions, onSessionsChanged }) {
             <div className="md:hidden divide-y divide-gray-100">
               {items.map((it) => {
                 const apps = it.applications.filter((a) => a.status !== "withdrawn");
-                const ids = apps.map((a) => a.id);
                 return (
                   <div key={it.id} className="p-4 space-y-3 min-w-0">
                     <div className="flex items-center gap-3">
-                      <input type="checkbox" className="accent-brand shrink-0" checked={ids.length > 0 && ids.every((id) => selected.has(id))} disabled={!ids.length} onChange={() => toggleRow(it)} />
+                      <input type="checkbox" aria-label={`选择${it.name || "学生"}`} className="accent-brand shrink-0" checked={Boolean(selected[it.id])} disabled={loading} onChange={() => toggleRow(it)} />
                       <Link to={`/candidates/${it.candidateId}`} className="flex items-center gap-2 min-w-0 flex-1"><Avatar name={it.name || "?"} size={32} /><span className="min-w-0"><span className="block truncate text-sm font-bold text-navy-700">{it.name || "未填姓名"}</span><span className="block truncate text-[11px] text-gray-500">{it.school || "—"}{it.major ? ` · ${it.major}` : ""}</span></span></Link>
                       <button type="button" onClick={() => { setDrawerId(it.id); setDrawerInitialEdit(true); }} className="shrink-0 text-xs font-bold text-brand">编辑</button>
                     </div>
@@ -221,11 +248,12 @@ export default function CampusLedger({ sessions, onSessionsChanged }) {
               })}
             </div>
             <p className="px-4 py-2 text-[11px] text-gray-500">共 {data?.total ?? items.length} 位学生{data && !data.showContact ? " · 无联系方式权限,已打码" : ""}</p>
+            <div className="flex items-center justify-between gap-3 border-t border-gray-100 px-4 py-3 text-xs text-gray-700"><span>{skip + 1}–{Math.min(skip + 100, data.total)} / {data.total}</span><div className="flex gap-2"><Button size="sm" variant="ghost" disabled={loading || !skip} onClick={() => setSkip(skip - 100)}>上一页</Button><Button size="sm" variant="ghost" disabled={loading || skip + 100 >= data.total} onClick={() => setSkip(skip + 100)}>下一页</Button></div></div>
           </div>
         )}
       </Card>
 
-      {bulkIv && <InterviewModal apps={items.flatMap((it) => it.applications).filter((a) => selected.has(a.id))} session={session} onClose={() => setBulkIv(false)} onDone={() => { setBulkIv(false); load(); }} />}
+      {bulkIv && <InterviewModal apps={selectedApps} session={session} onClose={() => setBulkIv(false)} onDone={() => { setBulkIv(false); setSelected({}); load(); }} />}
       <ApplicantDrawer key={drawerId || "closed"} applicantId={drawerId} open={!!drawerId} initialEdit={drawerInitialEdit} onClose={() => { setDrawerId(null); setDrawerInitialEdit(false); }} sessionJobs={sessionJobs} onChanged={() => { load(); onSessionsChanged?.(); }} />
       {session && <ApplicantCreateModal open={createOpen} onClose={() => setCreateOpen(false)} session={session} sessionJobs={sessionJobs} onCreated={() => { load(); onSessionsChanged?.(); }} />}
     </div>

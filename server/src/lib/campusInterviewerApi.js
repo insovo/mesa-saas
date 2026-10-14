@@ -12,6 +12,6 @@ export function campusInterviewerApiAllowed(method, rawUrl) {
   if (method === "GET" && /^\/api\/jobs(?:\/[^/]+|\/taxonomy\/[^/]+|\/evaluation\/templates)?$/.test(path)) return true;
   if (method === "POST" && path === "/api/jobs/parse-text") return true;
   if (method === "GET" && path === "/api/resumes/llm-status") return true;
-  if (method === "POST" && ["/api/storage/presigned-url", "/api/storage/confirm", "/api/storage/signed-get-url"].includes(path)) return true;
+  if (method === "POST" && ["/api/storage/presigned-url", "/api/storage/confirm", "/api/storage/signed-get-url", "/api/storage/resumes/archive"].includes(path)) return true;
   return false;
 }

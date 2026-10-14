@@ -992,7 +992,7 @@ ${extractedText}`;
       responsibilities: Array.isArray(j.responsibilities) ? j.responsibilities.filter((x) => typeof x === "string").slice(0, 20).map((s) => s.slice(0, 300)) : [],
       requirements: Array.isArray(j.requirements) ? j.requirements.filter((x) => typeof x === "string").slice(0, 20).map((s) => s.slice(0, 300)) : [],
       nice: Array.isArray(j.nice) ? j.nice.filter((x) => typeof x === "string").slice(0, 10).map((s) => s.slice(0, 300)) : [],
-      benefits: Array.isArray(j.benefits) ? j.benefits.filter((x) => typeof x === "string").slice(0, 15).map((s) => s.slice(0, 200)) : [],
+      benefits: Array.isArray(j.benefits) ? j.benefits.filter((x) => typeof x === "string").map((s) => s.slice(0, 200)) : [],
       employment: typeof j.employment === "string" ? j.employment.slice(0, 30) : null,
       salary: typeof j.salary === "string" ? j.salary.slice(0, 60) : null,
       levelRange: typeof j.levelRange === "string" ? j.levelRange.slice(0, 30) : null,
@@ -1034,7 +1034,10 @@ export async function parseJobText({ title, text }) {
 export function normalizeParsedJobText(j, jobTitle, source) {
   if (!j || typeof j !== "object" || Array.isArray(j)) throw Object.assign(new Error("JD 抽取结果格式无效"), { statusCode: 422, code: "kimi_parse_error" });
   const field = (key, max) => typeof j[key] === "string" ? j[key].trim().slice(0, max) : "";
-  const list = (key, max) => Array.isArray(j[key]) ? j[key].filter((v) => typeof v === "string").map((v) => v.trim().slice(0, max)).filter(Boolean).slice(0, 20) : [];
+  const list = (key, max) => {
+    const values = Array.isArray(j[key]) ? j[key].filter((v) => typeof v === "string").map((v) => v.trim().slice(0, max)).filter(Boolean) : [];
+    return key === "benefits" ? values : values.slice(0, 20);
+  };
   return {
     title: jobTitle, description: source,
     dept: field("dept", 100), location: field("location", 100), employment: field("employment", 50), salary: field("salary", 200),

@@ -15,9 +15,10 @@ import {
   toast,
 } from "../components/Primitives.jsx";
 import { STATUS_ORDER, candidateExpText, hasWorkExperience } from "../lib/constants.js";
-import { useMe } from "../lib/authContext.jsx";
+import { useMe, useHasModule } from "../lib/authContext.jsx";
 import CampusScoreBalls from "../components/campus/CampusScoreBalls.jsx";
 import DeleteCandidateModal from "../components/DeleteCandidateModal.jsx";
+import ResumeDownloadButton from "../components/ResumeDownloadButton.jsx";
 
 // Helpers — Upload.jsx 已经有相同函数,后续可抽 lib/format.js 复用
 function fmtDateTime(iso) {
@@ -67,7 +68,15 @@ const EMPTY_FORM = {
 export default function Candidates() {
   const navigate = useNavigate();
   const campusInterviewer = useMe()?.role === "CAMPUS_INTERVIEWER";
+  const canDownload = useHasModule("candidate.attachments");
+  const canSelect = !campusInterviewer || canDownload;
   const [items, setItems] = useState([]);
+  const [skip, setSkip] = useState(0);
+  const [total, setTotal] = useState(0);
+  const [loadedFilters, setLoadedFilters] = useState({});
+  const [selectingAll, setSelectingAll] = useState(false);
+  const selectionGeneration = useRef(0);
+  const loadGeneration = useRef(0);
   const [jobs, setJobs] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -89,7 +98,9 @@ export default function Candidates() {
   const [batchEval, setBatchEval] = useState(loadBatchEvalFromSession);
   const batchEvalRef = useRef(null);
 
-  async function load() {
+  async function load(nextSkip = skip) {
+    if (typeof nextSkip !== "number") nextSkip = skip;
+    const generation = ++loadGeneration.current;
     setLoading(true);
     try {
       const params = {};
@@ -97,19 +108,22 @@ export default function Candidates() {
       if (statusFilter) params.status = statusFilter;
       if (classFilter) params.classification = classFilter;
       if (priorityFilter) params.reviewPriority = priorityFilter;
-      const { items } = await resources.candidates.list(params);
+      const { items, total } = await resources.candidates.list({ ...params, skip: nextSkip, take: 50 });
+      if (generation !== loadGeneration.current) return;
       setItems(items);
+      setTotal(total); setLoadedFilters(params);
     } catch (e) {
-      setErr(e.response?.data?.message || e.message);
+      if (generation === loadGeneration.current) setErr(e.response?.data?.message || e.message);
     } finally {
-      setLoading(false);
+      if (generation === loadGeneration.current) setLoading(false);
     }
   }
 
   useEffect(() => {
     load();
     // eslint-disable-next-line
-  }, [statusFilter, classFilter, priorityFilter]);
+  }, [statusFilter, classFilter, priorityFilter, skip]);
+  useEffect(() => { selectionGeneration.current++; setSelectedIds(new Set()); setSkip(0); }, [q, statusFilter, classFilter, priorityFilter]);
 
   // ─── 批量评估:POST /resumes/evaluate-batch → 每个 task 轮询,进度持久化到 sessionStorage ───
   useEffect(() => { batchEvalRef.current = batchEval; try { if (batchEval) sessionStorage.setItem(BATCH_EVAL_SS_KEY, JSON.stringify(batchEval)); else sessionStorage.removeItem(BATCH_EVAL_SS_KEY); } catch {} }, [batchEval]);
@@ -186,8 +200,16 @@ export default function Candidates() {
   }
   const allSelected = items.length > 0 && items.every((c) => selectedIds.has(c.id));
   function toggleSelectAll() {
-    if (allSelected) setSelectedIds(new Set());
-    else setSelectedIds(new Set(items.map((c) => c.id)));
+    setSelectedIds((current) => { const next = new Set(current); items.forEach(({ id }) => allSelected ? next.delete(id) : next.add(id)); return next; });
+  }
+  async function selectAllFiltered() {
+    const generation = selectionGeneration.current;
+    setSelectingAll(true);
+    try {
+      const result = await resources.candidates.list({ ...loadedFilters, selection: "all" });
+      if (generation === selectionGeneration.current) setSelectedIds(new Set(result.selection.map(({ id }) => id)));
+    } catch (error) { toast(error.response?.data?.message || "全选失败", "error"); }
+    finally { setSelectingAll(false); }
   }
 
   // 批量关联 JD / 部门
@@ -345,20 +367,25 @@ export default function Candidates() {
         ) : (
           <>
             {/* 批量操作浮条 */}
-            <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-100">
-              {!campusInterviewer && <input
+            <div className="flex flex-wrap items-center gap-2 mb-3 pb-2 border-b border-gray-100">
+              {canSelect && <input
                 type="checkbox"
                 checked={allSelected}
                 ref={(el) => { if (el) el.indeterminate = !allSelected && selectedIds.size > 0; }}
                 onChange={toggleSelectAll}
                 className="w-4 h-4 accent-brand cursor-pointer"
+                aria-label="全选当前页候选人"
+                disabled={loading}
                 title={allSelected ? "取消全选" : "全选"}
               />}
               <span className="text-[11px] text-gray-600">
-                {selectedIds.size > 0 ? `已选 ${selectedIds.size} / ${items.length}` : `共 ${items.length} 个`}
+                {selectedIds.size > 0 ? `已选 ${selectedIds.size} / ${total}` : `共 ${total} 个`}
               </span>
+              {canSelect && total > items.length && <button type="button" disabled={loading || selectingAll} className="text-xs text-brand" onClick={selectAllFiltered}>{selectingAll ? "选择中…" : `全选筛选结果（${total} 人）`}</button>}
               {selectedIds.size > 0 && (
                 <div className="flex items-center gap-2 ml-auto flex-wrap">
+                  {canDownload && <ResumeDownloadButton ids={[...selectedIds]} disabled={loading || selectingAll} />}
+                  {!campusInterviewer && <>
                   <select
                     value=""
                     disabled={bulkAssigning}
@@ -381,9 +408,9 @@ export default function Candidates() {
                   </select>
                   <button
                     onClick={onBulkReparse}
-                    disabled={bulkAssigning || !llmStatus?.configured}
+                    disabled={bulkAssigning || !llmStatus?.configured || [...selectedIds].some((id) => !items.some((item) => item.id === id))}
                     className="inline-flex items-center gap-1 h-8 px-3 rounded-lg bg-brand-gradient text-white text-xs font-bold shadow-button hover:shadow-button-hover active:scale-95 transition-all disabled:opacity-50"
-                    title={!llmStatus?.configured ? "LLM 未配置" : "批量重新解析选中的简历"}
+                    title={!llmStatus?.configured ? "LLM 未配置" : [...selectedIds].some((id) => !items.some((item) => item.id === id)) ? "批量解析请仅选择当前页候选人" : "批量重新解析选中的简历"}
                   >
                     <I name="sparkles" size={11} /> 批量解析 ({selectedIds.size})
                   </button>
@@ -395,7 +422,9 @@ export default function Candidates() {
                   >
                     <I name="scale" size={11} /> 批量评估 ({selectedIds.size})
                   </button>
-                  <button onClick={() => setSelectedIds(new Set())} className="text-[11px] text-gray-500 hover:text-navy-700">取消</button>
+                  </>}
+                  <button onClick={() => { selectionGeneration.current++; setSelectedIds(new Set()); }} className="text-[11px] text-gray-500 hover:text-navy-700">取消选择</button>
+                  {selectedIds.size > 1000 && <span className="text-xs text-amber-700">每次最多下载 1000 人，请缩小筛选范围</span>}
                 </div>
               )}
             </div>
@@ -424,11 +453,13 @@ export default function Candidates() {
                 <div className="hidden md:flex md:flex-wrap items-center gap-x-3 gap-y-2.5 md:gap-x-4">
                   {/* 身份组:checkbox + 头像 + 姓名块,flex-1 + min-width 防压成 0 */}
                   <div className="flex items-center gap-3 flex-1 min-w-[200px]">
-                    {!campusInterviewer && <input
+                    {canSelect && <input
                       type="checkbox"
                       checked={isSelected}
                       onChange={() => toggleSelect(c.id)}
                       className="w-4 h-4 accent-brand cursor-pointer shrink-0"
+                      aria-label={`选择${c.name || "候选人"}`}
+                      disabled={loading}
                     />}
                     <Avatar name={c.name} animal={c.animal} size={48} className="shrink-0" />
                     <div className="min-w-0 flex-1">
@@ -467,6 +498,7 @@ export default function Candidates() {
                 </div>
 
                 {/* === 移动端: 卡片式 stack === */}
+                {canSelect && <label className="md:hidden inline-flex items-center gap-2 mb-2 text-xs text-gray-600"><input type="checkbox" aria-label={`选择${c.name || "候选人"}`} checked={isSelected} disabled={loading} onChange={() => toggleSelect(c.id)} className="accent-brand" />选择此人</label>}
                 <Link to={`/candidates/${c.externalId || c.id}`} className="md:hidden block active:bg-lightPrimary -mx-2 px-2 py-1 rounded-lg">
                   <div className="flex items-start gap-3">
                     <Avatar name={c.name} animal={c.animal} size={44} />
@@ -499,6 +531,7 @@ export default function Candidates() {
               </li>
             );})}
           </ul>
+          <div className="flex flex-wrap items-center justify-between gap-3 mt-3 pt-3 border-t border-gray-100 text-xs text-gray-700"><span>{skip + 1}–{Math.min(skip + 50, total)} / {total}</span><div className="flex gap-2"><Button size="sm" variant="ghost" disabled={loading || !skip} onClick={() => setSkip(skip - 50)}>上一页</Button><Button size="sm" variant="ghost" disabled={loading || skip + 50 >= total} onClick={() => setSkip(skip + 50)}>下一页</Button></div></div>
           </>
         )}
       </Card>

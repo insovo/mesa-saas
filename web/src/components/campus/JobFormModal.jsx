@@ -61,7 +61,7 @@ export default function JobFormModal({ open, onClose, sessionJob, onSaved }) {
     if (!form.title.trim()) return toast("请填写岗位名称", "error");
     for (const [key, label, limit] of [["responsibilities", "岗位职责", 500], ["requirements", "任职要求", 500], ["nice", "加分项", 500], ["benefits", "福利待遇", 200]]) {
       const items = lines(form[key]);
-      if (items.length > 20) return toast(`${label}最多填写 20 条,请整理后再保存`, "error");
+      if (key !== "benefits" && items.length > 20) return toast(`${label}最多填写 20 条,请整理后再保存`, "error");
       if (items.some((item) => item.length > limit)) return toast(`${label}每条最多 ${limit} 字`, "error");
     }
     const openings = Number(form.openings);

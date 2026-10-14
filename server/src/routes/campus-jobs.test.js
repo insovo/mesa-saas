@@ -126,6 +126,17 @@ test("批量追加分别保留各岗位原资料并去重；任一超限则整�
   assert.equal(writes.length, 0);
 });
 
+test("福利待遇超过20条仍完整保存和追加，加分项原有上限保持有效", async (t) => {
+  const { app, job } = await fixture(t);
+  const benefits = Array.from({ length: 37 }, (_, index) => `福利 ${index}`);
+  const response = await app.inject({ method: "PATCH", url: `${base}/${jobId}/job`, payload: { benefits } });
+  assert.equal(response.statusCode, 200, response.body);
+  assert.deepEqual(job.benefits, benefits);
+  const extra = Array.from({ length: 22 }, (_, index) => `新增福利 ${index}`);
+  assert.equal((await app.inject({ method: "PATCH", url: `${base}/bulk`, payload: { ids: [jobId], changes: { benefitsAdd: extra } } })).statusCode, 200);
+  assert.equal(job.benefits.length, 59);
+});
+
 test("批量修改、恢复、生成模型均遵守权限和岗位范围", async (t) => {
   const denied = await fixture(t, { noScope: true });
   assert.equal((await denied.app.inject({ method: "PATCH", url: `${base}/bulk`, payload: { ids: [jobId], changes: { kind: "referral" } } })).statusCode, 409);
