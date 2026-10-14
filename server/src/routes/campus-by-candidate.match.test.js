@@ -89,3 +89,28 @@ test("候选人详情的岗位匹配结果包含硬筛缺项和满足项", async
   assert.deepEqual(failed.analysis.items.map(({ label, verdict }) => [label, verdict]), [["2026 届毕业生", "不满足"], ["本科及以上", "满足"]]);
   assert.equal(missing.analysis, null);
 });
+
+test("校招资料卡展示汇总更正后的来源，同时保留专场资料", async (t) => {
+  const app = Fastify();
+  app.decorate("prisma", {
+    campusApplicant: { findUnique: async ({ include }) => {
+      assert.equal(include.candidate.select.source, true);
+      return {
+        id: "applicant-1", candidateId: "candidate-1", sessionId: "session-1",
+        summaryData: { source: "线下宣讲" }, candidate: { source: "校招·测试专场" },
+        session: { id: "session-1", name: "测试专场", school: "测试大学", maxResumeUploads: 3 },
+        resumeVersions: [], applications: [], matchRuns: [],
+      };
+    } },
+  });
+  app.decorate("authenticate", async (req) => {
+    req.user = { sub: "admin-1", role: "ADMIN" };
+    req.permsCache = { access: { isActive: true, isAdmin: true, role: "ADMIN", pageKeys: ["candidate.detail"], moduleKeys: [] } };
+  });
+  await app.register(campusRoutes, { prefix: "/api/campus" });
+  t.after(() => app.close());
+  const response = await app.inject({ url: "/api/campus/by-candidate/candidate-1" });
+  assert.equal(response.statusCode, 200, response.body);
+  assert.equal(response.json().applicant.source, "线下宣讲");
+  assert.equal(response.json().session.name, "测试专场");
+});

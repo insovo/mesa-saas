@@ -222,6 +222,7 @@ function applicantShape(a, { showContact, versionsAllowed }) {
     emailVerifiedAt: a.emailVerifiedAt, contactConfirmedAt: a.contactConfirmedAt,
     school: a.school || a.candidate?.school || null, major: a.major || a.candidate?.major || null,
     degree: a.degree || a.candidate?.education || null, gradYear: a.gradYear,
+    source: typeof a.summaryData?.source === "string" ? a.summaryData.source : a.candidate?.source || "",
     resumeUploadCount: a.resumeUploadCount, extraUploads: a.extraUploads, uploadsAllowed: versionsAllowed,
     currentResumeVersionId: a.currentResumeVersionId,
     autoEvaluationStatus: a.autoEvaluationStatus === "not_applicable" && a.applications?.some((x) => x.sessionJob?.kind === "onsite" && QUOTA_STATUS.includes(x.status)) ? "awaiting_match" : a.autoEvaluationStatus,
@@ -271,7 +272,7 @@ function matchScores(run, currentResumeVersionId) {
 }
 
 const applicantInclude = {
-  candidate: { select: { id: true, name: true, school: true, major: true, education: true, status: true, classification: true, jdMatch: true, parsingStartedAt: true, profileCompletion: true } },
+  candidate: { select: { id: true, name: true, school: true, major: true, education: true, source: true, status: true, classification: true, jdMatch: true, parsingStartedAt: true, profileCompletion: true } },
   resumeVersions: { orderBy: { version: "desc" } },
   applications: { include: { sessionJob: { include: { job: { select: { id: true, title: true, dept: true } } } } }, orderBy: { createdAt: "asc" } },
 };
