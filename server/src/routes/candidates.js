@@ -4,6 +4,7 @@
 import { whereByIdOrExternal } from "../lib/idLookup.js";
 import { campusAutoEvaluationStatus } from "../lib/campus/autoEvaluation.js";
 import { shownScore } from "../lib/campus/shared.js";
+import { SUMMARY_COLUMNS, summaryInclude, summaryRow } from "./campus-summary.js";
 import { writeLog } from "../lib/audit.js";
 import { withDerivedCandidate as withDerived } from "../lib/derived.js";
 import { toDisplayName, resolveNoteAuthorNames } from "../lib/displayName.js";
@@ -14,6 +15,7 @@ import {
   assertCandidateAccess,
   filterCandidateByModules,
   hasModule,
+  hasPage,
 } from "../lib/permissions.js";
 import {
   candidateToEmployeeData,
@@ -147,7 +149,7 @@ export default async function candidatesRoutes(app) {
     }
     const jobScope = await buildJobScopeWhere(req);
     const sessionJobs = await app.prisma.campusSessionJob.findMany({
-      where: { sessionId: candidate.campusApplicant.sessionId, ...(jobScope ? { job: jobScope } : {}) },
+      where: { sessionId: candidate.campusApplicant.sessionId, job: { AND: [{ recruitmentType: "campus", campusActive: true }, ...(jobScope ? [jobScope] : [])] } },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
       select: { job: { select: { id: true, title: true } } },
     });
@@ -234,7 +236,7 @@ export default async function candidatesRoutes(app) {
           campusApplicant: {
             select: {
               currentResumeVersionId: true,
-              session: { select: { jobs: { where: { matchEnabled: true }, orderBy: { sortOrder: "asc" }, take: 4, select: { jobId: true, job: { select: { title: true } } } } } },
+              session: { select: { jobs: { where: { matchEnabled: true, job: { recruitmentType: "campus", campusActive: true } }, orderBy: { sortOrder: "asc" }, take: 4, select: { jobId: true, job: { select: { title: true } } } } } },
               matchRuns: { where: { status: "done", stale: false }, orderBy: { startedAt: "desc" }, take: 1, select: { resumeVersionId: true, results: true } },
             },
           },
@@ -271,13 +273,21 @@ export default async function candidatesRoutes(app) {
         job: { select: { id: true, title: true, dept: true } },
         department: { select: { id: true, name: true, code: true } },
         interviews: { orderBy: { scheduledAt: "desc" } },
-        campusApplicant: { select: { id: true, updatedAt: true, summaryData: true } },
+        campusApplicant: { include: summaryInclude },
       },
     });
     if (!candidate) return reply.code(404).send({ error: "not_found" });
     const { campusApplicant, ...details } = candidate;
-    if (typeof campusApplicant?.summaryData?.source === "string") details.source = campusApplicant.summaryData.source;
-    if (campusApplicant) details.campusSummary = { id: campusApplicant.id, updatedAt: campusApplicant.updatedAt };
+    if (campusApplicant) {
+      const manual = campusApplicant.summaryData || {};
+      const fields = { name: "name", gender: "gender", source: "source", school: "school", major: "major", degree: "education", jobDirection: "appliedFor" };
+      for (const [field, target] of Object.entries(fields)) if (typeof manual[field] === "string") details[target] = manual[field];
+      const row = summaryRow(campusApplicant);
+      details.source = row.source;
+      const canViewSummary = access.isAdmin || hasPage(access, access.role === "CAMPUS_INTERVIEWER" ? "campus.summary" : "campus");
+      const columns = SUMMARY_COLUMNS.filter((column) => column.key !== "sequence");
+      details.campusSummary = { id: row.id, updatedAt: row.updatedAt, ...(canViewSummary ? { columns, values: Object.fromEntries(columns.map(({ key }) => [key, row[key]])), manualFields: row.manualFields } : {}) };
+    }
     return { candidate: filterCandidateByModules(withDerived(details), access) };
   });
 

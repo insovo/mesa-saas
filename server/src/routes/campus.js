@@ -24,6 +24,7 @@ import { mapStatusToStage, candidateToEmployeeData } from "../lib/candidateToEmp
 import { displayName } from "../lib/taxonomy/index.js";
 import { randomBytes } from "node:crypto";
 import campusSummaryRoutes from "./campus-summary.js";
+import { activeCampusJob, catalogTransaction, attachCatalogToSession, attachJobToSessions } from "../lib/campus/catalog.js";
 import {
   JOB_KINDS, APP_STATUS, QUOTA_STATUS, ALLOWED_RESUME_MIME, RESUME_MAX_SIZE,
   maskPhone, maskEmail, normalizeSlug, normalizePhone, uploadsAllowed, shownScore,
@@ -222,7 +223,7 @@ function applicantShape(a, { showContact, versionsAllowed }) {
     emailVerifiedAt: a.emailVerifiedAt, contactConfirmedAt: a.contactConfirmedAt,
     school: a.school || a.candidate?.school || null, major: a.major || a.candidate?.major || null,
     degree: a.degree || a.candidate?.education || null, gradYear: a.gradYear,
-    source: typeof a.summaryData?.source === "string" ? a.summaryData.source : a.candidate?.source || "",
+    source: typeof a.summaryData?.source === "string" ? a.summaryData.source : a.candidate?.source || a.session?.name || "",
     resumeUploadCount: a.resumeUploadCount, extraUploads: a.extraUploads, uploadsAllowed: versionsAllowed,
     currentResumeVersionId: a.currentResumeVersionId,
     autoEvaluationStatus: a.autoEvaluationStatus === "not_applicable" && a.applications?.some((x) => x.sessionJob?.kind === "onsite" && QUOTA_STATUS.includes(x.status)) ? "awaiting_match" : a.autoEvaluationStatus,
@@ -314,7 +315,7 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
   app.get("/sessions", async () => {
     const items = await app.prisma.campusSession.findMany({
       orderBy: [{ status: "asc" }, { startsAt: "desc" }, { createdAt: "desc" }],
-      include: { _count: { select: { jobs: true, applicants: true } } },
+      include: { _count: { select: { jobs: { where: { job: activeCampusJob } }, applicants: true } } },
     });
     const appCounts = await app.prisma.campusApplication.groupBy({ by: ["sessionJobId"], _count: { _all: true } });
     const sjs = await app.prisma.campusSessionJob.findMany({ select: { id: true, sessionId: true } });
@@ -338,7 +339,11 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
     if (data.endsAt) data.endsAt = new Date(data.endsAt);
     const exists = await app.prisma.campusSession.findUnique({ where: { slug: data.slug } });
     if (exists) return reply.code(409).send({ error: "campus_slug_taken", message: "slug 已被占用" });
-    const created = await app.prisma.campusSession.create({ data });
+    const created = await catalogTransaction(app.prisma, async (tx) => {
+      const session = await tx.campusSession.create({ data });
+      await attachCatalogToSession(tx, session.id);
+      return session;
+    });
     await writeLog(app.prisma, { req, action: "campus.session.create", entityType: "CampusSession", entityId: created.id, diff: { name: created.name, slug: created.slug } });
     return reply.code(201).send({ session: created });
   });
@@ -346,7 +351,7 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
   app.get("/sessions/:id", async (req, reply) => {
     const s = await loadSession(req, reply, req.params.id);
     if (!s) return;
-    const jobs = await app.prisma.campusSessionJob.findMany({ where: { sessionId: s.id }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }], include: { job: { select: jobSelect }, _count: { select: { applications: true } } } });
+    const jobs = await app.prisma.campusSessionJob.findMany({ where: { sessionId: s.id, job: activeCampusJob }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }], include: { job: { select: jobSelect }, _count: { select: { applications: true } } } });
     const [applicantsCount, applicationsCount] = await Promise.all([
       app.prisma.campusApplicant.count({ where: { sessionId: s.id } }),
       app.prisma.campusApplication.count({ where: { sessionJob: { sessionId: s.id } } }),
@@ -430,161 +435,183 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
   app.get("/sessions/:id/jobs", async (req, reply) => {
     const s = await loadSession(req, reply, req.params.id);
     if (!s) return;
-    const jobs = await app.prisma.campusSessionJob.findMany({ where: { sessionId: s.id }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }], include: { job: { select: jobSelect }, _count: { select: { applications: true } } } });
+    const jobs = await app.prisma.campusSessionJob.findMany({ where: { sessionId: s.id, job: activeCampusJob }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }], include: { job: { select: jobSelect }, _count: { select: { applications: true } } } });
     return { items: jobs.map(sessionJobShape) };
   });
 
-  app.post("/sessions/:id/jobs", { schema: { body: { ...SESSION_JOB_BODY, required: ["jobId"] } } }, async (req, reply) => {
-    if (!(await requireManage(req, reply))) return;
-    const s = await loadSession(req, reply, req.params.id);
-    if (!s) return;
-    const scopeWhere = await buildJobScopeWhere(req);
-    const job = await app.prisma.job.findFirst({ where: scopeWhere ? { AND: [{ id: req.body.jobId, recruitmentType: "campus" }, scopeWhere] } : { id: req.body.jobId, recruitmentType: "campus" }, select: { id: true } });
-    if (!job) return reply.code(404).send({ error: "job_not_found", message: "校招岗位不存在或不可访问" });
-    const dup = await app.prisma.campusSessionJob.findUnique({ where: { sessionId_jobId: { sessionId: s.id, jobId: job.id } } });
-    if (dup) return reply.code(409).send({ error: "campus_job_exists", message: "该岗位已在专场中" });
-    const max = await app.prisma.campusSessionJob.aggregate({ where: { sessionId: s.id }, _max: { sortOrder: true } });
-    const created = await app.prisma.campusSessionJob.create({
-      data: { sessionId: s.id, jobId: job.id, kind: req.body.kind || "onsite", matchEnabled: req.body.matchEnabled ?? true, sortOrder: req.body.sortOrder ?? ((max._max.sortOrder ?? -1) + 1) },
-      include: { job: { select: jobSelect }, _count: { select: { applications: true } } },
-    });
-    return reply.code(201).send({ item: sessionJobShape(created) });
+  function catalogShape(job, applications = 0) {
+    return { id: job.id, jobId: job.id, kind: job.campusKind, matchEnabled: job.campusMatchEnabled, sortOrder: job.campusSortOrder, job: jobShape(job), applications };
+  }
+  const catalogSelect = { ...jobSelect, recruitmentType: true, campusActive: true, campusKind: true, campusMatchEnabled: true, campusSortOrder: true };
+  async function catalogWhere(req, extra = {}, active = true) {
+    const scope = await buildJobScopeWhere(req);
+    const where = { recruitmentType: "campus", ...(active ? { campusActive: true } : {}), ...extra };
+    return scope ? { AND: [where, scope] } : where;
+  }
+  async function loadCatalogJob(req, reply) {
+    const job = await app.prisma.job.findFirst({ where: await catalogWhere(req, { id: req.params.jobId }), select: catalogSelect });
+    if (!job) reply.code(404).send({ error: "job_not_found", message: "校招岗位不存在或不可访问" });
+    return job;
+  }
+  async function refreshJobApplications(jobIds) {
+    const affected = await app.prisma.campusApplication.findMany({ where: { jobId: { in: jobIds }, status: { in: QUOTA_STATUS } }, distinct: ["applicantId"], select: { applicantId: true } });
+    for (const row of affected) await refreshAutoEvaluation(app, row.applicantId);
+  }
+
+  app.get("/jobs", async (req) => {
+    const jobs = await app.prisma.job.findMany({ where: await catalogWhere(req, {}, false), orderBy: [{ campusSortOrder: "asc" }, { createdAt: "asc" }], select: catalogSelect });
+    const counts = await app.prisma.campusApplication.groupBy({ by: ["jobId"], where: { jobId: { in: jobs.map((job) => job.id) } }, _count: { _all: true } });
+    const byJob = new Map(counts.map((row) => [row.jobId, row._count._all]));
+    return { items: jobs.filter((job) => job.campusActive).map((job) => catalogShape(job, byJob.get(job.id) || 0)), available: jobs.filter((job) => !job.campusActive).map(jobShape) };
   });
 
-  app.patch("/sessions/:id/jobs/bulk", { schema: { body: CAMPUS_JOB_BULK_BODY } }, async (req, reply) => {
+  app.post("/jobs/new", { schema: { body: CAMPUS_JOB_CREATE_BODY } }, async (req, reply) => {
+    const access = await requireManage(req, reply);
+    if (!access) return;
+    const { kind, matchEnabled, ...jd } = req.body;
+    const created = await catalogTransaction(app.prisma, async (tx) => {
+      const max = await tx.job.aggregate({ where: activeCampusJob, _max: { campusSortOrder: true } });
+      const job = await tx.job.create({ data: { ...jobData(jd), recruitmentType: "campus", status: "招聘中", campusActive: true, campusKind: kind || "onsite", campusMatchEnabled: matchEnabled ?? true, campusSortOrder: (max._max.campusSortOrder ?? -1) + 1 }, select: catalogSelect });
+      if (!access.isAdmin) await tx.userJobScope.create({ data: { userId: req.user.sub, jobId: job.id } });
+      await attachJobToSessions(tx, job);
+      return job;
+    });
+    await writeLog(app.prisma, { req, action: "campus.job.create", entityType: "Job", entityId: created.id, diff: { title: created.title, kind: created.campusKind, allSessions: true } });
+    return reply.code(201).send({ item: catalogShape(created) });
+  });
+
+  app.post("/jobs", { schema: { body: { type: "object", required: ["jobId"], additionalProperties: false, properties: { jobId: SESSION_JOB_BODY.properties.jobId, kind: SESSION_JOB_BODY.properties.kind, matchEnabled: SESSION_JOB_BODY.properties.matchEnabled } } } }, async (req, reply) => {
     if (!(await requireManage(req, reply))) return;
-    const s = await loadSession(req, reply, req.params.id);
-    if (!s) return;
+    const job = await app.prisma.job.findFirst({ where: await catalogWhere(req, { id: req.body.jobId }, false) });
+    if (!job) return reply.code(404).send({ error: "job_not_found" });
+    if (job.campusActive) return reply.code(409).send({ error: "campus_job_exists", message: "该岗位已在统一校招目录中" });
+    const updated = await catalogTransaction(app.prisma, async (tx) => {
+      const max = await tx.job.aggregate({ where: activeCampusJob, _max: { campusSortOrder: true } });
+      const next = await tx.job.update({ where: { id: job.id }, data: { campusActive: true, campusSortOrder: (max._max.campusSortOrder ?? -1) + 1, ...(req.body.kind ? { campusKind: req.body.kind } : {}), ...(req.body.matchEnabled !== undefined ? { campusMatchEnabled: req.body.matchEnabled } : {}) }, select: catalogSelect });
+      await tx.campusSessionJob.updateMany({ where: { jobId: job.id }, data: { kind: next.campusKind, matchEnabled: next.campusMatchEnabled, sortOrder: next.campusSortOrder } });
+      await attachJobToSessions(tx, next);
+      return next;
+    });
+    return reply.code(201).send({ item: catalogShape(updated) });
+  });
+
+  app.patch("/jobs/bulk", { schema: { body: CAMPUS_JOB_BULK_BODY } }, async (req, reply) => {
+    if (!(await requireManage(req, reply))) return;
     const { ids, changes } = req.body;
     if (!Object.keys(changes).length) return reply.code(400).send({ error: "empty_changes", message: "请选择要修改的字段" });
-    const { kind, niceAdd, benefitsAdd, ...jobFields } = changes;
+    const where = await catalogWhere(req, { id: { in: ids } });
+    const { kind, niceAdd, benefitsAdd, ...fields } = changes;
     try {
-      await app.prisma.$transaction(async (tx) => {
-        const selected = await tx.campusSessionJob.findMany({ where: { sessionId: s.id, id: { in: ids } }, select: { id: true, jobId: true, job: { select: { title: true, nice: true, benefits: true } } } });
+      await catalogTransaction(app.prisma, async (tx) => {
+        const selected = await tx.job.findMany({ where, select: { id: true, title: true, nice: true, benefits: true } });
         if (selected.length !== ids.length) throw new Error("campus_jobs_changed");
-        const additions = selected.map((sj) => {
+        const additions = selected.map((job) => {
           const data = {};
           for (const [field, incoming] of [["nice", niceAdd], ["benefits", benefitsAdd]]) {
             if (!incoming) continue;
-            const current = sj.job[field] || [];
+            const current = job[field] || [];
             const next = [...current];
             const known = new Set(current.map((item) => item.trim()));
             for (const item of incoming) {
               const value = item.trim();
               if (!known.has(value)) { next.push(value); known.add(value); }
             }
-            if (next.length > 20) throw Object.assign(new Error("campus_job_items_limit"), { title: sj.job.title, field });
+            if (next.length > 20) throw Object.assign(new Error("campus_job_items_limit"), { title: job.title, field });
             if (next.length !== current.length) data[field] = next;
           }
-          return { jobId: sj.jobId, data };
+          return { id: job.id, data };
         });
-        if (kind !== undefined) {
-          const result = await tx.campusSessionJob.updateMany({ where: { sessionId: s.id, id: { in: ids } }, data: { kind } });
-          if (result.count !== ids.length) throw new Error("campus_jobs_changed");
-        }
-        if (Object.keys(jobFields).length) {
-          const result = await tx.job.updateMany({ where: { id: { in: selected.map((sj) => sj.jobId) } }, data: jobData(jobFields) });
-          if (result.count !== selected.length) throw new Error("campus_jobs_changed");
-        }
-        for (const addition of additions) {
-          if (Object.keys(addition.data).length) await tx.job.update({ where: { id: addition.jobId }, data: addition.data });
-        }
+        const data = { ...jobData(fields), ...(kind !== undefined ? { campusKind: kind } : {}) };
+        if (Object.keys(data).length) await tx.job.updateMany({ where, data });
+        if (kind !== undefined) await tx.campusSessionJob.updateMany({ where: { jobId: { in: ids } }, data: { kind } });
+        for (const addition of additions) if (Object.keys(addition.data).length) await tx.job.update({ where: { id: addition.id }, data: addition.data });
       });
     } catch (err) {
       if (err.message === "campus_jobs_changed") return reply.code(409).send({ error: "campus_jobs_changed", message: "所选岗位已变化,请刷新后重试" });
       if (err.message === "campus_job_items_limit") return reply.code(409).send({ error: "campus_job_items_limit", message: `「${err.title}」的${err.field === "nice" ? "加分项" : "福利待遇"}添加后会超过 20 条,本次未保存` });
       throw err;
     }
-    if (kind !== undefined) {
-      const affected = await app.prisma.campusApplication.findMany({ where: { sessionJobId: { in: ids }, status: { in: QUOTA_STATUS } }, distinct: ["applicantId"], select: { applicantId: true } });
-      for (const row of affected) await refreshAutoEvaluation(app, row.applicantId);
-    }
-    await writeLog(app.prisma, { req, action: "campus.job.bulk_update", entityType: "CampusSession", entityId: s.id, diff: { count: ids.length, fields: Object.keys(changes) } });
+    if (kind !== undefined) await refreshJobApplications(ids);
+    await writeLog(app.prisma, { req, action: "campus.job.bulk_update", entityType: "Job", diff: { count: ids.length, fields: Object.keys(changes), allSessions: true } });
     return { updated: ids.length };
   });
 
-  app.patch("/sessions/:id/jobs/:sjId", { schema: { body: SESSION_JOB_BODY } }, async (req, reply) => {
+  app.patch("/jobs/:jobId", { schema: { body: { type: "object", additionalProperties: false, minProperties: 1, properties: { kind: SESSION_JOB_BODY.properties.kind, matchEnabled: SESSION_JOB_BODY.properties.matchEnabled } } } }, async (req, reply) => {
     if (!(await requireManage(req, reply))) return;
-    const sj = await app.prisma.campusSessionJob.findFirst({ where: { id: req.params.sjId, session: whereByIdOrExternal(req.params.id) } });
-    if (!sj) return reply.code(404).send({ error: "not_found" });
-    const { jobId, ...data } = req.body; // 不允许改 jobId(删掉重加)
-    const updated = await app.prisma.campusSessionJob.update({ where: { id: sj.id }, data, include: { job: { select: jobSelect }, _count: { select: { applications: true } } } });
-    if (data.kind !== undefined || data.matchEnabled !== undefined) {
-      const affected = await app.prisma.campusApplication.findMany({ where: { sessionJobId: sj.id, status: { in: QUOTA_STATUS } }, distinct: ["applicantId"], select: { applicantId: true } });
-      for (const row of affected) await refreshAutoEvaluation(app, row.applicantId);
-    }
-    return { item: sessionJobShape(updated) };
+    const job = await loadCatalogJob(req, reply);
+    if (!job) return;
+    const data = req.body;
+    const updated = await catalogTransaction(app.prisma, async (tx) => {
+      const next = await tx.job.update({ where: { id: job.id }, data: { ...(data.kind !== undefined ? { campusKind: data.kind } : {}), ...(data.matchEnabled !== undefined ? { campusMatchEnabled: data.matchEnabled } : {}) }, select: catalogSelect });
+      await tx.campusSessionJob.updateMany({ where: { jobId: job.id }, data });
+      return next;
+    });
+    await refreshJobApplications([job.id]);
+    return { item: catalogShape(updated) };
   });
 
-  app.delete("/sessions/:id/jobs/:sjId", async (req, reply) => {
+  app.delete("/jobs/:jobId", async (req, reply) => {
     if (!(await requireManage(req, reply))) return;
-    const sj = await app.prisma.campusSessionJob.findFirst({ where: { id: req.params.sjId, session: whereByIdOrExternal(req.params.id) }, include: { _count: { select: { applications: true } } } });
-    if (!sj) return reply.code(404).send({ error: "not_found" });
-    if (sj._count.applications > 0) return reply.code(409).send({ error: "campus_job_has_applications", message: `已有 ${sj._count.applications} 条投递,不能移除(可关闭匹配或调整类型)` });
-    await app.prisma.campusSessionJob.delete({ where: { id: sj.id } });
+    const job = await loadCatalogJob(req, reply);
+    if (!job) return;
+    const count = await app.prisma.campusApplication.count({ where: { jobId: job.id } });
+    if (count) return reply.code(409).send({ error: "campus_job_has_applications", message: `已有 ${count} 条投递,不能移除(可关闭参与匹配)` });
+    await catalogTransaction(app.prisma, (tx) => tx.job.update({ where: { id: job.id }, data: { campusActive: false } }));
     return reply.code(204).send();
   });
 
-  app.post("/sessions/:id/jobs/reorder", { schema: { body: { type: "object", required: ["ids"], properties: { ids: { type: "array", items: { type: "string", format: "uuid" }, maxItems: 200 } } } } }, async (req, reply) => {
+  app.post("/jobs/reorder", { schema: { body: { type: "object", required: ["ids"], additionalProperties: false, properties: { ids: { type: "array", items: { type: "string", format: "uuid" }, maxItems: 200, uniqueItems: true } } } } }, async (req, reply) => {
     if (!(await requireManage(req, reply))) return;
-    const s = await loadSession(req, reply, req.params.id);
-    if (!s) return;
-    await app.prisma.$transaction(req.body.ids.map((id, i) => app.prisma.campusSessionJob.updateMany({ where: { id, sessionId: s.id }, data: { sortOrder: i } })));
+    const ids = req.body.ids;
+    const where = await catalogWhere(req, { id: { in: ids } });
+    const result = await catalogTransaction(app.prisma, async (tx) => {
+      const selected = await tx.job.findMany({ where, orderBy: { campusSortOrder: "asc" }, select: { campusSortOrder: true } });
+      if (selected.length !== ids.length) return false;
+      for (const [index, id] of ids.entries()) {
+        await tx.job.update({ where: { id }, data: { campusSortOrder: selected[index].campusSortOrder } });
+        await tx.campusSessionJob.updateMany({ where: { jobId: id }, data: { sortOrder: selected[index].campusSortOrder } });
+      }
+      return true;
+    });
+    if (!result) return reply.code(409).send({ error: "campus_jobs_changed", message: "岗位已变化,请刷新后重试" });
     return { ok: true };
   });
 
-  // 新建校招 JD:创建 Job 并挂到专场(事务)。走 campus.manage 而不是 job.create,校招负责人不必拿社招岗位权限
-  app.post("/sessions/:id/jobs/new", { schema: { body: CAMPUS_JOB_CREATE_BODY } }, async (req, reply) => {
-    const access = await requireManage(req, reply);
-    if (!access) return;
-    const s = await loadSession(req, reply, req.params.id);
-    if (!s) return;
-    const { kind, matchEnabled, ...jd } = req.body;
-    const created = await app.prisma.$transaction(async (tx) => {
-      const job = await tx.job.create({ data: { ...jobData(jd), recruitmentType: "campus", status: "招聘中" } });
-      // 创建者须能从已有岗位中再次找到自己新建的 JD(含移除后重新加入)。
-      if (!access.isAdmin) await tx.userJobScope.create({ data: { userId: req.user.sub, jobId: job.id } });
-      const max = await tx.campusSessionJob.aggregate({ where: { sessionId: s.id }, _max: { sortOrder: true } });
-      return tx.campusSessionJob.create({
-        data: { sessionId: s.id, jobId: job.id, kind: kind || "onsite", matchEnabled: matchEnabled ?? true, sortOrder: (max._max.sortOrder ?? -1) + 1 },
-        include: { job: { select: jobSelect }, _count: { select: { applications: true } } },
-      });
-    });
-    await writeLog(app.prisma, { req, action: "campus.job.create", entityType: "Job", entityId: created.jobId, diff: { sessionId: s.id, title: created.job.title, kind: created.kind } });
-    return reply.code(201).send({ item: sessionJobShape(created) });
+  app.patch("/jobs/:jobId/job", { schema: { body: CAMPUS_JOB_PATCH_BODY } }, async (req, reply) => {
+    if (!(await requireManage(req, reply))) return;
+    const job = await loadCatalogJob(req, reply);
+    if (!job) return;
+    const updated = await app.prisma.job.update({ where: { id: job.id }, data: jobData(req.body), select: catalogSelect });
+    await writeLog(app.prisma, { req, action: "campus.job.update", entityType: "Job", entityId: job.id, diff: { fields: Object.keys(req.body), allSessions: true } });
+    return { item: catalogShape(updated) };
   });
 
-  // 编辑校招 JD:改的是 Job 本身,其它专场共用该岗位时同步生效(前端按 sessionsCount 提示)
-  app.patch("/sessions/:id/jobs/:sjId/job", { schema: { body: CAMPUS_JOB_PATCH_BODY } }, async (req, reply) => {
+  app.post("/jobs/:jobId/evaluation-model", { schema: { body: { type: "object", additionalProperties: false } } }, async (req, reply) => {
     if (!(await requireManage(req, reply))) return;
-    const sj = await app.prisma.campusSessionJob.findFirst({ where: { id: req.params.sjId, session: whereByIdOrExternal(req.params.id) } });
-    if (!sj) return reply.code(404).send({ error: "not_found" });
-    await app.prisma.job.update({ where: { id: sj.jobId }, data: jobData(req.body) });
-    const updated = await app.prisma.campusSessionJob.findUnique({ where: { id: sj.id }, include: { job: { select: jobSelect }, _count: { select: { applications: true } } } });
-    await writeLog(app.prisma, { req, action: "campus.job.update", entityType: "Job", entityId: sj.jobId, diff: { sessionId: sj.sessionId, fields: Object.keys(req.body) } });
-    return { item: sessionJobShape(updated) };
-  });
-
-  app.post("/sessions/:id/jobs/:sjId/evaluation-model", { schema: { body: { type: "object", additionalProperties: false } } }, async (req, reply) => {
-    if (!(await requireManage(req, reply))) return;
-    const sj = await app.prisma.campusSessionJob.findFirst({ where: { id: req.params.sjId, session: whereByIdOrExternal(req.params.id) }, include: { job: true } });
-    if (!sj) return reply.code(404).send({ error: "not_found" });
+    const job = await loadCatalogJob(req, reply);
+    if (!job) return;
     let data;
-    try {
-      data = await generateJobModel(sj.job);
-    } catch (err) {
-      req.log.error({ code: err.code, jobId: sj.jobId }, "campus job model generation failed");
+    try { data = await generateJobModel(job); }
+    catch (err) {
+      req.log.error({ code: err.code, jobId: job.id }, "campus job model generation failed");
       const status = err.statusCode >= 400 && err.statusCode < 500 ? err.statusCode : 422;
       return reply.code(status).send({ error: err.code || "campus_job_model_failed", message: status === 424 ? "请先配置 Kimi 服务" : "评价模型生成失败,请稍后重试" });
     }
-    // Kimi 调用期间可能有同事改 JD,不能把旧原文生成的模型覆盖到新版岗位。
-    const saved = await app.prisma.job.updateMany({ where: { id: sj.jobId, updatedAt: sj.job.updatedAt }, data });
+    const saved = await app.prisma.job.updateMany({ where: { id: job.id, updatedAt: job.updatedAt }, data });
     if (!saved.count) return reply.code(409).send({ error: "campus_job_changed", message: "JD 已被修改,请刷新后重新生成评价模型" });
-    const updated = await app.prisma.campusSessionJob.findUnique({ where: { id: sj.id }, include: { job: { select: jobSelect }, _count: { select: { applications: true } } } });
-    if (!updated) return reply.code(404).send({ error: "not_found", message: "岗位已从专场移除" });
-    await writeLog(app.prisma, { req, action: "campus.job.model", entityType: "Job", entityId: sj.jobId, diff: { sessionId: sj.sessionId } });
-    return { item: sessionJobShape(updated) };
+    const updated = await app.prisma.job.findUnique({ where: { id: job.id }, select: catalogSelect });
+    if (!updated) return reply.code(404).send({ error: "not_found" });
+    await writeLog(app.prisma, { req, action: "campus.job.model", entityType: "Job", entityId: job.id });
+    return { item: catalogShape(updated) };
   });
+
+  // 旧专场写接口不再允许制造独立岗位配置。
+  const sharedJobsOnly = async (req, reply) => {
+    if (!(await requireManage(req, reply))) return;
+    return reply.code(409).send({ error: "campus_jobs_shared", message: "校招岗位已统一维护，请刷新页面后在岗位 tab 操作" });
+  };
+  app.route({ method: ["POST", "PATCH", "DELETE"], url: "/sessions/:id/jobs", handler: sharedJobsOnly });
+  app.route({ method: ["POST", "PATCH", "DELETE"], url: "/sessions/:id/jobs/*", handler: sharedJobsOnly });
 
   // ─── 台账 ────────────────────────────────────────────────────────
   const LEDGER_QUERY = {

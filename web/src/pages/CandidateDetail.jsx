@@ -3256,7 +3256,7 @@ function CandidateDetail() {
             <div className="flex items-start gap-3.5 min-w-0">
               <Avatar name={c.name} animal={c.animal} src={c.avatar} size={64} />
               <div className="flex-1 min-w-0">
-                <h1 className="text-lg font-bold text-[#1B254B] truncate">{c.name}</h1>
+                <h1 className="text-lg font-bold text-[#1B254B] truncate">{c.name || "未填写姓名"}</h1>
                 <p className="text-[11px] text-[#707EAE] mt-1 flex items-center gap-1"><I name="phone" size={11} className="shrink-0" /> {c.phone || "—"}</p>
                 <p className="text-[11px] text-[#707EAE] mt-0.5 flex items-center gap-1"><I name="map-pin" size={11} className="shrink-0" /> {c.location || "—"}</p>
                 <p className="text-[11px] text-[#707EAE] mt-0.5 flex items-center gap-1 truncate">
@@ -3265,9 +3265,9 @@ function CandidateDetail() {
                   {canEdit ? <InlineSource value={c.source} onChange={async (v) => {
                     try {
                       if (c.campusSummary) {
-                        const saved = await resources.campus.updateSummary(c.campusSummary.id, { values: { source: v }, updatedAt: c.campusSummary.updatedAt });
+                        await resources.campus.updateSummary(c.campusSummary.id, { values: { source: v }, updatedAt: c.campusSummary.updatedAt });
                         await campus.reload();
-                        setC(prev => prev ? { ...prev, source: v, campusSummary: { ...prev.campusSummary, updatedAt: saved.item.updatedAt } } : prev);
+                        await load();
                       } else {
                         await resources.candidates.update(c.id, { source: v });
                         setC(prev => prev ? { ...prev, source: v } : prev);
@@ -3396,6 +3396,17 @@ function CandidateDetail() {
             <Button variant="danger" className="w-full min-[380px]:col-span-2 lg:w-auto lg:col-auto" onClick={() => setDeleteOpen(true)} icon={<I name="trash-2" size={14} />}>删除候选人</Button>
           )}
         </div>
+
+        {c.campusSummary?.values && <Card className="p-4 sm:p-5">
+          <h3 className="flex items-center gap-2 text-sm font-bold text-navy-700"><I name="clipboard-list" size={16} className="text-brand" />汇总登记资料</h3>
+          <p className="mt-1 text-[11px] text-[#707EAE]">人工更正的资料优先显示，重新解析简历后仍保留。</p>
+          <dl className="mt-4 grid grid-cols-2 lg:grid-cols-3 gap-x-5 gap-y-4">
+            {c.campusSummary.columns.map(({ key, label }) => <div key={key} className="min-w-0">
+              <dt className="text-[11px] text-[#707EAE] flex flex-wrap items-center gap-1">{label}{c.campusSummary.manualFields.includes(key) && <span className="text-[9px] text-brand">人工更正</span>}</dt>
+              <dd className="mt-1 text-xs text-navy-700 whitespace-pre-wrap break-words">{c.campusSummary.values[key] || "—"}</dd>
+            </div>)}
+          </dl>
+        </Card>}
 
         {/* === AI Summary === */}
         {c.aiSummary && (

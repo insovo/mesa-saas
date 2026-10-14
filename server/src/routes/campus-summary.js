@@ -46,7 +46,8 @@ const querySchema = {
   },
 };
 const bulkSchema = {
-  type: "object", required: ["items", "field", "value"], additionalProperties: false,
+  type: "object", required: ["items"], additionalProperties: false,
+  oneOf: [{ required: ["field", "value"] }, { required: ["values"] }],
   properties: {
     items: { type: "array", minItems: 1, maxItems: 1000, items: {
       type: "object", required: ["id", "updatedAt"], additionalProperties: false,
@@ -54,6 +55,7 @@ const bulkSchema = {
     } },
     field: { type: "string", enum: ["source", "schoolType"] },
     value: { type: ["string", "null"], maxLength: 500 },
+    values: { type: "object", minProperties: 1, additionalProperties: false, properties: fieldSchema },
   },
 };
 
@@ -162,7 +164,9 @@ export default async function campusSummaryRoutes(app) {
   app.patch("/summary/bulk", { schema: { body: bulkSchema } }, async (req, reply) => {
     const access = await loadUserAccess(req);
     if (!canEditSummary(access)) return reply.code(403).send({ error: "forbidden", message: "无汇总编辑权限" });
-    const { items, field, value } = req.body;
+    const { items } = req.body;
+    const values = req.body.values || { [req.body.field]: req.body.value };
+    if (!Object.keys(values).length) return reply.code(400).send({ error: "invalid_summary_fields", message: "请选择要更新的汇总字段" });
     const ids = items.map(({ id }) => id);
     if (new Set(ids).size !== ids.length) return reply.code(400).send({ error: "duplicate_summary_ids", message: "请勿重复选择候选人" });
     const expected = new Map(items.map(({ id, updatedAt }) => [id, new Date(updatedAt).getTime()]));
@@ -173,8 +177,10 @@ export default async function campusSummaryRoutes(app) {
         if (applicants.some(({ id, updatedAt }) => new Date(updatedAt).getTime() !== expected.get(id))) throw new Error("summary_changed");
         for (const applicant of applicants) {
           const summaryData = { ...applicant.summaryData };
-          if (value == null) delete summaryData[field];
-          else summaryData[field] = value.trim();
+          for (const [field, value] of Object.entries(values)) {
+            if (value == null) delete summaryData[field];
+            else summaryData[field] = value.trim();
+          }
           const saved = await tx.campusApplicant.updateMany({ where: { id: applicant.id, updatedAt: new Date(applicant.updatedAt) }, data: { summaryData } });
           if (!saved.count) throw new Error("summary_changed");
         }
@@ -184,7 +190,7 @@ export default async function campusSummaryRoutes(app) {
       if (error.message === "summary_changed") return reply.code(409).send({ error: "campus_summary_changed", message: "资料已被更新，请刷新后再编辑" });
       throw error;
     }
-    await writeLog(app.prisma, { req, action: "campus.summary.bulk_update", entityType: "CampusApplicant", diff: { ids, field, mode: value == null ? "restore_auto" : "manual" } });
+    await writeLog(app.prisma, { req, action: "campus.summary.bulk_update", entityType: "CampusApplicant", diff: { ids, fields: Object.keys(values) } });
     return { count: ids.length };
   });
 

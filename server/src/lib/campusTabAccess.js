@@ -10,6 +10,7 @@ export function campusRouteAllowed(access, method, rawUrl) {
   if (/^\/summary(?:\/[^/]+)?$/.test(path)) return has("summary") && method === "GET" && path === "/summary";
   if (method === "GET" && (path === "/sessions" || /^\/sessions\/[^/]+$/.test(path))) return any;
   if (method === "GET" && /^\/sessions\/[^/]+\/jobs$/.test(path)) return has("ledger") || has("sessions") || has("jobs");
+  if (/^\/jobs(?:\/.*)?$/.test(path)) return has("jobs");
   if (/^\/sessions\/[^/]+\/ledger(?:\/export\.xlsx)?$/.test(path)) return has("ledger") && method === "GET";
   if (/^\/sessions\/[^/]+\/stats$/.test(path)) return has("stats") && method === "GET";
   if (path === "/settings") return has("settings") && method === "GET";

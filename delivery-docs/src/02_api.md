@@ -1130,25 +1130,25 @@ Header 必填:`X-Perf-Access-Key: <明文密钥>`
 
 编辑专场时,`school`、`location`、`heroTitle`、`heroSubtitle` 等可选字段的 `null` 值在表单中显示为空,留空保存后仍按 `null` 提交。
 
-## 19.2 专场岗位
+## 19.2 统一校招岗位(2026-10-14)
+
+所有专场共用一份校招岗位目录。`Job.campusActive / campusKind / campusMatchEnabled / campusSortOrder` 保存统一发布状态、类型、匹配开关和顺序；`CampusSessionJob` 仅保留专场投递关联，配置同步自 Job。新建岗位自动关联所有专场，新建专场自动带入全部有效岗位，两种创建使用同一事务锁避免并发漏关联。
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET / POST | `/sessions/:id/jobs` | 列表 / 加入 `{ jobId, kind: onsite\|referral, matchEnabled, sortOrder }`;仅接受已有校招岗位且须在当前账号的岗位数据范围内;重复 409 `campus_job_exists` |
-| PATCH / DELETE | `/sessions/:id/jobs/:sjId` | 改 kind / matchEnabled / sortOrder(不允许改 jobId)/ 移除(已有投递 409 `campus_job_has_applications`)|
-| PATCH | `/sessions/:id/jobs/bulk` | 批量编辑当前专场岗位;body `{ ids: [sessionJobId], changes: { kind?, dept?, location?, employment?, salary?, educationRequirement?, languageRequirement?, openings?, deadline?, niceAdd?, benefitsAdd? } }`;`niceAdd` / `benefitsAdd` 为待追加的字符串数组。1–200 个唯一 id,仅修改传入字段,事务内校验全部属于该专场,否则 409 `campus_jobs_changed`;追加后任一岗位超过 20 条则 409 `campus_job_items_limit`,整批不保存;返回 `{ updated }` |
-| POST | `/sessions/:id/jobs/reorder` | `{ ids[] }` 按顺序写 sortOrder |
-| POST | `/sessions/:id/jobs/new` | 新建 Job 并事务内加入专场;`title` 必填,另收 JD 字段与 `kind / matchEnabled`;返回 201 `{ item }` |
-| PATCH | `/sessions/:id/jobs/:sjId/job` | 编辑共享 Job 的 JD 字段,同步所有引用它的校招专场;返回 `{ item }` |
-| POST | `/sessions/:id/jobs/:sjId/evaluation-model` | body `{}`;从当前 JD 重新抽取事实并生成校园招聘模板,一次落库;仅需 `campus.manage`,不需 `job.edit` |
+| GET | `/jobs` | 当前账号岗位范围内的统一目录，返回 `{ items, available }`；`available` 为已移除、可恢复的校招 JD。`items[].id` 和 `jobId` 均为 Job UUID，投递数汇总所有专场。 |
+| POST | `/jobs/new` | 新建共享 Job；`title` 必填，另收 JD 字段与 `kind / matchEnabled`；创建后所有现有及新建专场均可用。返回 201 `{ item }`。无需先建专场。 |
+| POST | `/jobs` | 恢复已移除岗位 `{ jobId, kind?, matchEnabled? }`，重新关联全部专场，并排到统一目录末尾。 |
+| PATCH / DELETE | `/jobs/:jobId` | 同步修改 `kind / matchEnabled`；删除只将岗位从全部学生端目录移除，保留 Job 和关联记录。任何专场已有投递时返回 409 `campus_job_has_applications`。 |
+| PATCH | `/jobs/bulk` | `{ ids: [jobId], changes: { kind?, dept?, location?, employment?, salary?, educationRequirement?, languageRequirement?, openings?, deadline?, niceAdd?, benefitsAdd? } }`。1–200 个唯一 ID；事务内校验有效校招岗位及账号范围。仅更新传入字段，类型同步全部专场；追加分别保留各岗位原条目并去重，任一超 20 条则整批拒绝。返回 `{ updated }`。 |
+| POST | `/jobs/reorder` | `{ ids: [jobId] }` 更新统一顺序，所有专场同步；保留账号范围外岗位的顺序位置。 |
+| PATCH | `/jobs/:jobId/job` | 编辑共享 JD 字段，所有专场同步，返回 `{ item }`。 |
+| POST | `/jobs/:jobId/evaluation-model` | body `{}`；抽取最新 JD 并生成校园招聘评价模型；并发修改 JD 时返回 409 `campus_job_changed`，上游失败返回 4xx 并保留原模型。 |
+| GET | `/sessions/:id/jobs` | 兼容台账和专场查看，返回统一目录的该专场关联 ID。旧 `/sessions/:id/jobs*` 写接口返回 409 `campus_jobs_shared`，避免产生独立配置。 |
 
-返回的 `job` 含 JD 编辑字段、`hasJdFacts / hasEvaluationModel / evaluationModelUpdatedAt / updatedAt / sessionsCount`。JD 字段为 `title dept owner location employment salary educationRequirement languageRequirement openings deadline description responsibilities requirements nice benefits`。标题不可全空白;职责 / 要求 / 加分项最多 20 条、每条 500 字;福利最多 20 条、每条 200 字。前端超限时提示,不截断内容。
+写接口需页面 `campus`、模块 `campus.manage` 和岗位数据范围；校招面试官须授予 `campus.jobs`。新建给非管理员创建者补岗位范围。JD 字段、条目长度、`openings=0`、模型生成与乐观锁沿用原约定。岗位 tab 不再选择专场；专场 tab 仅查看统一岗位，学生端仍按现场面试 / 内推分组。
 
-`openings=0` 表示「名额不限」,校招与社招岗位页均按此回显;`deadline=null` 表示不设截止日期。批量编辑中的 `kind` 仅影响本专场关联记录,其他 JD 字段修改共享 Job,会同步其他引用它的校招专场。`niceAdd` / `benefitsAdd` 保留每个岗位原有条目并去重,每次最多追加 20 条,条目长度分别不超过 500 / 200 字。批量生成评价模型复用单岗位接口逐个执行,逐项返回成功或失败。
-
-新建、编辑与生成均要求页面 `campus` + 模块 `campus.manage`。校招创建的 Job 标记 `recruitmentType=campus`,给非管理员创建者增加该岗位的数据范围,因此移除专场绑定后仍可从已有校招岗位重新加入。已有校招岗位的加入遵循原岗位数据范围;查看与编辑已绑定专场岗位遵循校招权限。存量与校招专场关联的 Job、以及审计日志记录为校招创建的 Job 在迁移时归入校招,其余归入社招;已有候选人 / 投递关联不变。
-
-模型生成使用 `tpl.campus.general`,递增 `evaluationModelVersion`。Kimi 调用期间若岗位被修改,返回 409 `campus_job_changed`,不覆盖新 JD;上游失败返回结构化 4xx 并保留原模型。共享岗位重新生成模型也同步影响所有引用方。编辑 JD 不自动重新调用 AI,内容有变时应点击「重新生成评价模型」。
+上线自动执行新增迁移 `20261014000000_shared_campus_jobs`：合并全部已有专场岗位，以当前上线专场配置优先，无上线配置则取最早关联；已移除的旧岗位保持可恢复状态。保留现有关联 ID 和所有投递，补齐现有专场缺失关联。回滚应用可保留新增列与关联数据。
 
 ## 19.3 台账
 
@@ -1167,9 +1167,12 @@ Header 必填:`X-Perf-Access-Key: <明文密钥>`
 | --- | --- | --- |
 | GET | `/summary` | `sessionId` 可选；`q` 搜索全部登记字段；`skip` 默认 0，`take` 默认 50、最多 100。支持组合筛选 `source gender schoolType degree gradYear englishLevel hrInterviewer hrResult professionalInterviewer professionalResult cultureInterviewer cultureResult status department base`。返回 `{ items, total, columns, options, canEdit }`，筛选后分页，序号按当前结果顺序生成。动态来源、面试官、部门选项取所选专场的全部记录，不受当前页限制。传 `selection=all` 时额外返回当前筛选结果全部 `{ id, updatedAt }`，供跨页全选。 |
 | PATCH | `/summary/:id` | `id` 为校招登记 UUID；body `{ values: { beisenId: "00123", hrResult: "通过" }, updatedAt: "ISO时间" }` 仅更新指定字段。需管理员、`campus.manage` 或 `candidate.edit`；校招面试官只读。并发资料变更返回 409 `campus_summary_changed`。 |
-| PATCH | `/summary/bulk` | body `{ items: [{ id, updatedAt }], field: "source" \| "schoolType", value: "校园宣讲" }`，最多 1000 条。单次事务批量更正简历来源或学校类型；`value: null` 恢复自动值。权限同单条编辑，记录变化返回 409 且整批回滚。 |
+| PATCH | `/summary/bulk` | body `{ items: [{ id, updatedAt }], values: { department: "研发", hrResult: "通过" } }`，最多 1000 条，支持全部 22 个登记字段的统一编辑；仅更新指定字段，传 `null` 恢复每个人各自自动资料。兼容原 `field/value` 来源与学校类型请求。权限同单条编辑，任一记录变化返回 409 且整批回滚。 |
 
-`CampusApplicant.summaryData` 保存人工补录，优先于自动带入值，简历解析不会覆盖；字段传 `null` 恢复自动带入，`""` 表示明确留空。北森号和邮政单号使用字符串，保留前导零。简历来源更正会同步显示在候选人详情的来源字段和校招卡片，详情页直接修改来源也写入同一补录字段；恢复自动后显示候选人原始来源。其他补录只影响汇总视图，不修改原候选人、面试或投递记录。简历来源和学校类型可在对应单元格直接更正，也可勾选多条、全选当前页或全选当前筛选结果批量更正；桌面表格与手机卡片均支持。
+`CampusApplicant.summaryData` 保存人工补录，优先于自动资料，重新解析简历不会覆盖。字段传 `null` 恢复自动资料，`""` 表示明确留空；北森号和邮政单号使用字符串，保留前导零。多选、全选当前页或全选筛选结果后可点击「批量编辑资料」，勾选本次要统一修改的字段；未勾选字段不改。手机使用同一可滚动表单。
+
+候选人详情展示「汇总登记资料」完整 22 字段及人工更正标记；姓名、性别、来源、毕业学校、专业、学历及岗位方向的人工值同时覆盖详情对应主字段。详情来源编辑使用同一补录字段。人工资料不写回简历事实、原面试记录或投递历史，解析仍可更新底层资料，但详情优先显示人工资料；主动恢复自动才显示新的底层值。完整登记资料遵循校招访问权限：校招面试官必须有 `campus.summary`，其他账号须有 `campus` 或为管理员。
+
 
 上线需执行新增迁移 `20261013000000_add_campus_summary`，仅新增 JSONB 列，旧记录默认 `{}`。回滚应用时可保留此列及补录数据。
 

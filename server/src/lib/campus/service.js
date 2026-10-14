@@ -52,8 +52,8 @@ export async function createVersionTx(tx, { applicant, session, resume, uploaded
 
 // 新建 / 复活投递:岗位属于专场 → 非重复 → 额度 → 写行 → 首个投递同步 Candidate.jobId
 export async function createApplicationTx(tx, { applicant, session, jobId, source, resumeVersionId = null, matchRunId = null, scoreRaw = null, scoreShown = null, evaluationId = null }) {
-  const sj = await tx.campusSessionJob.findUnique({ where: { sessionId_jobId: { sessionId: session.id, jobId } } });
-  if (!sj) throw httpError("岗位不属于本专场", 404, "campus_job_not_in_session");
+  const sj = await tx.campusSessionJob.findUnique({ where: { sessionId_jobId: { sessionId: session.id, jobId } }, include: { job: { select: { campusActive: true, recruitmentType: true } } } });
+  if (!sj || !sj.job.campusActive || sj.job.recruitmentType !== "campus") throw httpError("校招岗位已移除或不存在", 404, "campus_job_not_in_session");
   const dup = await tx.campusApplication.findUnique({ where: { applicantId_jobId: { applicantId: applicant.id, jobId } } });
   if (dup && dup.status !== "withdrawn") throw httpError("已投递过该岗位", 409, "campus_duplicate_application");
   const active = await tx.campusApplication.count({ where: { applicantId: applicant.id, status: { in: QUOTA_STATUS } } });

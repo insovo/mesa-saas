@@ -1,4 +1,4 @@
-// 专场 tab:列表卡片 + 新建 / 编辑 + 上线 / 结束 / 草稿 / 删除 + 岗位配置 + 学生端二维码
+// 专场 tab:列表卡片 + 新建 / 编辑 + 上线 / 结束 / 草稿 / 删除 + 查看岗位 + 学生端二维码
 import { useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { resources } from "../../lib/api.js";
@@ -51,7 +51,7 @@ export default function CampusSessions({ sessions, canManage, canManageJobs = ca
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <Button size="sm" variant="ghost" icon={<I name="qr-code" size={14} />} onClick={() => setQr(s)}>二维码</Button>
-              <Button size="sm" variant="ghost" icon={<I name="briefcase" size={14} />} onClick={() => setExpanded(expanded === s.id ? null : s.id)}>岗位配置{expanded === s.id ? "▴" : "▾"}</Button>
+              <Button size="sm" variant="ghost" icon={<I name="briefcase" size={14} />} onClick={() => setExpanded(expanded === s.id ? null : s.id)}>查看岗位{expanded === s.id ? "▴" : "▾"}</Button>
               {canManage && <>
                 <Button size="sm" variant="ghost" icon={<I name="pencil" size={14} />} onClick={() => { setEditing(s); setFormOpen(true); }}>编辑</Button>
                 {s.status !== "live" && <Button size="sm" icon={<I name="play" size={14} />} onClick={() => act(s, "live")}>上线</Button>}
