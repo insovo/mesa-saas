@@ -3,6 +3,7 @@ export const NAV_ITEMS = [
   { to: "/dashboard",      label: "概览",       icon: "layout-dashboard", pageKey: "dashboard" },
   { to: "/campus",         label: "校招",       icon: "graduation-cap",   pageKey: "campus" },
   { to: "/candidates",     label: "候选人",     icon: "users",            pageKey: "candidates" },
+  { to: "/interviews",     label: "面试排队",   icon: "calendar-days",    pageKey: "interviews" },
   { to: "/upload",         label: "简历收件箱", icon: "upload-cloud",     pageKey: "upload" },
   { to: "/performance",    label: "绩效评价",   icon: "clipboard-check",  pageKey: "performance" },
   { to: "/reports",        label: "数据报表",   icon: "bar-chart-3",      pageKey: "reports" },

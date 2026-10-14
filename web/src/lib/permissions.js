@@ -59,7 +59,7 @@ export const PAGE_LABELS = Object.freeze({
   "staff": "现有人员",
   "newhire": "入职管理",
   "departments": "部门管理",
-  "interviews": "面试安排",
+  "interviews": "面试排队",
   "performance": "绩效评价",
   "reports": "数据报表",
   "users": "用户管理",
