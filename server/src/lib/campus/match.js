@@ -61,8 +61,8 @@ export async function startMatchRun(app, { applicant, session, concurrency = 3, 
   if (!(await isKimiConfigured())) throw httpError("匹配服务未配置,请联系现场 HR", 424, "kimi_not_configured");
   const inFlight = await app.prisma.campusMatchRun.findFirst({ where: { applicantId: applicant.id, status: { in: ["queued", "running"] } } });
   if (inFlight) throw httpError("已有一个匹配任务在进行中", 409, "campus_match_in_progress");
-  const jobsCount = await app.prisma.campusSessionJob.count({ where: { sessionId: session.id, matchEnabled: true, job: { evaluationModel: { not: null } } } });
-  if (jobsCount === 0) throw httpError("本专场暂无可匹配的岗位", 409, "campus_no_match_jobs");
+  const jobsCount = await app.prisma.campusSessionJob.count({ where: { sessionId: session.id, matchEnabled: true, job: { recruitmentType: "campus", campusActive: true, evaluationModel: { not: null } } } });
+  if (jobsCount === 0) throw httpError("暂无可匹配的校招岗位", 409, "campus_no_match_jobs");
 
   const limit = typeof concurrency === "function" ? await concurrency() : concurrency;
   const task = await createTask(app, applicant.candidateId, "campus_match");
@@ -116,7 +116,7 @@ async function runMatch(app, runId) {
     }
 
     // 2) 逐岗位评估
-    const sjs = await app.prisma.campusSessionJob.findMany({ where: { sessionId: session.id, matchEnabled: true, job: { evaluationModel: { not: null } } }, orderBy: [{ sortOrder: "asc" }], include: { job: { select: { id: true, title: true, dept: true, location: true } } } });
+    const sjs = await app.prisma.campusSessionJob.findMany({ where: { sessionId: session.id, matchEnabled: true, job: { recruitmentType: "campus", campusActive: true, evaluationModel: { not: null } } }, orderBy: [{ sortOrder: "asc" }], include: { job: { select: { id: true, title: true, dept: true, location: true } } } });
     const total = sjs.length;
     const results = [];
     let jevCached = 0, latency = 0;

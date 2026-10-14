@@ -173,6 +173,15 @@ export const resources = {
   },
   // 校招模块(后台)— /api/campus/*
   campus: {
+    listJobs: () => api.get("/campus/jobs").then((r) => r.data),
+    createJob: (body) => api.post("/campus/jobs/new", body).then((r) => r.data.item),
+    addJob: (body) => api.post("/campus/jobs", body).then((r) => r.data.item),
+    updateJobConfig: (id, body) => api.patch(`/campus/jobs/${id}`, body).then((r) => r.data.item),
+    bulkUpdateJobs: (ids, changes) => api.patch("/campus/jobs/bulk", { ids, changes }).then((r) => r.data),
+    removeJob: (id) => api.delete(`/campus/jobs/${id}`),
+    reorderJobs: (ids) => api.post("/campus/jobs/reorder", { ids }).then((r) => r.data),
+    updateJobJd: (id, body) => api.patch(`/campus/jobs/${id}/job`, body).then((r) => r.data.item),
+    generateJobModel: (id) => api.post(`/campus/jobs/${id}/evaluation-model`, {}, { timeout: LONG_TIMEOUT }).then((r) => r.data.item),
     summary: (params) => api.get("/campus/summary", { params }).then((r) => r.data),
     updateSummary: (id, body) => api.patch(`/campus/summary/${id}`, body).then((r) => r.data),
     updateSummaryBulk: (body) => api.patch("/campus/summary/bulk", body).then((r) => r.data),

@@ -15,48 +15,52 @@ function Value({ column, row }) {
   return <span className="whitespace-pre-wrap break-words">{value}</span>;
 }
 
-function EditSummary({ row, columns, options, onClose, onSaved }) {
+function EditSummary({ row, items, columns, options, onClose, onSaved }) {
+  const bulk = !!items;
   const fields = columns.filter((column) => column.key !== "sequence");
-  const [form, setForm] = useState(() => Object.fromEntries(fields.map(({ key }) => [key, row[key] || ""])));
+  const [form, setForm] = useState(() => Object.fromEntries(fields.map(({ key }) => [key, row?.[key] || ""])));
+  const [enabled, setEnabled] = useState(() => new Set(bulk ? [] : fields.map(({ key }) => key)));
   const [saving, setSaving] = useState(false);
   async function save(event) {
     event.preventDefault();
-    const values = Object.fromEntries(Object.entries(form).filter(([key, value]) => value == null || value !== row[key]));
+    const values = Object.fromEntries(Object.entries(form).filter(([key, value]) => enabled.has(key) && (bulk || value == null || value !== row[key])));
     if (!Object.keys(values).length) { onClose(); return; }
     setSaving(true);
     try {
-      await resources.campus.updateSummary(row.id, { values, updatedAt: row.updatedAt });
-      toast("汇总资料已保存", "success"); onSaved();
+      if (bulk) await resources.campus.updateSummaryBulk({ items: items.map(({ id, updatedAt }) => ({ id, updatedAt })), values });
+      else await resources.campus.updateSummary(row.id, { values, updatedAt: row.updatedAt });
+      toast(bulk ? `已更新 ${items.length} 位候选人的汇总资料` : "汇总资料已保存", "success"); onSaved();
     } catch (error) { toast(errMsg(error, "保存失败"), "error"); }
     finally { setSaving(false); }
   }
   return <Modal open onClose={() => !saving && onClose()} maxWidth="max-w-4xl">
     <form onSubmit={save} className="p-5 sm:p-6">
       <div className="flex items-center justify-between gap-3 mb-5">
-        <div><h2 className="text-lg font-bold text-navy-700">编辑汇总资料</h2><p className="text-xs text-gray-600 mt-1">{row.name || "未填写姓名"} · {row.sessionName}</p></div>
+        <div><h2 className="text-lg font-bold text-navy-700">{bulk ? "统一编辑汇总资料" : "编辑汇总资料"}</h2><p className="text-xs text-gray-600 mt-1">{bulk ? `已选 ${items.length} 人；仅勾选的字段会统一更新，其他资料保持各自原值` : `${row.name || "未填写姓名"} · ${row.sessionName}`}</p></div>
         <button type="button" aria-label="关闭编辑" disabled={saving} onClick={onClose} className="p-2 text-gray-600 hover:text-brand"><I name="x" size={18} /></button>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {fields.map((column) => {
-          const value = form[column.key] ?? row.automaticValues[column.key];
+          const value = form[column.key] ?? (bulk ? "" : row.automaticValues[column.key]);
           const choices = column.options;
           return <div key={column.key} className={column.key === "cancellationReason" ? "sm:col-span-2 lg:col-span-3" : ""}>
             <div className="flex items-center justify-between gap-2 mb-1.5">
-              <label htmlFor={`summary-edit-${column.key}`} className="text-xs font-bold text-navy-700">{column.label}</label>
-              {(row.manualFields.includes(column.key) || form[column.key] !== row[column.key]) && <button type="button" onClick={() => setForm((current) => ({ ...current, [column.key]: null }))} className="text-[11px] text-brand">恢复自动</button>}
+              <label htmlFor={`summary-edit-${column.key}`} className="inline-flex items-center gap-2 text-xs font-bold text-navy-700">{bulk && <input type="checkbox" aria-label={`统一编辑${column.label}`} checked={enabled.has(column.key)} onChange={() => setEnabled((current) => { const next = new Set(current); next.has(column.key) ? next.delete(column.key) : next.add(column.key); return next; })} className="accent-brand" />}{column.label}</label>
+              {(bulk ? enabled.has(column.key) : row.manualFields.includes(column.key) || form[column.key] !== row[column.key]) && <button type="button" onClick={() => setForm((current) => ({ ...current, [column.key]: null }))} className="text-[11px] text-brand">恢复自动</button>}
             </div>
-            {choices && column.key !== "schoolType" ? <Select id={`summary-edit-${column.key}`} small className="w-full" value={value} onChange={(event) => setForm({ ...form, [column.key]: event.target.value })}>
+            {choices && column.key !== "schoolType" ? <Select id={`summary-edit-${column.key}`} disabled={!enabled.has(column.key)} small className="w-full" value={value} onChange={(event) => setForm({ ...form, [column.key]: event.target.value })}>
               <option value="">未填写</option>{value && !choices.includes(value) && <option value={value}>{value}</option>}{choices.map((option) => <option key={option} value={option}>{option}</option>)}
             </Select> : <>
-              <input id={`summary-edit-${column.key}`} list={options[column.key]?.length ? `summary-options-${column.key}` : undefined} value={value} maxLength={column.key === "cancellationReason" ? 1000 : 500} onChange={(event) => setForm({ ...form, [column.key]: event.target.value })} className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-navy-700 outline-none focus:border-brand" />
+              <input id={`summary-edit-${column.key}`} disabled={!enabled.has(column.key)} placeholder={bulk && form[column.key] === null ? "恢复各自自动资料" : ""} list={options[column.key]?.length ? `summary-options-${column.key}` : undefined} value={value} maxLength={column.key === "cancellationReason" ? 1000 : 500} onChange={(event) => setForm({ ...form, [column.key]: event.target.value })} className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-navy-700 outline-none focus:border-brand" />
               {options[column.key]?.length > 0 && <datalist id={`summary-options-${column.key}`}>{options[column.key].map((option) => <option key={option} value={option} />)}</datalist>}
             </>}
+            {bulk && enabled.has(column.key) && form[column.key] === null && <p className="mt-1 text-[11px] text-brand">恢复每个人各自的自动资料</p>}
           </div>;
         })}
       </div>
       <div className="sticky bottom-0 bg-white pt-5 mt-2 flex justify-end gap-2">
         <Button type="button" variant="ghost" disabled={saving} onClick={onClose}>取消</Button>
-        <Button type="submit" disabled={saving}>{saving ? "保存中…" : "保存"}</Button>
+        <Button type="submit" disabled={saving || !enabled.size}>{saving ? "保存中…" : bulk ? `保存 ${items.length} 人` : "保存"}</Button>
       </div>
     </form>
   </Modal>;
@@ -181,7 +185,7 @@ export default function CampusSummary({ sessions }) {
       {data?.canEdit && <div className="flex flex-wrap items-center gap-3 border-t border-gray-100 pt-3 text-xs text-navy-700">
         <label className="inline-flex items-center gap-2"><input type="checkbox" className="accent-brand" aria-label="全选当前页候选人" checked={pageSelected} disabled={loading || !pageItems.length} onChange={togglePage} />全选当前页</label>
         {data.total > pageItems.length && <button type="button" className="text-brand hover:underline" disabled={selectingAll || loading} onClick={selectAllFiltered}>{selectingAll ? "选择中…" : `全选筛选结果（${data.total} 人）`}</button>}
-        {selectedItems.length > 0 && <><span>已选 {selectedItems.length} 人</span><Button size="sm" disabled={selectedItems.length > 1000 || selectingAll} onClick={() => setBulkEditing({ field: "source", items: selectedItems })}>更正来源</Button><Button size="sm" variant="secondary" disabled={selectedItems.length > 1000 || selectingAll} onClick={() => setBulkEditing({ field: "schoolType", items: selectedItems })}>更正学校类型</Button><button type="button" className="text-gray-600 hover:text-brand" onClick={clearSelection}>取消选择</button>{selectedItems.length > 1000 && <span className="text-amber-700">每次最多更正 1000 人</span>}</>}
+        {selectedItems.length > 0 && <><span>已选 {selectedItems.length} 人</span><Button size="sm" disabled={selectedItems.length > 1000 || selectingAll} onClick={() => setBulkEditing({ items: selectedItems })}>批量编辑资料</Button><Button size="sm" disabled={selectedItems.length > 1000 || selectingAll} onClick={() => setBulkEditing({ field: "source", items: selectedItems })}>更正来源</Button><Button size="sm" variant="secondary" disabled={selectedItems.length > 1000 || selectingAll} onClick={() => setBulkEditing({ field: "schoolType", items: selectedItems })}>更正学校类型</Button><button type="button" className="text-gray-600 hover:text-brand" onClick={clearSelection}>取消选择</button>{selectedItems.length > 1000 && <span className="text-amber-700">每次最多更正 1000 人</span>}</>}
       </div>}
     </Card>
     {error ? <Card className="p-6"><Empty icon="alert-circle" title={error} /><Button variant="ghost" onClick={reload}>重试</Button></Card> : !data ? <LoadingBlock height="h-48" /> : <Card className={`overflow-hidden ${loading ? "opacity-60" : ""}`}>
@@ -205,6 +209,7 @@ export default function CampusSummary({ sessions }) {
       </div>
     </Card>}
     {editing && <EditSummary row={editing} columns={columns} options={data.options} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />}
-    {bulkEditing && <FieldEditor field={bulkEditing.field} items={bulkEditing.items} options={data.options[bulkEditing.field] || []} onClose={() => setBulkEditing(null)} onSaved={() => { setBulkEditing(null); reload(); }} />}
+    {bulkEditing && !bulkEditing.field && <EditSummary items={bulkEditing.items} columns={columns} options={data.options} onClose={() => setBulkEditing(null)} onSaved={() => { setBulkEditing(null); reload(); }} />}
+    {bulkEditing?.field && <FieldEditor field={bulkEditing.field} items={bulkEditing.items} options={data.options[bulkEditing.field] || []} onClose={() => setBulkEditing(null)} onSaved={() => { setBulkEditing(null); reload(); }} />}
   </div>;
 }

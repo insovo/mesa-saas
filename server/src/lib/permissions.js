@@ -191,7 +191,7 @@ export async function buildCandidateScopeWhere(req) {
 export async function buildJobScopeWhere(req) {
   const access = await loadUserAccess(req);
   if (access.isAdmin) return null;
-  if (access.role === "CAMPUS_INTERVIEWER") return { campusSessionJobs: { some: {} } };
+  if (access.role === "CAMPUS_INTERVIEWER") return { recruitmentType: "campus" };
 
   const deptIds = await expandDepartmentScope(req, access);
   const deptNames = await loadDepartmentNames(req, deptIds);

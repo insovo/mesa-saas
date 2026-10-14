@@ -29,7 +29,7 @@ test("校招候选人和岗位范围由角色固定，不受普通 owner 和授�
     }) } } },
   };
   assert.deepEqual(await buildCandidateScopeWhere(req), { campusApplicant: { isNot: null } });
-  assert.deepEqual(await buildJobScopeWhere(req), { campusSessionJobs: { some: {} } });
+  assert.deepEqual(await buildJobScopeWhere(req), { recruitmentType: "campus" });
   assert.deepEqual(req.permsCache.access.pageKeys, campusInterviewerPageKeys(["jobs"]));
   assert.equal(req.permsCache.access.moduleKeys.includes("candidate.delete"), true);
   assert.equal(req.permsCache.access.moduleKeys.includes("candidate.edit"), false);

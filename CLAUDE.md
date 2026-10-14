@@ -17,7 +17,7 @@
 
 ### 1.1 已实现核心子系统
 
-各子系统能力与设计细节见 skill `mesa-subsystems`(`.claude/skills/mesa-subsystems/SKILL.md`);改模块时同步更新那里。
+校招岗位统一供所有专场使用；汇总全部登记字段可批量人工编辑并优先显示在候选人详情，重新解析不覆盖人工值。各子系统能力与设计细节见 skill `mesa-subsystems`(`.claude/skills/mesa-subsystems/SKILL.md`);改模块时同步更新那里。
 
 ---
 

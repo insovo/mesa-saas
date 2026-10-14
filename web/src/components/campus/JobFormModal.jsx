@@ -1,4 +1,4 @@
-// 校招岗位 JD 新建 / 编辑:新建 = 创建 Job 并挂到当前专场;编辑 = 改 Job 本身(其它专场共用时同步生效)
+// 校招岗位 JD 新建 / 编辑:统一目录，所有专场共用
 import { useCallback, useEffect, useState } from "react";
 import { resources } from "../../lib/api.js";
 import { Button, Input, Modal, I, toast } from "../Primitives.jsx";
@@ -21,7 +21,7 @@ function TextArea({ label, hint, rows = 4, className = "", ...rest }) {
   return <Field label={label} hint={hint} className={className}><textarea aria-label={label} rows={rows} className={TA_CLS} {...rest} /></Field>;
 }
 
-export default function JobFormModal({ open, onClose, session, sessionJob, onSaved }) {
+export default function JobFormModal({ open, onClose, sessionJob, onSaved }) {
   const job = sessionJob?.job || null;
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
@@ -77,15 +77,14 @@ export default function JobFormModal({ open, onClose, session, sessionJob, onSav
     setSaving(true);
     try {
       const saved = sessionJob
-        ? await resources.campus.updateSessionJobJd(session.id, sessionJob.id, body)
-        : await resources.campus.createSessionJob(session.id, { ...body, kind: form.kind, matchEnabled: !!form.matchEnabled });
-      toast(sessionJob ? (job.hasEvaluationModel ? "JD 已保存,内容变更后请重新生成评价模型" : "JD 已保存") : "岗位已创建并加入专场", "success");
+        ? await resources.campus.updateJobJd(sessionJob.id, body)
+        : await resources.campus.createJob( { ...body, kind: form.kind, matchEnabled: !!form.matchEnabled });
+      toast(sessionJob ? (job.hasEvaluationModel ? "JD 已保存,内容变更后请重新生成评价模型" : "JD 已保存") : "岗位已创建，所有专场均可用", "success");
       onSaved?.(saved); onClose();
     } catch (err) { toast(errMsg(err, "保存失败"), "error"); }
     finally { setSaving(false); }
   }
 
-  const sharedElsewhere = job && (job.sessionsCount || 0) > 1;
 
   return (
     <Modal open={open} onClose={close} maxWidth="max-w-3xl">
@@ -93,7 +92,7 @@ export default function JobFormModal({ open, onClose, session, sessionJob, onSav
         <div className="flex items-start justify-between">
           <div>
             <h3 className="text-lg font-bold text-navy-700">{job ? "编辑岗位 JD" : "新建岗位 JD"}</h3>
-            <p className="text-xs text-gray-600 mt-0.5">{job ? (sharedElsewhere ? `另有 ${job.sessionsCount - 1} 个专场共用该岗位,修改会同步生效` : "修改会更新当前校招岗位") : `创建后自动加入「${session?.name || ""}」,并可加入其他校招专场`}</p>
+            <p className="text-xs text-gray-600 mt-0.5">{job ? "修改会同步到所有校招专场" : "创建后所有现有及新建专场均可使用"}</p>
           </div>
           <button type="button" aria-label="关闭岗位表单" disabled={saving} onClick={close} className="p-1.5 rounded-lg hover:bg-lightPrimary text-gray-500"><I name="x" size={16} /></button>
         </div>
@@ -138,7 +137,7 @@ export default function JobFormModal({ open, onClose, session, sessionJob, onSav
           <p className="text-[11px] text-gray-500">{job?.hasEvaluationModel ? "JD 内容有变时,保存后请在岗位卡片点「重新生成评价模型」" : "保存后可在岗位卡片一键生成评价模型(校园招聘模板)"}</p>
           <div className="flex gap-3">
             <Button type="button" variant="ghost" disabled={saving || extracting} onClick={close}>取消</Button>
-            <Button type="submit" disabled={saving || extracting} icon={<I name="check" size={14} />}>{saving ? "保存中…" : job ? "保存" : "创建并加入专场"}</Button>
+            <Button type="submit" disabled={saving || extracting} icon={<I name="check" size={14} />}>{saving ? "保存中…" : job ? "保存" : "创建岗位"}</Button>
           </div>
         </div>
       </form>

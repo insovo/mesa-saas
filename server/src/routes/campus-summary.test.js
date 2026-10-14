@@ -123,6 +123,24 @@ test("补录覆盖自动值、保留北森号前导零，恢复自动后跟随�
   assert.equal(extra.statusCode, 400);
 });
 
+test("全部汇总字段可跨人员统一保存，保留未选字段，支持恢复各自自动值", async (t) => {
+  const rows = [applicant(1), applicant(2)];
+  const app = await setup(t, { rows });
+  const values = { beisenId: "00012", source: "统一宣讲", name: "更正姓名", gender: "女", jobDirection: "产品定义", school: "测试大学", schoolType: "C9", major: "测试专业", degree: "博士", gradYear: "2027", englishLevel: "CET-6", hrInterviewer: "HR甲", hrResult: "通过", professionalInterviewer: "专业甲", professionalResult: "待定", cultureInterviewer: "文化甲", cultureResult: "淘汰", status: "谈薪中", trackingNumber: "000100", cancellationReason: "更正原因", department: "研发", base: "芜湖" };
+  const response = await app.inject({ method: "PATCH", url: "/api/campus/summary/bulk", payload: { items: rows.map(({ id, updatedAt }) => ({ id, updatedAt })), values } });
+  assert.equal(response.statusCode, 200, response.body);
+  for (const row of rows) for (const [key, value] of Object.entries(values)) assert.equal(summaryRow(row)[key], value);
+  rows[0].candidate.school = "重新解析学校";
+  assert.equal(summaryRow(rows[0]).school, "测试大学");
+  const invalid = await app.inject({ method: "PATCH", url: "/api/campus/summary/bulk", payload: { items: [{ id: rows[0].id, updatedAt: rows[0].updatedAt }], values: { sequence: "9" } } });
+  assert.equal(invalid.statusCode, 400);
+  const reset = await app.inject({ method: "PATCH", url: "/api/campus/summary/bulk", payload: { items: rows.map(({ id, updatedAt }) => ({ id, updatedAt })), values: { school: null, hrResult: "待定" } } });
+  assert.equal(reset.statusCode, 200, reset.body);
+  assert.equal(summaryRow(rows[0]).school, "重新解析学校");
+  assert.equal(summaryRow(rows[1]).school, "测试大学");
+  assert.equal(summaryRow(rows[0]).beisenId, "00012");
+});
+
 test("汇总 tab 单独授权只读，台账权限不能访问汇总，无编辑模块不能保存", async (t) => {
   const summary = await setup(t, { role: "CAMPUS_INTERVIEWER", tabs: ["summary"] });
   const response = await summary.inject({ url: "/api/campus/summary" });

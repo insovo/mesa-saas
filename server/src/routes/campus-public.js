@@ -148,7 +148,7 @@ export default async function campusPublicRoutes(app) {
     if (!s) return reply.code(404).send({ error: "campus_session_not_found", message: "没有进行中的专场" });
     const me = await optionalStudent(req);
     const appliedSet = me && me.sessionId === s.id ? new Set(me.applications.filter((x) => x.status !== "withdrawn").map((x) => x.jobId)) : null;
-    const sjs = await app.prisma.campusSessionJob.findMany({ where: { sessionId: s.id }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }], include: { job: true } });
+    const sjs = await app.prisma.campusSessionJob.findMany({ where: { sessionId: s.id, job: { recruitmentType: "campus", campusActive: true } }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }], include: { job: true } });
     const cards = sjs.map((sj) => jobCard(sj, s, appliedSet));
     return { onsite: cards.filter((c) => c.kind === "onsite"), referral: cards.filter((c) => c.kind === "referral") };
   });
@@ -157,7 +157,7 @@ export default async function campusPublicRoutes(app) {
     const s = await findSessionForPublic(app.prisma, req.query.slug);
     if (!s) return reply.code(404).send({ error: "campus_session_not_found" });
     const sj = await app.prisma.campusSessionJob.findUnique({ where: { sessionId_jobId: { sessionId: s.id, jobId: req.params.id } }, include: { job: true } });
-    if (!sj) return reply.code(404).send({ error: "campus_job_not_in_session", message: "岗位不属于当前专场" });
+    if (!sj || !sj.job.campusActive) return reply.code(404).send({ error: "campus_job_not_in_session", message: "校招岗位已移除或不存在" });
     const me = await optionalStudent(req);
     const appliedSet = me && me.sessionId === s.id ? new Set(me.applications.filter((x) => x.status !== "withdrawn").map((x) => x.jobId)) : null;
     return { job: jobDetail(sj, s, appliedSet) };
