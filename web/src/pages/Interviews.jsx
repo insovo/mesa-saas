@@ -99,7 +99,7 @@ export default function Interviews() {
         <LoadingBlock height="h-40" />
       ) : grouped.length === 0 ? (
         <Card className="p-6">
-          <Empty icon="calendar" title="暂无面试安排" desc="在候选人详情里点「安排面试」即可创建" />
+          <Empty icon="calendar" title="暂无面试排队记录" desc="安排面试后，将在这里按日期和时间展示" />
         </Card>
       ) : (
         grouped.map(([date, list]) => (
