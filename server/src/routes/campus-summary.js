@@ -11,7 +11,7 @@ export const SUMMARY_COLUMNS = [
   { key: "gender", label: "性别", options: ["男", "女"], filter: true },
   { key: "jobDirection", label: "岗位方向" },
   { key: "school", label: "毕业学校(全称)" },
-  { key: "schoolType", label: "学校类型", options: ["985", "一本", "双一流", "211", "C9", "QS100", "QS300"], filter: true },
+  { key: "schoolType", label: "学校类型", options: ["C9", "985", "211", "双一流", "QS100", "QS300", "QS500", "QS10", "一本"], filter: true },
   { key: "major", label: "专业名称" },
   { key: "degree", label: "学历", options: ["本科", "硕士", "博士"], filter: true },
   { key: "gradYear", label: "毕业时间", options: ["2026", "2027"], filter: true },
@@ -32,7 +32,7 @@ const FIELDS = SUMMARY_COLUMNS.filter((column) => column.key !== "sequence");
 const FILTERS = FIELDS.filter((column) => column.filter);
 const fieldSchema = Object.fromEntries(FIELDS.map(({ key, options }) => [key, {
   type: ["string", "null"], maxLength: key === "cancellationReason" ? 1000 : 500,
-  ...(options ? { enum: [...options, "", null] } : {}),
+  ...(options && key !== "schoolType" ? { enum: [...options, "", null] } : {}),
 }]));
 const querySchema = {
   type: "object", additionalProperties: false,
@@ -41,7 +41,19 @@ const querySchema = {
     sessionId: { type: "string", format: "uuid" },
     skip: { type: "integer", minimum: 0, default: 0 },
     take: { type: "integer", minimum: 1, maximum: 100, default: 50 },
+    selection: { type: "string", enum: ["all"] },
     ...Object.fromEntries(FILTERS.map(({ key }) => [key, { type: "string", maxLength: 500 }])),
+  },
+};
+const bulkSchema = {
+  type: "object", required: ["items", "field", "value"], additionalProperties: false,
+  properties: {
+    items: { type: "array", minItems: 1, maxItems: 1000, items: {
+      type: "object", required: ["id", "updatedAt"], additionalProperties: false,
+      properties: { id: { type: "string", format: "uuid" }, updatedAt: { type: "string", format: "date-time" } },
+    } },
+    field: { type: "string", enum: ["source", "schoolType"] },
+    value: { type: ["string", "null"], maxLength: 500 },
   },
 };
 
@@ -116,11 +128,17 @@ export function summaryRow(applicant) {
 }
 
 function filterOptions(rows) {
-  return Object.fromEntries(FILTERS.map(({ key, options }) => [key, options || [...new Set(rows.flatMap((row) => key.endsWith("Interviewer") ? row[key].split(" / ") : [row[key]]).filter(Boolean))].sort((a, b) => a.localeCompare(b, "zh-CN"))]));
+  return Object.fromEntries(FILTERS.map(({ key, options }) => {
+    const present = rows.flatMap((row) => key.endsWith("Interviewer") ? row[key].split(" / ") : [row[key]]).filter(Boolean);
+    return [key, key === "schoolType" ? [...new Set([...options, ...present])] : options || [...new Set(present)].sort((a, b) => a.localeCompare(b, "zh-CN"))];
+  }));
 }
 function matches(row, query) {
   if (query.q && !FIELDS.some(({ key }) => row[key].toLowerCase().includes(query.q.trim().toLowerCase()))) return false;
   return FILTERS.every(({ key }) => !query[key] || (key === "englishLevel" || key.endsWith("Interviewer") ? row[key].split(" / ").includes(query[key]) : row[key] === query[key]));
+}
+function canEditSummary(access) {
+  return access.role !== "CAMPUS_INTERVIEWER" && (access.isAdmin || hasModule(access, "campus.manage") || hasModule(access, "candidate.edit"));
 }
 
 export default async function campusSummaryRoutes(app) {
@@ -136,8 +154,38 @@ export default async function campusSummaryRoutes(app) {
     return {
       items: filtered.slice(skip, skip + req.query.take).map((row, index) => ({ ...row, sequence: skip + index + 1 })),
       total: filtered.length, columns: SUMMARY_COLUMNS, options: filterOptions(rows),
-      canEdit: access.role !== "CAMPUS_INTERVIEWER" && (access.isAdmin || hasModule(access, "campus.manage") || hasModule(access, "candidate.edit")),
+      canEdit: canEditSummary(access),
+      ...(req.query.selection === "all" ? { selection: filtered.map(({ id, updatedAt }) => ({ id, updatedAt })) } : {}),
     };
+  });
+
+  app.patch("/summary/bulk", { schema: { body: bulkSchema } }, async (req, reply) => {
+    const access = await loadUserAccess(req);
+    if (!canEditSummary(access)) return reply.code(403).send({ error: "forbidden", message: "无汇总编辑权限" });
+    const { items, field, value } = req.body;
+    const ids = items.map(({ id }) => id);
+    if (new Set(ids).size !== ids.length) return reply.code(400).send({ error: "duplicate_summary_ids", message: "请勿重复选择候选人" });
+    const expected = new Map(items.map(({ id, updatedAt }) => [id, new Date(updatedAt).getTime()]));
+    try {
+      await app.prisma.$transaction(async (tx) => {
+        const applicants = await tx.campusApplicant.findMany({ where: { id: { in: ids } }, select: { id: true, updatedAt: true, summaryData: true } });
+        if (applicants.length !== ids.length) throw new Error("summary_missing");
+        if (applicants.some(({ id, updatedAt }) => new Date(updatedAt).getTime() !== expected.get(id))) throw new Error("summary_changed");
+        for (const applicant of applicants) {
+          const summaryData = { ...applicant.summaryData };
+          if (value == null) delete summaryData[field];
+          else summaryData[field] = value.trim();
+          const saved = await tx.campusApplicant.updateMany({ where: { id: applicant.id, updatedAt: new Date(applicant.updatedAt) }, data: { summaryData } });
+          if (!saved.count) throw new Error("summary_changed");
+        }
+      }, { timeout: 30000 });
+    } catch (error) {
+      if (error.message === "summary_missing") return reply.code(404).send({ error: "not_found", message: "所选候选人中有记录不存在" });
+      if (error.message === "summary_changed") return reply.code(409).send({ error: "campus_summary_changed", message: "资料已被更新，请刷新后再编辑" });
+      throw error;
+    }
+    await writeLog(app.prisma, { req, action: "campus.summary.bulk_update", entityType: "CampusApplicant", diff: { ids, field, mode: value == null ? "restore_auto" : "manual" } });
+    return { count: ids.length };
   });
 
   app.patch("/summary/:id", { schema: { params: { type: "object", required: ["id"], properties: { id: { type: "string", format: "uuid" } } }, body: {
@@ -149,7 +197,7 @@ export default async function campusSummaryRoutes(app) {
   } } }, async (req, reply) => {
     if (!Object.keys(req.body.values).length) return reply.code(400).send({ error: "invalid_summary_fields", message: "请选择要更新的汇总字段" });
     const access = await loadUserAccess(req);
-    if (access.role === "CAMPUS_INTERVIEWER" || !(access.isAdmin || hasModule(access, "campus.manage") || hasModule(access, "candidate.edit"))) {
+    if (!canEditSummary(access)) {
       return reply.code(403).send({ error: "forbidden", message: "无汇总编辑权限" });
     }
     const applicant = await app.prisma.campusApplicant.findUnique({ where: { id: req.params.id } });

@@ -28,19 +28,20 @@ async function setup(t, { rows = [applicant()], role = "ADMIN", tabs = [], modul
   app.decorate("prisma", {
     campusApplicant: {
       findMany: async ({ where, include }) => {
-        assert.equal(include.candidate.select.interviewEvaluations.select.token, undefined);
-        return rows.filter((row) => !where.sessionId || row.sessionId === where.sessionId);
+        if (include) assert.equal(include.candidate.select.interviewEvaluations.select.token, undefined);
+        return rows.filter((row) => (!where.sessionId || row.sessionId === where.sessionId) && (!where.id?.in || where.id.in.includes(row.id)));
       },
       findUnique: async ({ where }) => rows.find((row) => row.id === where.id),
       updateMany: async ({ where, data }) => {
         const row = rows.find((row) => row.id === where.id && new Date(row.updatedAt).getTime() === where.updatedAt.getTime());
         if (!row) return { count: 0 };
-        Object.assign(row, data, { updatedAt: "2026-10-13T06:01:00.000Z" });
+        Object.assign(row, data, { updatedAt: new Date(new Date(row.updatedAt).getTime() + 60000).toISOString() });
         return { count: 1 };
       },
     },
     auditLog: { create: async () => ({}) },
   });
+  app.prisma.$transaction = async (run) => run(app.prisma);
   await app.register(campusRoutes, { prefix: "/api/campus" });
   t.after(() => app.close());
   return app;
@@ -58,7 +59,7 @@ test("汇总提供模板的23列与15项筛选，并在组合筛选后分页", a
   assert.deepEqual(result.items.map((row) => row.sequence), [51, 52, 53, 54, 55, 56, 57, 58, 59, 60]);
   assert.equal(result.columns.length, 23);
   assert.equal(result.columns.filter((column) => column.filter).length, 15);
-  assert.deepEqual(result.options.schoolType, ["985", "一本", "双一流", "211", "C9", "QS100", "QS300"]);
+  assert.deepEqual(result.options.schoolType, ["C9", "985", "211", "双一流", "QS100", "QS300", "QS500", "QS10", "一本"]);
   assert.deepEqual(result.options.hrInterviewer, ["测试面试官"]);
   assert.deepEqual(result.options.department, ["测试部门"]);
   assert.equal(result.items[0].hrResult, "通过");
@@ -66,10 +67,38 @@ test("汇总提供模板的23列与15项筛选，并在组合筛选后分页", a
   const empty = await app.inject({ url: "/api/campus/summary?source=missing" });
   assert.equal(empty.json().total, 0);
   assert.equal(empty.json().options.source.includes("校园宣讲"), true);
+  const selection = await app.inject({ url: "/api/campus/summary?schoolType=211&selection=all&skip=50&take=10" });
+  assert.equal(selection.json().selection.length, 65);
+  assert.equal(selection.json().selection[0].updatedAt, updatedAt);
   const search = await app.inject({ url: `/api/campus/summary?q=${encodeURIComponent("候选人66")}` });
   assert.equal(search.json().total, 1);
   const otherSession = await app.inject({ url: "/api/campus/summary?sessionId=10000000-0000-4000-8000-000000000099" });
   assert.equal(otherSession.json().total, 0);
+});
+
+test("简历来源和学校类型支持多选批量更正，保留其他补录，并拦截重复和过期记录", async (t) => {
+  const first = applicant(1);
+  const second = applicant(2);
+  const app = await setup(t, { rows: [first, second] });
+  const items = [first, second].map(({ id, updatedAt }) => ({ id, updatedAt }));
+  const source = await app.inject({ method: "PATCH", url: "/api/campus/summary/bulk", payload: { items, field: "source", value: "线下宣讲" } });
+  assert.equal(source.statusCode, 200);
+  assert.equal(source.json().count, 2);
+  assert.equal(first.summaryData.schoolType, "211");
+  assert.equal(second.summaryData.source, "线下宣讲");
+  const stale = await app.inject({ method: "PATCH", url: "/api/campus/summary/bulk", payload: { items, field: "schoolType", value: "QS10" } });
+  assert.equal(stale.statusCode, 409);
+  assert.equal(first.summaryData.schoolType, "211");
+  const current = [first, second].map(({ id, updatedAt }) => ({ id, updatedAt }));
+  const school = await app.inject({ method: "PATCH", url: "/api/campus/summary/bulk", payload: { items: current, field: "schoolType", value: "QS10" } });
+  assert.equal(school.statusCode, 200);
+  assert.equal(summaryRow(first).schoolType, "QS10");
+  assert.equal(summaryRow(second).source, "线下宣讲");
+  const duplicate = await app.inject({ method: "PATCH", url: "/api/campus/summary/bulk", payload: { items: [current[0], current[0]], field: "source", value: "重复" } });
+  assert.equal(duplicate.statusCode, 400);
+  const reset = await app.inject({ method: "PATCH", url: "/api/campus/summary/bulk", payload: { items: [{ id: first.id, updatedAt: first.updatedAt }], field: "schoolType", value: null } });
+  assert.equal(reset.statusCode, 200);
+  assert.equal(summaryRow(first).schoolType, "");
 });
 
 test("补录覆盖自动值、保留北森号前导零，恢复自动后跟随源资料，并拦截过期保存", async (t) => {
@@ -101,6 +130,7 @@ test("汇总 tab 单独授权只读，台账权限不能访问汇总，无编辑
   assert.equal(response.json().canEdit, false);
   assert.equal((await summary.inject({ url: `/api/campus/sessions/${sessionId}/ledger` })).statusCode, 403);
   assert.equal((await summary.inject({ method: "PATCH", url: `/api/campus/summary/${applicantId}`, payload: { updatedAt, values: { name: "test" } } })).statusCode, 403);
+  assert.equal((await summary.inject({ method: "PATCH", url: "/api/campus/summary/bulk", payload: { items: [{ id: applicantId, updatedAt }], field: "source", value: "改动" } })).statusCode, 403);
   const ledger = await setup(t, { role: "CAMPUS_INTERVIEWER", tabs: ["ledger"] });
   assert.equal((await ledger.inject({ url: "/api/campus/summary" })).statusCode, 403);
   const viewer = await setup(t, { role: "VIEWER" });

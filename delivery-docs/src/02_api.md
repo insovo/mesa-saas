@@ -1165,16 +1165,17 @@ Header 必填:`X-Perf-Access-Key: <明文密钥>`
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/summary` | `sessionId` 可选；`q` 搜索全部登记字段；`skip` 默认 0，`take` 默认 50、最多 100。支持组合筛选 `source gender schoolType degree gradYear englishLevel hrInterviewer hrResult professionalInterviewer professionalResult cultureInterviewer cultureResult status department base`。返回 `{ items, total, columns, options, canEdit }`，筛选后分页，序号按当前结果顺序生成。动态来源、面试官、部门选项取所选专场的全部记录，不受当前页限制。 |
+| GET | `/summary` | `sessionId` 可选；`q` 搜索全部登记字段；`skip` 默认 0，`take` 默认 50、最多 100。支持组合筛选 `source gender schoolType degree gradYear englishLevel hrInterviewer hrResult professionalInterviewer professionalResult cultureInterviewer cultureResult status department base`。返回 `{ items, total, columns, options, canEdit }`，筛选后分页，序号按当前结果顺序生成。动态来源、面试官、部门选项取所选专场的全部记录，不受当前页限制。传 `selection=all` 时额外返回当前筛选结果全部 `{ id, updatedAt }`，供跨页全选。 |
 | PATCH | `/summary/:id` | `id` 为校招登记 UUID；body `{ values: { beisenId: "00123", hrResult: "通过" }, updatedAt: "ISO时间" }` 仅更新指定字段。需管理员、`campus.manage` 或 `candidate.edit`；校招面试官只读。并发资料变更返回 409 `campus_summary_changed`。 |
+| PATCH | `/summary/bulk` | body `{ items: [{ id, updatedAt }], field: "source" \| "schoolType", value: "校园宣讲" }`，最多 1000 条。单次事务批量更正简历来源或学校类型；`value: null` 恢复自动值。权限同单条编辑，记录变化返回 409 且整批回滚。 |
 
-`CampusApplicant.summaryData` 保存人工补录，优先于自动带入值，简历解析不会覆盖；字段传 `null` 恢复自动带入，`""` 表示明确留空。北森号和邮政单号使用字符串，保留前导零。补录只影响汇总视图，不修改原候选人、面试或投递记录。
+`CampusApplicant.summaryData` 保存人工补录，优先于自动带入值，简历解析不会覆盖；字段传 `null` 恢复自动带入，`""` 表示明确留空。北森号和邮政单号使用字符串，保留前导零。补录只影响汇总视图，不修改原候选人、面试或投递记录。简历来源和学校类型可在对应单元格直接更正，也可勾选多条、全选当前页或全选当前筛选结果批量更正；桌面表格与手机卡片均支持。
 
 上线需执行新增迁移 `20261013000000_add_campus_summary`，仅新增 JSONB 列，旧记录默认 `{}`。回滚应用时可保留此列及补录数据。
 
 自动资料来自校招登记、候选人及关联岗位/部门/员工；岗位方向优先取最新建议岗位。学校类型不根据学校名推断，Base 地不使用候选人现居城市。英语从明确考试事实/证书带入，CET-6 优先于 CET-4。面试记录仅在轮次或类别明确为 HR、专业/技术/业务、文化时归入对应列；仅使用已提交且未删除/撤销的评价。「建议录用 / 建议复试」展示为「通过」，「不建议录用 / 不通过 / 未通过」为「淘汰」，「谨慎考虑」为「待定」；可人工修正。无依据的字段留空。
 
-固定选项遵循页面清单：性别男/女；学校类型 985/一本/双一流/211/C9/QS100/QS300；学历本科/硕士/博士；毕业时间 2026/2027；英语 CET-4/CET-6/雅思/托福；三类面评价淘汰/通过/待定；状态 HR面/专业面/文化面/谈薪中；Base 地芜湖。校招面试官需单独授予 `campusTabs: ["summary"]`，不继承台账或其他 tab 权限。
+固定选项遵循页面清单：性别男/女；学校类型提供 C9/985/211/双一流/QS100/QS300/QS500/QS10/一本快捷选择，也可输入并用于筛选；学历本科/硕士/博士；毕业时间 2026/2027；英语 CET-4/CET-6/雅思/托福；三类面评价淘汰/通过/待定；状态 HR面/专业面/文化面/谈薪中；Base 地芜湖。校招面试官需单独授予 `campusTabs: ["summary"]`，不继承台账或其他 tab 权限。
 
 ## 19.4 学生 / 简历版本 / 投递
 
