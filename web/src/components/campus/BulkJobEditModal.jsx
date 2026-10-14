@@ -4,7 +4,7 @@ import JobQuickOptions, { appendQuickLine } from "../JobQuickOptions.jsx";
 import { Select, fmtDate } from "./ui.jsx";
 
 const FIELDS = [
-  ["kind", "岗位类型"], ["dept", "部门"], ["location", "工作地点"], ["employment", "用工类型"],
+  ["kind", "岗位类型"], ["matchEnabled", "参与匹配"], ["dept", "部门"], ["location", "工作地点"], ["employment", "用工类型"],
   ["salary", "薪资"], ["educationRequirement", "学历要求"], ["languageRequirement", "语言要求"],
   ["openings", "招聘名额"], ["deadline", "截止投递日期"],
   ["niceAdd", "加分项（追加）"], ["benefitsAdd", "福利待遇（追加）"],
@@ -14,6 +14,7 @@ const EMPLOYMENTS = ["全职", "实习", "兼职", "合同制"];
 
 function fieldValue(sj, key) {
   if (key === "kind") return sj.kind;
+  if (key === "matchEnabled") return sj.matchEnabled;
   if (key === "niceAdd") return sj.job?.nice || [];
   if (key === "benefitsAdd") return sj.job?.benefits || [];
   if (key === "deadline") return sj.job?.deadline ? fmtDate(sj.job.deadline) : "";
@@ -33,6 +34,7 @@ function currentSummary(selected, key) {
   const values = selected.map((sj) => fieldValue(sj, key));
   const labels = [...new Set(values.map((value) => {
     if (key === "kind") return value === "onsite" ? "现场面试" : "内推";
+    if (key === "matchEnabled") return value ? "参与匹配" : "不参与匹配";
     if (key === "openings") return value === 0 ? "不限制" : `${value} 人`;
     if (Array.isArray(value)) return value.length ? value.join("、") : "无";
     return value || "未填写";
@@ -65,6 +67,9 @@ export default function BulkJobEditModal({ selected, onClose, onSave }) {
       } else if (key === "kind") {
         if (!form.kind) return toast("请选择岗位类型", "error");
         changes.kind = form.kind;
+      } else if (key === "matchEnabled") {
+        if (!["true", "false"].includes(form.matchEnabled)) return toast("请选择是否参与匹配", "error");
+        changes.matchEnabled = form.matchEnabled === "true";
       } else if (key === "niceAdd" || key === "benefitsAdd") {
         const items = [...new Set(form[key].split("\n").map((line) => line.replace(/^\s*(?:[-•*]|\d+[.、)])\s*/, "").trim()).filter(Boolean))];
         const limit = key === "niceAdd" ? 500 : 200;
@@ -98,6 +103,8 @@ export default function BulkJobEditModal({ selected, onClose, onSave }) {
               <div className="flex items-baseline gap-2 flex-wrap"><label htmlFor={`bulk-job-${key}`} className="text-sm font-bold text-navy-700">{label}</label><span className="text-[11px] text-red-500 break-all" title={current}>{current.length > 75 ? `${current.slice(0, 75)}…` : current}</span></div>
               {key === "kind" ? (
                 <Select id="bulk-job-kind" aria-label="批量岗位类型" disabled={saving} value={form.kind} onChange={set(key)}><option value="" disabled>请选择岗位类型</option><option value="onsite">现场面试</option><option value="referral">内推</option></Select>
+              ) : key === "matchEnabled" ? (
+                <div><Select id="bulk-job-matchEnabled" aria-label="批量参与匹配" disabled={saving} value={form.matchEnabled} onChange={set(key)}><option value="" disabled>请选择是否参与匹配</option><option value="true">参与匹配</option><option value="false">不参与匹配</option></Select>{form.matchEnabled === "true" && selected.some((sj) => !sj.job?.hasEvaluationModel) && <p className="text-[11px] text-gray-600 mt-1">尚未生成评价模型的岗位，生成后开始参与匹配。</p>}</div>
               ) : key === "employment" ? (
                 <Select id="bulk-job-employment" aria-label="批量用工类型" disabled={saving} value={form.employment} onChange={set(key)}><option value="" disabled>请选择用工类型</option>{EMPLOYMENTS.map((item) => <option key={item} value={item}>{item}</option>)}{form.employment && form.employment !== "__clear__" && !EMPLOYMENTS.includes(form.employment) && <option value={form.employment}>{form.employment}</option>}<option value="__clear__">清空用工类型</option></Select>
               ) : key === "openings" ? (

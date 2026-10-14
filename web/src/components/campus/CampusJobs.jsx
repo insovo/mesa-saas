@@ -6,6 +6,7 @@ import { useCampusJobs } from "./useSessionJobs.js";
 import JobFormModal from "./JobFormModal.jsx";
 import BulkJobEditModal from "./BulkJobEditModal.jsx";
 import ModelGenerationNotice from "./ModelGenerationNotice.jsx";
+import CampusJobShareModal from "./CampusJobShareModal.jsx";
 
 function JdBlock({ title, items }) {
   if (!items?.length) return null;
@@ -30,6 +31,7 @@ export default function CampusJobs({ sessions, canManage, onChanged }) {
   const [expanded, setExpanded] = useState(() => new Set());
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   useEffect(() => { setSelectedIds((prev) => new Set([...prev].filter((id) => items.some((sj) => sj.id === id)))); }, [items]);
 
   const toggleExpand = (id) => setExpanded((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -40,7 +42,7 @@ export default function CampusJobs({ sessions, canManage, onChanged }) {
   const toggleSelected = (id) => setSelectedIds((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
   async function onBulkSave(changes) {
     const done = await bulkPatch(selected.map((sj) => sj.id), changes);
-    if (done) toast(`已更新 ${selected.length} 个岗位${Object.keys(changes).some((key) => key !== "kind") ? ",JD 变更后请重新生成评价模型" : ""}`, "success");
+    if (done) toast(`已更新 ${selected.length} 个岗位${Object.keys(changes).some((key) => !["kind", "matchEnabled"].includes(key)) ? ",JD 变更后请重新生成评价模型" : ""}`, "success");
     return done;
   }
   async function onBulkGenerate() {
@@ -66,6 +68,7 @@ export default function CampusJobs({ sessions, canManage, onChanged }) {
         <div className="sm:ml-auto flex items-center gap-2">
           <Button size="sm" variant="ghost" icon={<I name="refresh-cw" size={14} className={loading ? "animate-spin" : ""} />} disabled={loading || mutating || modelBusy} onClick={load}>刷新</Button>
           {canManage && <Button size="sm" icon={<I name="plus" size={14} />} disabled={loading || mutating} onClick={() => setForm({ sj: null })}>新建岗位 JD</Button>}
+          {canManage && <Button size="sm" variant="ghost" onClick={() => { setSelectedIds(new Set()); setShareOpen(true); }}>管理岗位分享</Button>}
         </div>
       </Card>
 
@@ -77,6 +80,7 @@ export default function CampusJobs({ sessions, canManage, onChanged }) {
           <span className="text-xs text-gray-600">已选 {selected.length} / {items.length}</span>
           {bulkProgress && <span role="status" className="text-xs text-brand">评价模型生成中 {bulkProgress.done}/{bulkProgress.total}</span>}
           <div className="sm:ml-auto flex items-center gap-2 flex-wrap">
+            <Button size="sm" variant="secondary" disabled={!selected.length || selectionBusy} onClick={() => setShareOpen(true)} icon={<I name="share-2" size={13} />}>分享给 HR</Button>
             <Button size="sm" variant="secondary" disabled={!selected.length || selectionBusy} onClick={() => setBulkOpen(true)} icon={<I name="pencil" size={13} />}>批量编辑</Button>
             <Button size="sm" disabled={!selected.length || selectionBusy} onClick={onBulkGenerate} icon={<I name="sparkles" size={13} />}>批量生成评价模型</Button>
           </div>
@@ -130,8 +134,8 @@ export default function CampusJobs({ sessions, canManage, onChanged }) {
               </div>
               <div className="flex items-center gap-2 flex-wrap justify-end w-full xl:w-auto xl:max-w-[420px]">
                 <Select small aria-label={`${j.title}岗位类型`} value={sj.kind} disabled={!canManage || loading || mutating || busy[sj.id]} onChange={(e) => patch(sj, { kind: e.target.value })}><option value="onsite">现场面试</option><option value="referral">内推</option></Select>
-                <label className={`inline-flex items-center gap-1.5 text-xs text-navy-700 ${!j.hasEvaluationModel ? "opacity-50" : ""}`} title={!j.hasEvaluationModel ? "先生成评价模型才能开启匹配" : ""}>
-                  <input type="checkbox" className="accent-brand" disabled={!canManage || loading || mutating || busy[sj.id] || !j.hasEvaluationModel} checked={sj.matchEnabled && !!j.hasEvaluationModel} onChange={(e) => patch(sj, { matchEnabled: e.target.checked })} />参与匹配
+                <label className={`inline-flex items-center gap-1.5 text-xs text-navy-700 ${!j.hasEvaluationModel ? "opacity-50" : ""}`} title={!j.hasEvaluationModel ? "尚无评价模型，生成后按参与匹配设置生效" : ""}>
+                  <input type="checkbox" className="accent-brand" disabled={!canManage || loading || mutating || busy[sj.id] || !j.hasEvaluationModel} checked={sj.matchEnabled} onChange={(e) => patch(sj, { matchEnabled: e.target.checked })} />参与匹配
                 </label>
                 {canManage && <Button size="sm" variant="ghost" icon={<I name="pencil" size={14} />} disabled={loading || mutating || busy[sj.id]} onClick={() => setForm({ sj })}>编辑 JD</Button>}
                 {canManage && (
@@ -162,6 +166,7 @@ export default function CampusJobs({ sessions, canManage, onChanged }) {
 
       <JobFormModal key={form?.sj?.id || "new"} open={!!form} onClose={() => setForm(null)} sessionJob={form?.sj || null} onSaved={() => { load(); onChanged?.(); }} />
       {bulkOpen && <BulkJobEditModal selected={selected} onClose={() => setBulkOpen(false)} onSave={onBulkSave} />}
+      {shareOpen && <CampusJobShareModal ids={selected.map((sj) => sj.jobId)} onClose={() => setShareOpen(false)} />}
       <ModelGenerationNotice notice={modelNotice} onDismiss={dismissModelNotice} />
     </div>
   );

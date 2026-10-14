@@ -1140,7 +1140,7 @@ Header 必填:`X-Perf-Access-Key: <明文密钥>`
 | POST | `/jobs/new` | 新建共享 Job；`title` 必填，另收 JD 字段与 `kind / matchEnabled`；创建后所有现有及新建专场均可用。返回 201 `{ item }`。无需先建专场。 |
 | POST | `/jobs` | 恢复已移除岗位 `{ jobId, kind?, matchEnabled? }`，重新关联全部专场，并排到统一目录末尾。 |
 | PATCH / DELETE | `/jobs/:jobId` | 同步修改 `kind / matchEnabled`；删除只将岗位从全部学生端目录移除，保留 Job 和关联记录。任何专场已有投递时返回 409 `campus_job_has_applications`。 |
-| PATCH | `/jobs/bulk` | `{ ids: [jobId], changes: { kind?, dept?, location?, employment?, salary?, educationRequirement?, languageRequirement?, openings?, deadline?, niceAdd?, benefitsAdd? } }`。1–200 个唯一 ID；事务内校验有效校招岗位及账号范围。仅更新传入字段，类型同步全部专场；追加分别保留各岗位原条目并去重，加分项超 20 条则整批拒绝；福利待遇无条数上限，每条最多 200 字。返回 `{ updated }`。 |
+| PATCH | `/jobs/bulk` | `{ ids: [jobId], changes: { kind?, matchEnabled?, dept?, location?, employment?, salary?, educationRequirement?, languageRequirement?, openings?, deadline?, niceAdd?, benefitsAdd? } }`。1–200 个唯一 ID；事务内校验有效校招岗位及账号范围。仅更新传入字段，类型和布尔匹配开关同步全部专场；追加分别保留各岗位原条目并去重，加分项超 20 条则整批拒绝；福利待遇无条数上限，每条最多 200 字。返回 `{ updated }`。未生成评价模型的岗位保存匹配配置，模型生成后才实际参与匹配。 |
 | POST | `/jobs/reorder` | `{ ids: [jobId] }` 更新统一顺序，所有专场同步；保留账号范围外岗位的顺序位置。 |
 | PATCH | `/jobs/:jobId/job` | 编辑共享 JD 字段，所有专场同步，返回 `{ item }`。 |
 | POST | `/jobs/:jobId/evaluation-model` | body `{}`；抽取最新 JD 并生成校园招聘评价模型；并发修改 JD 时返回 409 `campus_job_changed`，上游失败返回 4xx 并保留原模型。 |
@@ -1149,6 +1149,10 @@ Header 必填:`X-Perf-Access-Key: <明文密钥>`
 写接口需页面 `campus`、模块 `campus.manage` 和岗位数据范围；校招面试官须授予 `campus.jobs`。新建给非管理员创建者补岗位范围。JD 字段、条目长度、`openings=0`、模型生成与乐观锁沿用原约定。岗位 tab 不再选择专场；专场 tab 仅查看统一岗位，学生端仍按现场面试 / 内推分组。
 
 上线自动执行新增迁移 `20261014000000_shared_campus_jobs`：合并全部已有专场岗位，以当前上线专场配置优先，无上线配置则取最早关联；已移除的旧岗位保持可恢复状态。保留现有关联 ID 和所有投递，补齐现有专场缺失关联。回滚应用可保留新增列与关联数据。
+
+### 19.2.1 岗位分享给 HR
+
+多选岗位生成三天有效链接／二维码，公开 HR 查看 JD、批量标记现场面试／内推、三项新建 JD。API 与权限／默认值见 [岗位分享说明](08_campus_job_sharing.md)。登录路径 `/api/campus/jobs/share-links`；匿名前缀 `/api/public/campus-job-shares`，通过 `X-Campus-Job-Share` 传 token。
 
 ## 19.3 概览（原台账）
 
@@ -1278,11 +1282,12 @@ AuthGuard 外,学生**不注册不登录**。会话:首次上传前 `POST /auth/
 
 | 方法 | 路径 | 鉴权 / 请求 |
 | --- | --- | --- |
-| GET | `/link` | `X-Queue-Link` 传链接 token，返回专场、角色、是否需要密钥和期限；登记还返回岗位选项 |
+| GET | `/link` | `X-Queue-Link` 传链接 token，返回专场、角色、是否需要密钥和期限；登记还返回全部有效校招岗位选项及 kind，前端仅允许选择 onsite |
+| GET | `/registration/jobs/:jobId` | 有效登记 X-Queue-Link；UUID 岗位；返回有效校招 JD 公开字段（含内推），薪资按专场设置隐藏。不返回评价模型、人员、权限和内部字段 |
 | POST | `/share/open` | `X-Queue-Link` + `{accessKey?}` → 12h 角色 JWT；每次使用仍检查分享状态 |
 | GET | `/share/data?revision=` | 角色 Bearer JWT，只返回该角色本阶段和其待定记录；专业/文化不返回邮箱/薪资 |
 | POST | `/share/actions` | 角色 Bearer JWT，操作仅限对应阶段 |
-| POST | `/register` | 登记 X-Queue-Link + `{name,school,major,degree,gradYear,languageAbility,phone,jobDirection,email}` → 本记录查询 JWT（30d）；同专场邮箱重复 409 |
+| POST | `/register` | 登记 X-Queue-Link + `{name,school,major,degree,gradYear,languageAbility,phone,jobDirection,email}` → 本记录查询 JWT（30d）；同专场邮箱重复 409；事务内按名称校验当前有效 onsite 校招岗位，不符 422 queue_job_not_onsite |
 | POST | `/recover/send-code` | `{email}`，如已登记发送验证码；生产邮件未配置 424 |
 | POST | `/recover/verify` | `{email,code}` → 该邮箱全部记录查询 JWT（30d）；验证码不可重放 |
 | GET | `/mine` | 学生 Bearer JWT，只返回本人记录、实际结果和等待人数，不受登记链接期限影响 |

@@ -23,6 +23,7 @@ const Departments = lazy(() => import("./pages/Departments.jsx"));
 const Interviews = lazy(() => import("./pages/Interviews.jsx"));
 const InterviewQueue = lazy(() => import("./pages/InterviewQueue.jsx"));
 const PublicInterviewQueue = lazy(() => import("./pages/PublicInterviewQueue.jsx"));
+const PublicCampusJobReview = lazy(() => import("./pages/PublicCampusJobReview.jsx"));
 const Performance = lazy(() => import("./pages/Performance.jsx"));
 const Reports = lazy(() => import("./pages/Reports.jsx"));
 const SharedCandidate = lazy(() => import("./pages/SharedCandidate.jsx"));
@@ -68,6 +69,7 @@ export default function App() {
   useEffect(() => {
     setUnauthorizedHandler(() => {
       if (/^\/interview-queue\/(register|share|mine)(\/|$)/.test(window.location.pathname)) return;
+      if (/^\/campus-job-review\//.test(window.location.pathname)) return;
       navigate("/login", { replace: true });
     });
   }, [navigate]);
@@ -87,6 +89,7 @@ export default function App() {
       <Route path="/interview-queue/register/:token" element={<PublicInterviewQueue mode="register" />} />
       <Route path="/interview-queue/share/:token" element={<PublicInterviewQueue mode="share" />} />
       <Route path="/interview-queue/mine" element={<PublicInterviewQueue mode="mine" />} />
+      <Route path="/campus-job-review/:token" element={<PublicCampusJobReview />} />
       <Route path="/interview-queue/screen/:sessionId" element={<AuthGuard><Page pageKey={PAGE.interviews} element={<InterviewQueue screen />} /></AuthGuard>} />
       <Route
         element={

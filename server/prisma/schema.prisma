@@ -55,6 +55,7 @@ model User {
   departmentScopes  UserDepartmentScope[]
   jobScopes         UserJobScope[]
   createdShareLinks ShareLink[]           @relation("ShareLinkCreator")
+  campusJobShares   CampusJobShare[]
   passwordHistory   PasswordHistory[]
 
   @@index([email])
@@ -288,6 +289,7 @@ model Job {
   interviewEvaluations InterviewEvaluation[]
   evaluations          CandidateEvaluation[]
   campusSessionJobs    CampusSessionJob[]
+  campusShareItems     CampusJobShareJob[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -296,6 +298,33 @@ model Job {
   @@index([urgency])
   @@index([recruitmentType])
   @@map("jobs")
+}
+
+model CampusJobShare {
+  id        String   @id @default(uuid()) @db.Uuid
+  token     String   @unique
+  createdBy String   @map("created_by") @db.Uuid
+  creator   User     @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  active    Boolean  @default(true)
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  jobs      CampusJobShareJob[]
+
+  @@index([createdBy, createdAt])
+  @@map("campus_job_shares")
+}
+
+model CampusJobShareJob {
+  id      String         @id @default(uuid()) @db.Uuid
+  shareId String         @map("share_id") @db.Uuid
+  share   CampusJobShare @relation(fields: [shareId], references: [id], onDelete: Cascade)
+  jobId   String         @map("job_id") @db.Uuid
+  job     Job            @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([shareId, jobId])
+  @@index([jobId])
+  @@map("campus_job_share_jobs")
 }
 
 model Department {

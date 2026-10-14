@@ -7,6 +7,6 @@ export default fp(async (app) => {
     origin: origin.split(",").map((s) => s.trim()),
     credentials: true,
     methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Queue-Link"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Queue-Link", "X-Campus-Job-Share"],
   });
 }, { name: "cors" });
