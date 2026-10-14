@@ -3262,7 +3262,18 @@ function CandidateDetail() {
                 <p className="text-[11px] text-[#707EAE] mt-0.5 flex items-center gap-1 truncate">
                   <I name="link" size={11} className="shrink-0" />
                   <span className="text-[#A3AED0]">来源</span>
-                  <InlineSource value={c.source} onChange={(v) => setC(prev => prev ? { ...prev, source: v } : prev)} />
+                  {canEdit ? <InlineSource value={c.source} onChange={async (v) => {
+                    try {
+                      if (c.campusSummary) {
+                        const saved = await resources.campus.updateSummary(c.campusSummary.id, { values: { source: v }, updatedAt: c.campusSummary.updatedAt });
+                        await campus.reload();
+                        setC(prev => prev ? { ...prev, source: v, campusSummary: { ...prev.campusSummary, updatedAt: saved.item.updatedAt } } : prev);
+                      } else {
+                        await resources.candidates.update(c.id, { source: v });
+                        setC(prev => prev ? { ...prev, source: v } : prev);
+                      }
+                    } catch (error) { toast(error.response?.data?.message || error.message || "来源保存失败", "error"); }
+                  }} /> : <span className="truncate">{c.source || "—"}</span>}
                 </p>
                 <div className="flex gap-1.5 mt-2">
                   <IconBtn icon="mail" title="发邮件 / 复制邮箱" onClick={() => { navigator.clipboard?.writeText(c.email || ""); toast("已复制邮箱", "success"); }} />

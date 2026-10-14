@@ -271,10 +271,14 @@ export default async function candidatesRoutes(app) {
         job: { select: { id: true, title: true, dept: true } },
         department: { select: { id: true, name: true, code: true } },
         interviews: { orderBy: { scheduledAt: "desc" } },
+        campusApplicant: { select: { id: true, updatedAt: true, summaryData: true } },
       },
     });
     if (!candidate) return reply.code(404).send({ error: "not_found" });
-    return { candidate: filterCandidateByModules(withDerived(candidate), access) };
+    const { campusApplicant, ...details } = candidate;
+    if (typeof campusApplicant?.summaryData?.source === "string") details.source = campusApplicant.summaryData.source;
+    if (campusApplicant) details.campusSummary = { id: campusApplicant.id, updatedAt: campusApplicant.updatedAt };
+    return { candidate: filterCandidateByModules(withDerived(details), access) };
   });
 
   // Create — 普通用户也能创建,但 ownerId 强制为本人

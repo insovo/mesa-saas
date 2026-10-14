@@ -91,7 +91,7 @@ export function useCampusCandidate(candidateId) {
       setStarting(false);
     }
   }
-  return { data: currentData, active, starting, startMatch };
+  return { data: currentData, active, starting, startMatch, reload: load };
 }
 
 export function CampusMatchPanel({ campus, currentUser }) {
@@ -140,8 +140,8 @@ export default function CampusCandidateCard({ campus }) {
       <div className="flex items-center gap-2 mb-3">
         <span className="w-8 h-8 rounded-lg bg-brand-50 text-brand flex items-center justify-center"><I name="graduation-cap" size={16} /></span>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-bold text-navy-700">校招</p>
-          <p className="text-[11px] text-gray-500 truncate">{session?.name}{session?.school ? ` · ${session.school}` : ""}</p>
+          <p className="text-sm font-bold text-navy-700 truncate" title={session?.name || session?.school || ""}>校招{session?.name ? ` · ${session.name}` : ""}</p>
+          <p className="text-[11px] text-gray-500 truncate" title={a.source || ""}>来源：{a.source || "—"}</p>
         </div>
         <Link to="/campus" className="shrink-0 text-[11px] text-brand font-bold hover:underline inline-flex items-center gap-1">台账 <I name="chevron-right" size={12} /></Link>
       </div>
