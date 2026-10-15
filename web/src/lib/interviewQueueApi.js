@@ -10,6 +10,7 @@ export const studentQueueToken = {
 export const queueApi = {
   list: () => api.get("/interview-queues/").then((r) => r.data),
   ensure: (id) => api.post(`/interview-queues/${id}`).then((r) => r.data),
+  setup: (id, setup, previousSetup) => api.patch(`/interview-queues/${id}/setup`, { setup, previousSetup }).then((r) => r.data),
   data: (id, revision) => api.get(`/interview-queues/${id}`, { params: { revision } }).then((r) => r.data),
   action: (id, body) => api.post(`/interview-queues/${id}/actions`, body).then((r) => r.data),
   job: (id, jobId) => api.get(`/interview-queues/${id}/jobs/${jobId}`).then((r) => r.data.job),
@@ -22,7 +23,7 @@ const bearer = (token) => ({ headers: { Authorization: `Bearer ${token}` } });
 export const publicQueueApi = {
   link: (token) => publicApi.get("/link", linkConfig(token)).then((r) => r.data),
   job: (token, jobId) => publicApi.get(`/registration/jobs/${jobId}`, linkConfig(token)).then((r) => r.data.job),
-  open: (token, accessKey) => publicApi.post("/share/open", accessKey ? { accessKey } : {}, linkConfig(token)).then((r) => r.data),
+  open: (token, accessKey, stationId) => publicApi.post("/share/open", { ...(accessKey ? { accessKey } : {}), ...(stationId ? { stationId } : {}) }, linkConfig(token)).then((r) => r.data),
   data: (token, revision) => publicApi.get("/share/data", { ...bearer(token), params: { revision } }).then((r) => r.data),
   action: (token, body) => publicApi.post("/share/actions", body, bearer(token)).then((r) => r.data),
   shareJob: (token, jobId) => publicApi.get(`/share/jobs/${jobId}`, bearer(token)).then((r) => r.data.job),

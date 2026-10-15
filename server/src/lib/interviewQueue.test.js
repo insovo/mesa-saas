@@ -181,3 +181,19 @@ test("重新排队在事务验证分享后加入目标队尾，连续同毫秒�
   await assert.rejects(mutateQueue({ $transaction: async (fn) => fn(tx) }, "queue", body([entry], "requeue", { targetStage: "culture" }), "hr", async () => assertQueueLink({ active: false })), (err) => err.statusCode === 410);
   assert.equal(saved.length, 2);
 });
+
+test("HR 手动分配限当前专业／文化阶段、正确席位及最新人员版本", async () => {
+  const { queueAssignment, queueStation } = await import("./interviewQueue.js");
+  const row = { id: "a", stage: "professional", updatedAt: new Date(), stationId: null };
+  const queue = { setup: { cultureOnsite: false, stations: [{ id: "p1", role: "professional", name: "专业一" }, { id: "c1", role: "culture", name: "文化一" }] } };
+  const body = { items: [{ id: row.id, updatedAt: row.updatedAt }], confirmed: true, targetStationId: "p1" };
+  assert.deepEqual(queueAssignment([row], body, "hr", queue), { stationId: "p1" });
+  assert.deepEqual(queueAssignment([row], { ...body, targetStationId: null }, "hr", queue), { stationId: null });
+  for (const role of ["professional", "culture"]) assert.throws(() => queueAssignment([row], body, role, queue), { statusCode: 403 });
+  for (const targetStationId of ["c1", "other"]) assert.throws(() => queueAssignment([row], { ...body, targetStationId }, "hr", queue));
+  assert.throws(() => queueAssignment([row], { ...body, confirmed: false }, "hr", queue));
+  assert.throws(() => queueAssignment([row], { ...body, items: [{ id: row.id, updatedAt: new Date(0) }] }, "hr", queue), { statusCode: 409 });
+  assert.throws(() => queueStation(queue, "professional", "c1"), { statusCode: 401 });
+  assert.throws(() => queueStation(queue, "professional"), { statusCode: 401 });
+  assert.equal(queueStation({}, "professional"), null);
+});

@@ -269,3 +269,43 @@ test("登记海报读取专场地址；更新持久到同一专场，限制长�
     assert.equal((await restricted.app.inject({ method: "PATCH", url, headers: restricted.headers, payload: { location: "错误修改" } })).statusCode, 403);
   }
 });
+
+test("面试官与流程设置验证配置冲突、重复席位、删除占用席位及只读权限", async (t) => {
+  const { app, headers, link } = await setup(t);
+  const professional = { id: crypto.randomUUID(), role: "professional", name: "专业面试官一" };
+  const culture = { id: crypto.randomUUID(), role: "culture", name: "文化面试官一" };
+  let occupied = [];
+  app.prisma.interviewQueueEntry = { findMany: async () => occupied };
+  app.prisma.interviewQueue.update = async ({ data }) => { if (data.setup) link.queue.setup = data.setup; return link.queue; };
+  const previousSetup = { cultureOnsite: true, stations: [] };
+  const configured = { cultureOnsite: false, stations: [professional] };
+  const patch = (body) => app.inject({ method: "PATCH", url: `/api/interview-queues/${sessionId}/setup`, headers, payload: body });
+  assert.equal((await patch({ previousSetup, setup: configured })).statusCode, 200);
+  assert.equal(link.queue.setup.cultureOnsite, false);
+  assert.equal((await patch({ previousSetup, setup: configured })).statusCode, 409);
+  for (const stations of [[], [professional, professional]]) assert.equal((await patch({ previousSetup: configured, setup: { cultureOnsite: false, stations } })).statusCode, 400);
+  occupied = [{ stationId: professional.id, stage: "professional" }];
+  assert.equal((await patch({ previousSetup: configured, setup: { cultureOnsite: true, stations: [{ ...professional, id: crypto.randomUUID() }, culture] } })).statusCode, 409);
+  const viewer = await setup(t, { role: "VIEWER" });
+  assert.equal((await viewer.app.inject({ method: "PATCH", url: `/api/interview-queues/${sessionId}/setup`, headers: viewer.headers, payload: { previousSetup, setup: configured } })).statusCode, 403);
+});
+
+test("配置席位后分享会话绑定席位，同阶段其他席位人员不可见或修改", async (t) => {
+  const { app, link, accessKey } = await setup(t, { kind: "professional" });
+  const stationId = crypto.randomUUID(), otherId = crypto.randomUUID();
+  link.queue.setup = { cultureOnsite: false, stations: [{ id: stationId, role: "professional", name: "甲席位" }, { id: otherId, role: "professional", name: "乙席位" }] };
+  const rows = [stationId, otherId, null].map((seat, i) => ({ id: crypto.randomUUID(), queueId, stationId: seat, stage: "professional", name: `示例${i}`, updatedAt: new Date(), salaryBase: 8700, salaryFactor: 13.5 }));
+  const match = (r, w) => Object.entries(w).every(([k, v]) => k === "OR" ? v.some((part) => match(r, part)) : v?.in ? v.in.includes(r[k]) : r[k] === v);
+  let writes = 0;
+  app.prisma.interviewQueueEntry = { findMany: async ({ where }) => rows.filter((r) => match(r, where)), updateMany: async () => { writes++; return { count: 1 }; } };
+  const open = (body) => app.inject({ method: "POST", url: "/api/public/interview-queues/share/open", headers: { "x-queue-link": link.token }, payload: { accessKey, ...body } });
+  assert.equal((await open({})).statusCode, 401);
+  assert.equal((await open({ stationId: crypto.randomUUID() })).statusCode, 401);
+  const session = await open({ stationId }); assert.equal(session.statusCode, 200);
+  const headers = { authorization: `Bearer ${session.json().token}` };
+  const data = await app.inject({ url: "/api/public/interview-queues/share/data", headers });
+  assert.equal(data.statusCode, 200, data.body); assert.deepEqual(data.json().entries.map((r) => r.id), [rows[0].id]);
+  assert.equal(data.json().queue.station.name, "甲席位");
+  const denied = await app.inject({ method: "POST", url: "/api/public/interview-queues/share/actions", headers, payload: { action: "professional-result", result: "passed", confirmed: true, items: [{ id: rows[1].id, updatedAt: rows[1].updatedAt.toISOString() }] } });
+  assert.equal(denied.statusCode, 403); assert.equal(writes, 0);
+});
