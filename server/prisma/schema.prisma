@@ -939,6 +939,7 @@ model InterviewQueueEntry {
   professionalStartedAt DateTime? @map("professional_started_at")
   cultureStartedAt DateTime? @map("culture_started_at")
   cultureGroupId String? @map("culture_group_id") @db.Uuid
+  suggestions  InterviewQueueSuggestion[]
   phaseEnteredAt DateTime @default(now()) @map("phase_entered_at")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
@@ -946,6 +947,17 @@ model InterviewQueueEntry {
   @@index([queueId, stage, phaseEnteredAt])
   @@index([email])
   @@map("interview_queue_entries")
+}
+
+model InterviewQueueSuggestion {
+  id         String @id @default(uuid()) @db.Uuid
+  entryId    String @map("entry_id") @db.Uuid
+  entry      InterviewQueueEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  authorRole String @map("author_role")
+  content    String
+  createdAt  DateTime @default(now()) @map("created_at")
+  @@index([entryId, createdAt])
+  @@map("interview_queue_suggestions")
 }
 
 model InterviewQueueLink {

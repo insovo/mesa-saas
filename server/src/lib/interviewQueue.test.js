@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { queueMutation, queueEntryView, assertQueueLink, mutateQueue } from "./interviewQueue.js";
+import { queueMutation, queueSuggestion, queueEntryView, assertQueueLink, mutateQueue } from "./interviewQueue.js";
 
 const stamp = "2026-10-15T01:00:00.000Z";
 const row = (id, stage = "professional") => ({ id, stage, updatedAt: stamp, salaryBase: "8700.00", salaryFactor: "13.50", email: "student@example.com" });
@@ -83,4 +83,48 @@ test("连续修改即使落在同一毫秒也产生新人员版本", async () =>
   };
   await mutateQueue({ $transaction: async (fn) => fn(tx) }, "queue", body([entry], "salary", { salaryBase: 9000 }), "hr");
   assert.equal(saved.updatedAt.getTime(), entry.updatedAt.getTime() + 1);
+});
+
+test("建议按当前角色与阶段逐人追加，不能跨角色、批量或使用旧版本", () => {
+  for (const [role, stage] of [["professional", "professional"], ["culture", "culture"], ["hr", "salary"], ["staff", "pending"]]) {
+    const entry = row("a", stage);
+    assert.deepEqual(queueSuggestion([entry], body([entry], "suggestion", { content: "  补充项目案例  " }), role), { entryId: "a", authorRole: role, content: "补充项目案例" });
+  }
+  const entry = row("a");
+  const request = body([entry], "suggestion", { content: "建议" });
+  assert.throws(() => queueSuggestion([entry], request, "culture"), (err) => err.statusCode === 403);
+  assert.throws(() => queueSuggestion([entry], request, "student"), (err) => err.statusCode === 403);
+  assert.throws(() => queueSuggestion([], request, "professional"), (err) => err.statusCode === 409);
+  assert.throws(() => queueSuggestion([{ ...entry, updatedAt: new Date() }], request, "professional"), (err) => err.statusCode === 409);
+  assert.throws(() => queueSuggestion([entry, row("b")], body([entry, row("b")], "suggestion", { content: "建议" }), "professional"), /逐人/);
+  for (const content of [undefined, "  ", "字".repeat(5001)]) assert.throws(() => queueSuggestion([entry], { ...request, content }, "professional"), /1–5000/);
+});
+
+test("建议追加不覆盖人员或历史记录，学生序列化不返回内部建议", async () => {
+  const entry = { ...row("a"), suggestions: [{ id: "old", content: "原建议" }] };
+  const saved = [];
+  let validated = false;
+  const tx = {
+    interviewQueue: { update: async () => {} },
+    interviewQueueEntry: { findMany: async () => [entry], updateMany: async () => assert.fail("追加建议不应覆盖人员") },
+    interviewQueueSuggestion: { create: async ({ data }) => { assert.equal(validated, true); saved.push(data); } },
+  };
+  await mutateQueue({ $transaction: async (fn) => fn(tx) }, "queue", body([entry], "suggestion", { content: "补充建议" }), "professional", async () => { validated = true; });
+  assert.equal(saved.length, 1); assert.equal(saved[0].authorRole, "professional");
+  assert.equal(entry.suggestions[0].content, "原建议"); assert.equal(entry.stage, "professional");
+  assert.equal(queueEntryView(entry, "student").suggestions, undefined);
+  assert.equal(queueEntryView(entry, "culture").suggestions.length, 1);
+  await assert.rejects(mutateQueue({ $transaction: async (fn) => fn(tx) }, "queue", body([entry], "suggestion", { content: "失效链接建议" }), "professional", async () => assertQueueLink({ active: false })), (err) => err.statusCode === 410);
+  assert.equal(saved.length, 1);
+});
+
+test("待定来源依据实际结果标明专业、文化或定薪，不伪造未发生的结果", () => {
+  const professional = { ...row("p", "pending"), professionalResult: "pending" };
+  const culture = { ...row("c", "pending"), professionalResult: "passed", cultureResult: "pending" };
+  const salary = { ...row("s", "pending"), professionalResult: "passed", cultureResult: "passed", salaryStatus: "abandoned" };
+  assert.equal(queueEntryView(professional).pendingFrom, "professional");
+  assert.equal(queueEntryView(culture).pendingFrom, "culture");
+  assert.equal(queueEntryView(salary, "professional").pendingFrom, "salary");
+  assert.equal(queueEntryView(professional).cultureResult, undefined);
+  assert.equal(queueEntryView(row("a")).pendingFrom, null);
 });

@@ -17,6 +17,8 @@ export function assertQueueLink(link, kind) {
 
 export function queueEntryView(row, role = "staff") {
   const result = { ...row, salaryBase: Number(row.salaryBase), salaryFactor: Number(row.salaryFactor) };
+  result.pendingFrom = row.stage === "pending" ? row.salaryStatus === "abandoned" ? "salary" : row.cultureResult === "pending" ? "culture" : row.professionalResult === "pending" ? "professional" : null : null;
+  if (role === "student") delete result.suggestions;
   if (role === "professional" || role === "culture") {
     delete result.email;
     delete result.salaryBase;
@@ -24,6 +26,19 @@ export function queueEntryView(row, role = "staff") {
     delete result.salaryStatus;
   }
   return result;
+}
+
+export function queueSuggestion(rows, body, role) {
+  if (!["staff", "professional", "culture", "hr"].includes(role)) throw queueError("无权添加建议", 403, "queue_role_forbidden");
+  if (body.items.length !== 1) throw queueError("请逐人添加建议");
+  const row = rows[0];
+  if (rows.length !== 1 || row.id !== body.items[0].id || new Date(row.updatedAt).getTime() !== new Date(body.items[0].updatedAt).getTime()) {
+    throw queueError("记录已被其他面试官更新，请刷新后重试", 409, "queue_conflict");
+  }
+  if (role !== "staff" && row.stage !== (role === "hr" ? "salary" : role)) throw queueError("只能为当前面试阶段的人员添加建议", 403, "queue_role_forbidden");
+  const content = body.content?.trim();
+  if (!content || content.length > 5000) throw queueError("请填写 1–5000 字的建议");
+  return { entryId: row.id, authorRole: role, content };
 }
 
 export function queueMutation(rows, body, role) {
@@ -78,6 +93,10 @@ export async function mutateQueue(prisma, queueId, body, role, validateActor = a
     await tx.interviewQueue.update({ where: { id: queueId }, data: { revision: { increment: 1 } } });
     await validateActor(tx);
     const rows = await tx.interviewQueueEntry.findMany({ where: { queueId, id: { in: body.items.map((item) => item.id) } } });
+    if (body.action === "suggestion") {
+      await tx.interviewQueueSuggestion.create({ data: queueSuggestion(rows, body, role) });
+      return { ok: true };
+    }
     const data = queueMutation(rows, body, role);
     const updatedAt = new Date(Math.max(Date.now(), ...rows.map((row) => new Date(row.updatedAt).getTime() + 1)));
     await tx.interviewQueueEntry.updateMany({ where: { queueId, id: { in: rows.map((row) => row.id) } }, data: { ...data, updatedAt } });
