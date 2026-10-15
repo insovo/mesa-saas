@@ -4,7 +4,7 @@ import { assertPage } from "../lib/permissions.js";
 import { encrypt, decrypt } from "../lib/secrets.js";
 import { issueCode, consumeCode } from "../lib/verificationCodes.js";
 import { isEmailConfigured } from "../lib/email.js";
-import { assertQueueLink, queueError, queueEntryView, mutateQueue, QUEUE_LINK_KINDS } from "../lib/interviewQueue.js";
+import { assertQueueLink, queueError, queueEntryView, mutateQueue, queueSetup, queueStation, QUEUE_LINK_KINDS } from "../lib/interviewQueue.js";
 
 const uuid = { type: "string", format: "uuid" };
 const text = (maxLength) => ({ type: "string", minLength: 1, maxLength, pattern: "\\S" });
@@ -12,7 +12,8 @@ const sessionParams = { type: "object", required: ["sessionId"], properties: { s
 const jobParams = { type: "object", required: ["jobId"], properties: { jobId: uuid } };
 const actionSchema = { type: "object", additionalProperties: false, required: ["items", "action"], properties: {
   items: { type: "array", minItems: 1, maxItems: 500, items: { type: "object", additionalProperties: false, required: ["id", "updatedAt"], properties: { id: uuid, updatedAt: { type: "string", format: "date-time" } } } },
-  action: { enum: ["professional-result", "professional-timer", "culture-result", "culture-timer", "direction", "salary", "suggestion", "requeue"] },
+  action: { enum: ["professional-result", "professional-timer", "culture-result", "culture-timer", "direction", "salary", "suggestion", "requeue", "assign"] },
+  targetStationId: { type: ["string", "null"], format: "uuid" },
   targetStage: { enum: ["professional", "culture"] },
   content: text(5000),
   confirmed: { type: "boolean" }, result: { enum: ["passed", "pending"] }, jobDirection: text(200),
@@ -49,15 +50,16 @@ async function queueJob(prisma, jobId, session) {
   return { job: { ...detail, kind: campusKind, salary: showSalary ? salary : null } };
 }
 
-async function queueData(prisma, queueId, role, revision) {
+async function queueData(prisma, queueId, role, revision, stationId = null) {
   return prisma.$transaction(async (tx) => {
     const queue = await tx.interviewQueue.findUnique({ where: { id: queueId }, include: { session: { select: { id: true, name: true, school: true, status: true } } } });
     if (!queue) throw queueError("面试排队不存在", 404);
     if (revision === queue.revision) return { unchanged: true, revision };
-    const where = role === "staff" ? {} : { OR: [{ stage: role === "hr" ? "salary" : role }, { stage: "pending" }] };
+    const station = queueStation(queue, role, stationId);
+    const where = role === "staff" || (role === "hr" && queueSetup(queue).stations.length) ? {} : { OR: [{ stage: role === "hr" ? "salary" : role, ...(station ? { stationId: station.id } : {}) }, { stage: "pending" }] };
     const rows = await tx.interviewQueueEntry.findMany({ where: { queueId, ...where }, include: { suggestions: { orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, authorRole: true, content: true, createdAt: true } } }, orderBy: [{ phaseEnteredAt: "asc" }, { createdAt: "asc" }, { id: "asc" }] });
     const jobs = await tx.job.findMany({ where: { recruitmentType: "campus", campusActive: true }, select: { id: true, title: true, location: true, employment: true, educationRequirement: true, campusKind: true }, orderBy: [{ campusSortOrder: "asc" }, { createdAt: "asc" }] });
-    return { queue: { id: queue.id, session: queue.session }, revision: queue.revision, entries: rows.map((row) => queueEntryView(row, role)), jobs: jobs.map(({ campusKind, ...job }) => ({ ...job, kind: campusKind })) };
+    return { queue: { id: queue.id, session: queue.session, setup: queueSetup(queue), station }, revision: queue.revision, entries: rows.map((row) => queueEntryView(row, role)), jobs: jobs.map(({ campusKind, ...job }) => ({ ...job, kind: campusKind })) };
   }, { isolationLevel: "RepeatableRead" });
 }
 
@@ -81,7 +83,7 @@ export default async function interviewQueueRoutes(app) {
     const access = await staff(req, reply);
     if (!access) return;
     const sessions = await app.prisma.campusSession.findMany({ select: { id: true, name: true, school: true, location: true, status: true, interviewQueue: { include: { links: true, _count: { select: { entries: true } } } } }, orderBy: { createdAt: "asc" } });
-    return { sessions: sessions.map(({ interviewQueue, ...session }) => ({ ...session, queueId: interviewQueue?.id || null, count: interviewQueue?._count.entries || 0, links: access.role === "VIEWER" ? [] : (interviewQueue?.links || []).map(linkView) })) };
+    return { sessions: sessions.map(({ interviewQueue, ...session }) => ({ ...session, queueId: interviewQueue?.id || null, count: interviewQueue?._count.entries || 0, setup: queueSetup(interviewQueue || {}), links: access.role === "VIEWER" ? [] : (interviewQueue?.links || []).map(linkView) })) };
   });
   app.post("/:sessionId", { schema: { params: sessionParams } }, async (req, reply) => {
     if (!(await staff(req, reply, true))) return;
@@ -110,6 +112,24 @@ export default async function interviewQueueRoutes(app) {
     return app.prisma.$transaction(async (tx) => {
       await tx.interviewQueue.update({ where: { id: queue.id }, data: { revision: { increment: 1 } } });
       return tx.campusSession.update({ where: { id: req.params.sessionId }, data: { location: req.body.location.trim() }, select: { location: true } });
+    });
+  });
+  const setupSchema = { type: "object", additionalProperties: false, required: ["cultureOnsite", "stations"], properties: {
+    cultureOnsite: { type: "boolean" }, stations: { type: "array", maxItems: 40, items: { type: "object", additionalProperties: false, required: ["id", "name", "role"], properties: { id: uuid, name: text(40), role: { enum: ["professional", "culture"] } } } },
+  } };
+  app.patch("/:sessionId/setup", { schema: { params: sessionParams, body: { type: "object", additionalProperties: false, required: ["setup", "previousSetup"], properties: { setup: setupSchema, previousSetup: setupSchema } } } }, async (req, reply) => {
+    if (!(await staff(req, reply, true))) return;
+    const queue = await loadQueue(app.prisma, req.params.sessionId);
+    const setup = { cultureOnsite: req.body.setup.cultureOnsite, stations: req.body.setup.stations.map((s) => ({ ...s, id: s.id.toLowerCase(), name: s.name.trim() })) };
+    if (!setup.stations.some((s) => s.role === "professional") || (setup.cultureOnsite && !setup.stations.some((s) => s.role === "culture"))) throw queueError("请至少配置一位专业面试官；现场文化面试开启时也需配置文化面试官");
+    if (new Set(setup.stations.map((s) => s.id)).size !== setup.stations.length || new Set(setup.stations.map((s) => `${s.role}:${s.name}`)).size !== setup.stations.length) throw queueError("席位编号和同类席位名称不能重复");
+    return app.prisma.$transaction(async (tx) => {
+      const current = await tx.interviewQueue.update({ where: { id: queue.id }, data: { revision: { increment: 1 } } });
+      if (JSON.stringify(queueSetup(current)) !== JSON.stringify(queueSetup({ setup: req.body.previousSetup }))) throw queueError("配置已更新，请重新打开设置", 409, "queue_conflict");
+      const assigned = await tx.interviewQueueEntry.findMany({ where: { queueId: queue.id, stationId: { not: null }, stage: { in: ["professional", "culture"] } }, select: { stationId: true, stage: true } });
+      if (assigned.some((row) => !setup.stations.some((s) => s.id === row.stationId && s.role === row.stage))) throw queueError("席位还有排队人员，请先由 HR 转派或撤回分配后再删除", 409, "queue_conflict");
+      await tx.interviewQueue.update({ where: { id: queue.id }, data: { setup } });
+      return { setup };
     });
   });
   const kindParams = { ...sessionParams, required: ["sessionId", "kind"], properties: { ...sessionParams.properties, kind: { enum: QUEUE_LINK_KINDS } } };
@@ -152,15 +172,16 @@ export async function publicInterviewQueueRoutes(app) {
     let actor;
     try { actor = await req.jwtVerify(); } catch { throw queueError("请重新打开分享链接", 401, "queue_session_invalid"); }
     if (actor.aud !== "interview-queue-share") throw queueError("无权访问此页面", 403);
-    const link = assertQueueLink(await prisma.interviewQueueLink.findUnique({ where: { id: actor.sub } }));
+    const link = assertQueueLink(await prisma.interviewQueueLink.findUnique({ where: { id: actor.sub }, include: { queue: true } }));
     if (actor.tv !== link.tokenVersion || actor.kind !== link.kind || actor.queueId !== link.queueId || link.kind === "registration") throw queueError("分享设置已更新，请重新打开链接", 401, "queue_session_invalid");
-    return link;
+    queueStation(link.queue, link.kind, actor.stationId);
+    return { ...link, stationId: actor.stationId || null };
   }
   app.get("/link", { schema: { headers: linkHeaders } }, async (req) => {
     const link = await fromLink(req);
     const jobs = link.kind === "registration" ? await app.prisma.job.findMany({ where: { recruitmentType: "campus", campusActive: true }, select: { id: true, title: true, location: true, employment: true, educationRequirement: true, campusKind: true }, orderBy: [{ campusSortOrder: "asc" }, { createdAt: "asc" }] }) : [];
     const { id, name, school } = link.queue.session;
-    return { kind: link.kind, requireKey: link.requireKey, expiresAt: link.expiresAt, session: { id, name, school }, queueId: link.queueId, jobs: jobs.map(({ campusKind, ...job }) => ({ ...job, kind: campusKind })) };
+    return { kind: link.kind, requireKey: link.requireKey, expiresAt: link.expiresAt, session: { id, name, school }, queueId: link.queueId, setup: { ...queueSetup(link.queue), routingEnabled: queueSetup(link.queue).stations.length > 0, stations: queueSetup(link.queue).stations.filter((s) => link.kind === "registration" ? false : s.role === link.kind) }, jobs: jobs.map(({ campusKind, ...job }) => ({ ...job, kind: campusKind })) };
   });
   app.get("/registration/jobs/:jobId", { schema: { headers: linkHeaders, params: jobParams } }, async (req) => {
     const link = await fromLink(req, "registration");
@@ -172,19 +193,20 @@ export async function publicInterviewQueueRoutes(app) {
     const queue = await app.prisma.interviewQueue.findUnique({ where: { id: link.queueId }, include: { session: { select: { showSalaryOnsite: true, showSalaryReferral: true } } } });
     return queueJob(app.prisma, req.params.jobId, queue.session);
   });
-  app.post("/share/open", { config: limited, schema: { headers: linkHeaders, body: { type: "object", additionalProperties: false, properties: { accessKey: { type: "string", maxLength: 64 } } } } }, async (req) => {
+  app.post("/share/open", { config: limited, schema: { headers: linkHeaders, body: { type: "object", additionalProperties: false, properties: { accessKey: { type: "string", maxLength: 64 }, stationId: uuid } } } }, async (req) => {
     const link = await fromLink(req);
     if (link.kind === "registration") throw queueError("请使用排队登记页面", 403);
     if (link.requireKey && (!req.body.accessKey || !(await bcrypt.compare(req.body.accessKey, link.keyHash)))) throw queueError("访问密钥不正确", 401, "access_key_invalid");
-    return { token: app.jwt.sign({ aud: "interview-queue-share", sub: link.id, kind: link.kind, queueId: link.queueId, tv: link.tokenVersion }, { expiresIn: "12h" }), kind: link.kind };
+    const station = queueStation(link.queue, link.kind, req.body.stationId);
+    return { token: app.jwt.sign({ ...(station ? { stationId: station.id } : {}), aud: "interview-queue-share", sub: link.id, viewerId: crypto.randomUUID(), kind: link.kind, queueId: link.queueId, tv: link.tokenVersion }, { expiresIn: "12h" }), kind: link.kind };
   });
   app.get("/share/data", { schema: { querystring: revisionSchema } }, async (req) => {
     const link = await shareActor(req);
-    return queueData(app.prisma, link.queueId, link.kind, req.query.revision);
+    return queueData(app.prisma, link.queueId, link.kind, req.query.revision, link.stationId);
   });
   app.post("/share/actions", { schema: { body: actionSchema } }, async (req) => {
     const link = await shareActor(req);
-    return mutateQueue(app.prisma, link.queueId, req.body, link.kind, (tx) => shareActor(req, tx));
+    return mutateQueue(app.prisma, link.queueId, req.body, link.kind, (tx) => shareActor(req, tx), link.stationId);
   });
   app.post("/register", { config: { rateLimit: { max: 120, timeWindow: "1 minute" } }, schema: { headers: linkHeaders, body: { type: "object", additionalProperties: false,
     required: ["name", "school", "major", "degree", "gradYear", "languageAbility", "phone", "jobDirection", "email"], properties: {
@@ -230,10 +252,10 @@ export async function publicInterviewQueueRoutes(app) {
     let actor;
     try { actor = await req.jwtVerify(); } catch { throw queueError("请用邮箱验证码找回记录", 401, "queue_session_invalid"); }
     if (actor.aud !== "interview-queue-student") throw queueError("无权访问此记录", 403);
-    const entries = await app.prisma.interviewQueueEntry.findMany({ where: actor.verified === true ? { email: actor.sub } : { id: actor.sub }, include: { queue: { select: { session: { select: { id: true, name: true } } } } }, orderBy: { createdAt: "desc" } });
+    const entries = await app.prisma.interviewQueueEntry.findMany({ where: actor.verified === true ? { email: actor.sub } : { id: actor.sub }, include: { queue: { select: { setup: true, session: { select: { id: true, name: true } } } } }, orderBy: { createdAt: "desc" } });
     const records = await Promise.all(entries.map(async ({ queue, ...entry }) => {
-      const ahead = ["professional", "culture"].includes(entry.stage) ? await app.prisma.interviewQueueEntry.count({ where: { queueId: entry.queueId, stage: entry.stage, OR: [{ phaseEnteredAt: { lt: entry.phaseEnteredAt } }, { phaseEnteredAt: entry.phaseEnteredAt, createdAt: { lt: entry.createdAt } }, { phaseEnteredAt: entry.phaseEnteredAt, createdAt: entry.createdAt, id: { lt: entry.id } }] } }) : 0;
-      return { ...queueEntryView(entry, "student"), session: queue.session, ahead };
+      const ahead = ["professional", "culture"].includes(entry.stage) ? await app.prisma.interviewQueueEntry.count({ where: { queueId: entry.queueId, stage: entry.stage, ...(queueSetup(queue).stations.length ? { stationId: entry.stationId } : {}), OR: [{ phaseEnteredAt: { lt: entry.phaseEnteredAt } }, { phaseEnteredAt: entry.phaseEnteredAt, createdAt: { lt: entry.createdAt } }, { phaseEnteredAt: entry.phaseEnteredAt, createdAt: entry.createdAt, id: { lt: entry.id } }] } }) : 0;
+      return { ...queueEntryView(entry, "student"), session: queue.session, ahead, cultureOnsite: queueSetup(queue).cultureOnsite, routingEnabled: queueSetup(queue).stations.length > 0, stationName: queueSetup(queue).stations.find((s) => s.id === entry.stationId)?.name || null };
     }));
     return { entries: records };
   });

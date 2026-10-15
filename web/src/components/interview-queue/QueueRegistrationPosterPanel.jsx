@@ -5,7 +5,7 @@ import { queueApi, queueErrorMessage } from "../../lib/interviewQueueApi.js";
 import QueueRegistrationPoster from "./QueueRegistrationPoster.jsx";
 import { QUEUE_POSTER_SIZES, QUEUE_POSTER_LABELS, queuePosterFilename, queuePosterPng, readQueueGroupQr } from "../../lib/queuePosterExport.js";
 
-export default function QueueRegistrationPosterPanel({ session, link, url, kind = "registration", expanded, onExpandedChange, onLocationSaved }) {
+export default function QueueRegistrationPosterPanel({ session, link, url, kind = "registration", stationName = "", expanded, onExpandedChange, onLocationSaved }) {
   const label = QUEUE_POSTER_LABELS[kind];
   const [format, setFormat] = useState("portrait");
   const [busy, setBusy] = useState(false);
@@ -20,10 +20,10 @@ export default function QueueRegistrationPosterPanel({ session, link, url, kind 
   const groupQrRead = useRef(0);
   const registration = kind === "registration";
   const ready = !readingQr && (!registration || !includeGroupQr || Boolean(groupQr));
-  const posterProps = { location: location.trim(), groupQr: registration && includeGroupQr ? groupQr : "" };
+  const posterProps = { cultureOnsite: session.setup?.cultureOnsite !== false, routingEnabled: Boolean(session.setup?.stations?.length), stationName, location: location.trim(), groupQr: registration && includeGroupQr ? groupQr : "" };
   const previewRef = useRef(null); const stageSvgRef = useRef(null); const stageRef = useRef(null);
   useEffect(() => () => { if (imageUrl) URL.revokeObjectURL(imageUrl); }, [imageUrl]);
-  useEffect(() => { setImageUrl(""); }, [url, format, kind, location, groupQr, includeGroupQr]);
+  useEffect(() => { setImageUrl(""); }, [url, format, kind, location, groupQr, includeGroupQr, stationName, session.setup]);
   async function updateLocation() {
     setSavingLocation(true);
     try { const result = await queueApi.location(session.id, location.trim()); setLocation(result.location); setSavedLocation(result.location); onLocationSaved?.(); toast("现场面试地址已更新到校招专场，请重新下载海报", "success"); }
@@ -53,7 +53,7 @@ export default function QueueRegistrationPosterPanel({ session, link, url, kind 
     try {
       const blob = await queuePosterPng(expanded ? stageSvgRef.current : previewRef.current, QUEUE_POSTER_SIZES[format]);
       const pngUrl = URL.createObjectURL(blob); setImageUrl(pngUrl);
-      const anchor = document.createElement("a"); anchor.href = pngUrl; anchor.download = queuePosterFilename(session.name, format, kind); document.body.appendChild(anchor); anchor.click(); anchor.remove();
+      const anchor = document.createElement("a"); anchor.href = pngUrl; anchor.download = queuePosterFilename(stationName ? `${session.name}-${stationName}` : session.name, format, kind); document.body.appendChild(anchor); anchor.click(); anchor.remove();
       toast("海报已生成，可下载转发或在 iPad 相册中展示", "success");
     } catch (err) { toast(err.message || "海报生成失败，请重试", "error"); } finally { setBusy(false); }
   }
@@ -78,6 +78,7 @@ export default function QueueRegistrationPosterPanel({ session, link, url, kind 
   return <section className="space-y-4 text-left">
     <div><h3 className="font-bold">{label}海报</h3><p className="mt-1 text-xs text-gray-600">竖版适合群聊转发；横版适合 iPad mini，完整缩放、不裁剪。</p></div>
     {registration && <div className="space-y-4 rounded-xl border border-gray-100 p-3"><Input id="queue-poster-location" label="现场面试地址" maxLength={200} value={location} disabled={busy || savingLocation} onChange={(event) => setLocation(event.target.value)} placeholder="从校招专场读取，可在此更新" /><div className="flex flex-wrap items-center gap-2"><Button size="sm" variant="secondary" disabled={busy || savingLocation || !location.trim() || location.trim() === savedLocation} onClick={updateLocation}>{savingLocation ? "更新中…" : "更新地址"}</Button><p className="text-xs text-gray-600">更新后保存到该校招专场；海报预览即时显示输入地址。</p></div><label className="flex items-center gap-2 text-sm"><input type="checkbox" className="accent-brand" disabled={busy} checked={includeGroupQr} onChange={(event) => setIncludeGroupQr(event.target.checked)} />附加校招群二维码</label>{includeGroupQr && <div className="space-y-2"><label className="block text-sm font-medium" htmlFor="queue-poster-group-qr">上传校招群二维码</label><input id="queue-poster-group-qr" type="file" accept="image/png,image/jpeg,image/webp" disabled={busy || readingQr} onChange={uploadGroupQr} className="w-full text-sm" /><p className="text-xs text-gray-600">正方形 PNG／JPG／WebP，5MB 以内、边长不超过 4096px；海报上与登记码等大。图片仅用于当前窗口的海报，关闭后需重新上传。</p>{readingQr ? <p className="text-xs text-gray-600">正在读取二维码…</p> : groupQr ? <img src={groupQr} alt="已上传的校招群二维码" className="w-24 h-24 object-contain bg-white" /> : <p className="text-xs text-amber-700">请上传二维码后生成海报。</p>}</div>}</div>}
+    {registration && session.setup?.cultureOnsite === false && <p className="rounded-xl bg-amber-50 text-amber-800 p-3 text-sm">海报将提示：本专场无现场文化面试官，专业面通过后，由 HR 线上联系后续流程。</p>}
     {selector}
     <button type="button" disabled={!ready} onClick={() => { setToolsHidden(false); onExpandedChange(true); }} className="block h-[420px] w-full bg-lightPrimary rounded-xl p-2 focus-visible:ring-2 focus-visible:ring-brand" aria-label={`放大${label}海报预览`}><QueueRegistrationPoster ref={previewRef} sessionName={session.name} url={url} expiresAt={link.expiresAt} kind={kind} requireKey={link.requireKey} format={format} {...posterProps} className="w-full h-full" /></button>
     <div className="flex flex-wrap gap-2"><Button size="sm" disabled={busy || !ready} onClick={download}>{busy ? "生成图片中…" : `下载${format === "landscape" ? "iPad 横屏" : "群聊竖版"} PNG`}</Button><Button size="sm" variant="secondary" disabled={!ready} onClick={display}>iPad 横屏展示</Button></div>

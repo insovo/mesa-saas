@@ -910,6 +910,7 @@ model InterviewQueue {
   sessionId String @unique @map("session_id") @db.Uuid
   session   CampusSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
   revision  Int @default(0)
+  setup     Json @default("{}")
   entries   InterviewQueueEntry[]
   links     InterviewQueueLink[]
   createdAt DateTime @default(now()) @map("created_at")
@@ -930,6 +931,7 @@ model InterviewQueueEntry {
   phone        String
   email        String
   jobDirection String @map("job_direction")
+  stationId    String? @map("station_id") @db.Uuid
   stage        String @default("professional")
   professionalResult String? @map("professional_result")
   cultureResult String? @map("culture_result")
@@ -945,6 +947,7 @@ model InterviewQueueEntry {
   updatedAt    DateTime @updatedAt @map("updated_at")
   @@unique([queueId, email])
   @@index([queueId, stage, phaseEnteredAt])
+  @@index([queueId, stationId, stage])
   @@index([email])
   @@map("interview_queue_entries")
 }

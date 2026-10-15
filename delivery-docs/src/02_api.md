@@ -1300,3 +1300,11 @@ AuthGuard 外,学生**不注册不登录**。会话:首次上传前 `POST /auth/
 `requeue` 一次一人，需 `targetStage=professional|culture` 和 `confirmed:true`；仅 HR／可编辑后台可将待定人员加入目标队尾。重排清除需重做阶段及后续的结果／计时／群组、薪资接受状态；保留资料、金额和历史建议。文化重排保留已通过的专业结果，原专业待定清空而不伪造通过；同专场事务锁内查询队尾并生成严格更晚的 phaseEnteredAt。
 
 角色错误 403、旧人员版本 409 `queue_conflict`、分享停止或过期 410 `queue_link_inactive`、分享会话版本不符 401 `queue_session_invalid`。学生/角色 JWT audience 不能进入后台；公开数据 no-store，链接 token 通过请求头传 API，避免进入 API 请求 URL。
+
+### 20.8 面试官席位与手动分配（2026-10-16）
+
+- `PATCH /api/interview-queues/:sessionId/setup`：后台可编辑 interviews 权限；`{ setup, previousSetup }`，两者为 `{ cultureOnsite:boolean, stations:[{id:uuid,name:string(1–40),role:professional|culture}] }`。至少一个专业席位，现场文化开启时至少一个文化席位，最多合计40个；配置冲突或删除占用席位返回409。
+- `POST /api/interview-queues/:sessionId/actions` 或 HR 的 `POST /api/public/interview-queues/share/actions`：新增 `action=assign`，`items` 沿用人员版本快照，`targetStationId=uuid|null` 指定席位／撤回，`confirmed=true` 二次确认。仅当前专业／文化阶段可分配，转派加入队尾并清除本阶段计时。专业／文化角色拒绝分配。
+- `GET /api/interview-queues/` 增加每专场 `setup`；后台及 HR 的队列 data 在配置席位后返回全部阶段，专业／文化只返回本席位当前阶段及全专场待定。`queue.setup`、`queue.station` 提供显示信息。
+- 公开 `/link` 返回 `setup.cultureOnsite`、`setup.routingEnabled` 和当前分享角色的席位；登记链接不返回席位名单。`POST /share/open` 可带 `stationId`，配置启用后专业／文化必须指定有效本角色席位。JWT绑定席位，后续 data/actions 在队列锁内再次校验当前配置与分配。原角色停止分享和期限规则保持有效。
+- 学生 `/mine` 增加 `cultureOnsite`、`routingEnabled`、`stationName`；`ahead` 按当前席位与阶段计算，无分配显示待 HR 安排；无现场文化面时保留 culture 阶段并提示 HR 线上联系。

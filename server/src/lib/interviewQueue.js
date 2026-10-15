@@ -3,6 +3,29 @@ import crypto from "node:crypto";
 export const QUEUE_STAGES = ["professional", "culture", "salary", "pending"];
 export const QUEUE_LINK_KINDS = ["registration", "professional", "culture", "hr"];
 
+export function queueSetup(queue = {}) {
+  return { cultureOnsite: queue.setup?.cultureOnsite !== false, stations: (queue.setup?.stations || []).map(({ id, name, role }) => ({ id: id.toLowerCase(), name, role })) };
+}
+
+export function queueStation(queue, role, stationId) {
+  if (!["professional", "culture"].includes(role)) return null;
+  const stations = queueSetup(queue).stations;
+  if (!stations.length && !stationId) return null;
+  const station = stations.find((item) => item.id === stationId?.toLowerCase() && item.role === role);
+  if (!station) throw queueError("请选择当前角色的面试官席位，或重新打开席位链接", 401, "queue_station_required");
+  return station;
+}
+
+export function queueAssignment(rows, body, role, queue) {
+  if (!["hr", "staff"].includes(role)) throw queueError("只有 HR 可以分配面试官", 403, "queue_role_forbidden");
+  if (!rows.length || rows.length !== body.items.length || new Set(body.items.map((item) => item.id)).size !== body.items.length || rows.some((row) => !["professional", "culture"].includes(row.stage) || !body.items.some((item) => item.id === row.id && new Date(item.updatedAt).getTime() === new Date(row.updatedAt).getTime()))) throw queueError("人员已更新，请刷新后重新分配", 409, "queue_conflict");
+  if (!body.confirmed) throw queueError("请二次确认分配", 400, "queue_confirmation_required");
+  const station = queueSetup(queue).stations.find((item) => item.id === body.targetStationId?.toLowerCase());
+  if (body.targetStationId && (!station || rows.some((row) => row.stage !== station.role))) throw queueError("请选择与面试阶段一致的席位");
+  if (body.targetStationId === undefined) throw queueError("请选择面试官，或选择撤回分配");
+  return { stationId: station?.id || null };
+}
+
 export function queueError(message, statusCode = 400, code = "queue_invalid") {
   return Object.assign(new Error(message), { statusCode, code });
 }
@@ -99,17 +122,32 @@ export function queueMutation(rows, body, role) {
   return data;
 }
 
-export async function mutateQueue(prisma, queueId, body, role, validateActor = async () => {}) {
+export async function mutateQueue(prisma, queueId, body, role, validateActor = async () => {}, stationId = null) {
   return prisma.$transaction(async (tx) => {
     // 同一专场串行提交；停止分享和登记也使用此锁，防止失效链接继续落盘。
-    await tx.interviewQueue.update({ where: { id: queueId }, data: { revision: { increment: 1 } } });
+    const queue = await tx.interviewQueue.update({ where: { id: queueId }, data: { revision: { increment: 1 } } });
     await validateActor(tx);
     const rows = await tx.interviewQueueEntry.findMany({ where: { queueId, id: { in: body.items.map((item) => item.id) } } });
+    if (body.action === "assign") {
+      const assignment = queueAssignment(rows, body, role, queue);
+      const updatedAt = new Date(Math.max(Date.now(), ...rows.map((row) => new Date(row.updatedAt).getTime() + 1)));
+      const last = await tx.interviewQueueEntry.findFirst({ where: { queueId, stationId: assignment.stationId }, orderBy: { phaseEnteredAt: "desc" }, select: { phaseEnteredAt: true } });
+      let tail = Math.max(Date.now(), last ? new Date(last.phaseEnteredAt).getTime() + 1 : 0);
+      rows.sort((a, b) => new Date(a.phaseEnteredAt) - new Date(b.phaseEnteredAt) || new Date(a.createdAt) - new Date(b.createdAt) || a.id.localeCompare(b.id));
+      for (const row of rows) {
+        if (row.stationId === assignment.stationId) continue;
+        await tx.interviewQueueEntry.updateMany({ where: { queueId, id: row.id }, data: { ...assignment, phaseEnteredAt: new Date(tail++), ...(row.stage === "professional" ? { professionalStartedAt: null } : { cultureStartedAt: null, cultureGroupId: null }), updatedAt } });
+      }
+      return { ok: true };
+    }
+    const station = queueStation(queue, role, stationId);
+    if (station && rows.some((row) => row.stationId !== station.id)) throw queueError("只能操作 HR 分配给本席位的人员", 403, "queue_station_forbidden");
     if (body.action === "suggestion") {
       await tx.interviewQueueSuggestion.create({ data: queueSuggestion(rows, body, role) });
       return { ok: true };
     }
     const data = queueMutation(rows, body, role);
+    if (data.stage) data.stationId = null;
     if (body.action === "requeue") {
       const last = await tx.interviewQueueEntry.findFirst({ where: { queueId, stage: body.targetStage }, orderBy: { phaseEnteredAt: "desc" }, select: { phaseEnteredAt: true } });
       data.phaseEnteredAt = new Date(Math.max(Date.now(), last ? new Date(last.phaseEnteredAt).getTime() + 1 : 0));

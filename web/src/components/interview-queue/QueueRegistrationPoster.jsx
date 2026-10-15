@@ -99,10 +99,23 @@ function TextLines({ text, x, y, width, fontSize, lineHeight, ...props }) {
   return <text x={x} y={y} fontSize={fontSize} {...props}>{wrapText(text, width, fontSize).map((line, index) => <tspan key={index} x={x} dy={index ? lineHeight : 0}>{line}</tspan>)}</text>;
 }
 
-const QueueRegistrationPoster = forwardRef(function QueueRegistrationPoster({ sessionName, url, expiresAt, kind = "registration", requireKey = false, format = "portrait", location = "", groupQr = "", className }, ref) {
+const QueueRegistrationPoster = forwardRef(function QueueRegistrationPoster({ sessionName, url, expiresAt, kind = "registration", requireKey = false, format = "portrait", location = "", groupQr = "", cultureOnsite = true, routingEnabled = false, stationName = "", className }, ref) {
   const id = useId().replace(/:/g, "");
   const wide = format === "landscape";
-  const content = POSTER_CONTENT[kind];
+  const content = { ...POSTER_CONTENT[kind], steps: POSTER_CONTENT[kind].steps.map((step) => [...step]) };
+  if (kind === "registration") {
+    if (routingEnabled) content.steps[2] = ["等待 HR 分配面试官并叫号", "按 HR 指定的面试官席位排队；轮到你时领回纸质简历，前往对应席位面试。"];
+    content.steps[3] = cultureOnsite ? ["专业面通过，进入文化阶段", routingEnabled ? "由 HR 分配文化面试官；可在登记后的页面查看席位、排队与结果。" : "登记后的排队页面可查看：文化面试排队，或待定。"] : ["专业面通过，等待线上文化面", "本专场无现场文化面试官；请等待 HR 联系安排线上文化面试及后续流程。"];
+    if (!cultureOnsite) content.steps[4] = ["保持联系方式畅通，留意 HR 通知", "文化面试、定薪及后续流程由 HR 线上联系；无需在现场排文化面。"];
+  }
+  if (routingEnabled && ["professional", "culture"].includes(kind)) content.steps[0][1] = "仅面试 HR 分配给本席位的人员，按顺序叫号、开始计时；十分钟波浪球满红。";
+  if (kind === "professional" && routingEnabled && cultureOnsite) content.steps[1][1] = "选择通过或待定并二次确认；通过后进入文化阶段，由 HR 分配文化面试官。";
+  if (kind === "professional" && !cultureOnsite) content.steps[1][1] = "通过后等待 HR 联系线上文化面试；待定转入待定页，结果需二次确认。";
+  if (kind === "hr" && routingEnabled) {
+    content.steps[0] = ["按阶段多选人员，手动分配面试官", "专业／文化 Tab 可多选、全选分配或转派席位；同一人员只分配一个席位。"];
+    content.steps[4] = ["流转后重新分配下一阶段席位", cultureOnsite ? "专业面通过后，由 HR 分配文化席位；转派加入队尾，清除本轮计时。" : "无现场文化面，专业通过后由 HR 线上联系安排文化面及后续流程。"];
+  }
+  const flow = content.flow || QUEUE_RECRUITMENT_FLOW.map((label, index) => !cultureOnsite && index === 3 ? "线上文化面" : label);
   const { width, height } = QUEUE_POSTER_SIZES[format];
   const margin = wide ? 84 : 72;
   const registration = kind === "registration";
@@ -128,7 +141,7 @@ const QueueRegistrationPoster = forwardRef(function QueueRegistrationPoster({ se
     <circle cx={width - 40} cy="-100" r="400" fill="#E7E2FF" opacity="0.7" />
     <rect x={margin} y="48" width="8" height="30" rx="4" fill="#422AFB" />
     <text x={margin + 24} y="71" fontSize="23" fontWeight="700" fill="#6251D8" letterSpacing="3">CAMPUS RECRUITMENT · 校园招聘</text>
-    <TextLines text={sessionName} x={margin} y={wide ? 130 : 120} width={width - margin * 2} fontSize={schoolSize} lineHeight={schoolSize + 10} fontWeight="600" fill="#6251D8" />
+    <TextLines text={stationName ? `${sessionName} · ${stationName}` : sessionName} x={margin} y={wide ? 130 : 120} width={width - margin * 2} fontSize={schoolSize} lineHeight={schoolSize + 10} fontWeight="600" fill="#6251D8" />
     <text x={margin} y={wide ? 280 : 255} fontSize={wide ? 86 : 76} fontWeight="800" letterSpacing="1">{content.title}</text>
     <text x={margin} y={wide ? 350 : 318} fontSize="36" fill="#6251D8">{content.subtitle}</text>
     <rect x={margin} y={wide ? 398 : 340} width={panelWidth} height={wide ? 750 : registration ? 710 : 620} rx="36" fill="#FFFFFF" />
@@ -146,7 +159,7 @@ const QueueRegistrationPoster = forwardRef(function QueueRegistrationPoster({ se
     })}
     {registration && <g><rect x={margin} y={wide ? 1162 : 1618} width={width - margin * 2} height={wide ? 48 : 58} rx="14" fill="#E7E2FF" /><TextLines text={followUp} x={margin + 20} y={wide ? 1195 : 1655} width={width - margin * 2 - 40} fontSize={wide ? 26 : 25} lineHeight="32" fontWeight="600" fill="#493B8B" /></g>}
     <text x={margin} y={wide ? registration ? 1260 : 1220 : 1712} fontSize="29" fontWeight="700">{content.flow ? "页面操作流程" : "完整招聘流程"}</text>
-    {(content.flow || QUEUE_RECRUITMENT_FLOW).map((label, index) => {
+    {flow.map((label, index) => {
       const columns = wide ? 8 : 4; const gap = wide ? 26 : 28;
       const boxWidth = (width - margin * 2 - gap * (columns - 1)) / columns;
       const column = index % columns; const row = Math.floor(index / columns);
