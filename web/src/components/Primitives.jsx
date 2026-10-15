@@ -438,13 +438,14 @@ export function Widget({ icon, label, value, accent = "#422AFB", subtitle, to })
 }
 
 // === Modal ==========================================================
-export function Modal({ open, onClose, children, maxWidth = "max-w-2xl" }) {
-  const scrollRef = useRef(null);
+export function Modal({ open, onClose, children, maxWidth = "max-w-2xl", scrollContainerRef }) {
+  const internalScrollRef = useRef(null);
+  const scrollRef = scrollContainerRef || internalScrollRef;
   useEffect(() => {
     if (!open) return;
     // 重置 scroll 到顶部 — 避免某些情况下 focus 把 modal 内部 scroll 推到中间
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
-  }, [open]);
+  }, [open, scrollRef]);
   useEffect(() => {
     if (!open) return;
     const onKey = (e) => e.key === "Escape" && onClose();
