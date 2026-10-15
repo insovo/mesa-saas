@@ -390,15 +390,11 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
     return reply.code(204).send();
   });
 
-  // 上线互斥:同一时刻只允许一个 live
   app.post("/sessions/:id/live", async (req, reply) => {
     if (!(await requireManage(req, reply))) return;
     const s = await loadSession(req, reply, req.params.id);
     if (!s) return;
-    const updated = await app.prisma.$transaction(async (tx) => {
-      await tx.campusSession.updateMany({ where: { status: "live", NOT: { id: s.id } }, data: { status: "closed" } });
-      return tx.campusSession.update({ where: { id: s.id }, data: { status: "live" } });
-    });
+    const updated = await app.prisma.campusSession.update({ where: { id: s.id }, data: { status: "live" } });
     await writeLog(app.prisma, { req, action: "campus.session.live", entityType: "CampusSession", entityId: s.id });
     return { session: updated };
   });

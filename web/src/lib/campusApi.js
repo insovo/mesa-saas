@@ -1,19 +1,36 @@
 // 校招学生端 API 客户端 — 独立 axios 实例,不走后台的 401 → /login 拦截器
-//   token 存 localStorage mesa.campus.token.v1(学生 JWT,aud=campus-public)
+//   学生 JWT 按专场 slug 隔离，旧全局会话在核对专场后迁入。
 import axios from "axios";
 
 const TOKEN_KEY = "mesa.campus.token.v1";
-export const getCampusToken = () => { try { return localStorage.getItem(TOKEN_KEY); } catch { return null; } };
-export const setCampusToken = (t) => { try { t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY); } catch {} };
+const currentSlug = () => {
+  const match = window.location.pathname.match(/^\/campus\/([^/]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+};
+const tokenKey = (slug) => slug ? `${TOKEN_KEY}.${slug}` : TOKEN_KEY;
+export const getCampusToken = (slug = currentSlug()) => { try { return localStorage.getItem(tokenKey(slug)); } catch { return null; } };
+export const getLegacyCampusToken = () => { try { return localStorage.getItem(TOKEN_KEY); } catch { return null; } };
+export const setCampusToken = (t, slug = currentSlug()) => {
+  try {
+    t ? localStorage.setItem(tokenKey(slug), t) : localStorage.removeItem(tokenKey(slug));
+    if (t && slug && getLegacyCampusToken() === t) localStorage.removeItem(TOKEN_KEY);
+  } catch {}
+};
 
 export const campusApi = axios.create({ baseURL: "/api/campus/public", timeout: 20000 });
 campusApi.interceptors.request.use((cfg) => {
-  const t = getCampusToken();
-  if (t) { cfg.headers = cfg.headers || {}; cfg.headers.Authorization = `Bearer ${t}`; }
+  cfg.campusSlug = currentSlug();
+  const t = getCampusToken(cfg.campusSlug);
+  if (t && !cfg.headers.Authorization) cfg.headers.Authorization = `Bearer ${t}`;
+  cfg.campusToken = cfg.headers.Authorization?.replace(/^Bearer /, "");
   return cfg;
 });
 campusApi.interceptors.response.use((r) => r, (err) => {
-  if (err.response?.status === 401) setCampusToken(null);
+  if (err.response?.status === 401 && err.config?.campusToken) {
+    const { campusSlug, campusToken } = err.config;
+    if (getCampusToken(campusSlug) === campusToken) setCampusToken(null, campusSlug);
+    try { if (getLegacyCampusToken() === campusToken) localStorage.removeItem(TOKEN_KEY); } catch {}
+  }
   return Promise.reject(err);
 });
 
@@ -24,7 +41,7 @@ export const campus = {
   start: (body) => campusApi.post("/auth/start", body).then((r) => r.data),
   recoverSend: (body) => campusApi.post("/auth/recover/send-code", body).then((r) => r.data),
   recoverVerify: (body) => campusApi.post("/auth/recover/verify", body).then((r) => r.data),
-  me: () => campusApi.get("/me").then((r) => r.data),
+  me: (token) => campusApi.get("/me", token ? { headers: { Authorization: `Bearer ${token}` } } : {}).then((r) => r.data),
   updateMe: (body) => campusApi.patch("/me", body).then((r) => r.data.me),
   confirmContact: (body) => campusApi.post("/me/contact-confirm", body).then((r) => r.data.me),
   presign: (body) => campusApi.post("/resumes/presigned-url", body).then((r) => r.data),
