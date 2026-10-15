@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { QRCodeSVG } from "qrcode.react";
 import { Button, Input, Modal, toast } from "../Primitives.jsx";
 import { queueApi, QUEUE_ROLE_LABELS, queueErrorMessage } from "../../lib/interviewQueueApi.js";
 import QueueRegistrationPosterPanel from "./QueueRegistrationPosterPanel.jsx";
@@ -36,6 +35,6 @@ export default function QueueShareModal({ session, kind, existing, onClose, onSa
       <Button type="submit" disabled={busy || (!useExpiry && !requireKey)} className="w-full">{busy ? "生成中…" : link ? "更新并生成新链接" : "生成二维码和链接"}</Button>
       {link && <p className="text-xs text-gray-600">更新设置会让旧链接失效。</p>}
     </form>
-    {link && <div className="border-t border-gray-100 pt-5 space-y-3 text-center">{kind === "registration" ? <QueueRegistrationPosterPanel session={session} link={link} url={url} expanded={posterExpanded} onExpandedChange={setPosterExpanded} /> : <div className="inline-flex bg-white p-3"><QRCodeSVG value={url} size={180} /></div>}<p className="text-xs text-gray-600">{link.expiresAt ? `有效至 ${new Date(link.expiresAt).toLocaleString("zh-CN")}` : "仅密钥限制 · 无到期时间"}</p><input aria-label="分享链接" readOnly value={url} className="w-full rounded-xl border border-gray-200 p-3 text-xs" onFocus={(e) => e.target.select()} />{link.requireKey && <p className="text-sm">访问密钥：<strong className="font-mono">{link.accessKey || "请重新生成"}</strong></p>}<div className="flex justify-center gap-2"><Button size="sm" onClick={() => copy(url)}>复制链接</Button>{link.requireKey && <Button variant="secondary" size="sm" onClick={() => copy(link.accessKey)}>复制密钥</Button>}<Button as="a" href={url} target="_blank" rel="noopener noreferrer" size="sm" variant="ghost">打开页面</Button></div></div>}
+    {link && <div className="border-t border-gray-100 pt-5 space-y-3 text-center"><QueueRegistrationPosterPanel session={session} link={link} url={url} kind={kind} expanded={posterExpanded} onExpandedChange={setPosterExpanded} /><p className="text-xs text-gray-600">{link.expiresAt ? `有效至 ${new Date(link.expiresAt).toLocaleString("zh-CN")}` : "仅密钥限制 · 无到期时间"}</p><input aria-label="分享链接" readOnly value={url} className="w-full rounded-xl border border-gray-200 p-3 text-xs" onFocus={(e) => e.target.select()} />{link.requireKey && <p className="text-sm">访问密钥：<strong className="font-mono">{link.accessKey || "请重新生成"}</strong></p>}<div className="flex justify-center gap-2"><Button size="sm" onClick={() => copy(url)}>复制链接</Button>{link.requireKey && <Button variant="secondary" size="sm" onClick={() => copy(link.accessKey)}>复制密钥</Button>}<Button as="a" href={url} target="_blank" rel="noopener noreferrer" size="sm" variant="ghost">打开页面</Button></div></div>}
   </div></Modal>;
 }
