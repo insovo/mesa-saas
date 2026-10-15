@@ -1126,7 +1126,7 @@ Header 必填:`X-Perf-Access-Key: <明文密钥>`
 | GET | `/sessions` | 全部专场(live 置顶),含 `jobsCount / applicantsCount / applicationsCount` |
 | POST | `/sessions` | 新建;body `name`(必填)`slug school location startsAt endsAt heroTitle heroSubtitle maxApplyJobs maxResumeUploads scoreFloor matchEnabled showSalaryOnsite showSalaryReferral`;slug 为空自动生成,重复 409 `campus_slug_taken` |
 | GET / PATCH / DELETE | `/sessions/:id` | 详情(含 `jobs[]`)/ 更新 / 删除(已有学生 409 `campus_session_not_empty`)|
-| POST | `/sessions/:id/live` · `/close` · `/draft` | 上线(事务内把其它 live 改 closed)/ 结束 / 退回草稿 |
+| POST | `/sessions/:id/live` · `/close` · `/draft` | 上线 / 结束 / 退回草稿，仅更新所选专场；允许多个学校同时处于 live |
 
 编辑专场时,`school`、`location`、`heroTitle`、`heroSubtitle` 等可选字段的 `null` 值在表单中显示为空,留空保存后仍按 `null` 提交。
 
@@ -1235,13 +1235,13 @@ Header 必填:`X-Perf-Access-Key: <明文密钥>`
 
 ## 19.7 学生端公开端点 `/api/campus/public/*`(Phase 1,2026-10-08,免登录)
 
-AuthGuard 外,学生**不注册不登录**。会话:首次上传前 `POST /auth/start`(勾选告知)匿名建档并签发学生 JWT `{ sub: applicantId, aud: "campus-public", sid, tv }`(有效期 `campus.auth.jwt_ttl`,默认 30d),前端存 localStorage 并以 `Authorization: Bearer` 携带;后台 `authenticate` 拒绝该 aud(401 `bad_audience`),这里只收该 aud。限流档 90 次 / 分钟(含 2s 轮询)。学生入口链接:首页 `/campus/:slug`、直接投递 `/campus/:slug/jobs`、智能匹配 `/campus/:slug/match`(后台专场二维码弹窗三选一)。
+AuthGuard 外,学生**不注册不登录**。会话:首次上传前 `POST /auth/start`(勾选告知)匿名建档并签发学生 JWT `{ sub: applicantId, aud: "campus-public", sid, tv }`(有效期 `campus.auth.jwt_ttl`,默认 30d),前端按专场 slug 存入 localStorage(`mesa.campus.token.v1.<slug>`)并以 `Authorization: Bearer` 携带；不同学校的页面和标签页独立使用会话。旧全局会话仅在 `/me` 核对所属专场后迁移，其他学校不携带该旧会话;后台 `authenticate` 拒绝该 aud(401 `bad_audience`),这里只收该 aud。限流档 90 次 / 分钟(含 2s 轮询)。学生入口链接:首页 `/campus/:slug`、直接投递 `/campus/:slug/jobs`、智能匹配 `/campus/:slug/match`(后台专场二维码弹窗三选一)。
 
 学生上传简历后,确认页只显示手机号、邮箱与毕业年份三个输入项;毕业年份默认填入 2026,可手动修改。提交后前端确保当前简历版本的匹配任务已启动(已有有效结果或进行中的任务则复用),学生可直接关闭页面,后台任务继续执行。确认联系方式后,后续简历解析不再覆盖毕业年份。返回同一设备可从首页或「我的投递」查看岗位匹配度;更换设备可用手机号 + 邮箱验证码找回。结果页以小球展示本专场各参与匹配岗位的最新展示分和岗位名,每个岗位都可投递(仍受专场额度、重复投递等通用规则约束);学生只看到「符合」「较为符合」的亮点,不展示硬筛结论、缺项和劣势。后台仍保留完整评估供招聘人员查看。重新进入或页面保持打开时会获取最新一次匹配任务,包括招聘人员在后台重新发起的结果。匹配启动失败不影响联系方式保存,学生可从结果页重试。
 
 | 方法 | 路径 | 鉴权 | 说明 |
 | --- | --- | --- | --- |
-| GET | `/session/current?slug=` | 可选 | 当前上线专场(或 slug 指定专场);返回 `session{ …, open, preview }`、`me` 摘要(有会话时)、`contactHints[]`、`pcUploadEnabled`;`?preview=1` + 后台 JWT 可看草稿 |
+| GET | `/session/current?slug=` | 可选 | 按 slug 返回指定专场，各校独立判断是否开放；未传 slug 时兼容返回最近更新的 live 专场。返回 `session{ …, open, preview }`、`me` 摘要(有会话时)、`contactHints[]`、`pcUploadEnabled`;`?preview=1` + 后台 JWT 可看草稿 |
 | GET | `/session/current/jobs?slug=` | 可选 | `{ onsite[], referral[] }`;薪资按专场 `showSalaryOnsite / showSalaryReferral` 决定是否下发;有会话时带 `applied` |
 | GET | `/jobs/:id?slug=` | 可选 | JD 白名单字段;不在专场 404 `campus_job_not_in_session` |
 | POST | `/auth/start` | 可选 | `{ slug?, consent: true }` → `201 { token, me, session, reused:false }` 匿名建档(占位 Candidate + 学生,phone 空);已持本专场有效 token 时 `{ token: null, reused: true }`;422 `campus_consent_required`;专场未开放 410 |

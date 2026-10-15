@@ -2,7 +2,7 @@
 // 门禁规则(设计 §4 规则 10,免登录版):投递 / 匹配前必须 有简历(首次上传时匿名建档)→ 已确认联系方式
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { campus, campusErr, getCampusToken, setCampusToken } from "../../../lib/campusApi.js";
+import { campus, campusErr, getCampusToken, getLegacyCampusToken, setCampusToken } from "../../../lib/campusApi.js";
 import { I, ToastHost, toast } from "../../../components/Primitives.jsx";
 
 const Ctx = createContext(null);
@@ -15,8 +15,11 @@ export function CampusProvider({ children }) {
   const [ready, setReady] = useState(false); // session 与 me 都加载完(门禁判断必须等它,避免 me 未到就误跳)
   const load = useCallback(async () => {
     try {
-      const [d, r] = await Promise.all([campus.session(slug), getCampusToken() ? campus.me().catch(() => null) : Promise.resolve(null)]);
-      setData(d); setError(null); setMe(r?.me || null);
+      const token = getCampusToken(slug) || getLegacyCampusToken();
+      const [d, r] = await Promise.all([campus.session(slug), token ? campus.me(token).catch(() => null) : Promise.resolve(null)]);
+      const matching = r?.session?.id && r.session.id === d.session?.id;
+      if (matching && token) setCampusToken(token, slug);
+      setData(d); setError(null); setMe(matching ? r.me : null);
     } catch (e) { setError(campusErr(e, "加载失败")); }
     finally { setReady(true); }
   }, [slug]);
@@ -26,7 +29,7 @@ export function CampusProvider({ children }) {
     document.addEventListener("visibilitychange", refreshOnReturn);
     return () => document.removeEventListener("visibilitychange", refreshOnReturn);
   }, [load]);
-  const logout = useCallback(() => { setCampusToken(null); setMe(null); }, []);
+  const logout = useCallback(() => { setCampusToken(null, slug); setMe(null); }, [slug]);
   const value = useMemo(() => ({ slug, session: data?.session || null, info: data, me, setMe, reload: load, error, logout, ready }), [slug, data, me, load, error, logout, ready]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

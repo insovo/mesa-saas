@@ -45,7 +45,7 @@ export default function CampusRecover() {
     setBusy(true);
     try {
       const r = await campus.recoverVerify({ slug, phone: phone.trim(), email: email.trim(), code: code.trim() });
-      setCampusToken(r.token); setMe(r.me); await reload();
+      setCampusToken(r.token, slug); setMe(r.me); await reload();
       toast(`已找回 ${r.me.name || ""} 的记录`, "success");
       nav(next, { replace: true });
     } catch (err) { toastErr(err, "找回失败"); }

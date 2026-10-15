@@ -1,5 +1,5 @@
 // 学生端路由(AuthGuard 外):/campus/:slug/*
-import { Route, Routes, Navigate } from "react-router-dom";
+import { Route, Routes, Navigate, useParams } from "react-router-dom";
 import { CampusProvider } from "./shell.jsx";
 import CampusHome from "./CampusHome.jsx";
 import CampusJobs from "./CampusJobs.jsx";
@@ -11,8 +11,9 @@ import CampusMatch from "./CampusMatch.jsx";
 import CampusRecover from "./CampusRecover.jsx";
 
 export default function CampusPublic() {
+  const { slug } = useParams();
   return (
-    <CampusProvider>
+    <CampusProvider key={slug}>
       <Routes>
         <Route index element={<CampusHome />} />
         <Route path="jobs" element={<CampusJobs />} />

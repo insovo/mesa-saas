@@ -12,12 +12,14 @@ export default function CampusSessions({ sessions, canManage, canManageJobs = ca
   const [editing, setEditing] = useState(null);
   const [expanded, setExpanded] = useState(null);
   const [qr, setQr] = useState(null);
+  const [statusAction, setStatusAction] = useState(null);
+  const [statusBusy, setStatusBusy] = useState(false);
 
-  async function act(s, action) {
-    const label = { live: "上线(其它上线中的专场会自动结束)", close: "结束", draft: "退回草稿" }[action];
-    if (!confirm(`确定${label}「${s.name}」?`)) return;
-    try { await resources.campus.setSessionStatus(s.id, action); toast("已更新", "success"); onChanged?.(); }
-    catch (e) { toast(errMsg(e), "error"); }
+  async function act() {
+    const { session, action } = statusAction;
+    setStatusBusy(true);
+    try { await resources.campus.setSessionStatus(session.id, action); setStatusAction(null); toast("已更新", "success"); onChanged?.(); }
+    catch (e) { toast(errMsg(e), "error"); } finally { setStatusBusy(false); }
   }
   async function remove(s) {
     if (!confirm(`删除专场「${s.name}」?(已有学生的专场不能删除)`)) return;
@@ -28,7 +30,7 @@ export default function CampusSessions({ sessions, canManage, canManageJobs = ca
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-gray-600">同一时刻只有一个专场「上线中」,学生端首页展示它。学生端页面将在下一阶段上线,二维码链接已可预留。</p>
+        <p className="text-xs text-gray-600">支持多个学校专场同时上线；各专场通过自己的二维码或链接独立访问。</p>
         {canManage && <Button size="sm" icon={<I name="plus" size={14} />} onClick={() => { setEditing(null); setFormOpen(true); }}>新建专场</Button>}
       </div>
       {sessions.length === 0 ? (
@@ -54,9 +56,9 @@ export default function CampusSessions({ sessions, canManage, canManageJobs = ca
               <Button size="sm" variant="ghost" icon={<I name="briefcase" size={14} />} onClick={() => setExpanded(expanded === s.id ? null : s.id)}>查看岗位{expanded === s.id ? "▴" : "▾"}</Button>
               {canManage && <>
                 <Button size="sm" variant="ghost" icon={<I name="pencil" size={14} />} onClick={() => { setEditing(s); setFormOpen(true); }}>编辑</Button>
-                {s.status !== "live" && <Button size="sm" icon={<I name="play" size={14} />} onClick={() => act(s, "live")}>上线</Button>}
-                {s.status === "live" && <Button size="sm" variant="secondary" icon={<I name="square" size={14} />} onClick={() => act(s, "close")}>结束</Button>}
-                {s.status === "closed" && <Button size="sm" variant="ghost" onClick={() => act(s, "draft")}>退回草稿</Button>}
+                {s.status !== "live" && <Button size="sm" icon={<I name="play" size={14} />} onClick={() => setStatusAction({ session: s, action: "live" })}>上线</Button>}
+                {s.status === "live" && <Button size="sm" variant="secondary" icon={<I name="square" size={14} />} onClick={() => setStatusAction({ session: s, action: "close" })}>结束</Button>}
+                {s.status === "closed" && <Button size="sm" variant="ghost" onClick={() => setStatusAction({ session: s, action: "draft" })}>退回草稿</Button>}
                 {s.applicantsCount === 0 && <button type="button" onClick={() => remove(s)} className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-lightPrimary" title="删除"><I name="trash-2" size={14} /></button>}
               </>}
             </div>
@@ -68,6 +70,19 @@ export default function CampusSessions({ sessions, canManage, canManageJobs = ca
       <SessionFormModal open={formOpen} onClose={() => setFormOpen(false)} session={editing} onSaved={() => onChanged?.()} />
 
       {qr && <QrModal session={qr} onClose={() => setQr(null)} />}
+      {statusAction && (
+        <Modal open onClose={() => !statusBusy && setStatusAction(null)} maxWidth="max-w-md">
+          <div className="p-6 space-y-4">
+            <h2 className="font-bold text-xl">确认{{ live: "上线", close: "结束", draft: "退回草稿" }[statusAction.action]}专场</h2>
+            <p className="text-sm break-words">{statusAction.session.name}</p>
+            <p className="text-sm text-gray-600">{statusAction.action === "live" ? "上线后，学生可通过该专场的二维码或链接访问并投递。各学校专场独立控制上线状态。" : "仅更新所选学校专场的状态，其他专场继续按各自设置运行。"}</p>
+            <div className="flex justify-end gap-3">
+              <Button variant="ghost" disabled={statusBusy} onClick={() => setStatusAction(null)}>取消</Button>
+              <Button disabled={statusBusy} onClick={act}>{statusBusy ? "更新中…" : "确认更新"}</Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
