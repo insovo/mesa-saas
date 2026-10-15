@@ -9,9 +9,11 @@ import { assertQueueLink, queueError, queueEntryView, mutateQueue, QUEUE_LINK_KI
 const uuid = { type: "string", format: "uuid" };
 const text = (maxLength) => ({ type: "string", minLength: 1, maxLength, pattern: "\\S" });
 const sessionParams = { type: "object", required: ["sessionId"], properties: { sessionId: uuid } };
+const jobParams = { type: "object", required: ["jobId"], properties: { jobId: uuid } };
 const actionSchema = { type: "object", additionalProperties: false, required: ["items", "action"], properties: {
   items: { type: "array", minItems: 1, maxItems: 500, items: { type: "object", additionalProperties: false, required: ["id", "updatedAt"], properties: { id: uuid, updatedAt: { type: "string", format: "date-time" } } } },
-  action: { enum: ["professional-result", "professional-timer", "culture-result", "culture-timer", "direction", "salary", "suggestion"] },
+  action: { enum: ["professional-result", "professional-timer", "culture-result", "culture-timer", "direction", "salary", "suggestion", "requeue"] },
+  targetStage: { enum: ["professional", "culture"] },
   content: text(5000),
   confirmed: { type: "boolean" }, result: { enum: ["passed", "pending"] }, jobDirection: text(200),
   salaryBase: { type: "number", minimum: 0, maximum: 10000000 }, salaryFactor: { type: "number", minimum: 0, maximum: 1000 }, salaryStatus: { enum: ["accepted", "abandoned"] },
@@ -31,9 +33,20 @@ async function staff(req, reply, write = false) {
 }
 
 async function loadQueue(prisma, sessionId) {
-  const queue = await prisma.interviewQueue.findUnique({ where: { sessionId }, include: { session: { select: { id: true, name: true, school: true, status: true } } } });
+  const queue = await prisma.interviewQueue.findUnique({ where: { sessionId }, include: { session: { select: { id: true, name: true, school: true, status: true, showSalaryOnsite: true, showSalaryReferral: true } } } });
   if (!queue) throw queueError("请先创建该大学专场的面试排队", 404, "queue_not_found");
   return queue;
+}
+
+async function queueJob(prisma, jobId, session) {
+  const job = await prisma.job.findFirst({ where: { id: jobId, recruitmentType: "campus", campusActive: true }, select: {
+    id: true, title: true, dept: true, location: true, employment: true, educationRequirement: true, languageRequirement: true,
+    description: true, responsibilities: true, requirements: true, nice: true, benefits: true, salary: true, campusKind: true,
+  } });
+  if (!job) throw queueError("校招岗位已移除或不存在", 404, "queue_job_not_found");
+  const { campusKind, salary, ...detail } = job;
+  const showSalary = campusKind === "referral" ? session.showSalaryReferral : session.showSalaryOnsite;
+  return { job: { ...detail, kind: campusKind, salary: showSalary ? salary : null } };
 }
 
 async function queueData(prisma, queueId, role, revision) {
@@ -43,8 +56,8 @@ async function queueData(prisma, queueId, role, revision) {
     if (revision === queue.revision) return { unchanged: true, revision };
     const where = role === "staff" ? {} : { OR: [{ stage: role === "hr" ? "salary" : role }, { stage: "pending" }] };
     const rows = await tx.interviewQueueEntry.findMany({ where: { queueId, ...where }, include: { suggestions: { orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, authorRole: true, content: true, createdAt: true } } }, orderBy: [{ phaseEnteredAt: "asc" }, { createdAt: "asc" }, { id: "asc" }] });
-    const jobs = await tx.job.findMany({ where: { recruitmentType: "campus", campusActive: true }, select: { id: true, title: true }, orderBy: [{ campusSortOrder: "asc" }, { createdAt: "asc" }] });
-    return { queue: { id: queue.id, session: queue.session }, revision: queue.revision, entries: rows.map((row) => queueEntryView(row, role)), jobs };
+    const jobs = await tx.job.findMany({ where: { recruitmentType: "campus", campusActive: true }, select: { id: true, title: true, location: true, employment: true, educationRequirement: true, campusKind: true }, orderBy: [{ campusSortOrder: "asc" }, { createdAt: "asc" }] });
+    return { queue: { id: queue.id, session: queue.session }, revision: queue.revision, entries: rows.map((row) => queueEntryView(row, role)), jobs: jobs.map(({ campusKind, ...job }) => ({ ...job, kind: campusKind })) };
   }, { isolationLevel: "RepeatableRead" });
 }
 
@@ -67,7 +80,7 @@ export default async function interviewQueueRoutes(app) {
   app.get("/", async (req, reply) => {
     const access = await staff(req, reply);
     if (!access) return;
-    const sessions = await app.prisma.campusSession.findMany({ select: { id: true, name: true, school: true, status: true, interviewQueue: { include: { links: true, _count: { select: { entries: true } } } } }, orderBy: { createdAt: "asc" } });
+    const sessions = await app.prisma.campusSession.findMany({ select: { id: true, name: true, school: true, location: true, status: true, interviewQueue: { include: { links: true, _count: { select: { entries: true } } } } }, orderBy: { createdAt: "asc" } });
     return { sessions: sessions.map(({ interviewQueue, ...session }) => ({ ...session, queueId: interviewQueue?.id || null, count: interviewQueue?._count.entries || 0, links: access.role === "VIEWER" ? [] : (interviewQueue?.links || []).map(linkView) })) };
   });
   app.post("/:sessionId", { schema: { params: sessionParams } }, async (req, reply) => {
@@ -85,6 +98,19 @@ export default async function interviewQueueRoutes(app) {
     if (!(await staff(req, reply, true))) return;
     const queue = await loadQueue(app.prisma, req.params.sessionId);
     return mutateQueue(app.prisma, queue.id, req.body, "staff");
+  });
+  app.get("/:sessionId/jobs/:jobId", { schema: { params: { type: "object", required: ["sessionId", "jobId"], properties: { ...sessionParams.properties, ...jobParams.properties } } } }, async (req, reply) => {
+    if (!(await staff(req, reply))) return;
+    const queue = await loadQueue(app.prisma, req.params.sessionId);
+    return queueJob(app.prisma, req.params.jobId, queue.session);
+  });
+  app.patch("/:sessionId/location", { schema: { params: sessionParams, body: { type: "object", required: ["location"], additionalProperties: false, properties: { location: text(200) } } } }, async (req, reply) => {
+    if (!(await staff(req, reply, true))) return;
+    const queue = await loadQueue(app.prisma, req.params.sessionId);
+    return app.prisma.$transaction(async (tx) => {
+      await tx.interviewQueue.update({ where: { id: queue.id }, data: { revision: { increment: 1 } } });
+      return tx.campusSession.update({ where: { id: req.params.sessionId }, data: { location: req.body.location.trim() }, select: { location: true } });
+    });
   });
   const kindParams = { ...sessionParams, required: ["sessionId", "kind"], properties: { ...sessionParams.properties, kind: { enum: QUEUE_LINK_KINDS } } };
   app.post("/:sessionId/links/:kind", { schema: { params: kindParams, body: { type: "object", additionalProperties: false, properties: {
@@ -136,16 +162,15 @@ export async function publicInterviewQueueRoutes(app) {
     const { id, name, school } = link.queue.session;
     return { kind: link.kind, requireKey: link.requireKey, expiresAt: link.expiresAt, session: { id, name, school }, queueId: link.queueId, jobs: jobs.map(({ campusKind, ...job }) => ({ ...job, kind: campusKind })) };
   });
-  app.get("/registration/jobs/:jobId", { schema: { headers: linkHeaders, params: { type: "object", required: ["jobId"], properties: { jobId: uuid } } } }, async (req) => {
+  app.get("/registration/jobs/:jobId", { schema: { headers: linkHeaders, params: jobParams } }, async (req) => {
     const link = await fromLink(req, "registration");
-    const job = await app.prisma.job.findFirst({ where: { id: req.params.jobId, recruitmentType: "campus", campusActive: true }, select: {
-      id: true, title: true, dept: true, location: true, employment: true, educationRequirement: true, languageRequirement: true,
-      description: true, responsibilities: true, requirements: true, nice: true, benefits: true, salary: true, campusKind: true,
-    } });
-    if (!job) throw queueError("校招岗位已移除或不存在", 404, "queue_job_not_found");
-    const { campusKind, salary, ...detail } = job;
-    const showSalary = campusKind === "referral" ? link.queue.session.showSalaryReferral : link.queue.session.showSalaryOnsite;
-    return { job: { ...detail, kind: campusKind, salary: showSalary ? salary : null } };
+    return queueJob(app.prisma, req.params.jobId, link.queue.session);
+  });
+  app.get("/share/jobs/:jobId", { schema: { params: jobParams } }, async (req) => {
+    const link = await shareActor(req);
+    if (!["professional", "hr"].includes(link.kind)) throw queueError("此角色不能修改岗位方向", 403, "queue_role_forbidden");
+    const queue = await app.prisma.interviewQueue.findUnique({ where: { id: link.queueId }, include: { session: { select: { showSalaryOnsite: true, showSalaryReferral: true } } } });
+    return queueJob(app.prisma, req.params.jobId, queue.session);
   });
   app.post("/share/open", { config: limited, schema: { headers: linkHeaders, body: { type: "object", additionalProperties: false, properties: { accessKey: { type: "string", maxLength: 64 } } } } }, async (req) => {
     const link = await fromLink(req);

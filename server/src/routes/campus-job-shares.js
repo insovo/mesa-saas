@@ -104,7 +104,7 @@ export async function publicCampusJobShareRoutes(app) {
   });
 
   const lines = { type: "array", minItems: 1, maxItems: 100, items: { type: "string", minLength: 1, maxLength: 1000 } };
-  app.post("/jobs", { schema: { body: { type: "object", required: ["title", "responsibilities", "requirements"], additionalProperties: false, properties: { title: { type: "string", minLength: 1, maxLength: 200 }, responsibilities: lines, requirements: lines } } } }, async (req, reply) => {
+  app.post("/jobs", { schema: { body: { type: "object", required: ["title", "responsibilities", "requirements"], additionalProperties: false, properties: { title: { type: "string", minLength: 1, maxLength: 200 }, responsibilities: lines, requirements: lines, kind: { type: "string", enum: ["onsite", "referral"], default: "referral" } } } } }, async (req, reply) => {
     const title = req.body.title.trim();
     const responsibilities = req.body.responsibilities.map((line) => line.trim()).filter(Boolean);
     const requirements = req.body.requirements.map((line) => line.trim()).filter(Boolean);
@@ -115,7 +115,7 @@ export async function publicCampusJobShareRoutes(app) {
       const max = await tx.job.aggregate({ where: activeCampusJob, _max: { campusSortOrder: true } });
       const job = await tx.job.create({ data: {
         ...CAMPUS_JOB_SHARE_DEFAULTS, title, responsibilities, requirements,
-        recruitmentType: "campus", status: "招聘中", campusActive: true, campusKind: "referral",
+        recruitmentType: "campus", status: "招聘中", campusActive: true, campusKind: req.body.kind,
         campusMatchEnabled: true, campusSortOrder: (max._max.campusSortOrder ?? -1) + 1,
       }, select: { ...publicJobSelect, campusMatchEnabled: true, campusSortOrder: true } });
       if (!access.isAdmin) await tx.userJobScope.create({ data: { userId: link.createdBy, jobId: job.id } });
@@ -123,7 +123,7 @@ export async function publicCampusJobShareRoutes(app) {
       await tx.campusJobShareJob.create({ data: { shareId: link.id, jobId: job.id } });
       return { job, link };
     });
-    await writeLog(app.prisma, { req, actorId: link.createdBy, action: "campus.job_share.job_create", entityType: "Job", entityId: job.id, diff: { title, shareId: link.id, allSessions: true, viaPublicLink: true } });
+    await writeLog(app.prisma, { req, actorId: link.createdBy, action: "campus.job_share.job_create", entityType: "Job", entityId: job.id, diff: { title, kind: job.campusKind, shareId: link.id, allSessions: true, viaPublicLink: true } });
     const { campusMatchEnabled, campusSortOrder, ...shown } = job;
     return reply.code(201).send({ job: publicJob(shown) });
   });

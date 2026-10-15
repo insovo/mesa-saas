@@ -43,6 +43,7 @@ function SharePage() {
   }, [linkToken]);
   const read = useMemo(() => (revision) => publicQueueApi.data(token, revision), [token]);
   const write = useMemo(() => (body) => publicQueueApi.action(token, body), [token]);
+  const loadJob = useMemo(() => (jobId) => publicQueueApi.shareJob(token, jobId), [token]);
   const onFatal = useCallback((err) => {
     setToken(""); sessionStorage.removeItem(`mesa.queue.share.${linkToken}`); setError(queueErrorMessage(err));
     if ([403, 410].includes(err.response?.status)) setFatal(true);
@@ -53,7 +54,7 @@ function SharePage() {
     catch (err) { setError(queueErrorMessage(err)); if (err.response?.status === 410) setFatal(true); }
     finally { setBusy(false); }
   }
-  if (token && info && !fatal) return <QueueBoard key={token} read={read} write={write} role={info.kind} onFatal={onFatal} />;
+  if (token && info && !fatal) return <QueueBoard key={token} read={read} write={write} loadJob={loadJob} role={info.kind} onFatal={onFatal} />;
   if (!info && !error) return <LoadingBlock height="h-60" />;
   return <Card className="p-6 max-w-md mx-auto gap-4"><h1 className="font-bold text-xl">{info?.session.name || "面试排队分享"}</h1>{info && <p className="text-sm text-gray-600">{QUEUE_ROLE_LABELS[info.kind]} · 无需登录</p>}{error && <p className="text-sm text-red-500">{error}</p>}{info && !fatal && <form onSubmit={open} className="space-y-4">{info.requireKey && <Input type="password" label="访问密钥" aria-label="访问密钥" value={key} autoComplete="off" required onChange={(e) => setKey(e.target.value)} />}<Button type="submit" disabled={busy} className="w-full">{busy ? "验证中…" : "进入面试排队"}</Button></form>}</Card>;
 }

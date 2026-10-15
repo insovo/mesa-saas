@@ -12,6 +12,8 @@ export const queueApi = {
   ensure: (id) => api.post(`/interview-queues/${id}`).then((r) => r.data),
   data: (id, revision) => api.get(`/interview-queues/${id}`, { params: { revision } }).then((r) => r.data),
   action: (id, body) => api.post(`/interview-queues/${id}/actions`, body).then((r) => r.data),
+  job: (id, jobId) => api.get(`/interview-queues/${id}/jobs/${jobId}`).then((r) => r.data.job),
+  location: (id, location) => api.patch(`/interview-queues/${id}/location`, { location }).then((r) => r.data),
   share: (id, kind, body) => api.post(`/interview-queues/${id}/links/${kind}`, body).then((r) => r.data),
   stop: (id, kind) => api.delete(`/interview-queues/${id}/links/${kind}`).then((r) => r.data),
 };
@@ -23,6 +25,7 @@ export const publicQueueApi = {
   open: (token, accessKey) => publicApi.post("/share/open", accessKey ? { accessKey } : {}, linkConfig(token)).then((r) => r.data),
   data: (token, revision) => publicApi.get("/share/data", { ...bearer(token), params: { revision } }).then((r) => r.data),
   action: (token, body) => publicApi.post("/share/actions", body, bearer(token)).then((r) => r.data),
+  shareJob: (token, jobId) => publicApi.get(`/share/jobs/${jobId}`, bearer(token)).then((r) => r.data.job),
   register: (token, body) => publicApi.post("/register", body, linkConfig(token)).then((r) => r.data),
   sendCode: (email) => publicApi.post("/recover/send-code", { email }).then((r) => r.data),
   recover: (email, code) => publicApi.post("/recover/verify", { email, code }).then((r) => r.data),

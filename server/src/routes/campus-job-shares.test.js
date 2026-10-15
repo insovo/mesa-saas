@@ -123,6 +123,23 @@ test("HR仅填三项新建岗位，37条福利及默认值全部持久化且全�
   assert.equal(blank.statusCode, 422); assert.equal(state().jobs.length, 5);
 });
 
+test("HR 新建 JD 可选现场面试或内推，岗位及所有专场保存一致，拒绝非法类型", async (t) => {
+  const { app, share, state } = await fixture(t);
+  const { headers } = await share();
+  for (const kind of ["onsite", "referral"]) {
+    const response = await app.inject({ method: "POST", url: `${publicBase}/jobs`, headers, payload: { title: `新建${kind}`, responsibilities: ["职责"], requirements: ["要求"], kind } });
+    assert.equal(response.statusCode, 201); assert.equal(response.json().job.kind, kind);
+    const created = state().jobs.at(-1);
+    assert.equal(created.campusKind, kind); assert.deepEqual(created.benefits, CAMPUS_JOB_SHARE_BENEFITS);
+    const linked = state().links.filter((row) => row.jobId === created.id);
+    assert.equal(linked.length, 2); assert.ok(linked.every((row) => row.kind === kind));
+    assert.equal((await app.inject({ url: `${publicBase}/`, headers })).json().jobs.find((job) => job.id === created.id).kind, kind);
+  }
+  const count = state().jobs.length;
+  assert.equal((await app.inject({ method: "POST", url: `${publicBase}/jobs`, headers, payload: { title: "错误类型", responsibilities: ["职责"], requirements: ["要求"], kind: "other" } })).statusCode, 400);
+  assert.equal(state().jobs.length, count);
+});
+
 test("分享人权限和岗位范围实时生效，禁止无权限创建及停止他人的链接", async (t) => {
   const { app, share, user } = await fixture(t, { role: "RECRUITER" });
   assert.equal((await app.inject({ method: "POST", url: protectedBase, payload: { ids: [ids[1]] } })).statusCode, 409);

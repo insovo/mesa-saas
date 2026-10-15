@@ -128,3 +128,56 @@ test("待定来源依据实际结果标明专业、文化或定薪，不伪造�
   assert.equal(queueEntryView(professional).cultureResult, undefined);
   assert.equal(queueEntryView(row("a")).pendingFrom, null);
 });
+
+test("HR 可改定薪和待定方向，专业仍限本阶段且文化不能改方向", () => {
+  for (const stage of ["salary", "pending"]) {
+    const entry = row("a", stage);
+    assert.deepEqual(queueMutation([entry], body([entry], "direction", { jobDirection: "  新岗位  " }), "hr"), { jobDirection: "新岗位" });
+    assert.throws(() => queueMutation([entry], body([entry], "direction", { jobDirection: "新岗位" }), "professional"), (err) => err.statusCode === 409);
+  }
+  const entry = row("a", "culture");
+  assert.throws(() => queueMutation([entry], body([entry], "direction", { jobDirection: "新岗位" }), "hr"), (err) => err.statusCode === 409);
+  assert.throws(() => queueMutation([entry], body([entry], "direction", { jobDirection: "新岗位" }), "culture"), (err) => err.statusCode === 403);
+});
+
+test("待定重新排队清理重做阶段及薪资状态，保留资料、金额与建议，不伪造专业通过", () => {
+  const entry = { ...row("a", "pending"), professionalResult: "passed", cultureResult: "passed", salaryStatus: "abandoned", professionalStartedAt: stamp, cultureStartedAt: stamp, cultureGroupId: "old-group", name: "学生", suggestions: [{ content: "历史建议" }] };
+  for (const targetStage of ["professional", "culture"]) {
+    const data = queueMutation([entry], body([entry], "requeue", { targetStage }), "hr");
+    const updated = { ...entry, ...data };
+    assert.equal(updated.stage, targetStage); assert.equal(updated.cultureResult, null);
+    assert.equal(updated.cultureStartedAt, null); assert.equal(updated.cultureGroupId, null); assert.equal(updated.salaryStatus, null);
+    assert.equal(updated.professionalResult, targetStage === "culture" ? "passed" : null);
+    assert.equal(updated.professionalStartedAt, targetStage === "culture" ? stamp : null);
+    assert.equal(updated.salaryBase, entry.salaryBase); assert.equal(updated.salaryFactor, entry.salaryFactor);
+    assert.equal(updated.name, entry.name); assert.deepEqual(updated.suggestions, entry.suggestions);
+  }
+  const professionalPending = { ...entry, professionalResult: "pending" };
+  const culture = queueMutation([professionalPending], body([professionalPending], "requeue", { targetStage: "culture" }), "hr");
+  assert.equal(culture.professionalResult, null); assert.equal(culture.professionalStartedAt, null);
+  const request = body([entry], "requeue", { targetStage: "professional" });
+  for (const role of ["professional", "culture", "student"]) assert.throws(() => queueMutation([entry], request, role), (err) => err.statusCode === 403);
+  assert.throws(() => queueMutation([entry], { ...request, confirmed: false }, "hr"), (err) => err.code === "queue_confirmation_required");
+  assert.throws(() => queueMutation([{ ...entry, stage: "salary" }], request, "hr"), (err) => err.code === "queue_conflict");
+  assert.throws(() => queueMutation([{ ...entry, updatedAt: new Date() }], request, "hr"), (err) => err.code === "queue_conflict");
+  assert.throws(() => queueMutation([entry], { ...request, targetStage: "salary" }, "hr"), /请选择/);
+});
+
+test("重新排队在事务验证分享后加入目标队尾，连续同毫秒操作仍保持队尾顺序", async () => {
+  const entry = { ...row("a", "pending"), professionalResult: "pending" };
+  let tail = new Date(Date.now() + 10000);
+  const saved = [];
+  let validated = false;
+  const tx = {
+    interviewQueue: { update: async () => {} },
+    interviewQueueEntry: {
+      findMany: async () => [entry],
+      findFirst: async ({ where }) => { assert.equal(validated, true); assert.deepEqual(where, { queueId: "queue", stage: "culture" }); return { phaseEnteredAt: tail }; },
+      updateMany: async ({ data }) => { assert.ok(data.phaseEnteredAt > tail); tail = data.phaseEnteredAt; saved.push(data); },
+    },
+  };
+  for (let i = 0; i < 2; i++) await mutateQueue({ $transaction: async (fn) => fn(tx) }, "queue", body([entry], "requeue", { targetStage: "culture" }), "hr", async () => { validated = true; });
+  assert.equal(saved.length, 2); assert.equal(saved[1].phaseEnteredAt.getTime(), saved[0].phaseEnteredAt.getTime() + 1);
+  await assert.rejects(mutateQueue({ $transaction: async (fn) => fn(tx) }, "queue", body([entry], "requeue", { targetStage: "culture" }), "hr", async () => assertQueueLink({ active: false })), (err) => err.statusCode === 410);
+  assert.equal(saved.length, 2);
+});
