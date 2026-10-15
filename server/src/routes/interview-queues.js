@@ -11,7 +11,8 @@ const text = (maxLength) => ({ type: "string", minLength: 1, maxLength, pattern:
 const sessionParams = { type: "object", required: ["sessionId"], properties: { sessionId: uuid } };
 const actionSchema = { type: "object", additionalProperties: false, required: ["items", "action"], properties: {
   items: { type: "array", minItems: 1, maxItems: 500, items: { type: "object", additionalProperties: false, required: ["id", "updatedAt"], properties: { id: uuid, updatedAt: { type: "string", format: "date-time" } } } },
-  action: { enum: ["professional-result", "professional-timer", "culture-result", "culture-timer", "direction", "salary"] },
+  action: { enum: ["professional-result", "professional-timer", "culture-result", "culture-timer", "direction", "salary", "suggestion"] },
+  content: text(5000),
   confirmed: { type: "boolean" }, result: { enum: ["passed", "pending"] }, jobDirection: text(200),
   salaryBase: { type: "number", minimum: 0, maximum: 10000000 }, salaryFactor: { type: "number", minimum: 0, maximum: 1000 }, salaryStatus: { enum: ["accepted", "abandoned"] },
 } };
@@ -40,8 +41,8 @@ async function queueData(prisma, queueId, role, revision) {
     const queue = await tx.interviewQueue.findUnique({ where: { id: queueId }, include: { session: { select: { id: true, name: true, school: true, status: true } } } });
     if (!queue) throw queueError("面试排队不存在", 404);
     if (revision === queue.revision) return { unchanged: true, revision };
-    const where = role === "staff" ? {} : role === "professional" ? { OR: [{ stage: "professional" }, { stage: "pending", professionalResult: "pending" }] } : role === "culture" ? { OR: [{ stage: "culture" }, { stage: "pending", cultureResult: "pending" }] } : { OR: [{ stage: "salary" }, { stage: "pending", salaryStatus: "abandoned" }] };
-    const rows = await tx.interviewQueueEntry.findMany({ where: { queueId, ...where }, orderBy: [{ phaseEnteredAt: "asc" }, { createdAt: "asc" }, { id: "asc" }] });
+    const where = role === "staff" ? {} : { OR: [{ stage: role === "hr" ? "salary" : role }, { stage: "pending" }] };
+    const rows = await tx.interviewQueueEntry.findMany({ where: { queueId, ...where }, include: { suggestions: { orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, authorRole: true, content: true, createdAt: true } } }, orderBy: [{ phaseEnteredAt: "asc" }, { createdAt: "asc" }, { id: "asc" }] });
     const jobs = await tx.job.findMany({ where: { recruitmentType: "campus", campusActive: true }, select: { id: true, title: true }, orderBy: [{ campusSortOrder: "asc" }, { createdAt: "asc" }] });
     return { queue: { id: queue.id, session: queue.session }, revision: queue.revision, entries: rows.map((row) => queueEntryView(row, role)), jobs };
   }, { isolationLevel: "RepeatableRead" });
@@ -182,7 +183,7 @@ export async function publicInterviewQueueRoutes(app) {
       if (err.code === "P2002") throw queueError("该邮箱已登记，请用邮箱验证码找回记录", 409, "queue_already_registered");
       throw err;
     }
-    return { token: app.jwt.sign({ aud: "interview-queue-student", sub: entry.id }, { expiresIn: "30d" }), entry: queueEntryView(entry) };
+    return { token: app.jwt.sign({ aud: "interview-queue-student", sub: entry.id }, { expiresIn: "30d" }), entry: queueEntryView(entry, "student") };
   });
   const emailSchema = { type: "object", required: ["email"], additionalProperties: false, properties: { email: { type: "string", format: "email", maxLength: 254 } } };
   app.post("/recover/send-code", { config: limited, schema: { body: emailSchema } }, async (req, reply) => {
@@ -207,7 +208,7 @@ export async function publicInterviewQueueRoutes(app) {
     const entries = await app.prisma.interviewQueueEntry.findMany({ where: actor.verified === true ? { email: actor.sub } : { id: actor.sub }, include: { queue: { select: { session: { select: { id: true, name: true } } } } }, orderBy: { createdAt: "desc" } });
     const records = await Promise.all(entries.map(async ({ queue, ...entry }) => {
       const ahead = ["professional", "culture"].includes(entry.stage) ? await app.prisma.interviewQueueEntry.count({ where: { queueId: entry.queueId, stage: entry.stage, OR: [{ phaseEnteredAt: { lt: entry.phaseEnteredAt } }, { phaseEnteredAt: entry.phaseEnteredAt, createdAt: { lt: entry.createdAt } }, { phaseEnteredAt: entry.phaseEnteredAt, createdAt: entry.createdAt, id: { lt: entry.id } }] } }) : 0;
-      return { ...queueEntryView(entry), session: queue.session, ahead };
+      return { ...queueEntryView(entry, "student"), session: queue.session, ahead };
     }));
     return { entries: records };
   });

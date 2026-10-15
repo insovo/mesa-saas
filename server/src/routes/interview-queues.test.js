@@ -132,3 +132,63 @@ test("邮箱找回验证码并发消费只成功一次", async () => {
   const results = await Promise.allSettled([consumeCode(prisma, { email: "student@example.com", code, purpose: "INTERVIEW_QUEUE_RECOVER" }), consumeCode(prisma, { email: "student@example.com", code, purpose: "INTERVIEW_QUEUE_RECOVER" })]);
   assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
 });
+
+
+test("三角色建议接口保存真实作者角色，并校验阶段、内容和只读权限", async (t) => {
+  for (const [kind, stage] of [["professional", "professional"], ["culture", "culture"], ["hr", "salary"]]) {
+    const { app, link } = await setup(t, { kind });
+    const entry = { id: userId, stage, updatedAt: "2026-10-15T01:00:00.000Z" };
+    const saved = [];
+    app.prisma.interviewQueueEntry = { findMany: async ({ where }) => where.queueId === queueId && where.id.in.includes(entry.id) ? [entry] : [] };
+    app.prisma.interviewQueueSuggestion = { create: async ({ data }) => saved.push(data) };
+    const headers = { authorization: `Bearer ${app.jwt.sign({ aud: "interview-queue-share", sub: link.id, kind, queueId, tv: 0 })}` };
+    const request = { action: "suggestion", items: [{ id: entry.id, updatedAt: entry.updatedAt }], content: "  面试建议  " };
+    const response = await app.inject({ method: "POST", url: "/api/public/interview-queues/share/actions", headers, payload: { ...request, authorRole: "staff" } });
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(saved, [{ entryId: entry.id, authorRole: kind, content: "面试建议" }]);
+    for (const content of [" ", "字".repeat(5001)]) {
+      assert.equal((await app.inject({ method: "POST", url: "/api/public/interview-queues/share/actions", headers, payload: { ...request, content } })).statusCode, 400);
+    }
+    entry.stage = "pending";
+    assert.equal((await app.inject({ method: "POST", url: "/api/public/interview-queues/share/actions", headers, payload: request })).statusCode, 403);
+    link.active = false;
+    assert.equal((await app.inject({ method: "POST", url: "/api/public/interview-queues/share/actions", headers, payload: request })).statusCode, 410);
+    assert.equal(saved.length, 1);
+  }
+  const { app, headers } = await setup(t, { role: "VIEWER" });
+  assert.equal((await app.inject({ method: "POST", url: `/api/interview-queues/${sessionId}/actions`, headers, payload: { action: "suggestion", items: [{ id: userId, updatedAt: new Date().toISOString() }], content: "不可写入" } })).statusCode, 403);
+});
+
+test("学生查询即使读取到关联建议，也不会返回面试内部建议", async (t) => {
+  const { app } = await setup(t);
+  app.prisma.interviewQueueEntry = {
+    findMany: async () => [{ id: userId, stage: "salary", suggestions: [{ content: "内部建议" }], queue: { session: { id: sessionId, name: "测试大学" } } }],
+  };
+  const response = await app.inject({ url: "/api/public/interview-queues/mine", headers: { authorization: `Bearer ${app.jwt.sign({ aud: "interview-queue-student", sub: userId })}` } });
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.json().entries[0].suggestions, undefined);
+  assert.equal(JSON.stringify(response.json()).includes("内部建议"), false);
+});
+
+
+test("三个分享角色同步看到专场全部待定及来源，专业文化仍隐藏邮箱和薪资", async (t) => {
+  const stamp = "2026-10-15T01:00:00.000Z";
+  const rows = [
+    { id: "p", queueId, stage: "pending", professionalResult: "pending" },
+    { id: "c", queueId, stage: "pending", professionalResult: "passed", cultureResult: "pending" },
+    { id: "s", queueId, stage: "pending", professionalResult: "passed", cultureResult: "passed", salaryStatus: "abandoned" },
+    { id: "other", queueId: "other-queue", stage: "pending" },
+    ...["professional", "culture", "salary"].map((stage) => ({ id: stage, queueId, stage })),
+  ].map((row) => ({ ...row, updatedAt: stamp, email: "student@example.com", salaryBase: 8700, salaryFactor: 13.5 }));
+  const matches = (row, where) => Object.entries(where).every(([key, value]) => key === "OR" ? value.some((condition) => matches(row, condition)) : row[key] === value);
+  for (const kind of ["professional", "culture", "hr"]) {
+    const { app, link } = await setup(t, { kind });
+    app.prisma.interviewQueueEntry = { findMany: async ({ where }) => rows.filter((row) => matches(row, where)) };
+    const response = await app.inject({ url: "/api/public/interview-queues/share/data", headers: { authorization: `Bearer ${app.jwt.sign({ aud: "interview-queue-share", sub: link.id, kind, queueId, tv: 0 })}` } });
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(response.json().entries.filter((row) => row.stage === "pending").map((row) => [row.id, row.pendingFrom]), [["p", "professional"], ["c", "culture"], ["s", "salary"]]);
+    assert.equal(response.json().entries.filter((row) => row.stage !== "pending")[0].stage, kind === "hr" ? "salary" : kind);
+    assert.equal(response.json().entries.length, 4);
+    if (kind !== "hr") for (const row of response.json().entries) { assert.equal(row.email, undefined); assert.equal(row.salaryBase, undefined); assert.equal(row.salaryStatus, undefined); }
+  }
+});
