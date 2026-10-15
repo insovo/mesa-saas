@@ -230,7 +230,7 @@ export async function publicInterviewQueueRoutes(app) {
       if (err.code === "P2002") throw queueError("该邮箱已登记，请用邮箱验证码找回记录", 409, "queue_already_registered");
       throw err;
     }
-    return { token: app.jwt.sign({ aud: "interview-queue-student", sub: entry.id }, { expiresIn: "30d" }), entry: queueEntryView(entry, "student") };
+    return { token: app.jwt.sign({ aud: "interview-queue-student", sub: entry.id, viewerId: crypto.randomUUID() }, { expiresIn: "30d" }), entry: queueEntryView(entry, "student") };
   });
   const emailSchema = { type: "object", required: ["email"], additionalProperties: false, properties: { email: { type: "string", format: "email", maxLength: 254 } } };
   app.post("/recover/send-code", { config: limited, schema: { body: emailSchema } }, async (req, reply) => {
@@ -246,7 +246,7 @@ export async function publicInterviewQueueRoutes(app) {
   app.post("/recover/verify", { config: limited, schema: { body: { ...emailSchema, required: ["email", "code"], properties: { ...emailSchema.properties, code: { type: "string", pattern: "^[0-9]{6}$" } } } } }, async (req) => {
     const email = req.body.email.trim().toLowerCase();
     await consumeCode(app.prisma, { email, code: req.body.code, purpose: "INTERVIEW_QUEUE_RECOVER" });
-    return { token: app.jwt.sign({ aud: "interview-queue-student", sub: email, verified: true }, { expiresIn: "30d" }) };
+    return { token: app.jwt.sign({ aud: "interview-queue-student", sub: email, viewerId: crypto.randomUUID(), verified: true }, { expiresIn: "30d" }) };
   });
   app.get("/mine", async (req) => {
     let actor;

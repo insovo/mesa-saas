@@ -1,5 +1,5 @@
 # MESA Recruit · 生产容器编排(阶段③)
-# 4 个服务: frontend(Nginx) · backend(Fastify) · postgres · redis
+# 核心服务: frontend(Nginx) · backend(Fastify) · ai-worker · postgres · redis
 # 端口暴露原则:
 #   - 仅 frontend 暴露 80 (TLS 由外层网关 / Cloudflare 终止)
 #   - backend / postgres / redis 严禁映射到宿主机公网(仅在 bridge 网络内通信)
@@ -44,9 +44,14 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    environment:
-      DATABASE_URL: "postgresql://${POSTGRES_USER:?set POSTGRES_USER}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:?set POSTGRES_DB}?schema=public"
+    environment: &server-environment
+      DATABASE_URL: "postgresql://${POSTGRES_USER:?set POSTGRES_USER}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:?set POSTGRES_DB}?schema=public&connection_limit=${PRISMA_CONNECTION_LIMIT:-5}"
       REDIS_URL: "redis://redis:6379"
+      AI_QUEUE_REQUIRED: "true"
+      AI_QUEUE_MAX_WAITING: ${AI_QUEUE_MAX_WAITING:-300}
+      AI_WORKER_CONCURRENCY: ${AI_WORKER_CONCURRENCY:-3}
+      SLOW_QUERY_MS: ${SLOW_QUERY_MS:-300}
+      SLOW_REQUEST_MS: ${SLOW_REQUEST_MS:-800}
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
       WEB_ORIGIN: ${WEB_ORIGIN:?set WEB_ORIGIN in .env}
       LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -87,6 +92,24 @@ services:
     # 故意不映射端口 — 仅在 bridge 网络内通过服务名 backend:3001 访问
     expose:
       - "3001"
+    networks:
+      - mesa-net
+
+  ai-worker:
+    image: ${SERVER_IMAGE:-ghcr.io/insovo/mesa-server:latest}
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: mesa-ai-worker
+    restart: unless-stopped
+    command: ["node", "src/worker.js"]
+    healthcheck:
+      disable: true
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      <<: *server-environment
     networks:
       - mesa-net
 

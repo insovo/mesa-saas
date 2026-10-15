@@ -1,7 +1,12 @@
 import axios from "axios";
 import { api } from "./api.js";
+import { visitorId } from "./visitorId.js";
 
 const publicApi = axios.create({ baseURL: "/api/public/campus-job-shares", timeout: 15000 });
+publicApi.interceptors.request.use((config) => {
+  config.headers["X-Mesa-Visitor"] = visitorId();
+  return config;
+});
 const linkConfig = (token) => ({ headers: { "X-Campus-Job-Share": token } });
 export const campusJobShareApi = {
   create: (body) => api.post("/campus/jobs/share-links", body).then((r) => r.data.link),

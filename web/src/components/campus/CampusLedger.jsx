@@ -80,14 +80,6 @@ export default function CampusLedger({ sessions, onSessionsChanged }) {
   useEffect(() => { selectionGeneration.current++; setSelected({}); setSkip(0); }, [sessionId, filter]);
   useEffect(() => { load(); }, [load]);
 
-  // 有解析或 AI 报告中的学生时刷新状态
-  const anyRunning = !!data?.items?.some((it) => it.currentVersion?.parseStatus === "running" || ["pending", "running"].includes(it.autoEvaluationStatus));
-  useEffect(() => {
-    if (!anyRunning) return;
-    const t = setInterval(load, 5000);
-    return () => clearInterval(t);
-  }, [anyRunning, load]);
-
   const items = data?.items || [];
   const stats = data?.stats || {};
   const matchJobs = sessionJobs.filter((job) => job.matchEnabled).slice(0, 4);

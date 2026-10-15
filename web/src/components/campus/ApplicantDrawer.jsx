@@ -33,14 +33,6 @@ export default function ApplicantDrawer({ applicantId, open, initialEdit = false
 
   useEffect(() => { if (open) { initialEditDone.current = false; setData(null); setEditing(false); setTab("applications"); load(); } }, [open, load]);
 
-  // 简历、匹配或 AI 报告进行中时刷新
-  const running = !!data?.applicant?.versions?.some((v) => v.parseStatus === "running") || !!data?.matchRuns?.some((r) => r.status === "running" || r.status === "queued") || ["pending", "running"].includes(data?.applicant?.autoEvaluationStatus);
-  useEffect(() => {
-    if (!open || !running) return;
-    const t = setInterval(load, 3000);
-    return () => clearInterval(t);
-  }, [open, running, load]);
-
   const a = data?.applicant;
   useEffect(() => {
     if (open && initialEdit && a?.id === applicantId && !initialEditDone.current) {
@@ -135,6 +127,7 @@ export default function ApplicantDrawer({ applicantId, open, initialEdit = false
                 {a.contactConfirmedAt ? <span className="inline-flex items-center gap-1 text-[11px] text-green-700 bg-green-100 px-2 py-0.5 rounded-full"><I name="check" size={10} />联系方式已确认</span> : <span className="text-[11px] text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">联系方式未确认</span>}
                 <ParseTag status={a.currentVersion?.parseStatus} />
                 <AutoEvaluationTag status={a.autoEvaluationStatus} title={a.applications.find((x) => x.jobId === a.autoEvaluationJobId)?.job?.title} />
+                <button type="button" onClick={load} className="text-xs text-brand hover:underline">刷新状态</button>
               </div>
               <p className="text-xs text-gray-600 mt-1 truncate">{[a.school, a.major, a.degree, a.gradYear && `${a.gradYear} 届`].filter(Boolean).join(" · ") || "学校 / 专业待补"}</p>
               <p className="text-xs text-gray-600 mt-0.5 flex items-center gap-3 flex-wrap">

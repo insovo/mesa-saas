@@ -5,9 +5,8 @@
 //   常超过这个上限,sync POST /parse 会被 CF 替换成 502 HTML 错误页,用户看到的就是
 //   「Request failed with status code 502」。
 //
-//   异步化:POST /parse {candidateId} 立即返回 taskId(<200ms),后端 setImmediate
-//   跑 Kimi,前端轮询 GET /parse-tasks/:taskId 直到 status=done/failed。
-//   每次轮询 <100ms,彻底绕过 CF 100s 限制。
+//   异步化:POST /parse {candidateId} 立即返回 taskId,worker 从 Redis 队列执行。
+//   前端低频查询 GET /parse-tasks/:taskId 直到 status=done/failed。
 //
 // Task 形状:
 //   {
@@ -26,7 +25,8 @@
 import { randomUUID } from "node:crypto";
 
 const KEY_PREFIX = "mesa:parse:task:";
-const TTL_SECONDS = 60 * 60; // 1 小时,够任何前端轮询场景 + 留给手动 debug
+const PENDING_TTL_SECONDS = 30 * 24 * 60 * 60;
+const TERMINAL_TTL_SECONDS = 7 * 24 * 60 * 60;
 
 // Fallback in-process store(单 backend 实例 OK,集群部署需保证用 Redis)
 const memoryStore = new Map();
@@ -60,6 +60,7 @@ export async function getTask(app, taskId) {
       if (!raw) return null;
       return JSON.parse(raw);
     } catch (err) {
+      if (process.env.AI_QUEUE_REQUIRED === "true") throw Object.assign(new Error("AI 任务状态服务暂不可用"), { statusCode: 503, code: "ai_queue_unavailable", cause: err });
       app?.log?.warn?.({ err, taskId }, "redis getTask failed, falling back to memory");
     }
   }
@@ -72,15 +73,18 @@ export async function getTask(app, taskId) {
 export async function saveTask(app, task) {
   const k = memoryKey(task.id);
   const payload = JSON.stringify(task);
+  const ttl = ["done", "failed", "cancelled"].includes(task.status) ? TERMINAL_TTL_SECONDS : PENDING_TTL_SECONDS;
   if (app?.redis) {
     try {
-      await app.redis.set(k, payload, "EX", TTL_SECONDS);
+      await app.redis.set(k, payload, "EX", ttl);
       return;
     } catch (err) {
+      if (process.env.AI_QUEUE_REQUIRED === "true") throw Object.assign(new Error("AI 任务状态服务暂不可用"), { statusCode: 503, code: "ai_queue_unavailable", cause: err });
       app?.log?.warn?.({ err, taskId: task.id }, "redis saveTask failed, falling back to memory");
     }
   }
-  memoryStore.set(k, { ...task, _expiresAt: Date.now() + TTL_SECONDS * 1000 });
+  if (process.env.AI_QUEUE_REQUIRED === "true") throw Object.assign(new Error("Redis task store unavailable"), { statusCode: 503 });
+  memoryStore.set(k, { ...task, _expiresAt: Date.now() + ttl * 1000 });
 }
 
 export async function updateTask(app, taskId, patch) {

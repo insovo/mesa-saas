@@ -1,6 +1,7 @@
 // 校招学生端 API 客户端 — 独立 axios 实例,不走后台的 401 → /login 拦截器
 //   学生 JWT 按专场 slug 隔离，旧全局会话在核对专场后迁入。
 import axios from "axios";
+import { visitorId } from "./visitorId.js";
 
 const TOKEN_KEY = "mesa.campus.token.v1";
 const currentSlug = () => {
@@ -19,6 +20,7 @@ export const setCampusToken = (t, slug = currentSlug()) => {
 
 export const campusApi = axios.create({ baseURL: "/api/campus/public", timeout: 20000 });
 campusApi.interceptors.request.use((cfg) => {
+  cfg.headers["X-Mesa-Visitor"] = visitorId();
   cfg.campusSlug = currentSlug();
   const t = getCampusToken(cfg.campusSlug);
   if (t && !cfg.headers.Authorization) cfg.headers.Authorization = `Bearer ${t}`;

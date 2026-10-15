@@ -22,6 +22,10 @@ npm run prisma:seed
 npm run dev
 #   ► http://127.0.0.1:3001 (API)
 
+# 另开终端启动 AI 执行进程(解析、匹配、报告需要它)
+cd server
+npm run worker
+
 # 3) 前端(新终端)
 cd web
 npm install
@@ -77,10 +81,11 @@ docker exec mesa-server node prisma/seed.js
 ```
 mesa/
 ├── server/                  # Fastify + Prisma 后端
+│   └── src/worker.js        # Redis 持久化 AI 队列执行进程
 ├── web/                     # Vite + React + Tailwind 生产前端
 ├── tools/lark-ingest/       # 飞书简历自动入库(第 6 容器)
 ├── docker-compose.dev.yml   # 本地 PG + Redis
-├── docker-compose.yml       # 生产 6 服务编排
+├── docker-compose.yml       # 生产编排(含独立 ai-worker)
 ├── .github/workflows/       # CI + Deploy
 ├── ops/                     # backup / restore / Cloudflare runbook
 └── delivery-docs/
@@ -88,6 +93,8 @@ mesa/
     ├── dev-plans/           # 设计规划稿
     └── *.docx               # 由 src 生成的正式交付件
 ```
+
+业务页面的排队状态、校招进度和候选人列表改为手动刷新；上传后的单个 AI 任务仍会低频查询完成状态，并在无变化或请求失败时放慢。生产环境需要同时运行 `backend` 和 `ai-worker`，任务由 Redis AOF 保存；队列满或 Redis 不可用时创建任务返回 503，不会假装任务已开始。
 
 ## 交付文档索引
 

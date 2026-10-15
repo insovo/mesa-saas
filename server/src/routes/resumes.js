@@ -1,7 +1,7 @@
 // /api/resumes — 简历解析 + JD 评估(三层流水线:TextIn → Kimi → 硬筛 → Jev → 报告)
 //
 // 设计原则:
-//   1. 所有长任务异步化:POST 立即 202 + taskId,前端 2s 轮询 GET /parse-tasks/:taskId(绕 Cloudflare 100s)
+//   1. 所有长任务经 Redis 队列异步化:POST 立即 202 + taskId,前端低频查询 GET /parse-tasks/:taskId
 //   2. /parse 两种模式:新建(key)→ mode=create;已有候选人(candidateId)→ mode 默认 reextract(复用已存 markdown,不重复向 TextIn 计费)
 //      body.mode 可指定 full(重新识别文档)/ reextract / reevaluate(只重评,秒级)
 //   3. /match 改为异步(reevaluate),响应形状 202 + task,与 /parse 一致
@@ -10,7 +10,8 @@
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { parseJobDescription, isKimiConfigured, listModels, promptStatus } from "../lib/kimi.js";
 import { createTask, getTask } from "../lib/parseTaskStore.js";
-import { runPipeline, streamToBuffer } from "../lib/evaluation/pipeline.js";
+import { streamToBuffer } from "../lib/evaluation/pipeline.js";
+import { enqueueAiJob } from "../lib/aiQueue.js";
 import { extractDocument } from "../lib/documents.js";
 import { isTextinConfigured, isTextinEnabled } from "../lib/textin.js";
 import { isJevConfigured, isJevEnabled, jevMode } from "../lib/jev.js";
@@ -72,7 +73,7 @@ const PARSE_JD_BODY = {
 
 // 向后兼容:feishu.js 「解析」按钮调用(签名不变)。语义 = reextract(复用已存 markdown,没有则走 TextIn)
 export async function runReparse(app, taskId, candidateId, model, jobIdOverride, notifyChatId) {
-  return runPipeline(app, taskId, { mode: "reextract", candidateId, model, jobIdOverride, notifyChatId });
+  return enqueueAiJob(app, { name: "pipeline", taskId, data: { options: { mode: "reextract", candidateId, model, jobIdOverride, notifyChatId } }, retryable: true });
 }
 
 async function requireCandidateEdit(req, reply, candidateId) {
@@ -130,7 +131,7 @@ export default async function resumesRoutes(app) {
       }
       const task = await createTask(app, candidateId, useMode === "reevaluate" ? "reevaluate" : "reparse");
       const jobIdOverride = Object.prototype.hasOwnProperty.call(req.body, "jobId") ? req.body.jobId : undefined;
-      setImmediate(() => runPipeline(app, task.id, { mode: useMode, candidateId, model, jobIdOverride }));
+      await enqueueAiJob(app, { name: "pipeline", taskId: task.id, data: { options: { mode: useMode, candidateId, model, jobIdOverride } }, retryable: useMode !== "full" });
       return reply.code(202).send({ task });
     }
 
@@ -138,18 +139,18 @@ export default async function resumesRoutes(app) {
       return reply.code(424).send({ error: "kimi_not_configured", message: "KIMI_API_KEY 未配置" });
     }
     const task = await createTask(app, null, "create");
-    setImmediate(() => runPipeline(app, task.id, {
+    await enqueueAiJob(app, { name: "pipeline", taskId: task.id, data: { options: {
       mode: "create",
       create: { key, contentType, filename, source, jobId: jobId || null, ownerId: req.user?.sub || null },
       model,
-    }));
+    } } });
     return reply.code(202).send({ task });
   });
 
   // ─── 任务状态轮询 ───
   app.get("/parse-tasks/:taskId", async (req, reply) => {
     const task = await getTask(app, req.params.taskId);
-    if (!task) return reply.code(404).send({ error: "task_not_found", message: "任务不存在或已过期(TTL 1 小时)" });
+    if (!task) return reply.code(404).send({ error: "task_not_found", message: "任务不存在或已过期" });
     return { task };
   });
 
@@ -198,7 +199,7 @@ export default async function resumesRoutes(app) {
       return reply.code(424).send({ error: "evaluation_unavailable", message: "Jev 未启用且 Kimi 未配置,无法评估" });
     }
     const task = await createTask(app, candidateId, "reevaluate");
-    setImmediate(() => runPipeline(app, task.id, { mode: "reevaluate", candidateId, jobIdOverride: jobId, model, forceEngine: engine || null }));
+    await enqueueAiJob(app, { name: "pipeline", taskId: task.id, data: { options: { mode: "reevaluate", candidateId, jobIdOverride: jobId, model, forceEngine: engine || null } }, retryable: true });
     return reply.code(202).send({ task });
   });
 
@@ -214,17 +215,18 @@ export default async function resumesRoutes(app) {
     const rows = await app.prisma.candidate.findMany({ where: { AND: [{ id: { in: candidateIds } }, ...(scopeWhere ? [scopeWhere] : [])] }, select: { id: true } });
     const ids = rows.map((r) => r.id);
     const tasks = [];
-    for (const cid of ids) tasks.push({ candidateId: cid, task: await createTask(app, cid, "reevaluate") });
-    // 串行 3 路,避免 Kimi 报告并发过高
-    const queue = [...tasks];
-    const worker = async () => {
-      while (queue.length) {
-        const t = queue.shift();
-        await runPipeline(app, t.task.id, { mode: "reevaluate", candidateId: t.candidateId, jobIdOverride: jobId, model });
+    for (const cid of ids) {
+      const task = await createTask(app, cid, "reevaluate");
+      try {
+        await enqueueAiJob(app, { name: "pipeline", taskId: task.id, data: { options: { mode: "reevaluate", candidateId: cid, jobIdOverride: jobId, model } }, retryable: true });
+        tasks.push({ candidateId: cid, taskId: task.id });
+      } catch (err) {
+        if (err.code !== "ai_queue_full") throw err;
+        break;
       }
-    };
-    setImmediate(() => Promise.all([worker(), worker(), worker()]).catch((e) => app.log.error({ e }, "batch worker crashed")));
-    return reply.code(202).send({ jobId, count: ids.length, skipped: candidateIds.length - ids.length, tasks: tasks.map((t) => ({ candidateId: t.candidateId, taskId: t.task.id })) });
+    }
+    if (!tasks.length) return reply.code(503).send({ error: "ai_queue_full", message: "AI 任务排队已满，请稍后重试" });
+    return reply.code(202).send({ jobId, count: tasks.length, skipped: candidateIds.length - tasks.length, tasks });
   });
 
   // ─── 按需补报告(C/D 类或报告失败重试)───
@@ -237,7 +239,7 @@ export default async function resumesRoutes(app) {
     if (!c.jobId) return reply.code(400).send({ error: "no_job", message: "候选人未关联 JD" });
     if (!(await isKimiConfigured())) return reply.code(424).send({ error: "kimi_not_configured", message: "KIMI_API_KEY 未配置,无法生成报告" });
     const task = await createTask(app, candidateId, "report");
-    setImmediate(() => runPipeline(app, task.id, { mode: "report", candidateId }));
+    await enqueueAiJob(app, { name: "pipeline", taskId: task.id, data: { options: { mode: "report", candidateId } }, retryable: true });
     return reply.code(202).send({ task });
   });
 }

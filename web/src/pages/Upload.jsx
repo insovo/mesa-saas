@@ -3,6 +3,7 @@ import axios from "axios";
 import { Link } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
 import { api, resources, LONG_TIMEOUT } from "../lib/api.js";
+import { taskPollDelay } from "../lib/taskPolling.js";
 import {
   Card, Button, Input, Modal, I, Tag, AiBadge, toast, Empty, LoadingBlock, LiquidLoader, StatusPill,
 } from "../components/Primitives.jsx";
@@ -100,7 +101,7 @@ function loadParsedFromSession() {
 
 // 重新解析任务(reparsing)也持久化:切页/刷新后仍能显示"解析中"+继续轮询
 // key 形如 { [candidateId]: { taskId: string, startedAt: number } }
-// parseTaskStore TTL 1 小时,5 分钟外的任务我们当超时不再轮询
+// 页面只等待 5 分钟，后端任务状态保留更久以便稍后手动查看。
 const REPARSING_SS_KEY = "mesa.upload.reparsing.v1";
 const REPARSE_TTL_MS = 5 * 60 * 1000;
 function loadReparsingFromSession() {
@@ -279,6 +280,8 @@ export default function Upload() {
 
   // 单个 reparsing 任务轮询(直到 done/failed/超时,自动清状态 + refetch 拿最新 candidate)
   function pollReparseTask(candidateId, taskId, startedAt) {
+    let unchanged = 0;
+    let failures = 0;
     const tick = async () => {
       const elapsed = Date.now() - startedAt;
       if (elapsed > REPARSE_TTL_MS) {
@@ -295,14 +298,15 @@ export default function Upload() {
           if (task.status === "failed") toast(`解析失败: ${task.error?.message || ""}`.slice(0, 200), "error");
         } else {
           if (task.stages) setReparsingMap((prev) => (prev[candidateId] ? { ...prev, [candidateId]: { ...prev[candidateId], stages: task.stages } } : prev));
-          setTimeout(tick, 2000);
+          failures = 0;
+          setTimeout(tick, taskPollDelay(unchanged++));
         }
       } catch (e) {
         if (e.response?.status === 404) {
           setReparsingMap((prev) => { const { [candidateId]: _, ...rest } = prev; return rest; });
           refetchOwned(true);
         } else {
-          setTimeout(tick, 5000);
+          setTimeout(tick, taskPollDelay(unchanged, ++failures));
         }
       }
     };
@@ -356,11 +360,16 @@ export default function Upload() {
     e.target.value = "";
   }
 
-  // 2s 一次轮询 parse-task,直到 done/failed,或超过 maxAttempts(180 次 = 6 分钟,够 Kimi 任何慢 case)
+  // 异步任务按进展放慢查询，最多等待 maxAttempts * 2 秒。
   async function pollParseTask(taskId, maxAttempts = 180, fileName = "") {
-    for (let i = 0; i < maxAttempts; i++) {
-      await new Promise((r) => setTimeout(r, 2000));
-      const { data } = await api.get(`/resumes/parse-tasks/${taskId}`);
+    const deadline = Date.now() + maxAttempts * 2000;
+    let unchanged = 0;
+    let failures = 0;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, taskPollDelay(unchanged++, failures)));
+      let data;
+      try { ({ data } = await api.get(`/resumes/parse-tasks/${taskId}`)); failures = 0; }
+      catch { failures++; continue; }
       const task = data.task;
       if (task.stages) setLiveStages((prev) => ({ ...prev, [taskId]: { name: fileName, stages: task.stages } }));
       if (task.status === "done") return task;
@@ -395,7 +404,7 @@ export default function Upload() {
     }
 
     // ── 2) 调 Kimi 异步解析(R2 + Kimi 都 OK 时,走 parse-and-create 异步任务)
-    //    工作机制:POST /resumes/parse 立即拿 taskId(<200ms),前端 2s 一次轮询直到 done/failed
+    //    工作机制:POST /resumes/parse 立即拿 taskId,前端低频查询直到 done/failed
     //    后端任务完成时 task.candidate 已经写入 DB,前端拿到的就是最终快照
     if (r2Key && llmStatus?.configured) {
       try {

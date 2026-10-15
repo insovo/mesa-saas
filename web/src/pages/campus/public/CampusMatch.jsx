@@ -51,32 +51,14 @@ export default function CampusMatch() {
     })();
   }, [ready, me, session?.matchEnabled, start]);
 
-  useEffect(() => {
-    if (!ready || !me?.contactConfirmed || run === undefined) return;
-    let alive = true;
-    const refreshLatest = async () => {
-      if (document.visibilityState === "hidden") return;
-      try {
-        const latest = await campus.latestMatch();
-        if (!alive) return;
-        setRun((current) => current?.id !== latest?.id || current?.status !== latest?.status || current?.stale !== latest?.stale ? latest : current);
-      } catch { /* 保留当前结果 */ }
-    };
-    const timer = setInterval(refreshLatest, 10000);
-    document.addEventListener("visibilitychange", refreshLatest);
-    return () => { alive = false; clearInterval(timer); document.removeEventListener("visibilitychange", refreshLatest); };
-  }, [ready, me?.contactConfirmed, run !== undefined]);
-
-  // 轮询 2s
   const active = run && (run.status === "queued" || run.status === "running");
-  useEffect(() => {
-    if (!active) return;
-    const t = setInterval(async () => {
-      try { const r = await campus.matchRun(run.id); setRun((current) => current?.id === r.id ? r : current); if (r.status === "done") reload(); }
-      catch { /* ignore */ }
-    }, 2000);
-    return () => clearInterval(t);
-  }, [active, run?.id, reload]);
+  async function refreshMatch() {
+    try {
+      const latest = active ? await campus.matchRun(run.id) : await campus.latestMatch();
+      setRun(latest);
+      if (latest?.status === "done") await reload();
+    } catch (error) { toastErr(error, "刷新失败"); }
+  }
 
   // 水位插值:缓慢向目标上涨,不越过当前阶段上限(设计 §5.5)
   useEffect(() => {
@@ -124,13 +106,14 @@ export default function CampusMatch() {
     return (
       <Shell title="智能匹配" back>
         <div className="bg-white rounded-card shadow-card p-6">
-          {!ended && <TaskBanner running label="匹配在后台进行" onCancel={cancel} busy={busy} />}
+          {!ended && <TaskBanner running label="匹配在后台进行，请手动刷新进度" onCancel={cancel} busy={busy} />}
           <div className="flex flex-col items-center py-8">
             <LiquidLoader size={160} level={ended ? 0 : level} label={ended ? "" : Math.round(level)} loading={!ended} />
             <p className="mt-5 text-base font-bold">{text}</p>
             <p className="text-xs text-gray-500 mt-1">{ended ? (run.status === "cancelled" ? "已取消本次匹配,可随时重新开始" : `匹配失败${run.error ? `(${run.error})` : ""},不影响直接投递`) : "通常需要 1–3 分钟,可以先去看岗位或关闭页面"}</p>
           </div>
           <div className="flex gap-2">
+            <Button variant="secondary" className="flex-1 !h-11" onClick={refreshMatch}>刷新进度</Button>
             {ended ? <Button className="flex-1 !h-11" disabled={busy} onClick={start} icon={<I name="refresh-cw" size={15} />}>重新匹配</Button> : <Button variant="secondary" className="flex-1 !h-11" as={Link} to={`${base(slug)}/jobs`}>先看岗位</Button>}
             <Button variant="ghost" className="flex-1 !h-11" as={Link} to={`${base(slug)}/mine`}>我的投递</Button>
           </div>
@@ -149,10 +132,10 @@ export default function CampusMatch() {
       <section className="rounded-card bg-white p-4 shadow-card">
         <div className="mb-3 flex items-center justify-between gap-2">
           <h2 className="text-sm font-bold">岗位匹配度</h2>
-          <span className="text-[11px] text-gray-500">最近更新：{run.finishedAt ? new Date(run.finishedAt).toLocaleString("zh-CN", { hour12: false }) : "刚刚"}</span>
+          <div className="flex items-center gap-2"><span className="text-[11px] text-gray-500">最近更新：{run.finishedAt ? new Date(run.finishedAt).toLocaleString("zh-CN", { hour12: false }) : "刚刚"}</span><button type="button" onClick={refreshMatch} className="text-xs font-bold text-brand">刷新结果</button></div>
         </div>
         <CampusScoreBalls matches={results} className="justify-between" />
-        <p className="mt-3 text-[11px] text-gray-500">招聘方重新匹配后，此处会显示最新结果。</p>
+        <p className="mt-3 text-[11px] text-gray-500">招聘方重新匹配后，点击「刷新结果」查看最新结果。</p>
       </section>
       <div className="mt-4 flex items-center justify-between px-1">
         <p className="text-xs text-gray-600">按匹配度排序,现场面试岗位优先 · 还可投 {quotaLeft} 个</p>

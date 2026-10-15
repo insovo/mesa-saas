@@ -1,11 +1,10 @@
 import { createTask, getTask } from "../parseTaskStore.js";
 import { runPipeline } from "../evaluation/pipeline.js";
 import { candidateSnapshotFromReport } from "../evaluation/report.js";
-import { withGate } from "./extract.js";
+import { enqueueAiJob } from "../aiQueue.js";
 import { QUOTA_STATUS, shownScore } from "./shared.js";
 
 const activeStatus = new Set(QUOTA_STATUS);
-const inFlight = new Map();
 const scheduling = new Map();
 
 export function bestAppliedOnsiteMatch(applications, run, versionId) {
@@ -18,7 +17,7 @@ export function bestAppliedOnsiteMatch(applications, run, versionId) {
     .sort((a, b) => b.match.scoreRaw - a.match.scoreRaw || a.application.createdAt - b.application.createdAt || a.application.id.localeCompare(b.application.id))[0] || null;
 }
 
-async function finishReport(app, applicantId, taskId, candidateId) {
+export async function finishReport(app, applicantId, taskId, candidateId) {
   try {
     await runPipeline(app, taskId, { mode: "report", candidateId });
     const task = await getTask(app, taskId);
@@ -32,13 +31,11 @@ async function finishReport(app, applicantId, taskId, candidateId) {
     app.log.error({ err, applicantId }, "[campus] auto evaluation failed");
     await app.prisma.campusApplicant.updateMany({ where: { id: applicantId, autoEvaluationTaskId: taskId }, data: { autoEvaluationStatus: "failed", autoEvaluationError: "AI 评估失败" } }).catch(() => {});
   } finally {
-    inFlight.delete(applicantId);
     await reconcileCampusAutoEvaluation(app, applicantId).catch((err) => app.log.error({ err, applicantId }, "[campus] auto evaluation reconcile failed"));
   }
 }
 
 async function reconcileInner(app, applicantId, { recover = false } = {}) {
-  if (inFlight.has(applicantId)) return;
   const applicant = await app.prisma.campusApplicant.findUnique({
     where: { id: applicantId },
     include: { applications: { include: { sessionJob: { include: { job: { select: { title: true } } } } } } },
@@ -99,15 +96,13 @@ async function reconcileInner(app, applicantId, { recover = false } = {}) {
     await tx.campusApplicant.update({ where: { id: applicantId }, data: { autoEvaluationStatus: reportReady ? "done" : "pending", autoEvaluationJobId: application.jobId, autoEvaluationVersionId: run.resumeVersionId, autoEvaluationId: evaluation.id, autoEvaluationTaskId: task?.id || null, autoEvaluationError: null } });
   });
   if (reportReady) return;
-  inFlight.set(applicantId, task.id);
-  setImmediate(() => withGate(2, async () => {
-    await app.prisma.campusApplicant.updateMany({ where: { id: applicantId, autoEvaluationTaskId: task.id }, data: { autoEvaluationStatus: "running" } });
-    await finishReport(app, applicantId, task.id, applicant.candidateId);
-  }).catch(async (err) => {
-    inFlight.delete(applicantId);
+  try {
+    await enqueueAiJob(app, { name: "campus-report", taskId: task.id, data: { applicantId, candidateId: applicant.candidateId }, retryable: true });
+  } catch (err) {
     app.log.error({ err, applicantId }, "[campus] auto evaluation queue failed");
     await app.prisma.campusApplicant.updateMany({ where: { id: applicantId, autoEvaluationTaskId: task.id }, data: { autoEvaluationStatus: "failed", autoEvaluationError: "AI 评估启动失败" } }).catch(() => {});
-  }));
+    throw err;
+  }
 }
 
 export async function reconcileCampusAutoEvaluation(app, applicantId, options = {}) {

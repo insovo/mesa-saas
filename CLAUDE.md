@@ -10,7 +10,7 @@
 
 **MESA Recruit · 已上线 SaaS**:
 - 站点 **https://insovo.top** + 监控 **https://monitor.insovo.top**
-- 海外 VPS `103.106.190.191` (4 核 8G,Ubuntu 22.04,sshd **10526**;2026-09-20 自旧机 114.134.188.7 迁移) · Docker Compose 编排 6 容器
+- 海外 VPS `103.106.190.191` (4 核 8G,Ubuntu 22.04,sshd **10526**;2026-09-20 自旧机 114.134.188.7 迁移) · 当前线上 6 容器；本仓库待部署配置增加独立 AI worker 后为 7 容器
 - 前后端 + 数据库 + 缓存 + 监控全栈生产化
 - GitHub Actions 自动 build → GHCR → SSH 滚动部署(1-2 分钟)
 - 每日 03:00 UTC `systemd timer` 自动 PG 全量备份 → Cloudflare R2
@@ -166,7 +166,7 @@ gh pr merge <pr-num> --merge --admin  # admin 跳过 review 要求,适合单人�
 | 17 | localStorage 存的 token 不是后端最新 | admin 改了密码后客户端还能用旧 token 一段时间 | JWT 过期才会真失效(7d);敏感操作做 server-side 当前用户校验 |
 | 18 | 浏览器 `Notification.requestPermission()` 必须用户交互后调 | 自动调被 silently 拒 | 在用户进入候选人详情后被动调用,初始 `Notification.permission === "default"` 时才 request |
 | 19 | kimi-k2.5 等推理模型只接受 `temperature=1` | `chat/completions 400: invalid temperature` | 全部删 temperature 参数,用 model 默认值,兼容推理/非推理模型 |
-| 20 | Cloudflare Free/Pro plan origin response **100s 硬上限** | LLM 慢请求 >100s → CF 替换 origin 5xx 为自己的 HTML 错误页 | reparse 这种长任务**异步化**(立即返回 taskId,前端 2s 轮询);backend 错误码 5xx → 4xx(422/408/424)让 CF 透传 JSON body |
+| 20 | Cloudflare Free/Pro plan origin response **100s 硬上限** | LLM 慢请求 >100s → CF 替换 origin 5xx 为自己的 HTML 错误页 | 长任务进 Redis 队列(立即返回 taskId，前端低频查询);backend 错误码 5xx → 4xx(422/408/424)让 CF 透传 JSON body |
 | 21 | LLM 输出 JSON 不稳定(中文全角 `，：` / unescaped newline / trailing comma) | `JSON.parse Expected ',' or ']' at position N` | 4 层 fallback:直接 parse → 手写 sanitize(全角符号 / fence)→ `jsonrepair` 库 → throw 带 snippet。parseResume 失败再 retry 1 次整 Kimi 调用 |
 | 22 | Kimi `engine_overloaded` 429 间歇失败 | reparse 偶尔失败,实际是 Kimi 服务侧过载 | `kimiRequest` 内 429/5xx 自动指数 backoff retry(1.5s → 3.6s → 8.6s,最多 3 次) |
 | 23 | 简历解析推理模型(k2.5)长上下文 >90s 必超时 | 简历解析这种「长输入抽取式」根本不需要 reasoning | `pickParseModel` fallback:admin 若选 kimi-k* / *-thinking / *-reasoner,parseResume 强制改 moonshot-v1-32k(non-reasoning,10-20s) |
@@ -179,7 +179,7 @@ gh pr merge <pr-num> --merge --admin  # admin 跳过 review 要求,适合单人�
 | 30 | Prisma `ALTER COLUMN TYPE` 不能跨 jsonb/text[] → text 自动转 | `prisma migrate dev --create-only` 生成 ALTER 没 USING 子句直接跑会失败 | 手写 migration.sql:加临时列 + 用 `string_agg(jsonb_array_elements(...))` 转 markdown + DROP 老列 + RENAME 新列;放在 BEGIN/COMMIT 事务内可回滚 |
 | 31 | main 加了 branch protection (3 status check 必过) | `git push origin main` 直接被拒 GH013 | 必须走 `gh pr create` → CI pass → `gh pr merge --admin`。本地 main ahead origin 也 push 不动,先 push feature 分支再 PR |
 | 32 | docs.io 等基础镜像 tag 固定时无需重拉 | 之前 `docker compose pull` 把所有 service 镜像都拉一遍,放大网络抖动影响面 | compose 用 `image: postgres:16-alpine` 这种固定 minor 的不会变,只对 GHCR 项目镜像必须重拉。see #29 修复 |
-| 33 | `.doc`(老 Word 二进制)Kimi 解析常 >90s,backend AbortController 抢先 abort 返回 408 `kimi_timeout` | 同步 POST /resumes/parse 受 chat 90s + nginx 180s + Cloudflare 100s 三重时间约束,`.doc` 简历内容多时极易触顶 | **新建上传也异步任务化**(reparse 同款模式):POST /parse 收 key 立即创建 task → setImmediate(runParseAndCreate) → 202 返回 taskId;前端 2s 轮询 `/parse-tasks/:taskId` 直到 done/failed。Kimi 跑多久都不阻塞 HTTP。详见 `server/src/routes/resumes.js` runParseAndCreate + `web/src/pages/Upload.jsx` pollParseTask |
+| 33 | `.doc`(老 Word 二进制)Kimi 解析常 >90s,backend AbortController 抢先 abort 返回 408 `kimi_timeout` | 同步 POST /resumes/parse 受 chat 90s + nginx 180s + Cloudflare 100s 三重时间约束,`.doc` 简历内容多时极易触顶 | 新建上传进入 Redis 持久化队列，POST /parse 返回 202 + taskId；独立 worker 执行，前端低频查询 `/parse-tasks/:taskId` 直到完成。详见 `server/src/routes/resumes.js` 和 `web/src/pages/Upload.jsx` |
 | 34 | reparse 触发后切走页面,切回来按钮显示"解析"(状态丢失,用户以为没解析) | reparsingIds Set 是 component-local state,unmount 丢失;setTimeout 在 unmounted 后 setState 是 noop | **sessionStorage 持久化** `mesa.upload.reparsing.v1` 形如 `{[candidateId]:{taskId,startedAt}}`;mount 时对每个未超时(<5min)的 entry 调 `pollReparseTask` 恢复轮询;done/failed → 清条目 + refetch。同时"我接收到的简历"列表用 `mesa.upload.parsed.v1` 持久化 |
 | 35 | 列表 li 内 LiquidLoader + AiBadge + StatusPill 重叠 / 不对齐 | flex-col + 限宽 w-20 包 Badge → 130px AiBadge 溢出叠到 LiquidLoader;flex-wrap lg:flex-nowrap 在某些场景仍 wrap | 三页(Upload/Candidates/Dashboard)li 改 flat 水平布局:checkbox/avatar/info/select-JD/select-Dept/解析按钮/LiquidLoader/Badge/StatusPill/time 全部 inline,统一 items-center,去掉 flex-wrap,去掉限宽 stack,所有右侧元素 shrink-0 自然宽度 |
 | 36 | `.doc` 等格式 Kimi 解析失败时,公开链接收到的简历 candidate 进不来 admin 列表 | 公开 candidate.ownerId 必须 = link.createdBy(归属链接创建者)+ `candidates list` 没有 owner filter,前端 Upload 拉所有候选人会污染数据 | candidates list 加 `ownerId=me` filter(`/api/candidates?ownerId=me&orderBy=createdAt`);后端 `where.ownerId = req.user.sub` 解析"me";前端 Upload 页 mount + 上传完成 + 手动点"刷新" 调 refetchOwned |

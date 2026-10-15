@@ -4,8 +4,8 @@ import crypto from "node:crypto";
 
 // 全局限流 —— 堵公开 token 端点的枚举/刷量,以及整体滥用。
 //
-// 关键:生产链路 Cloudflare → Nginx → Fastify,req.ip 会是 nginx 容器 IP(所有请求
-// 共享一个 key,全局限流会误伤所有人)。因此按 cf-connecting-ip 取真实访客 IP。
+// Cloudflare → Nginx → Fastify 时 req.ip 是代理地址。认证用户按账号、
+// 分享访客按会话计数，另以真实 IP 设置宽松的总量闸。
 //
 // 分档(单点维护,无需改各路由文件):
 //   /api/health   — 放行(监控高频探测)
@@ -15,31 +15,69 @@ import crypto from "node:crypto";
 //
 // store:Redis 可用时跨进程/重启一致计数;不可用自动退回内存(单实例 docker 也够用)。
 export default fp(async (app) => {
+  const ipCounters = new Map();
+  const visitorId = (req) => {
+    const value = req.headers["x-mesa-visitor"] || req.headers.cookie?.match(/(?:^|;\s*)mesa_visitor=([^;]+)/)?.[1];
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value || "") ? value : null;
+  };
+  const clientIp = (req) => req.headers["x-real-ip"] || req.ip;
+  const identity = (req) => {
+    const ip = clientIp(req);
+    const token = req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7) : null;
+    if (token && app.jwt) {
+      try {
+        const actor = app.jwt.verify(token);
+        if (actor.sub) {
+          const visitor = actor.aud === "interview-queue-share" && !actor.viewerId ? visitorId(req) : null;
+          return { key: `actor:${actor.aud || "staff"}:${actor.viewerId || visitor || actor.sub}`, ip, identified: true };
+        }
+      } catch { /* 无效凭证按 IP 限流 */ }
+    }
+    const visitor = visitorId(req);
+    if (visitor && (req.url.startsWith("/api/public/") || req.url.startsWith("/api/campus/public/"))) {
+      return { key: `visitor:${visitor}`, ip, identified: true };
+    }
+    return { key: `ip:${ip}`, ip, identified: false };
+  };
   const tier = (req) => {
     const u = req.url || "";
     if (u.startsWith("/api/health")) return 10000;
     if (u.startsWith("/api/public/interview-queues/")) return 600;
     if (u.startsWith("/api/public/")) return 40;
-    if (u.startsWith("/api/campus/public/")) return 90; // 学生端:含 2s 轮询(抽取 / 匹配进度),比 token 公开页宽
+    if (u.startsWith("/api/campus/public/")) return 90;
     if (u.startsWith("/api/feishu")) return 60;
     return 200;
   };
+
+  // 已识别访客单独计数，同时保留宽松的 IP 总量闸，防止轮换访客标识绕过限流。
+  app.addHook("onRequest", async (req, reply) => {
+    if (req.url.startsWith("/api/health")) return;
+    const actor = identity(req);
+    if (!actor.identified) return;
+    const limit = req.url.startsWith("/api/public/") || req.url.startsWith("/api/campus/public/") ? 3000 : 6000;
+    const minute = Math.floor(Date.now() / 60000);
+    const key = `mesa:rate:ip:${crypto.createHash("sha256").update(actor.ip).digest("hex")}:${minute}`;
+    let count;
+    if (app.redis) {
+      try {
+        count = await app.redis.incr(key);
+        if (count === 1) await app.redis.expire(key, 70);
+      } catch (err) { app.log.warn({ err }, "IP rate counter unavailable"); }
+    }
+    if (count == null) {
+      count = (ipCounters.get(key) || 0) + 1;
+      ipCounters.set(key, count);
+      if (ipCounters.size > 10000) for (const entry of ipCounters.keys()) if (!entry.endsWith(`:${minute}`)) ipCounters.delete(entry);
+    }
+    if (count > limit) return reply.code(429).send({ error: "rate_limited", message: "该网络请求过于频繁，请稍后重试" });
+  });
 
   await app.register(rateLimit, {
     global: true,
     max: tier,
     timeWindow: "1 minute",
     redis: app.redis, // undefined 时 @fastify/rate-limit 自动用内存 store
-    keyGenerator: (req) => {
-      const ip = req.headers["cf-connecting-ip"] || (req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.ip;
-      if (req.url.startsWith("/api/public/interview-queues/") && req.headers.authorization?.startsWith("Bearer ")) {
-        try {
-          const actor = app.jwt.verify(req.headers.authorization.slice(7));
-          if (["interview-queue-student", "interview-queue-share"].includes(actor.aud)) return `${ip}:queue:${crypto.createHash("sha256").update(String(actor.sub)).digest("hex")}`;
-        } catch { /* 无效凭证仍按 IP 限流 */ }
-      }
-      return ip;
-    },
+    keyGenerator: (req) => identity(req).key,
     // 必须带 statusCode:429 —— 否则被当作无状态码的 error 抛出,index.js 的全局
     // errorHandler 会按 `statusCode || 500` 误判成 500(且 CF 会拦 5xx,见坑#20)。
     errorResponseBuilder: (req, ctx) => ({

@@ -3,12 +3,13 @@
 //   - 评估走 pipeline(mode=reevaluate, detached, skipReport):只写 CandidateEvaluation(isCurrent=false),不动候选人主投递与快照
 //   - 理由由代码从逐项判定生成,不调 Kimi;校招展示分至少为 60
 //   - 协作式取消:run.taskId 的 cancelRequested 在每个岗位之间检查;cancelMatchRun 立即把 run 标 cancelled
-//   - 任务与页面无关:进度写 parseTaskStore(task.stages),学生端 2s 轮询
+//   - 任务与页面无关:进度写 parseTaskStore(task.stages),学生端手动刷新
 
 import { createTask, getTask, requestCancel, isCancelRequested, markRunning, markDone, markFailed, markCancelled, updateTask } from "../parseTaskStore.js";
 import { runPipeline } from "../evaluation/pipeline.js";
 import { isKimiConfigured } from "../kimi.js";
-import { withGate, gateStatus, executeExtraction } from "./extract.js";
+import { gateStatus, executeExtraction } from "./extract.js";
+import { enqueueAiJob } from "../aiQueue.js";
 import { shownScore } from "./shared.js";
 import { httpError } from "./service.js";
 import { reconcileCampusAutoEvaluation } from "./autoEvaluation.js";
@@ -55,7 +56,7 @@ export function progressOf(run, task) {
   return { progress: 3, stage: "queued", queuePosition: task?.queuedAhead ?? null };
 }
 
-export async function startMatchRun(app, { applicant, session, concurrency = 3, staff = false }) {
+export async function startMatchRun(app, { applicant, session, staff = false }) {
   if (!session.matchEnabled && !staff) throw httpError("本专场未开放智能匹配", 403, "campus_match_disabled");
   if (!applicant.currentResumeVersionId) throw httpError("请先上传简历", 428, "campus_resume_required");
   if (!(await isKimiConfigured())) throw httpError("匹配服务未配置,请联系现场 HR", 424, "kimi_not_configured");
@@ -64,11 +65,15 @@ export async function startMatchRun(app, { applicant, session, concurrency = 3, 
   const jobsCount = await app.prisma.campusSessionJob.count({ where: { sessionId: session.id, matchEnabled: true, job: { recruitmentType: "campus", campusActive: true, evaluationModel: { not: null } } } });
   if (jobsCount === 0) throw httpError("暂无可匹配的校招岗位", 409, "campus_no_match_jobs");
 
-  const limit = typeof concurrency === "function" ? await concurrency() : concurrency;
   const task = await createTask(app, applicant.candidateId, "campus_match");
-  await updateTask(app, task.id, { queuedAhead: gateStatus().queued + Math.max(0, gateStatus().running - limit + 1) });
+  await updateTask(app, task.id, { queuedAhead: (await gateStatus(app)).queued });
   const run = await app.prisma.campusMatchRun.create({ data: { applicantId: applicant.id, resumeVersionId: applicant.currentResumeVersionId, taskId: task.id, status: "queued" } });
-  setImmediate(() => withGate(limit, () => runMatch(app, run.id)));
+  try {
+    await enqueueAiJob(app, { name: "campus-match", taskId: task.id, data: { runId: run.id } });
+  } catch (err) {
+    await app.prisma.campusMatchRun.update({ where: { id: run.id }, data: { status: "failed", finishedAt: new Date(), error: err.code || "ai_queue_unavailable" } });
+    throw err;
+  }
   return run;
 }
 
@@ -84,7 +89,7 @@ async function cancelled(app, runId, taskId) {
   return r?.status === "cancelled";
 }
 
-async function runMatch(app, runId) {
+export async function runMatch(app, runId) {
   const run = await app.prisma.campusMatchRun.findUnique({ where: { id: runId }, include: { applicant: { include: { session: true } }, resumeVersion: true } });
   if (!run || run.status === "cancelled") return;
   const taskId = run.taskId;

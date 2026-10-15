@@ -6,6 +6,7 @@ import corsPlugin from "./plugins/cors.js";
 import helmetPlugin from "./plugins/helmet.js";
 import rateLimitPlugin from "./plugins/rateLimit.js";
 import redisPlugin from "./plugins/redis.js";
+import aiQueuePlugin from "./plugins/aiQueue.js";
 import r2Plugin from "./plugins/r2.js";
 import authRoutes from "./routes/auth.js";
 import candidatesRoutes from "./routes/candidates.js";
@@ -31,7 +32,6 @@ import campusRoutes from "./routes/campus.js";
 import campusPublicRoutes from "./routes/campus-public.js";
 import { publicCampusJobShareRoutes } from "./routes/campus-job-shares.js";
 import interviewQueueRoutes, { publicInterviewQueueRoutes } from "./routes/interview-queues.js";
-import { reconcileCampusAutoEvaluation } from "./lib/campus/autoEvaluation.js";
 import { verifyTemplateOnBoot } from "./lib/interviewEvalTemplate.js";
 import { verifyPerformanceTemplatesOnBoot } from "./lib/performanceEvalTemplate.js";
 
@@ -57,9 +57,17 @@ await app.register(helmetPlugin);
 await app.register(corsPlugin);
 await app.register(prismaPlugin);
 await app.register(redisPlugin);
+await app.register(aiQueuePlugin);
 await app.register(rateLimitPlugin); // 依赖 redis(可选),须在 redisPlugin 之后
 await app.register(r2Plugin);
 await app.register(jwtPlugin);
+
+app.addHook("onResponse", async (req, reply) => {
+  const elapsed = reply.elapsedTime;
+  if (elapsed >= Math.max(100, Number(process.env.SLOW_REQUEST_MS) || 800)) {
+    req.log.warn({ durationMs: Math.round(elapsed), route: req.routeOptions.url, method: req.method, statusCode: reply.statusCode }, "slow API request");
+  }
+});
 
 app.get("/api/health", async () => ({
   status: "ok",
@@ -135,25 +143,6 @@ try {
   app.log.fatal({ err }, "failed to start");
   process.exit(1);
 }
-
-setImmediate(async () => {
-  try {
-    let cursor;
-    while (true) {
-      const rows = await app.prisma.campusApplicant.findMany({
-        where: { OR: [
-          { applications: { some: { status: { in: ["applied", "screening", "onsite_interview", "referred", "passed"] } } } },
-          { autoEvaluationStatus: { in: ["pending", "running", "done"] } },
-        ] },
-        select: { id: true, autoEvaluationStatus: true }, orderBy: { id: "asc" }, take: 100,
-        ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
-      });
-      for (const row of rows) await reconcileCampusAutoEvaluation(app, row.id, { recover: ["pending", "running"].includes(row.autoEvaluationStatus) });
-      if (rows.length < 100) break;
-      cursor = rows.at(-1).id;
-    }
-  } catch (err) { app.log.error({ err }, "[campus] auto evaluation recovery failed"); }
-});
 
 const shutdown = async (signal) => {
   app.log.info(`${signal} received, closing...`);

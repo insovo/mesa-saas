@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, resources } from "../lib/api.js";
+import { taskPollDelay } from "../lib/taskPolling.js";
 import {
   Card,
   Button,
@@ -148,6 +149,8 @@ export default function Candidates() {
     });
   }
   function pollBatchTask(candidateId, taskId) {
+    let unchanged = 0;
+    let failures = 0;
     const tick = async () => {
       const b = batchEvalRef.current;
       if (!b || b.results?.[candidateId]) return;
@@ -156,10 +159,10 @@ export default function Candidates() {
         const { data: { task } } = await api.get(`/resumes/parse-tasks/${taskId}`);
         if (task.status === "done") recordBatchResult(candidateId, task.evaluation?.classification || task.candidate?.classification || "C");
         else if (task.status === "failed") recordBatchResult(candidateId, "failed");
-        else setTimeout(tick, 2000);
+        else { failures = 0; setTimeout(tick, taskPollDelay(unchanged++)); }
       } catch (e) {
         if (e.response?.status === 404) recordBatchResult(candidateId, "failed");
-        else setTimeout(tick, 5000);
+        else setTimeout(tick, taskPollDelay(unchanged, ++failures));
       }
     };
     tick();
@@ -248,10 +251,8 @@ export default function Candidates() {
         const c = items.find((x) => x.id === id);
         return api.post("/resumes/parse", { candidateId: id, jobId: c?.jobId || null });
       }));
-      toast(`已触发 ${ids.length} 份简历重新解析(后台 5-60 秒,会自动刷新)`, "success");
+      toast(`已触发 ${ids.length} 份简历重新解析，请手动刷新查看结果`, "success");
       setSelectedIds(new Set());
-      setTimeout(() => load(), 5000);
-      setTimeout(() => load(), 30000);
     } catch (e) {
       toast(e.response?.data?.message || "触发批量解析失败", "error");
     }

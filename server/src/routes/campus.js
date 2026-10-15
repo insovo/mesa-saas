@@ -308,7 +308,6 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
     if (!a) { reply.code(404).send({ error: "not_found" }); return null; }
     return a;
   }
-  async function concurrency() { return getEffectiveNumber(SETTING_KEYS.CAMPUS_MATCH_CONCURRENCY, 3); }
 
   await app.register(campusSummaryRoutes);
   await app.register(campusJobShareRoutes);
@@ -686,7 +685,7 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
       return { total, selection: items.map(({ id, applications }) => ({ id, applications })) };
     }
     const [{ items, total }, stats] = await Promise.all([queryLedger(s.id, req.query, { showContact }), ledgerStats(s.id)]);
-    return { items, total, stats, showContact, gate: gateStatus() };
+    return { items, total, stats, showContact, gate: await gateStatus(app) };
   });
 
   app.get("/sessions/:id/ledger/export.xlsx", { schema: { querystring: LEDGER_QUERY } }, async (req, reply) => {
@@ -769,7 +768,7 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
     }
     const a = await app.prisma.campusApplicant.findUnique({ where: { id: applicantId }, include: applicantInclude });
     // 上传即抽取(设计 §4 规则 12)
-    if (version) await startExtraction(app, { applicantId, versionId: version.id, candidateId: a.candidateId, concurrency: await concurrency() });
+    if (version) await startExtraction(app, { applicantId, versionId: version.id, candidateId: a.candidateId });
     await refreshAutoEvaluation(app, applicantId);
     await writeLog(app.prisma, { req, action: "campus.applicant.create", entityType: "CampusApplicant", entityId: applicantId, diff: { sessionId: s.id, withResume: !!version, jobs: (b.jobIds || []).length } });
     const access = await loadUserAccess(req);
@@ -843,7 +842,7 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
       if (err.statusCode) return reply.code(err.statusCode).send({ error: err.code, message: err.message });
       throw err;
     }
-    const taskId = await startExtraction(app, { applicantId: a.id, versionId: version.id, candidateId: a.candidateId, concurrency: await concurrency() });
+    const taskId = await startExtraction(app, { applicantId: a.id, versionId: version.id, candidateId: a.candidateId });
     await refreshAutoEvaluation(app, a.id);
     return reply.code(201).send({ version: { ...versionShape(version), parseStatus: taskId ? "running" : "skipped" }, taskId });
   });
@@ -857,7 +856,7 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
     if (v.id !== a.currentResumeVersionId) return reply.code(409).send({ error: "campus_not_current_version", message: "只能解析当前版本" });
     if (v.parseStatus === "running") return reply.code(409).send({ error: "campus_parse_in_progress", message: "正在解析中" });
     await app.prisma.candidate.update({ where: { id: a.candidateId }, data: { attachment: v.attachmentKey } });
-    const taskId = await startExtraction(app, { applicantId: a.id, versionId: v.id, candidateId: a.candidateId, concurrency: await concurrency() });
+    const taskId = await startExtraction(app, { applicantId: a.id, versionId: v.id, candidateId: a.candidateId });
     if (!taskId) return reply.code(424).send({ error: "kimi_not_configured", message: "KIMI_API_KEY 未配置" });
     return reply.code(202).send({ taskId });
   });
@@ -890,7 +889,7 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
     const a = await loadApplicant(req, reply, req.params.id);
     if (!a) return;
     try {
-      const run = await startMatchRun(app, { applicant: a, session: a.session, concurrency, staff: true });
+      const run = await startMatchRun(app, { applicant: a, session: a.session, staff: true });
       await writeLog(app.prisma, { req, action: "campus.match.start", entityType: "CampusMatchRun", entityId: run.id, diff: { applicantId: a.id } });
       return reply.code(202).send({ run: runShape(run, await getTask(app, run.taskId), { student: false }) });
     } catch (err) {
@@ -1039,7 +1038,7 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
     const a = await app.prisma.campusApplicant.findUnique({ where: { candidateId: req.params.candidateId }, include: { session: true } });
     if (!a) return reply.code(404).send({ error: "not_found" });
     try {
-      const run = await startMatchRun(app, { applicant: a, session: a.session, concurrency, staff: true });
+      const run = await startMatchRun(app, { applicant: a, session: a.session, staff: true });
       await writeLog(app.prisma, { req, action: "campus.match.start", entityType: "CampusMatchRun", entityId: run.id, diff: { applicantId: a.id } });
       return reply.code(202).send({ run: runShape(run, await getTask(app, run.taskId), { student: false }) });
     } catch (err) {
@@ -1079,7 +1078,7 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
         return v;
       });
     } catch (err) { if (err.statusCode) return reply.code(err.statusCode).send({ error: err.code, message: err.message }); throw err; }
-    await startExtraction(app, { applicantId: a.id, versionId: version.id, candidateId: a.candidateId, concurrency: await concurrency() });
+    await startExtraction(app, { applicantId: a.id, versionId: version.id, candidateId: a.candidateId });
     await refreshAutoEvaluation(app, a.id);
     await writeLog(app.prisma, { req, action: "campus.applicant.merge", entityType: "CampusApplicant", entityId: a.id, diff: { from: src.id, version: version.version } });
     return reply.code(201).send({ version: versionShape(version) });
@@ -1089,32 +1088,38 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
   app.get("/sessions/:id/stats", async (req, reply) => {
     const s = await loadSession(req, reply, req.params.id);
     if (!s) return;
-    const [byStatus, bySource, applicants, jobs, runs, versions] = await Promise.all([
+    const [byStatus, bySource, applicantTotal, withResume, confirmed, bySchool, byDegree, dailyRows, jobs, jobScores, jobPassed, jobMatched, runs, versions] = await Promise.all([
       app.prisma.campusApplication.groupBy({ by: ["status"], where: { sessionJob: { sessionId: s.id } }, _count: { _all: true } }),
       app.prisma.campusApplication.groupBy({ by: ["source"], where: { sessionJob: { sessionId: s.id } }, _count: { _all: true } }),
-      app.prisma.campusApplicant.findMany({ where: { sessionId: s.id }, select: { school: true, degree: true, createdAt: true, contactConfirmedAt: true, currentResumeVersionId: true } }),
-      app.prisma.campusSessionJob.findMany({ where: { sessionId: s.id }, include: { job: { select: { title: true } }, _count: { select: { applications: true } }, applications: { select: { status: true, source: true, scoreRaw: true } } } }),
+      app.prisma.campusApplicant.count({ where: { sessionId: s.id } }),
+      app.prisma.campusApplicant.count({ where: { sessionId: s.id, currentResumeVersionId: { not: null } } }),
+      app.prisma.campusApplicant.count({ where: { sessionId: s.id, contactConfirmedAt: { not: null } } }),
+      app.prisma.campusApplicant.groupBy({ by: ["school"], where: { sessionId: s.id }, _count: { _all: true }, orderBy: { _count: { school: "desc" } } }),
+      app.prisma.campusApplicant.groupBy({ by: ["degree"], where: { sessionId: s.id }, _count: { _all: true } }),
+      app.prisma.$queryRaw`SELECT created_at::date AS day, count(*)::int AS count FROM campus_applicants WHERE session_id = ${s.id}::uuid AND created_at >= now() - interval '14 days' GROUP BY day`,
+      app.prisma.campusSessionJob.findMany({ where: { sessionId: s.id }, include: { job: { select: { title: true } }, _count: { select: { applications: true } } } }),
+      app.prisma.campusApplication.groupBy({ by: ["sessionJobId"], where: { sessionJob: { sessionId: s.id } }, _avg: { scoreRaw: true } }),
+      app.prisma.campusApplication.groupBy({ by: ["sessionJobId"], where: { sessionJob: { sessionId: s.id }, status: "passed" }, _count: { _all: true } }),
+      app.prisma.campusApplication.groupBy({ by: ["sessionJobId"], where: { sessionJob: { sessionId: s.id }, source: "match" }, _count: { _all: true } }),
       app.prisma.campusMatchRun.groupBy({ by: ["status"], where: { applicant: { sessionId: s.id } }, _count: { _all: true } }),
       app.prisma.campusResumeVersion.groupBy({ by: ["parseStatus"], where: { applicant: { sessionId: s.id } }, _count: { _all: true } }),
     ]);
     const count = (rows, key) => Object.fromEntries(rows.map((r) => [r[key], r._count._all]));
-    const schoolMap = new Map(); const degreeMap = new Map(); const dayMap = new Map();
-    for (const a of applicants) {
-      const sc = a.school || "未填"; schoolMap.set(sc, (schoolMap.get(sc) || 0) + 1);
-      const dg = a.degree || "未填"; degreeMap.set(dg, (degreeMap.get(dg) || 0) + 1);
-      const d = a.createdAt.toISOString().slice(0, 10); dayMap.set(d, (dayMap.get(d) || 0) + 1);
-    }
+    const dayMap = new Map(dailyRows.map((r) => [r.day.toISOString().slice(0, 10), r.count]));
+    const scoreMap = new Map(jobScores.map((r) => [r.sessionJobId, r._avg.scoreRaw]));
+    const passedMap = new Map(jobPassed.map((r) => [r.sessionJobId, r._count._all]));
+    const matchedMap = new Map(jobMatched.map((r) => [r.sessionJobId, r._count._all]));
     const days = []; for (let i = 13; i >= 0; i--) { const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10); days.push({ date: d.slice(5), count: dayMap.get(d) || 0 }); }
     const byStatusMap = count(byStatus, "status");
     const funnelOrder = ["applied", "screening", "onsite_interview", "referred", "passed", "rejected", "withdrawn"];
     return {
       session: { id: s.id, name: s.name },
-      totals: { applicants: applicants.length, withResume: applicants.filter((a) => a.currentResumeVersionId).length, confirmed: applicants.filter((a) => a.contactConfirmedAt).length, applications: byStatus.reduce((n, r) => n + r._count._all, 0), matchRunsDone: count(runs, "status").done || 0 },
+      totals: { applicants: applicantTotal, withResume, confirmed, applications: byStatus.reduce((n, r) => n + r._count._all, 0), matchRunsDone: count(runs, "status").done || 0 },
       funnel: funnelOrder.map((k) => ({ status: k, count: byStatusMap[k] || 0 })),
       bySource: count(bySource, "source"),
-      bySchool: Array.from(schoolMap, ([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count).slice(0, 10),
-      byDegree: Array.from(degreeMap, ([name, count]) => ({ name, count })),
-      byJob: jobs.map((j) => { const scored = j.applications.filter((x) => x.scoreRaw != null); return { jobId: j.jobId, title: j.job?.title || "—", kind: j.kind, applications: j._count.applications, passed: j.applications.filter((x) => x.status === "passed").length, fromMatch: j.applications.filter((x) => x.source === "match").length, avgScoreRaw: scored.length ? Math.round(scored.reduce((n, x) => n + x.scoreRaw, 0) / scored.length) : null }; }).sort((a, b) => b.applications - a.applications),
+      bySchool: bySchool.map((r) => ({ name: r.school || "未填", count: r._count._all })).sort((a, b) => b.count - a.count).slice(0, 10),
+      byDegree: byDegree.map((r) => ({ name: r.degree || "未填", count: r._count._all })),
+      byJob: jobs.map((j) => ({ jobId: j.jobId, title: j.job?.title || "—", kind: j.kind, applications: j._count.applications, passed: passedMap.get(j.id) || 0, fromMatch: matchedMap.get(j.id) || 0, avgScoreRaw: scoreMap.get(j.id) == null ? null : Math.round(scoreMap.get(j.id)) })).sort((a, b) => b.applications - a.applications),
       daily: days,
       parse: count(versions, "parseStatus"),
       matchRuns: count(runs, "status"),
@@ -1128,7 +1133,7 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
       authJwtTtl: (await getEffective(SETTING_KEYS.CAMPUS_AUTH_JWT_TTL)) || "30d",
       contactHints: await getEffectiveJson(SETTING_KEYS.CAMPUS_CONTACT_HINTS, []),
       pcUploadEnabled: /^(1|true|yes|on)$/i.test(String(await getEffective(SETTING_KEYS.CAMPUS_PC_UPLOAD_ENABLED) ?? "true")),
-      gate: gateStatus(),
+      gate: await gateStatus(app),
     };
   }
   app.get("/settings", async (req, reply) => {
@@ -1149,5 +1154,5 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
   });
 
   // 文件 sha256(前端无法读 R2 再算时,后端可选补算 — Phase 2 匹配用);此处仅暴露工具以便将来复用
-  app.get("/health", async () => ({ ok: true, gate: gateStatus(), sha: createHash("sha256").update("campus").digest("hex").slice(0, 8) }));
+  app.get("/health", async () => ({ ok: true, gate: await gateStatus(app), sha: createHash("sha256").update("campus").digest("hex").slice(0, 8) }));
 }

@@ -280,7 +280,7 @@ export default async function feishuRoutes(app) {
         // fire-and-forget;jobIdOverride=undefined 沿用候选人当前 jobId(Phase 2 已设)
         // 透传原群 chat_id:解析完成后把候选人详情卡片发回该群(Phase 4)
         const chatId = body?.event?.context?.open_chat_id;
-        setImmediate(() => runReparse(app, task.id, candidate.id, undefined, undefined, chatId));
+        await runReparse(app, task.id, candidate.id, undefined, undefined, chatId);
         return reply.send({ toast: toast("info", "已开始解析"), card: cardParsing() });
       }
 

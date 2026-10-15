@@ -1,7 +1,12 @@
 import axios from "axios";
 import { api } from "./api.js";
+import { visitorId } from "./visitorId.js";
 
 const publicApi = axios.create({ baseURL: "/api/public/interview-queues", timeout: 15000 });
+publicApi.interceptors.request.use((config) => {
+  config.headers["X-Mesa-Visitor"] = visitorId();
+  return config;
+});
 export const studentQueueToken = {
   get: () => localStorage.getItem("mesa.queue.student.v1") || "",
   set: (token) => localStorage.setItem("mesa.queue.student.v1", token),

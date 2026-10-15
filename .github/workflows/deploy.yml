@@ -141,6 +141,7 @@ jobs:
             sleep 8
             docker compose ps
             docker compose exec -T frontend wget -qO- http://127.0.0.1/healthz | grep -q ok && echo "[deploy] healthcheck ok"
+            docker compose ps --status running --services | grep -qx ai-worker && echo "[deploy] AI worker running"
 
             echo "[deploy] pruning dangling images..."
             docker image prune -f

@@ -11,7 +11,7 @@
 
 **MESA Recruit · 已上线 SaaS**:
 - 站点 **https://insovo.top** + 监控 **https://monitor.insovo.top**
-- 海外 VPS `103.106.190.191` (4 核 8G,Ubuntu 22.04,SSH 端口 `10526`) · Docker Compose 编排 6 容器
+- 海外 VPS `103.106.190.191` (4 核 8G,Ubuntu 22.04,SSH 端口 `10526`) · 当前线上 6 容器；本仓库待部署配置增加独立 AI worker 后为 7 容器
 - 前后端 + 数据库 + 缓存 + 监控全栈生产化
 - GitHub Actions 自动 build → GHCR → SSH 滚动部署(1-2 分钟)
 - 每日 03:00 UTC `systemd timer` 自动 PG 全量备份 → Cloudflare R2
@@ -28,7 +28,7 @@
 | 候选人详情页(V2)| 三列布局(profile sticky · 中间 · 评价+洞察 sticky)· 15+ 新组件:DocsModule / TagsModule / InlineSource / PeopleChips / JdSwitchConfirmModal / JdDescModal / FeedbackHistoryCard / OverviewTile 等 |
 | LLM 简历解析 | Kimi (Moonshot AI) · 一次 chat 输出 JSON(含 HR 友好简报 + 结构化字段)· admin 在 UI 编辑 API Key/模型/Prompt |
 | JD 匹配评估 | 二次 LLM 调用,基于候选人简报 + JD 描述输出 jdMatch + risks/highlights + V2 新字段(matchedFor / againstFor / aiSuggestedTags / insights[kind=up/down]) |
-| 候选人重新解析 | 「待解析」候选人(LLM 上传时降级)详情页 amber banner / 列表 hover icon 触发,**异步任务化**:POST 立即 202 + taskId,前端 2s 一次轮询 GET /parse-tasks/:taskId,绕 Cloudflare 100s 上限,Kimi 跑多久都行 |
+| 候选人重新解析 | 「待解析」候选人详情页 amber banner / 列表 hover icon 触发，POST 立即 202 + taskId；AI worker 从 Redis 持久化队列执行，前端低频、错峰、失败退避查询任务状态 |
 | LiquidLoader | 候选人匹配度全站液体进度球(替换原 MatchRing)· 三档调色板(red ≤60 / blue 60-80 / violet >80)· 数字白色描边 · 波浪 + 气泡 + 高光 · loading=true 外圈呼吸光晕 |
 | 分享给招聘官 | ShareLink 公开链接,可设有效期(60s-30d/无限期)+ 访问次数上限(10/50/100/自定义/无限) |
 | 评价对话系统 | 1 级嵌套回复 + 多选批量回复 + 赞同/否决投票 + 投票名单 popover + 可见范围(public/internal/admin) + soft-delete + admin 审核删除/隐藏 + 实时通知(Notification+音效) |
@@ -72,7 +72,7 @@ mesa/
 │   ├── restore.sh             # R2 → pg_restore(灾备恢复)
 │   └── runbook_cloudflare_vps.md  # 阶段④ 生产硬化 SOP(checkbox)
 ├── delivery-docs/             # src/*.md 权威源(含 06 绩效) + 正式 .docx
-├── docker-compose.yml         # 生产 6 容器编排
+├── docker-compose.yml         # 生产 7 容器编排(含 ai-worker)
 ├── docker-compose.dev.yml     # 本地开发 PG + Redis(仅 127.0.0.1)
 ├── .github/workflows/         # CI + Deploy 流水线
 ├── .env.example               # 生产环境变量模板(占位 __SET_BY_OPS__)
@@ -258,7 +258,7 @@ gh run watch  # 想盯过程的话
 | 17 | localStorage 存的 token 不是后端最新 | admin 改了密码后客户端还能用旧 token 一段时间 | JWT 过期才会真失效(7d);敏感操作做 server-side 当前用户校验 |
 | 18 | 浏览器 `Notification.requestPermission()` 必须用户交互后调 | 自动调被 silently 拒 | 在用户进入候选人详情后被动调用,初始 `Notification.permission === "default"` 时才 request |
 | 19 | kimi-k2.5 等推理模型只接受 `temperature=1` | `chat/completions 400: invalid temperature` | 全部删 temperature 参数,用 model 默认值,兼容推理/非推理模型 |
-| 20 | Cloudflare Free/Pro plan origin response **100s 硬上限** | LLM 慢请求 >100s → CF 替换 origin 5xx 为自己的 HTML 错误页 | reparse 这种长任务**异步化**(立即返回 taskId,前端 2s 轮询);backend 错误码 5xx → 4xx(422/408/424)让 CF 透传 JSON body |
+| 20 | Cloudflare Free/Pro plan origin response **100s 硬上限** | LLM 慢请求 >100s → CF 替换 origin 5xx 为自己的 HTML 错误页 | 长任务进 Redis 队列(立即返回 taskId，前端低频查询);backend 错误码 5xx → 4xx(422/408/424)让 CF 透传 JSON body |
 | 21 | LLM 输出 JSON 不稳定(中文全角 `，：` / unescaped newline / trailing comma) | `JSON.parse Expected ',' or ']' at position N` | 4 层 fallback:直接 parse → 手写 sanitize(全角符号 / fence)→ `jsonrepair` 库 → throw 带 snippet。parseResume 失败再 retry 1 次整 Kimi 调用 |
 | 22 | Kimi `engine_overloaded` 429 间歇失败 | reparse 偶尔失败,实际是 Kimi 服务侧过载 | `kimiRequest` 内 429/5xx 自动指数 backoff retry(1.5s → 3.6s → 8.6s,最多 3 次) |
 | 23 | 简历解析推理模型(k2.5)长上下文 >90s 必超时 | 简历解析这种「长输入抽取式」根本不需要 reasoning | `pickParseModel` fallback:admin 若选 kimi-k* / *-thinking / *-reasoner,parseResume 强制改 moonshot-v1-32k(non-reasoning,10-20s) |

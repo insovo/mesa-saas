@@ -5,20 +5,8 @@
 import { createTask, getTask, requestCancel } from "../parseTaskStore.js";
 import { runPipeline } from "../evaluation/pipeline.js";
 import { isKimiConfigured } from "../kimi.js";
+import { enqueueAiJob } from "../aiQueue.js";
 
-// 进程内并发闸(抽取与后续匹配共用),上限读 settings campus.match.concurrency
-let running = 0;
-const queue = [];
-export async function withGate(limit, fn) {
-  if (running >= limit) await new Promise((resolve) => queue.push(resolve));
-  running++;
-  try { return await fn(); }
-  finally {
-    running--;
-    const next = queue.shift();
-    if (next) next();
-  }
-}
 // 取消抽取:置任务 cancelRequested + 版本行立即标 cancelled(UI 即时反馈);流水线在下个阶段边界退出且不落库
 export async function cancelExtraction(app, { versionId }) {
   const v = await app.prisma.campusResumeVersion.findUnique({ where: { id: versionId } });
@@ -27,8 +15,10 @@ export async function cancelExtraction(app, { versionId }) {
   if (v.parseTaskId) await requestCancel(app, v.parseTaskId);
   return app.prisma.campusResumeVersion.update({ where: { id: versionId }, data: { parseStatus: "cancelled", parseError: null } });
 }
-export function gateStatus() {
-  return { running, queued: queue.length };
+export async function gateStatus(app) {
+  if (!app.aiQueue) return { running: 0, queued: 0 };
+  const counts = await app.aiQueue.getJobCounts("active", "waiting", "delayed");
+  return { running: counts.active, queued: counts.waiting + counts.delayed };
 }
 
 // 联系方式确认或人工修改后,简历抽取不能覆盖学生确认的毕业年份。
@@ -55,16 +45,25 @@ export async function backfillApplicant(prisma, applicantId, candidate) {
   }
 }
 
-// 启动抽取(fire-and-forget)。返回 taskId;Kimi 未配置时直接把版本标 skipped 并返回 null。
-export async function startExtraction(app, { applicantId, versionId, candidateId, concurrency = 3 }) {
+// 抽取任务入队。返回 taskId;Kimi 未配置时直接把版本标 skipped 并返回 null。
+export async function startExtraction(app, { applicantId, versionId, candidateId }) {
   if (!(await isKimiConfigured())) {
     await app.prisma.campusResumeVersion.update({ where: { id: versionId }, data: { parseStatus: "skipped", parseError: "kimi_not_configured" } });
     return null;
   }
-  const task = await createTask(app, candidateId, "reparse");
-  await app.prisma.campusResumeVersion.update({ where: { id: versionId }, data: { parseStatus: "running", parseTaskId: task.id, parseError: null } });
-
-  setImmediate(() => withGate(concurrency, () => executeExtraction(app, { applicantId, versionId, candidateId, taskId: task.id })));
+  let task;
+  try { task = await createTask(app, candidateId, "reparse"); }
+  catch (err) {
+    await app.prisma.campusResumeVersion.update({ where: { id: versionId }, data: { parseStatus: "failed", parseError: err.code || "ai_queue_unavailable" } });
+    throw err;
+  }
+  await app.prisma.campusResumeVersion.update({ where: { id: versionId }, data: { parseStatus: "pending", parseTaskId: task.id, parseError: null } });
+  try {
+    await enqueueAiJob(app, { name: "campus-extract", taskId: task.id, data: { applicantId, versionId, candidateId }, retryable: true });
+  } catch (err) {
+    await app.prisma.campusResumeVersion.update({ where: { id: versionId }, data: { parseStatus: "failed", parseError: err.code || "ai_queue_unavailable" } });
+    throw err;
+  }
   return task.id;
 }
 

@@ -35,6 +35,7 @@ import HelpCircle from "lucide-react/dist/esm/icons/help-circle.mjs";
 import { ICON_MAP } from "../lib/iconMap.js";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { api, resources } from "../lib/api.js";
+import { taskPollDelay } from "../lib/taskPolling.js";
 import { getUser } from "../lib/auth.js";
 import { useHasModule } from "../lib/authContext.jsx";
 import { LiquidLoader } from "../components/Primitives.jsx";
@@ -2972,12 +2973,16 @@ function CandidateDetail() {
     } catch { /* ignore */ }
   }
 
-  // 轮询异步任务(parse / match / report 共用):每 2s 一次,最长 maxWaitMs;返回最终 task 或 null(超时)
+  // 轮询异步任务(parse / match / report 共用)，无变化时逐步放慢。
   async function pollTask(taskId, maxWaitMs = 5 * 60 * 1000) {
     const startedAt = Date.now();
+    let unchanged = 0;
+    let failures = 0;
     while (Date.now() - startedAt < maxWaitMs) {
-      await new Promise((r) => setTimeout(r, 2000));
-      const { data: { task } } = await api.get(`/resumes/parse-tasks/${taskId}`);
+      await new Promise((r) => setTimeout(r, taskPollDelay(unchanged++, failures)));
+      let task;
+      try { ({ data: { task } } = await api.get(`/resumes/parse-tasks/${taskId}`)); failures = 0; }
+      catch { failures++; continue; }
       if (task.status === "done" || task.status === "failed") return task;
     }
     return null;
@@ -2991,13 +2996,6 @@ function CandidateDetail() {
     loadProfileMeta(c.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [c?.id]);
-
-  useEffect(() => {
-    if (!c?.id || !["awaiting_match", "pending", "running"].includes(evals.campusAutoEvaluation?.status)) return;
-    const timer = setInterval(() => loadEvaluations(c.id), evals.campusAutoEvaluation.status === "awaiting_match" ? 8000 : 3000);
-    return () => clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [c?.id, evals.campusAutoEvaluation?.status]);
 
   async function switchJob(id) {
     // 用户在 picker / select 里选了一个目标 JD —— 不直接发请求,先弹确认窗
@@ -3027,7 +3025,7 @@ function CandidateDetail() {
     try {
       // 1) 立即 POST 拿 taskId(透传 jobId 给后端决定是否跑 match)
       const { data: { task: initialTask } } = await api.post("/resumes/parse", { candidateId: c.id, jobId, mode });
-      // 2) 轮询(每 2s 一次,最长 5 分钟)
+      // 2) 低频查询任务结果(最长 5 分钟)
       const taskId = initialTask.id;
       const finalTask = await pollTask(taskId);
       if (!finalTask) {

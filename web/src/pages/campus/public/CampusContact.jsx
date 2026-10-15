@@ -1,4 +1,4 @@
-// 联系方式确认页:轮询简历抽取状态,确认手机号、邮箱和毕业年份后放行
+// 联系方式确认页:手动刷新简历抽取状态,确认手机号、邮箱和毕业年份后放行
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { campus, campusErr } from "../../../lib/campusApi.js";
@@ -27,17 +27,16 @@ export default function CampusContact() {
     setForm({ phone: me.phone || "", email: me.email || "", gradYear: me.gradYearSource === "manual" ? me.gradYear : 2026 });
   }, [me, form]);
 
-  // 轮询抽取状态(2s,最多 2 分钟),不覆盖学生确认的毕业年份。
+  // 只在进入页面或用户重试时读取抽取状态，不覆盖学生确认的毕业年份。
   useEffect(() => {
     const vid = me?.currentVersion?.id;
     if (!vid || !form) return;
-    let alive = true, n = 0;
+    let alive = true;
     const tick = async () => {
       try {
         const r = await campus.parseStatus(vid);
         if (!alive) return;
         setParse(r);
-        if ((r.status === "running" || r.status === "pending") && n++ < 60) setTimeout(tick, 2000);
       } catch { /* ignore */ }
     };
     tick();
@@ -106,6 +105,7 @@ export default function CampusContact() {
           </div>
         </div>
         <div className="mt-3"><TaskBanner status={parse.status} running={parsing} label="正在后台读取简历" onCancel={cancelParse} onRetry={retryParse} busy={taskBusy} /></div>
+        {parsing && <Button size="sm" variant="secondary" className="mt-2" onClick={() => setPollKey((key) => key + 1)}>刷新解析状态</Button>}
 
         <form onSubmit={submit} className="mt-5 space-y-4">
           <div className="grid grid-cols-2 gap-3">

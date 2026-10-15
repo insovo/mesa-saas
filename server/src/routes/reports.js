@@ -1,6 +1,7 @@
 // /api/reports — 数据报表聚合
 // M2: range 参数化(today/week/month/quarter/year/custom)+ 5 套环比基准 + sparkline 粒度自适应
 //     + JD/部门维度 + 下钻列表
+import { Prisma } from "@prisma/client";
 
 // 系统现有候选人状态枚举,对齐 web/src/lib/constants.js STATUS_ORDER
 const FUNNEL_MAIN = ["待筛选", "已沟通", "面试中", "待定中", "待入职", "已入职"];
@@ -250,6 +251,23 @@ function candidateFilter(jobIds, deptIds) {
   return w;
 }
 
+function idCondition(column, ids) {
+  return ids ? Prisma.sql`AND ${Prisma.raw(column)} IN (${Prisma.join(ids.map((id) => Prisma.sql`${id}::uuid`))})` : Prisma.empty;
+}
+
+async function countBuckets(prisma, buckets, table, dateColumn, conditions, { distinct = false, resumes = false } = {}) {
+  if (!buckets.length) return [];
+  const values = Prisma.join(buckets.map((b, i) => Prisma.sql`(${i}, ${b.start}::timestamptz, ${b.end}::timestamptz)`));
+  const target = distinct ? Prisma.sql`DISTINCT t.candidate_id` : Prisma.sql`t.id`;
+  const extra = resumes ? Prisma.sql`, count(t.id) FILTER (WHERE t.attachment IS NOT NULL AND t.attachment <> '')::int AS resumes` : Prisma.empty;
+  return prisma.$queryRaw(Prisma.sql`
+    SELECT b.idx, count(${target})::int AS value ${extra}
+    FROM (VALUES ${values}) AS b(idx, start_at, end_at)
+    LEFT JOIN ${Prisma.raw(table)} t ON ${Prisma.raw(`t.${dateColumn}`)} >= b.start_at AND ${Prisma.raw(`t.${dateColumn}`)} < b.end_at ${conditions}
+    GROUP BY b.idx ORDER BY b.idx
+  `);
+}
+
 function maskPhone(p) {
   if (!p) return null;
   if (p.length < 7) return p;
@@ -273,73 +291,43 @@ export default async function reportsRoutes(app) {
     const jobIds = parseIdList(req.query.jobIds);
     const deptIds = parseIdList(req.query.deptIds);
     const candFilter = candidateFilter(jobIds, deptIds);
+    const candidateConditions = Prisma.sql`${idCondition("t.job_id", jobIds)} ${idCondition("t.department_id", deptIds)}`;
+    const jobConditions = idCondition("t.job_id", jobIds);
+    const spark = sparkBuckets[0]?.start || start;
+    const oldest = new Date(Math.min(prevStart.getTime(), spark.getTime(), start.getTime()));
 
     const [
-      currCandidates,
-      prevCandidates,
-      sparkCandidates,
+      candidateTotals,
+      candidateBuckets,
       activeJobsCount,
-      currInterviews,
-      prevInterviews,
-      sparkInterviews,
-      currOnboardEmployees,
-      prevOnboardEmployees,
-      sparkOnboardEmployees,
+      interviewTotals,
+      interviewBuckets,
+      onboardTotals,
+      onboardBuckets,
       statusGroups,
       jobsByUrgency,
       employeesByStage,
     ] = await Promise.all([
-      app.prisma.candidate.findMany({
-        where: { createdAt: { gte: start, lte: end }, ...candFilter },
-        select: { id: true, createdAt: true, attachment: true },
-      }),
-      app.prisma.candidate.findMany({
-        where: { createdAt: { gte: prevStart, lte: prevEnd }, ...candFilter },
-        select: { id: true, createdAt: true, attachment: true },
-      }),
-      app.prisma.candidate.findMany({
-        where: { createdAt: { gte: sparkBuckets[0]?.start || start, lte: end }, ...candFilter },
-        select: { createdAt: true, attachment: true },
-      }),
+      app.prisma.$queryRaw(Prisma.sql`SELECT
+        count(*) FILTER (WHERE t.created_at >= ${start} AND t.created_at <= ${end})::int AS curr,
+        count(*) FILTER (WHERE t.created_at >= ${prevStart} AND t.created_at <= ${prevEnd})::int AS prev,
+        count(*) FILTER (WHERE t.created_at >= ${start} AND t.created_at <= ${end} AND t.attachment IS NOT NULL AND t.attachment <> '')::int AS resumes_curr,
+        count(*) FILTER (WHERE t.created_at >= ${prevStart} AND t.created_at <= ${prevEnd} AND t.attachment IS NOT NULL AND t.attachment <> '')::int AS resumes_prev
+        FROM candidates t WHERE t.created_at >= ${oldest} AND t.created_at <= ${end} ${candidateConditions}`).then((r) => r[0]),
+      countBuckets(app.prisma, sparkBuckets, "candidates", "created_at", candidateConditions, { resumes: true }),
       app.prisma.job.count({
         where: { status: "招聘中", ...(jobIds ? { id: { in: jobIds } } : {}) },
       }),
-      app.prisma.interview.findMany({
-        where: {
-          scheduledAt: { gte: start, lte: end },
-          candidateId: { not: null },
-          ...(jobIds ? { jobId: { in: jobIds } } : {}),
-        },
-        select: { candidateId: true, scheduledAt: true },
-      }),
-      app.prisma.interview.findMany({
-        where: {
-          scheduledAt: { gte: prevStart, lte: prevEnd },
-          candidateId: { not: null },
-          ...(jobIds ? { jobId: { in: jobIds } } : {}),
-        },
-        select: { candidateId: true, scheduledAt: true },
-      }),
-      app.prisma.interview.findMany({
-        where: {
-          scheduledAt: { gte: sparkBuckets[0]?.start || start, lte: end },
-          candidateId: { not: null },
-          ...(jobIds ? { jobId: { in: jobIds } } : {}),
-        },
-        select: { candidateId: true, scheduledAt: true },
-      }),
-      app.prisma.employee.findMany({
-        where: { actualHireDate: { gte: start, lte: end }, ...(jobIds ? { jobId: { in: jobIds } } : {}) },
-        select: { id: true, actualHireDate: true },
-      }),
-      app.prisma.employee.findMany({
-        where: { actualHireDate: { gte: prevStart, lte: prevEnd }, ...(jobIds ? { jobId: { in: jobIds } } : {}) },
-        select: { id: true, actualHireDate: true },
-      }),
-      app.prisma.employee.findMany({
-        where: { actualHireDate: { gte: sparkBuckets[0]?.start || start, lte: end }, ...(jobIds ? { jobId: { in: jobIds } } : {}) },
-        select: { actualHireDate: true },
-      }),
+      app.prisma.$queryRaw(Prisma.sql`SELECT
+        count(DISTINCT t.candidate_id) FILTER (WHERE t.scheduled_at >= ${start} AND t.scheduled_at <= ${end})::int AS curr,
+        count(DISTINCT t.candidate_id) FILTER (WHERE t.scheduled_at >= ${prevStart} AND t.scheduled_at <= ${prevEnd})::int AS prev
+        FROM interviews t WHERE t.candidate_id IS NOT NULL AND t.scheduled_at >= ${oldest} AND t.scheduled_at <= ${end} ${jobConditions}`).then((r) => r[0]),
+      countBuckets(app.prisma, sparkBuckets, "interviews", "scheduled_at", Prisma.sql`AND t.candidate_id IS NOT NULL ${jobConditions}`, { distinct: true }),
+      app.prisma.$queryRaw(Prisma.sql`SELECT
+        count(*) FILTER (WHERE t.actual_hire_date >= ${start} AND t.actual_hire_date <= ${end})::int AS curr,
+        count(*) FILTER (WHERE t.actual_hire_date >= ${prevStart} AND t.actual_hire_date <= ${prevEnd})::int AS prev
+        FROM employees t WHERE t.actual_hire_date >= ${oldest} AND t.actual_hire_date <= ${end} ${jobConditions}`).then((r) => r[0]),
+      countBuckets(app.prisma, sparkBuckets, "employees", "actual_hire_date", jobConditions),
       app.prisma.candidate.groupBy({
         by: ["status"],
         _count: { status: true },
@@ -357,25 +345,26 @@ export default async function reportsRoutes(app) {
       }),
     ]);
 
-    const newResumesCurr = currCandidates.filter((c) => c.attachment).length;
-    const newResumesPrev = prevCandidates.filter((c) => c.attachment).length;
-    const candidatesCurr = currCandidates.length;
-    const candidatesPrev = prevCandidates.length;
-    const interviewingCurr = new Set(currInterviews.map((i) => i.candidateId)).size;
-    const interviewingPrev = new Set(prevInterviews.map((i) => i.candidateId)).size;
-    const onboardedCurr = currOnboardEmployees.length;
-    const onboardedPrev = prevOnboardEmployees.length;
+    const newResumesCurr = candidateTotals.resumes_curr;
+    const newResumesPrev = candidateTotals.resumes_prev;
+    const candidatesCurr = candidateTotals.curr;
+    const candidatesPrev = candidateTotals.prev;
+    const interviewingCurr = interviewTotals.curr;
+    const interviewingPrev = interviewTotals.prev;
+    const onboardedCurr = onboardTotals.curr;
+    const onboardedPrev = onboardTotals.prev;
+    const line = (rows, field = "value") => rows.map((r) => ({ key: sparkBuckets[r.idx].key, label: sparkBuckets[r.idx].label, value: r[field] }));
 
     const kpis = [
       { key: "newResumes", label: "新增简历", value: newResumesCurr, prev: newResumesPrev, delta: deltaPct(newResumesCurr, newResumesPrev),
-        sparkline: bucketize(sparkCandidates.filter((c) => c.attachment).map((c) => ({ at: c.createdAt })), sparkBuckets) },
+        sparkline: line(candidateBuckets, "resumes") },
       { key: "candidates", label: "候选人总量", value: candidatesCurr, prev: candidatesPrev, delta: deltaPct(candidatesCurr, candidatesPrev),
-        sparkline: bucketize(sparkCandidates.map((c) => ({ at: c.createdAt })), sparkBuckets) },
+        sparkline: line(candidateBuckets) },
       { key: "activeJobs", label: "在招岗位", value: activeJobsCount, prev: null, delta: null, sparkline: [] },
       { key: "interviewing", label: "进入面试", value: interviewingCurr, prev: interviewingPrev, delta: deltaPct(interviewingCurr, interviewingPrev),
-        sparkline: bucketizeDistinct(sparkInterviews, sparkBuckets, "scheduledAt", "candidateId") },
+        sparkline: line(interviewBuckets) },
       { key: "onboarded", label: "成功入职", value: onboardedCurr, prev: onboardedPrev, delta: deltaPct(onboardedCurr, onboardedPrev),
-        sparkline: bucketize(sparkOnboardEmployees.map((e) => ({ at: e.actualHireDate })), sparkBuckets) },
+        sparkline: line(onboardBuckets) },
     ];
 
     const statusCount = Object.fromEntries(

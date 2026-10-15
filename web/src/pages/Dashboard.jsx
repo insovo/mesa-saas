@@ -119,10 +119,8 @@ export default function Dashboard() {
     setReparsingIds((prev) => new Set([...prev, c.id]));
     try {
       await api.post("/resumes/parse", { candidateId: c.id, jobId: c.jobId || null });
-      toast(`已触发「${c.name}」重新解析,5-60 秒后自动刷新`, "success");
-      setTimeout(() => reload(), 5000);
+      toast(`已触发「${c.name}」重新解析，请手动刷新查看结果`, "success");
       setTimeout(() => {
-        reload();
         setReparsingIds((prev) => { const next = new Set(prev); next.delete(c.id); return next; });
       }, 30000);
     } catch (e) {
@@ -136,10 +134,10 @@ export default function Dashboard() {
 
   const tilePalette = ["#422AFB", "#22C55E", "#F59E0B", "#3B82F6"];
 
-  return <DashboardView {...{ data, tilePalette, jobs, departments, llmStatus, reparsingIds, onAssign, onReparse }} />;
+  return <DashboardView {...{ data, tilePalette, jobs, departments, llmStatus, reparsingIds, onAssign, onReparse }} onRefresh={reload} />;
 }
 
-function DashboardView({ data, tilePalette, jobs, departments, llmStatus, reparsingIds, onAssign, onReparse }) {
+function DashboardView({ data, tilePalette, jobs, departments, llmStatus, reparsingIds, onAssign, onReparse, onRefresh }) {
   const rootRef = useRef(null);
   useEffect(() => {
     if (!rootRef.current) return;
@@ -158,6 +156,7 @@ function DashboardView({ data, tilePalette, jobs, departments, llmStatus, repars
 
   return (
     <div ref={rootRef} className="space-y-6">
+      <div className="flex justify-end"><button type="button" onClick={onRefresh} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:text-brand"><I name="refresh-cw" size={14} />刷新数据</button></div>
       {/* === KPI 卡片 === */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
         <div className="dash-rise"><Widget icon="users" label="候选人总数" value={data.counts.candidates} accent={tilePalette[0]} subtitle="覆盖全岗位" to="/candidates" /></div>

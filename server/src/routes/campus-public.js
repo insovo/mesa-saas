@@ -6,7 +6,7 @@
 // 规则:投递与智能匹配都必须先有简历(428 campus_resume_required)并确认联系方式(428 campus_contact_unconfirmed);
 //      上传成功即后台抽取(lib/campus/extract.js);对学生只回必要字段,不回 R2 直链 / 评估明细 / 原始分。
 
-import { SETTING_KEYS, getEffective, getEffectiveNumber, getEffectiveJson, getEffectiveBool } from "../lib/settings.js";
+import { SETTING_KEYS, getEffective, getEffectiveJson, getEffectiveBool } from "../lib/settings.js";
 import { issueCode, consumeCode } from "../lib/verificationCodes.js";
 import { isEmailConfigured } from "../lib/email.js";
 import { startExtraction, cancelExtraction } from "../lib/campus/extract.js";
@@ -74,7 +74,6 @@ const applicantInclude = {
 };
 
 export default async function campusPublicRoutes(app) {
-  const concurrency = async () => getEffectiveNumber(SETTING_KEYS.CAMPUS_MATCH_CONCURRENCY, 3);
 
   // 可选鉴权:有合法学生 token 则挂 req.applicant,否则 null(首页 / 岗位列表用)
   async function optionalStudent(req) {
@@ -312,7 +311,7 @@ export default async function campusPublicRoutes(app) {
     try {
       v = await app.prisma.$transaction((tx) => createVersionTx(tx, { applicant: a, session: a.session, resume: req.body }));
     } catch (err) { return sendErr(reply, err); }
-    const taskId = await startExtraction(app, { applicantId: a.id, versionId: v.id, candidateId: a.candidateId, concurrency: await concurrency() });
+    const taskId = await startExtraction(app, { applicantId: a.id, versionId: v.id, candidateId: a.candidateId });
     await refreshAutoEvaluation(app, a.id);
     return reply.code(201).send({ duplicate: false, version: { ...versionShape(v), parseStatus: taskId ? "running" : "skipped" }, remaining: uploadsAllowed(a.session, a) - v.version, parseTaskId: taskId });
   });
@@ -358,7 +357,7 @@ export default async function campusPublicRoutes(app) {
     if (v.id !== a.currentResumeVersionId) return reply.code(409).send({ error: "campus_not_current_version", message: "只能解析当前版本" });
     if (v.parseStatus === "running") return reply.code(409).send({ error: "campus_parse_in_progress", message: "正在解析中" });
     await app.prisma.candidate.update({ where: { id: a.candidateId }, data: { attachment: v.attachmentKey } });
-    const taskId = await startExtraction(app, { applicantId: a.id, versionId: v.id, candidateId: a.candidateId, concurrency: await concurrency() });
+    const taskId = await startExtraction(app, { applicantId: a.id, versionId: v.id, candidateId: a.candidateId });
     if (!taskId) return reply.code(424).send({ error: "kimi_not_configured", message: "解析服务未配置,请联系现场 HR" });
     return reply.code(202).send({ taskId, status: "running" });
   });
@@ -370,7 +369,7 @@ export default async function campusPublicRoutes(app) {
     if (!requireOpen(a.session, reply)) return;
     if (!gate(a, reply)) return;
     try {
-      const run = await startMatchRun(app, { applicant: a, session: a.session, concurrency: await concurrency() });
+      const run = await startMatchRun(app, { applicant: a, session: a.session });
       const task = run.taskId ? await getTask(app, run.taskId) : null;
       return reply.code(202).send({ run: await studentRunShape(run, task, a.candidateId) });
     } catch (err) { return sendErr(reply, err); }

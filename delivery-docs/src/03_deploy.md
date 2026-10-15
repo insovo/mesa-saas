@@ -478,3 +478,24 @@ curl -X POST "https://insovo.top/api/system/settings/kimi.api_key/test" \
 
 Dockerfile runtime stage **必须** `COPY assets ./assets`(坑 #38)。更新金样后同步改对应 `TEMPLATE_EXPECTED_HASHES`,否则容器 boot fatal。
 
+# 13. AI worker 与读请求性能
+
+`backend` 只创建 AI 任务并写入 Redis 队列；`ai-worker` 独立执行简历解析、岗位匹配和报告。Redis 开启 AOF。生产部署后检查：
+
+```bash
+docker compose ps backend ai-worker redis
+docker compose logs --tail=100 ai-worker
+```
+
+`AI_WORKER_CONCURRENCY` 默认 3，`AI_QUEUE_MAX_WAITING` 默认 300（等待、延迟与执行中的任务合计）。队列满或 Redis 不可用时 API 返回 503。可安全重试的重新解析、重评、报告和校招抽取最多尝试 2 次；新建候选人与整场校招匹配只执行 1 次，以免重复写入。worker 中断时 BullMQ 会重新接管 stalled job；新建任务会按同一附件和归属人复用已落库候选人。同一附件被多个任务同时提交的极端情形仍需人工核对重复记录。
+
+每个进程有主 Prisma 和设置 Prisma 两个连接池。Compose 默认每池 `PRISMA_CONNECTION_LIMIT=5`，因此 1 个 API + 1 个 worker 最多约 20 条应用数据库连接；2 个 API + 1 个 worker 则约 30 条。扩实例前还要计入迁移、备份、监控连接并核对 PostgreSQL 的 `max_connections`。新增 VPS 必须共享同一 PostgreSQL、Redis 和 R2。
+
+后端记录超过 `SLOW_QUERY_MS`（默认 300 ms）的参数化 SQL 文本（不记录参数），以及超过 `SLOW_REQUEST_MS`（默认 800 ms）的路由耗时。按慢日志定位查询后，在本地或预发布数据副本执行 `EXPLAIN (ANALYZE, BUFFERS)`；`ANALYZE` 会实际执行 SQL，不要对生产写入语句直接使用。
+
+限流按登录账号或公开访客会话计数，并保留独立 IP 总量阈值。Nginx 只接受 [Cloudflare 官方地址段](https://www.cloudflare.com/ips/)来源的 `CF-Connecting-IP`，然后用可信的 `X-Real-IP` 传给后端；Cloudflare 更新地址段时同步更新 `web/nginx.conf` 并验证 `nginx -t`。
+
+本地 2026-10-16 执行计划抽样：候选人状态分组 0.894 ms（25 行）、候选人 30 天趋势分组 0.439 ms（13 行）、校招台账最新 100 条 0.093 ms（10 行）。样本过小，顺序扫描是合理计划；这些数字不能证明 100 人并发容量。报表首页与校招数据看板已将全量应用层统计改为 SQL 聚合，部署后继续根据真实慢日志与数据量判断是否需要索引或短时缓存。
+
+首次切换前先等旧版 API 中已启动的进程内 AI 任务完成；这些旧任务不会自动迁入新队列。回滚旧版前先等待 `ai-worker` 队列清空并记录失败任务；旧版 API 不消费新队列中的任务。手动刷新页面不依赖 worker，上传后的 AI 完成状态查询仍保留低频、错峰和失败退避。
+

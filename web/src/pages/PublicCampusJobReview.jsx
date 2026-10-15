@@ -53,7 +53,7 @@ function Review({ token }) {
       if ([403, 404, 410].includes(err.response?.status)) { setData(null); setUnavailable(true); setCreating(false); setViewId(null); }
     } finally { setLoading(false); }
   }, [token]);
-  useEffect(() => { load(); const timer = setInterval(load, 15000); return () => clearInterval(timer); }, [load]);
+  useEffect(() => { load(); }, [load]);
   const jobs = data?.jobs || [];
   const visible = jobs.filter((job) => job.title.toLowerCase().includes(search.trim().toLowerCase()));
   const allSelected = visible.length > 0 && visible.every((job) => selected.has(job.id));

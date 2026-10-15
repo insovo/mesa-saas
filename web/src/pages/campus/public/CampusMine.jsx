@@ -1,5 +1,5 @@
 // 我的投递:投递列表(可撤回)+ 简历版本 + 剩余次数 + 退出
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { campus } from "../../../lib/campusApi.js";
 import { CAMPUS_APP_STATUS_LABEL } from "../../../lib/constants.js";
@@ -12,9 +12,6 @@ export default function CampusMine() {
   const nav = useNavigate();
   const [busy, setBusy] = useState(null);
   const [taskBusy, setTaskBusy] = useState(false);
-  const parsing = me?.currentVersion?.parseStatus === "running" || me?.currentVersion?.parseStatus === "pending";
-  // 后台解析中 → 5s 轮询刷新
-  useEffect(() => { if (!parsing) return; const t = setInterval(() => reload(), 5000); return () => clearInterval(t); }, [parsing, reload]);
   async function cancelParse() { setTaskBusy(true); try { await campus.cancelParse(me.currentVersion.id); toast("已取消解析", "success"); await reload(); } catch (e) { toastErr(e, "取消失败"); } finally { setTaskBusy(false); } }
   async function retryParse() { setTaskBusy(true); try { await campus.reparse(me.currentVersion.id); toast("已重新开始解析", "success"); await reload(); } catch (e) { toastErr(e, "重新解析失败"); } finally { setTaskBusy(false); } }
   if (!ready) return <Shell title="我的投递" back><Spinner /></Shell>;
@@ -43,6 +40,7 @@ export default function CampusMine() {
   }
   return (
     <Shell title="我的投递" back>
+      <div className="flex justify-end"><Button size="sm" variant="secondary" onClick={reload}>刷新状态</Button></div>
       <div className="bg-white rounded-card shadow-card p-5">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-brand-gradient text-white flex items-center justify-center text-lg font-bold">{(me.name || me.phone || "?").slice(0, 1)}</div>

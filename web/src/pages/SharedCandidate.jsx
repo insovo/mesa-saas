@@ -5,6 +5,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import axios from "axios";
+import { visitorId } from "../lib/visitorId.js";
 import {
   Card,
   Button,
@@ -23,6 +24,12 @@ import MarkdownBullets from "../components/MarkdownBullets.jsx";
 import BrandLogo from "../components/BrandLogo.jsx";
 import JdDescModal from "../components/JdDescModal.jsx";
 import { candidateExpText, hasWorkExperience } from "../lib/constants.js";
+
+const sharedApi = axios.create();
+sharedApi.interceptors.request.use((config) => {
+  config.headers["X-Mesa-Visitor"] = visitorId();
+  return config;
+});
 
 // ─── 三层评估只读块(公开页):分类 / 维度 / 硬筛 / 逐项 / 面试验证点。evaluation 为空时不渲染 ───
 const PUB_CLASS_TONE = {
@@ -160,7 +167,7 @@ export default function SharedCandidate() {
       if (Array.isArray(arr) && arr[0]) savedName = String(arr[0]).slice(0, 100);
     } catch { /* ignore */ }
     try {
-      const r = await axios.post(`/api/public/share/${token}/interview-eval`, savedName ? { interviewer: savedName } : {});
+      const r = await sharedApi.post(`/api/public/share/${token}/interview-eval`, savedName ? { interviewer: savedName } : {});
       // 跳转到现有公开填写页(复用 /interview-eval/:token)
       window.location.assign(`/interview-eval/${r.data.token}`);
     } catch (e) {
@@ -176,14 +183,14 @@ export default function SharedCandidate() {
   }
 
   useEffect(() => {
-    axios.get(`/api/public/share/${token}`)
+    sharedApi.get(`/api/public/share/${token}`)
       .then((r) => setData(r.data))
       .catch((e) => setErr(e.response?.data || { error: "fetch_failed", message: e.message }));
   }, [token]);
 
   useEffect(() => {
     if (!data) return;
-    axios.get(`/api/public/share/${token}/reviews`).then((r) => setReviews(r.data.reviews || [])).catch(() => {});
+    sharedApi.get(`/api/public/share/${token}/reviews`).then((r) => setReviews(r.data.reviews || [])).catch(() => {});
   }, [data, token]);
 
   if (err) {
@@ -622,7 +629,7 @@ function PublicReviewItem({ review, replies = [], token, onReply, updateReview, 
     const name = askName.trim();
     if (!name) return toast("请输入您当时填写的姓名以验证身份", "error");
     try {
-      const { data } = await axios.post(`/api/public/share/${token}/reviews/${review.id}/request-delete`, { authorName: name });
+      const { data } = await sharedApi.post(`/api/public/share/${token}/reviews/${review.id}/request-delete`, { authorName: name });
       updateReview(data.review);
       setShowAsk(false);
       setAskName("");
@@ -736,7 +743,7 @@ function PublicVoteButtons({ review, token, updateReview }) {
     if (voters || loading) return;
     setLoading(true);
     try {
-      const { data } = await axios.get(`/api/public/share/${token}/reviews/${review.id}/voters`);
+      const { data } = await sharedApi.get(`/api/public/share/${token}/reviews/${review.id}/voters`);
       setVoters(data);
     } catch { /* ignore */ }
     finally { setLoading(false); }
@@ -751,7 +758,7 @@ function PublicVoteButtons({ review, token, updateReview }) {
   async function cast(value) {
     const next = myVote === value ? 0 : value;  // 同方向再点 = 取消
     try {
-      const { data } = await axios.post(`/api/public/share/${token}/reviews/${review.id}/vote`, {
+      const { data } = await sharedApi.post(`/api/public/share/${token}/reviews/${review.id}/vote`, {
         value: next,
         prevValue: myVote,
       });
@@ -855,7 +862,7 @@ function PublicAttachmentChip({ a, token }) {
     }
     setBusy(true);
     try {
-      const { data } = await axios.post(`/api/public/share/${token}/signed-get-url`, { key: a.url });
+      const { data } = await sharedApi.post(`/api/public/share/${token}/signed-get-url`, { key: a.url });
       window.open(data.url, "_blank");
     } catch (e) { toast(e.response?.data?.message || "下载失败", "error"); }
     finally { setBusy(false); }
@@ -924,7 +931,7 @@ function PublicReviewModal({ open, onClose, candidate, token, replyTo, onCreated
     }
     setUploading(true);
     try {
-      const { data: presign } = await axios.post(`/api/public/share/${token}/presigned-url`, {
+      const { data: presign } = await sharedApi.post(`/api/public/share/${token}/presigned-url`, {
         filename: file.name,
         contentType: file.type || "application/octet-stream",
       });
@@ -961,7 +968,7 @@ function PublicReviewModal({ open, onClose, candidate, token, replyTo, onCreated
         body.parentId = replyTo.id;
       }
       if (replyTo && stance) body.stance = stance;
-      const { data } = await axios.post(`/api/public/share/${token}/reviews`, body);
+      const { data } = await sharedApi.post(`/api/public/share/${token}/reviews`, body);
       rememberName(authorName.trim());
       onCreated(data.review);
       toast(replyTo ? "已回复" : "评论已发布", "success");

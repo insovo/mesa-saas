@@ -399,6 +399,14 @@ export async function runPipeline(app, taskId, opts) {
     await markRunning(app, taskId);
     await updateTask(app, taskId, { mode, stages: {} });
 
+    if (mode === "create" && create?.key) {
+      const existing = await app.prisma.candidate.findFirst({ where: { attachment: create.key, ownerId: create.ownerId || null } });
+      if (existing) {
+        await markDone(app, taskId, { candidate: withDerivedCandidate(existing), match: null, reparsed: false });
+        return;
+      }
+    }
+
     if (candidateId) {
       candidate = await app.prisma.candidate.findUnique({ where: { id: candidateId } });
       if (!candidate) throw E("候选人不存在", 404, "candidate_not_found");

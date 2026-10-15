@@ -101,6 +101,8 @@ test("分享密钥校验、撤销和旧会话失效，错误不会返回凭证",
   const opened = await app.inject({ method: "POST", url, headers, payload: { accessKey } });
   assert.equal(opened.statusCode, 200);
   const claims = app.jwt.verify(opened.json().token); assert.equal(claims.aud, "interview-queue-share"); assert.equal(claims.kind, "culture");
+  const second = await app.inject({ method: "POST", url, headers, payload: { accessKey } });
+  assert.notEqual(app.jwt.verify(second.json().token).viewerId, claims.viewerId);
   const auth = { authorization: `Bearer ${opened.json().token}` };
   link.tokenVersion++;
   assert.equal((await app.inject({ url: "/api/public/interview-queues/share/data", headers: auth })).statusCode, 401);

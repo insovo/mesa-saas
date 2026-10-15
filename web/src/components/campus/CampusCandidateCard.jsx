@@ -74,17 +74,12 @@ export function useCampusCandidate(candidateId) {
   useEffect(() => { setData(undefined); if (candidateId) load(); }, [candidateId, load]);
   const currentData = data?.applicant?.candidateId === candidateId ? data : null;
   const active = ["queued", "running"].includes(currentData?.latestMatchRun?.status);
-  useEffect(() => {
-    if (!active) return;
-    const timer = setInterval(load, 2500);
-    return () => clearInterval(timer);
-  }, [active, load]);
   async function startMatch() {
     setStarting(true);
     try {
       const run = await resources.campus.matchByCandidate(candidateId);
       if (latestCandidateId.current === candidateId) setData((prev) => ({ ...prev, latestMatchRun: run }));
-      toast("已开始智能匹配，结果会自动更新", "success");
+      toast("已开始智能匹配，请手动刷新查看结果", "success");
     } catch (err) {
       toast(err.response?.data?.message || err.message || "智能匹配启动失败", "error");
     } finally {
@@ -96,7 +91,7 @@ export function useCampusCandidate(candidateId) {
 
 export function CampusMatchPanel({ campus, currentUser }) {
   const [selectedJobId, setSelectedJobId] = useState(null);
-  const { data, active, starting, startMatch } = campus;
+  const { data, active, starting, startMatch, reload } = campus;
   useEffect(() => setSelectedJobId(null), [data?.latestMatchRun?.id]);
   if (!data?.applicant) return null;
   const { applicant: a, latestMatchRun: run } = data;
@@ -109,9 +104,9 @@ export function CampusMatchPanel({ campus, currentUser }) {
         <p className="text-[11px] text-gray-500">
           {active ? `智能匹配中 · ${run.progress ?? 0}%${run.total ? ` (${run.done ?? 0}/${run.total})` : ""}` : run?.status === "failed" ? "智能匹配失败，请重试" : run?.status === "done" ? `最近智能匹配 · ${fmtDateTime(run.finishedAt)}${run.stale ? " · 已过期" : ""}` : "尚未智能匹配"}
         </p>
-        {canMatch && <button type="button" onClick={startMatch} disabled={starting || active || !a.currentVersion} className="inline-flex items-center gap-1 rounded-lg border border-brand/30 px-2.5 py-1.5 text-[11px] font-semibold text-brand hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50">
+        <div className="flex gap-1"><button type="button" onClick={reload} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-[11px] font-semibold text-gray-600 hover:bg-gray-50">刷新</button>{canMatch && <button type="button" onClick={startMatch} disabled={starting || active || !a.currentVersion} className="inline-flex items-center gap-1 rounded-lg border border-brand/30 px-2.5 py-1.5 text-[11px] font-semibold text-brand hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50">
           <I name="sparkles" size={13} />{starting || active ? "匹配中" : run ? "重新智能匹配" : "智能匹配"}
-        </button>}
+        </button>}</div>
       </div>
       {run?.status === "done" && Array.isArray(run.results) && run.results.length > 0 && (
         <div className="flex gap-2 overflow-x-auto pb-1">
