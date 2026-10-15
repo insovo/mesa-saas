@@ -1,8 +1,10 @@
 export const QUEUE_POSTER_SIZES = { portrait: { width: 1440, height: 1920 }, landscape: { width: 2160, height: 1440 } };
+export const QUEUE_POSTER_LABELS = { registration: "排队登记", professional: "专业面试官", culture: "文化面试官", hr: "HR 定薪" };
 
-export function queuePosterFilename(sessionName, format) {
+export function queuePosterFilename(sessionName, format, kind = "registration") {
   const safeName = Array.from(sessionName.replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_").trim()).slice(0, 48).join("");
-  return `面试排队登记_${safeName}_${format === "landscape" ? "iPad横屏" : "群聊竖版"}.png`;
+  const prefix = kind === "registration" ? "面试排队登记" : `${QUEUE_POSTER_LABELS[kind]}操作指南`;
+  return `${prefix}_${safeName}_${format === "landscape" ? "iPad横屏" : "群聊竖版"}.png`;
 }
 
 export async function queuePosterPng(svg, size) {
