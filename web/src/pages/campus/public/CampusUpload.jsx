@@ -43,7 +43,7 @@ export default function CampusUpload() {
       let current = me;
       if (!current) {
         const r = await campus.start({ slug, consent: true });
-        if (r.token) setCampusToken(r.token);
+        if (r.token) setCampusToken(r.token, slug);
         current = r.me; setMe(r.me);
       }
       const { uploadUrl, key } = await campus.presign({ filename: file.name, contentType, size: file.size });

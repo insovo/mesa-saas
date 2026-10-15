@@ -29,7 +29,7 @@ export function CampusProvider({ children }) {
     document.addEventListener("visibilitychange", refreshOnReturn);
     return () => document.removeEventListener("visibilitychange", refreshOnReturn);
   }, [load]);
-  const logout = useCallback(() => { setCampusToken(null); setMe(null); }, []);
+  const logout = useCallback(() => { setCampusToken(null, slug); setMe(null); }, [slug]);
   const value = useMemo(() => ({ slug, session: data?.session || null, info: data, me, setMe, reload: load, error, logout, ready }), [slug, data, me, load, error, logout, ready]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
