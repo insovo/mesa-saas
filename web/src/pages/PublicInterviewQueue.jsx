@@ -24,6 +24,11 @@ function SharePage() {
   const [busy, setBusy] = useState(false);
   const [fatal, setFatal] = useState(false);
   useEffect(() => {
+    const previousTitle = document.title;
+    document.title = { professional: "专业面试", culture: "文化面试", hr: "定薪" }[info?.kind] || "面试排队";
+    return () => { document.title = previousTitle; };
+  }, [info?.kind]);
+  useEffect(() => {
     let active = true;
     setInfo(null); setToken(""); setFatal(false); setError("");
     publicQueueApi.link(linkToken).then(async (result) => {
