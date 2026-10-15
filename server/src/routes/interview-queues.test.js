@@ -16,7 +16,7 @@ async function setup(t, { role = "ADMIN", pages = ["interviews"], kind = "cultur
   process.env.JWT_SECRET = crypto.randomBytes(32).toString("hex");
   const accessKey = crypto.randomBytes(6).toString("hex");
   const link = { id: linkId, queueId, kind, token: crypto.randomBytes(24).toString("base64url"), tokenVersion: 0, active: true, expiresAt: null, requireKey: kind !== "registration", keyEnc: encrypt(accessKey), keyHash: await bcrypt.hash(accessKey, 4) };
-  const session = { id: sessionId, name: "测试大学", school: "测试大学", status: "draft", showSalaryOnsite: true, showSalaryReferral: false };
+  const session = { id: sessionId, name: "测试大学", school: "测试大学", location: "原现场地址", status: "draft", showSalaryOnsite: true, showSalaryReferral: false };
   const queue = { id: queueId, sessionId, revision: 0, session, links: [link], _count: { entries: 0 } };
   link.queue = queue;
   const app = Fastify();
@@ -31,7 +31,7 @@ async function setup(t, { role = "ADMIN", pages = ["interviews"], kind = "cultur
   app.setErrorHandler((err, _req, reply) => reply.code(err.statusCode || 500).send({ error: err.code || "request_error", message: err.message }));
   app.decorate("prisma", {
     user: { findUnique: async () => ({ id: userId, role, tokenVersion: 0, isActive: true, accessPolicy: { pageKeys: pages, moduleKeys: [] }, departmentScopes: [], jobScopes: [] }) },
-    campusSession: { findMany: async () => [{ ...session, interviewQueue: queue }], findUnique: async () => session },
+    campusSession: { findMany: async () => [{ ...session, interviewQueue: queue }], findUnique: async () => session, update: async ({ data }) => { Object.assign(session, data); return { location: session.location }; } },
     interviewQueue: { findUnique: async () => queue, update: async () => queue },
     interviewQueueLink: { findUnique: async ({ where }) => where.token === link.token || where.id === link.id ? link : null },
     job: { findMany: async ({ where, select }) => jobs.filter((job) => matches(job, where)).map((job) => pick(job, select)), findFirst: async ({ where, select }) => pick(jobs.find((job) => matches(job, where)), select) },
@@ -190,5 +190,82 @@ test("三个分享角色同步看到专场全部待定及来源，专业文化�
     assert.equal(response.json().entries.filter((row) => row.stage !== "pending")[0].stage, kind === "hr" ? "salary" : kind);
     assert.equal(response.json().entries.length, 4);
     if (kind !== "hr") for (const row of response.json().entries) { assert.equal(row.email, undefined); assert.equal(row.salaryBase, undefined); assert.equal(row.salaryStatus, undefined); }
+  }
+});
+
+test("专业与 HR 会话可浏览有效校招 JD，权限、薪资隐藏、撤销及旧会话均生效", async (t) => {
+  for (const kind of ["professional", "hr", "culture"]) {
+    const { app, link, jobs } = await setup(t, { kind });
+    const headers = { authorization: `Bearer ${app.jwt.sign({ aud: "interview-queue-share", sub: link.id, kind, queueId, tv: 0 })}` };
+    for (const [index, status] of [[0, 200], [1, 200], [2, 404], [3, 404]]) {
+      const response = await app.inject({ url: `/api/public/interview-queues/share/jobs/${jobs[index].id}`, headers });
+      assert.equal(response.statusCode, kind === "culture" ? 403 : status);
+      if (response.statusCode === 200) {
+        assert.equal(response.json().job.evaluationModel, undefined);
+        assert.equal(response.json().job.salary, index === 0 ? jobs[0].salary : null);
+        assert.equal(response.json().job.description, jobs[index].description);
+      }
+    }
+    link.tokenVersion++;
+    assert.equal((await app.inject({ url: `/api/public/interview-queues/share/jobs/${jobs[0].id}`, headers })).statusCode, 401);
+    link.active = false;
+    assert.equal((await app.inject({ url: `/api/public/interview-queues/share/jobs/${jobs[0].id}`, headers })).statusCode, 410);
+  }
+  const { app, headers, jobs } = await setup(t);
+  assert.equal((await app.inject({ url: `/api/interview-queues/${sessionId}/jobs/${jobs[0].id}`, headers })).statusCode, 200);
+  assert.equal((await app.inject({ url: `/api/public/interview-queues/share/jobs/${jobs[0].id}`, headers })).statusCode, 403);
+  const restricted = await setup(t, { role: "RECRUITER", pages: ["candidates"] });
+  assert.equal((await restricted.app.inject({ url: `/api/interview-queues/${sessionId}/jobs/${jobs[0].id}`, headers: restricted.headers })).statusCode, 403);
+});
+
+test("HR 方向修改和待定重新排队经过实际动作接口，校验确认、版本、专场、角色及分享状态", async (t) => {
+  for (const kind of ["hr", "professional", "culture"]) {
+    const { app, link } = await setup(t, { kind });
+    const entry = { id: userId, queueId, stage: "pending", professionalResult: "pending", updatedAt: "2026-10-15T01:00:00.000Z", jobDirection: "原岗位" };
+    let writes = 0;
+    app.prisma.interviewQueueEntry = {
+      findMany: async ({ where }) => where.queueId === entry.queueId && where.id.in.includes(entry.id) ? [entry] : [],
+      findFirst: async () => ({ phaseEnteredAt: new Date(Date.now() + 10000) }),
+      updateMany: async ({ data }) => { writes++; Object.assign(entry, data); },
+    };
+    const headers = { authorization: `Bearer ${app.jwt.sign({ aud: "interview-queue-share", sub: link.id, kind, queueId, tv: 0 })}` };
+    const send = (payload) => app.inject({ method: "POST", url: "/api/public/interview-queues/share/actions", headers, payload });
+    const request = () => ({ action: "requeue", targetStage: "culture", items: [{ id: entry.id, updatedAt: new Date(entry.updatedAt).toISOString() }], confirmed: true });
+    if (kind !== "hr") {
+      assert.equal((await send(request())).statusCode, 403);
+      assert.equal((await send({ ...request(), action: "direction", jobDirection: "新岗位" })).statusCode, kind === "culture" ? 403 : 409);
+      assert.equal(writes, 0); continue;
+    }
+    for (const extra of [{ confirmed: false }, { targetStage: "salary" }]) assert.equal((await send({ ...request(), ...extra })).statusCode, 400);
+    assert.equal((await send({ ...request(), items: [{ id: entry.id, updatedAt: new Date().toISOString() }] })).statusCode, 409);
+    const oldQueue = entry.queueId; entry.queueId = "other-queue";
+    assert.equal((await send(request())).statusCode, 409); entry.queueId = oldQueue;
+    assert.equal((await send({ ...request(), action: "direction", jobDirection: "新岗位" })).statusCode, 200);
+    assert.equal(entry.jobDirection, "新岗位"); assert.equal(entry.stage, "pending"); assert.equal(entry.professionalResult, "pending");
+    const stale = request();
+    assert.equal((await send(request())).statusCode, 200);
+    assert.equal(entry.stage, "culture"); assert.equal(entry.professionalResult, null); assert.equal(entry.cultureStartedAt, null);
+    assert.equal((await send(stale)).statusCode, 409);
+    entry.stage = "pending"; link.active = false;
+    assert.equal((await send(request())).statusCode, 410); assert.equal(writes, 2);
+  }
+  const { app, headers } = await setup(t, { role: "VIEWER" });
+  assert.equal((await app.inject({ method: "POST", url: `/api/interview-queues/${sessionId}/actions`, headers, payload: { action: "requeue", targetStage: "professional", items: [{ id: userId, updatedAt: new Date().toISOString() }], confirmed: true } })).statusCode, 403);
+});
+
+test("登记海报读取专场地址；更新持久到同一专场，限制长度、空白、只读和匿名访问", async (t) => {
+  const { app, headers, link } = await setup(t);
+  const list = () => app.inject({ url: "/api/interview-queues/", headers });
+  assert.equal((await list()).json().sessions[0].location, "原现场地址");
+  const url = `/api/interview-queues/${sessionId}/location`;
+  for (const location of [" ", "地".repeat(201)]) assert.equal((await app.inject({ method: "PATCH", url, headers, payload: { location } })).statusCode, 400);
+  const response = await app.inject({ method: "PATCH", url, headers, payload: { location: "  学生活动中心 201 室  " } });
+  assert.equal(response.statusCode, 200); assert.equal(response.json().location, "学生活动中心 201 室");
+  assert.equal((await list()).json().sessions[0].location, "学生活动中心 201 室");
+  const anonymous = { authorization: `Bearer ${app.jwt.sign({ aud: "interview-queue-share", sub: link.id, kind: link.kind, queueId, tv: 0 })}` };
+  assert.equal((await app.inject({ method: "PATCH", url, headers: anonymous, payload: { location: "错误修改" } })).statusCode, 401);
+  for (const access of [{ role: "VIEWER" }, { role: "RECRUITER", pages: ["candidates"] }]) {
+    const restricted = await setup(t, access);
+    assert.equal((await restricted.app.inject({ method: "PATCH", url, headers: restricted.headers, payload: { location: "错误修改" } })).statusCode, 403);
   }
 });

@@ -18,6 +18,7 @@ export default function InterviewQueue({ screen = false }) {
   const [busy, setBusy] = useState(false);
   const read = useMemo(() => (revision) => queueApi.data(sessionId, revision), [sessionId]);
   const write = useMemo(() => (body) => queueApi.action(sessionId, body), [sessionId]);
+  const loadJob = useMemo(() => (jobId) => queueApi.job(sessionId, jobId), [sessionId]);
   const load = useCallback(async () => {
     try { const result = await queueApi.list(); setSessions(result.sessions); setError(""); }
     catch (err) { setError(queueErrorMessage(err)); }
@@ -35,7 +36,7 @@ export default function InterviewQueue({ screen = false }) {
     try { await queueApi.stop(stopping.session.id, stopping.kind); setStopping(null); await load(); toast("已停止分享，原链接立即失效", "success"); }
     catch (err) { toast(queueErrorMessage(err), "error"); } finally { setBusy(false); }
   }
-  if (sessionId) return <div>{!screen && <Link to="/interviews" className="inline-flex items-center gap-2 text-sm text-brand mb-5"><I name="arrow-left" size={16} />返回大学专场</Link>}<QueueBoard key={sessionId} read={read} write={write} canWrite={canWrite} screen={screen} /></div>;
+  if (sessionId) return <div>{!screen && <Link to="/interviews" className="inline-flex items-center gap-2 text-sm text-brand mb-5"><I name="arrow-left" size={16} />返回大学专场</Link>}<QueueBoard key={sessionId} read={read} write={write} loadJob={loadJob} canWrite={canWrite} screen={screen} /></div>;
   return <div className="space-y-5">
     <div className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="text-2xl font-bold text-navy-700">大学专场面试排队</h1><p className="text-sm text-gray-600 mt-2">关联校招创建的全部大学专场 · 专业面试 → 文化面试 → 定薪／待定</p></div><div className="flex gap-2"><Button as={Link} to="/interviews/schedule" size="sm" variant="ghost">面试日程</Button><Button size="sm" variant="secondary" onClick={load}>刷新</Button></div></div>
     {error && <p className="text-sm text-red-500">{error}</p>}

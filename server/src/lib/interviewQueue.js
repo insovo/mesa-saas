@@ -46,18 +46,30 @@ export function queueMutation(rows, body, role) {
   const allowed = {
     professional: ["professional-result", "professional-timer", "direction"],
     culture: ["culture-result", "culture-timer"],
-    hr: ["salary"],
-    staff: ["professional-result", "professional-timer", "direction", "culture-result", "culture-timer", "salary"],
+    hr: ["salary", "direction", "requeue"],
+    staff: ["professional-result", "professional-timer", "direction", "culture-result", "culture-timer", "salary", "requeue"],
   };
   if (!allowed[role]?.includes(action)) throw queueError("无权执行该操作", 403, "queue_role_forbidden");
   if (new Set(body.items.map((item) => item.id)).size !== body.items.length) throw queueError("不能重复选择同一人员");
-  const stage = action.startsWith("professional") || action === "direction" ? "professional" : action.startsWith("culture") ? "culture" : "salary";
-  if (rows.length !== body.items.length || rows.some((row) => row.stage !== stage || !body.items.some((item) => item.id === row.id && new Date(item.updatedAt).getTime() === new Date(row.updatedAt).getTime()))) {
+  let stages = action.startsWith("professional") ? ["professional"] : action.startsWith("culture") ? ["culture"] : ["salary"];
+  if (action === "requeue") stages = ["pending"];
+  if (action === "direction") stages = role === "professional" ? ["professional"] : role === "hr" ? ["salary", "pending"] : ["professional", "salary", "pending"];
+  if (rows.length !== body.items.length || rows.some((row) => !stages.includes(row.stage) || !body.items.some((item) => item.id === row.id && new Date(item.updatedAt).getTime() === new Date(row.updatedAt).getTime()))) {
     throw queueError("记录已被其他面试官更新，请刷新后重试", 409, "queue_conflict");
   }
-  if ((action.startsWith("professional") || action === "direction") && rows.length !== 1) throw queueError("专业面试一次操作一位人员");
+  if ((action.startsWith("professional") || action === "direction" || action === "requeue") && rows.length !== 1) throw queueError("此操作一次操作一位人员");
   if (!action.endsWith("timer") && body.confirmed !== true) throw queueError("请二次确认后提交", 400, "queue_confirmation_required");
   const now = new Date();
+  const stage = rows[0].stage;
+  if (action === "requeue") {
+    if (!["professional", "culture"].includes(body.targetStage)) throw queueError("请选择专业面试或文化面试队列");
+    return {
+      stage: body.targetStage, phaseEnteredAt: now,
+      professionalResult: body.targetStage === "culture" && rows[0].professionalResult === "passed" ? "passed" : null,
+      professionalStartedAt: body.targetStage === "culture" && rows[0].professionalResult === "passed" ? rows[0].professionalStartedAt : null,
+      cultureResult: null, cultureStartedAt: null, cultureGroupId: null, salaryStatus: null,
+    };
+  }
   if (action.endsWith("timer")) {
     const key = action === "professional-timer" ? "professionalStartedAt" : "cultureStartedAt";
     if (rows.some((row) => row[key])) throw queueError("计时已开始，请刷新查看", 409, "queue_conflict");
@@ -98,6 +110,10 @@ export async function mutateQueue(prisma, queueId, body, role, validateActor = a
       return { ok: true };
     }
     const data = queueMutation(rows, body, role);
+    if (body.action === "requeue") {
+      const last = await tx.interviewQueueEntry.findFirst({ where: { queueId, stage: body.targetStage }, orderBy: { phaseEnteredAt: "desc" }, select: { phaseEnteredAt: true } });
+      data.phaseEnteredAt = new Date(Math.max(Date.now(), last ? new Date(last.phaseEnteredAt).getTime() + 1 : 0));
+    }
     const updatedAt = new Date(Math.max(Date.now(), ...rows.map((row) => new Date(row.updatedAt).getTime() + 1)));
     await tx.interviewQueueEntry.updateMany({ where: { queueId, id: { in: rows.map((row) => row.id) } }, data: { ...data, updatedAt } });
     return { ok: true };

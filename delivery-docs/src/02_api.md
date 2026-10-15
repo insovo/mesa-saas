@@ -1152,7 +1152,7 @@ Header 必填:`X-Perf-Access-Key: <明文密钥>`
 
 ### 19.2.1 岗位分享给 HR
 
-多选岗位生成三天有效链接／二维码，公开 HR 查看 JD、批量标记现场面试／内推、三项新建 JD。API 与权限／默认值见 [岗位分享说明](08_campus_job_sharing.md)。登录路径 `/api/campus/jobs/share-links`；匿名前缀 `/api/public/campus-job-shares`，通过 `X-Campus-Job-Share` 传 token。
+多选岗位生成三天有效链接／二维码，公开 HR 查看 JD、批量标记现场面试／内推（确认展示所选名称）、新建 JD 可选类型；分享二维码提供操作指南海报。API 与权限／默认值见 [岗位分享说明](08_campus_job_sharing.md)。登录路径 `/api/campus/jobs/share-links`；匿名前缀 `/api/public/campus-job-shares`，通过 `X-Campus-Job-Share` 传 token。
 
 ## 19.3 概览（原台账）
 
@@ -1272,7 +1272,9 @@ AuthGuard 外,学生**不注册不登录**。会话:首次上传前 `POST /auth/
 | GET | `/` | 全部大学专场（含 draft/live/closed）、队列人数和可管理者的分享信息 |
 | POST | `/:sessionId` | 幂等创建排队 |
 | GET | `/:sessionId?revision=` | 四阶段人员和岗位；版本一致仅返回 unchanged/revision |
-| POST | `/:sessionId/actions` | 计时、结果、方向、批量定薪和逐人建议，见下文 |
+| POST | `/:sessionId/actions` | 计时、结果、方向、批量定薪、逐人建议和待定重排，见下文 |
+| GET | `/:sessionId/jobs/:jobId` | 面试排队权限；有效校招 JD 公开字段，薪资遵循专场展示设置 |
+| PATCH | `/:sessionId/location` | interviews 可编辑权限；`{location}` 去空白后 1–200 字，保存同一 CampusSession.location，返回 `{location}`；VIEWER／匿名不可修改 |
 | POST | `/:sessionId/links/:kind` | kind=registration/professional/culture/hr；body requireKey/accessKey/expirySeconds，返回二维码所用 path、密钥和有效期 |
 | DELETE | `/:sessionId/links/:kind` | 立即停止分享并使角色会话失效 |
 
@@ -1286,12 +1288,15 @@ AuthGuard 外,学生**不注册不登录**。会话:首次上传前 `POST /auth/
 | GET | `/registration/jobs/:jobId` | 有效登记 X-Queue-Link；UUID 岗位；返回有效校招 JD 公开字段（含内推），薪资按专场设置隐藏。不返回评价模型、人员、权限和内部字段 |
 | POST | `/share/open` | `X-Queue-Link` + `{accessKey?}` → 12h 角色 JWT；每次使用仍检查分享状态 |
 | GET | `/share/data?revision=` | 角色 Bearer JWT，返回该角色本阶段和专场全部待定记录；pendingFrom 标明 professional/culture/salary；人员含内部 suggestions（id/authorRole/content/createdAt），专业/文化不返回邮箱/薪资 |
-| POST | `/share/actions` | 角色 Bearer JWT，操作仅限对应阶段 |
+| GET | `/share/jobs/:jobId` | 专业／HR Bearer JWT；有效校招 JD 公开字段（含内推），薪资按专场设置；每次检查分享状态和版本 |
+| POST | `/share/actions` | 角色 Bearer JWT；HR 可对待定执行方向修改／重新排队，其余操作限对应阶段 |
 | POST | `/register` | 登记 X-Queue-Link + `{name,school,major,degree,gradYear,languageAbility,phone,jobDirection,email}` → 本记录查询 JWT（30d）；同专场邮箱重复 409；事务内按名称校验当前有效 onsite 校招岗位，不符 422 queue_job_not_onsite |
 | POST | `/recover/send-code` | `{email}`，如已登记发送验证码；生产邮件未配置 424 |
 | POST | `/recover/verify` | `{email,code}` → 该邮箱全部记录查询 JWT（30d）；验证码不可重放 |
 | GET | `/mine` | 学生 Bearer JWT，只返回本人记录、实际结果和等待人数，不返回内部建议，不受登记链接期限影响 |
 
-动作 body：`{items:[{id,updatedAt}],action,confirmed?,...fields}`，最多 500 人，重复/跨队列/已流转/旧版本拒绝，不部分落盘。`professional-timer` 一人、`culture-timer` 多人共用开始时间与 groupId；重复开始 409。`professional-result`/`culture-result` 需要 `result=passed|pending`；`direction` 需要 jobDirection；`salary` 可按需提供 salaryBase（0–10000000）、salaryFactor（0–1000）、salaryStatus（accepted|abandoned）。`suggestion` 一次一人，携带 content（去空白后 1–5000 字），按条追加内部建议，authorRole 从认证角色确定；专业/文化/HR 只能在对应当前阶段添加，后台可按工作台权限添加。建议保存递增 queue revision，不改人员 updatedAt、阶段或计时。除开始计时和添加建议外均需要 `confirmed:true`，结果/方向前端二次确认；HR 确认展示字段与人员。
+动作 body：`{items:[{id,updatedAt}],action,confirmed?,...fields}`，最多 500 人，重复/跨队列/已流转/旧版本拒绝，不部分落盘。`professional-timer` 一人、`culture-timer` 多人共用开始时间与 groupId；重复开始 409。`professional-result`/`culture-result` 需要 `result=passed|pending`；`direction` 需要 jobDirection，一次一人：专业仅专业面试阶段，HR 限定薪／待定，后台可操作上述阶段；`salary` 可按需提供 salaryBase（0–10000000）、salaryFactor（0–1000）、salaryStatus（accepted|abandoned）。`suggestion` 一次一人，携带 content（去空白后 1–5000 字），按条追加内部建议，authorRole 从认证角色确定；专业/文化/HR 只能在对应当前阶段添加，后台可按工作台权限添加。建议保存递增 queue revision，不改人员 updatedAt、阶段或计时。除开始计时和添加建议外均需要 `confirmed:true`，结果/方向前端二次确认；HR 确认展示字段与人员。
+
+`requeue` 一次一人，需 `targetStage=professional|culture` 和 `confirmed:true`；仅 HR／可编辑后台可将待定人员加入目标队尾。重排清除需重做阶段及后续的结果／计时／群组、薪资接受状态；保留资料、金额和历史建议。文化重排保留已通过的专业结果，原专业待定清空而不伪造通过；同专场事务锁内查询队尾并生成严格更晚的 phaseEnteredAt。
 
 角色错误 403、旧人员版本 409 `queue_conflict`、分享停止或过期 410 `queue_link_inactive`、分享会话版本不符 401 `queue_session_invalid`。学生/角色 JWT audience 不能进入后台；公开数据 no-store，链接 token 通过请求头传 API，避免进入 API 请求 URL。
