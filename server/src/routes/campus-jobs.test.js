@@ -40,7 +40,7 @@ async function fixture(t, { manage = true, page = true, changed = false, failMod
       findUnique: async () => null,
       create: async ({ data }) => { const session = { id: "10000000-0000-4000-8000-000000000009", ...data }; sessions.push(session); return session; },
     },
-    campusApplication: { findMany: async () => [], count: async () => applications, groupBy: async () => [] },
+    campusApplication: { findMany: async () => [], count: async () => applications, groupBy: async ({ where }) => applications && (!where?.jobId?.in || where.jobId.in.includes(jobId)) ? [{ jobId, _count: { _all: applications } }] : [] },
     campusSessionJob: {
       createMany: async ({ data, skipDuplicates }) => { assert.equal(skipDuplicates, true); writes.push({ type: "attach", data }); for (const row of data) if (!links.some((link) => link.sessionId === row.sessionId && link.jobId === row.jobId)) links.push(row); },
       updateMany: async ({ where, data }) => { writes.push({ type: "links", where, data }); const targets = links.filter((row) => where.jobId.in ? where.jobId.in.includes(row.jobId) : where.jobId === row.jobId); targets.forEach((row) => Object.assign(row, data)); return { count: targets.length }; },
@@ -199,6 +199,59 @@ test("有投递的岗位不能移除；无投递岗位可移除并恢复到全�
   assert.equal(removed.json().available.length, 1);
   assert.equal((await empty.app.inject({ method: "POST", url: base, payload: { jobId, kind: "referral" } })).statusCode, 201);
   assert.equal(empty.links.every((row) => row.kind === "referral"), true);
+});
+
+test("批量删除统一目录中的多个岗位，保留 JD 和全部专场关联并支持恢复", async (t) => {
+  const { app, job, job2, links } = await fixture(t, { twoJobs: true });
+  const before = structuredClone(links);
+  const response = await app.inject({ method: "POST", url: `${base}/bulk-delete`, payload: { ids: [jobId, jobId2], confirmed: true } });
+  assert.equal(response.statusCode, 200, response.body);
+  assert.deepEqual(response.json(), { removed: 2 });
+  assert.equal(job.campusActive, false); assert.equal(job2.campusActive, false);
+  assert.equal(job.title, "校招工程师"); assert.deepEqual(job2.benefits, ["补充医保"]);
+  assert.deepEqual(links, before);
+  const removed = (await app.inject({ url: base })).json();
+  assert.equal(removed.items.length, 0); assert.equal(removed.available.length, 2);
+  assert.equal((await app.inject({ method: "POST", url: base, payload: { jobId, kind: "onsite" } })).statusCode, 201);
+  assert.equal(job.campusActive, true); assert.equal(links.length, before.length);
+});
+
+test("批量删除遇到已有投递、已移除或不存在的岗位时整批拒绝", async (t) => {
+  const applied = await fixture(t, { twoJobs: true, applications: 1 });
+  const blocked = await applied.app.inject({ method: "POST", url: `${base}/bulk-delete`, payload: { ids: [jobId, jobId2], confirmed: true } });
+  assert.equal(blocked.statusCode, 409, blocked.body);
+  assert.equal(blocked.json().error, "campus_job_has_applications");
+  assert.match(blocked.json().message, /校招工程师/);
+  assert.equal(applied.writes.length, 0); assert.equal(applied.job2.campusActive, true);
+  const eligible = await applied.app.inject({ method: "POST", url: `${base}/bulk-delete`, payload: { ids: [jobId2], confirmed: true } });
+  assert.equal(eligible.statusCode, 200, eligible.body);
+  assert.equal(applied.job.campusActive, true);
+  const changed = await applied.app.inject({ method: "POST", url: `${base}/bulk-delete`, payload: { ids: [jobId, jobId2], confirmed: true } });
+  assert.equal(changed.json().error, "campus_jobs_changed");
+  const missing = await fixture(t);
+  assert.equal((await missing.app.inject({ method: "POST", url: `${base}/bulk-delete`, payload: { ids: [jobId, jobId2], confirmed: true } })).statusCode, 409);
+  assert.equal(missing.writes.length, 0);
+});
+
+test("批量删除必须拥有管理权限、岗位 tab 及所选岗位范围", async (t) => {
+  for (const options of [{ manage: false }, { page: false }, { role: "CAMPUS_INTERVIEWER", tabs: ["ledger"] }]) {
+    const { app, writes } = await fixture(t, options);
+    assert.equal((await app.inject({ method: "POST", url: `${base}/bulk-delete`, payload: { ids: [jobId], confirmed: true } })).statusCode, 403);
+    assert.equal(writes.length, 0);
+  }
+  const scoped = await fixture(t, { noScope: true });
+  assert.equal((await scoped.app.inject({ method: "POST", url: `${base}/bulk-delete`, payload: { ids: [jobId], confirmed: true } })).statusCode, 409);
+  assert.equal(scoped.writes.length, 0);
+  const allowed = await fixture(t, { role: "CAMPUS_INTERVIEWER", tabs: ["jobs"] });
+  assert.equal((await allowed.app.inject({ method: "POST", url: `${base}/bulk-delete`, payload: { ids: [jobId], confirmed: true } })).statusCode, 200);
+});
+
+test("批量删除拒绝空选、重复 ID、非法 ID、超限和未确认请求", async (t) => {
+  const { app, writes } = await fixture(t);
+  for (const payload of [{ ids: [], confirmed: true }, { ids: [jobId, jobId], confirmed: true }, { ids: ["invalid"], confirmed: true }, { ids: Array.from({ length: 1001 }, (_, i) => `10000000-0000-4000-8000-${String(i).padStart(12, "0")}`), confirmed: true }, { ids: [jobId] }, { ids: [jobId], confirmed: false }]) {
+    assert.equal((await app.inject({ method: "POST", url: `${base}/bulk-delete`, payload })).statusCode, 400);
+  }
+  assert.equal(writes.length, 0);
 });
 
 test("旧专场写接口不能创建独立配置", async (t) => {

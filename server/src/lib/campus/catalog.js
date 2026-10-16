@@ -1,9 +1,13 @@
 export const activeCampusJob = { recruitmentType: "campus", campusActive: true };
 
+export async function lockCampusCatalog(tx) {
+  // 目录变更和投递串行处理，避免移除刚收到投递的岗位。
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(68421014)`;
+}
+
 export async function catalogTransaction(prisma, run) {
   return prisma.$transaction(async (tx) => {
-    // 新建专场和新建岗位必须串行补齐关联，避免同时创建时互相不可见。
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(68421014)`;
+    await lockCampusCatalog(tx);
     return run(tx);
   }, { timeout: 30000 });
 }

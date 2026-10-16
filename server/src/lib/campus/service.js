@@ -2,6 +2,7 @@
 // 全部为「事务内」函数:调用方传 tx,保证 学生 / 版本 / 投递 / Candidate 同步原子完成。
 
 import { QUOTA_STATUS, uploadsAllowed } from "./shared.js";
+import { lockCampusCatalog } from "./catalog.js";
 
 export function httpError(message, statusCode, code) {
   return Object.assign(new Error(message), { statusCode, code });
@@ -52,6 +53,7 @@ export async function createVersionTx(tx, { applicant, session, resume, uploaded
 
 // 新建 / 复活投递:岗位属于专场 → 非重复 → 额度 → 写行 → 首个投递同步 Candidate.jobId
 export async function createApplicationTx(tx, { applicant, session, jobId, source, resumeVersionId = null, matchRunId = null, scoreRaw = null, scoreShown = null, evaluationId = null }) {
+  await lockCampusCatalog(tx);
   const sj = await tx.campusSessionJob.findUnique({ where: { sessionId_jobId: { sessionId: session.id, jobId } }, include: { job: { select: { campusActive: true, recruitmentType: true } } } });
   if (!sj || !sj.job.campusActive || sj.job.recruitmentType !== "campus") throw httpError("校招岗位已移除或不存在", 404, "campus_job_not_in_session");
   const dup = await tx.campusApplication.findUnique({ where: { applicantId_jobId: { applicantId: applicant.id, jobId } } });

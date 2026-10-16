@@ -58,6 +58,7 @@ export function useCampusJobs(onChanged) {
     return run(() => resources.campus.updateJobConfig(sj.id, body));
   };
   const remove = (sj) => run(() => resources.campus.removeJob(sj.id), true);
+  const bulkRemove = (ids) => run(() => resources.campus.bulkRemoveJobs(ids), true);
   const move = (idx, dir) => {
     const next = [...items]; const target = idx + dir;
     if (mutation.current || target < 0 || target >= next.length) return;
@@ -118,5 +119,5 @@ export function useCampusJobs(onChanged) {
 
   const dismissModelNotice = () => setModelNotice((prev) => prev?.status === "running" ? prev : null);
 
-  return { items, available, loading, error, busy, mutating, bulkProgress, modelNotice, dismissModelNotice, load, add, patch, bulkPatch, remove, move, generateModel, bulkGenerateModels };
+  return { items, available, loading, error, busy, mutating, bulkProgress, modelNotice, dismissModelNotice, load, add, patch, bulkPatch, remove, bulkRemove, move, generateModel, bulkGenerateModels };
 }

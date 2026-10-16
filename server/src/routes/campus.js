@@ -455,6 +455,29 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
     const affected = await app.prisma.campusApplication.findMany({ where: { jobId: { in: jobIds }, status: { in: QUOTA_STATUS } }, distinct: ["applicantId"], select: { applicantId: true } });
     for (const row of affected) await refreshAutoEvaluation(app, row.applicantId);
   }
+  async function removeCatalogJobs(req, reply, ids) {
+    const where = await catalogWhere(req, { id: { in: ids } });
+    try {
+      await catalogTransaction(app.prisma, async (tx) => {
+        const selected = await tx.job.findMany({ where, select: { id: true, title: true } });
+        if (selected.length !== ids.length) throw Object.assign(new Error("所选岗位已变化或不可访问，请刷新后重试"), { code: "campus_jobs_changed" });
+        const applied = await tx.campusApplication.groupBy({ by: ["jobId"], where: { jobId: { in: ids } }, _count: { _all: true } });
+        if (applied.length) {
+          const blocked = selected.filter((job) => applied.some((row) => row.jobId === job.id));
+          throw Object.assign(new Error(`「${blocked.map((job) => job.title).join("、")}」已有投递，不能删除；本次未删除任何岗位，请刷新后重新选择`), { code: "campus_job_has_applications" });
+        }
+        const result = await tx.job.updateMany({ where, data: { campusActive: false } });
+        if (result.count !== ids.length) throw Object.assign(new Error("所选岗位已变化，请刷新后重试"), { code: "campus_jobs_changed" });
+      });
+      return true;
+    } catch (err) {
+      if (["campus_jobs_changed", "campus_job_has_applications"].includes(err.code)) {
+        reply.code(409).send({ error: err.code, message: err.message });
+        return false;
+      }
+      throw err;
+    }
+  }
 
   app.get("/jobs", async (req) => {
     const jobs = await app.prisma.job.findMany({ where: await catalogWhere(req, {}, false), orderBy: [{ campusSortOrder: "asc" }, { createdAt: "asc" }], select: catalogSelect });
@@ -552,10 +575,17 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
     if (!(await requireManage(req, reply))) return;
     const job = await loadCatalogJob(req, reply);
     if (!job) return;
-    const count = await app.prisma.campusApplication.count({ where: { jobId: job.id } });
-    if (count) return reply.code(409).send({ error: "campus_job_has_applications", message: `已有 ${count} 条投递,不能移除(可关闭参与匹配)` });
-    await catalogTransaction(app.prisma, (tx) => tx.job.update({ where: { id: job.id }, data: { campusActive: false } }));
+    if (!(await removeCatalogJobs(req, reply, [job.id]))) return;
     return reply.code(204).send();
+  });
+
+  app.post("/jobs/bulk-delete", { schema: { body: { type: "object", additionalProperties: false, required: ["ids", "confirmed"], properties: {
+    ids: { type: "array", minItems: 1, maxItems: 1000, uniqueItems: true, items: { type: "string", format: "uuid" } }, confirmed: { const: true },
+  } } } }, async (req, reply) => {
+    if (!(await requireManage(req, reply))) return;
+    if (!(await removeCatalogJobs(req, reply, req.body.ids))) return;
+    await writeLog(app.prisma, { req, action: "campus.job.bulk_delete", entityType: "Job", diff: { ids: req.body.ids, count: req.body.ids.length, allSessions: true } });
+    return { removed: req.body.ids.length };
   });
 
   app.post("/jobs/reorder", { schema: { body: { type: "object", required: ["ids"], additionalProperties: false, properties: { ids: { type: "array", items: { type: "string", format: "uuid" }, maxItems: 200, uniqueItems: true } } } } }, async (req, reply) => {
