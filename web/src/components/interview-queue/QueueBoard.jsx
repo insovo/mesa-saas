@@ -83,7 +83,14 @@ export default function QueueBoard({ read, readRevision, write, remove, loadJob,
     if (!readRevision) return;
     return watchQueueChanges({
       check: async () => {
-        const result = await readRevision();
+        let result;
+        try { result = await readRevision(); }
+        catch (err) {
+          if (!alive.current) return;
+          if (err.response?.status !== 404) throw err;
+          await refresh(false, true);
+          return;
+        }
         if (!alive.current) return;
         if (result.revision !== revision.current) await refresh(false, true);
         else setError("");
