@@ -1276,7 +1276,7 @@ AuthGuard 外,学生**不注册不登录**。会话:首次上传前 `POST /auth/
 | --- | --- | --- |
 | GET | `/` | 全部大学专场（含 draft/live/closed）、队列人数和可管理者的分享信息 |
 | POST | `/:sessionId` | 幂等创建排队 |
-| GET | `/:sessionId?revision=` | 四阶段人员和岗位；版本一致仅返回 unchanged/revision |
+| GET | `/:sessionId?revision=` | 面试四阶段及内推人员和岗位；版本一致仅返回 unchanged/revision |
 | POST | `/:sessionId/actions` | 计时、结果、方向、批量定薪、逐人建议和待定重排，见下文 |
 | GET | `/:sessionId/jobs/:jobId` | 面试排队权限；有效校招 JD 公开字段，薪资遵循专场展示设置 |
 | PATCH | `/:sessionId/location` | interviews 可编辑权限；`{location}` 去空白后 1–200 字，保存同一 CampusSession.location，返回 `{location}`；VIEWER／匿名不可修改 |
@@ -1289,16 +1289,16 @@ AuthGuard 外,学生**不注册不登录**。会话:首次上传前 `POST /auth/
 
 | 方法 | 路径 | 鉴权 / 请求 |
 | --- | --- | --- |
-| GET | `/link` | `X-Queue-Link` 传链接 token，返回专场、角色、是否需要密钥和期限；登记还返回全部有效校招岗位选项及 kind，前端仅允许选择 onsite |
+| GET | `/link` | `X-Queue-Link` 传链接 token，返回专场、角色、是否需要密钥和期限；登记还返回全部有效校招岗位选项及 kind，现场优先展示并标注优先招聘，onsite/referral 均可登记 |
 | GET | `/registration/jobs/:jobId` | 有效登记 X-Queue-Link；UUID 岗位；返回有效校招 JD 公开字段（含内推），薪资按专场设置隐藏。不返回评价模型、人员、权限和内部字段 |
 | POST | `/share/open` | `X-Queue-Link` + `{accessKey?}` → 12h 角色 JWT；每次使用仍检查分享状态 |
-| GET | `/share/data?revision=` | 角色 Bearer JWT，专业／文化返回本角色当前阶段和专场全部待定记录，HR 返回四阶段；pendingFrom 标明 professional/culture/salary；人员含内部 suggestions（id/authorRole/content/createdAt），专业/文化不返回邮箱/薪资 |
+| GET | `/share/data?revision=` | 角色 Bearer JWT，专业／文化返回本角色当前阶段和专场全部待定记录，HR 返回面试四阶段及 referral；pendingFrom 标明 professional/culture/salary；人员含内部 suggestions（id/authorRole/content/createdAt），专业/文化不返回邮箱/薪资 |
 | GET | `/share/jobs/:jobId` | 专业／HR Bearer JWT；有效校招 JD 公开字段（含内推），薪资按专场设置；每次检查分享状态和版本 |
 | POST | `/share/actions` | 角色 Bearer JWT；HR 可对待定执行方向修改／重新排队，其余操作限对应阶段 |
-| POST | `/register` | 登记 X-Queue-Link + `{name,school,major,degree,gradYear,languageAbility,phone,jobDirection,email}` → 本记录查询 JWT（30d）；同专场邮箱重复 409；事务内按名称校验当前有效 onsite 校招岗位，不符 422 queue_job_not_onsite |
+| POST | `/register` | 登记 X-Queue-Link + `{name,school,major,degree,gradYear,languageAbility,phone,jobDirection,email}` → 本记录查询 JWT（30d）；同专场邮箱重复 409；事务内锁定目录并按名称校验有效校招岗位，onsite 初始 professional、referral 初始 referral；停止／移除／自填岗位 422 queue_job_unavailable |
 | POST | `/recover/send-code` | `{email}`，如已登记发送验证码；生产邮件未配置 424 |
 | POST | `/recover/verify` | `{email,code}` → 该邮箱全部记录查询 JWT（30d）；验证码不可重放 |
-| GET | `/mine` | 学生 Bearer JWT，只返回本人记录、实际结果和等待人数，不返回内部建议，不受登记链接期限影响 |
+| GET | `/mine` | 学生 Bearer JWT，只返回本人记录、实际结果和等待人数，referral 的 ahead=null（显示内推中，无排名），不返回内部建议，不受登记链接期限影响 |
 
 动作 body：`{items:[{id,updatedAt}],action,confirmed?,...fields}`，最多 500 人，重复/跨队列/已流转/旧版本拒绝，不部分落盘。`professional-timer` 一人、`culture-timer` 多人共用开始时间与 groupId；重复开始 409。`professional-result`/`culture-result` 需要 `result=passed|pending`；`direction` 需要 jobDirection，一次一人：专业仅专业面试阶段，HR 限定薪／待定，后台可操作上述阶段；`salary` 可按需提供 salaryBase（0–10000000）、salaryFactor（0–1000）、salaryStatus（accepted|abandoned）。`suggestion` 一次一人，携带 content（去空白后 1–5000 字），按条追加内部建议，authorRole 从认证角色确定；专业/文化/HR 只能在对应当前阶段添加，后台可按工作台权限添加。建议保存递增 queue revision，不改人员 updatedAt、阶段或计时。除开始计时和添加建议外均需要 `confirmed:true`，结果/方向前端二次确认；HR 确认展示字段与人员。
 
@@ -1318,6 +1318,6 @@ AuthGuard 外,学生**不注册不登录**。会话:首次上传前 `POST /auth/
 ### 20.9 HR 人员删除密钥及逐人删除（2026-10-16）
 
 - `PATCH /api/interview-queues/:sessionId/deletion-key`：需要后台可编辑 `interviews` 权限，body `{deletionKey:string}`，6–64 位字母数字。bcrypt 哈希存 `InterviewQueue.deletionKeyHash`，返回 `{deletionEnabled:true}`；更新立即生效，保持分享链接、访问密钥与期限。未设置默认禁止删除，保存后不回显。
-- `POST /api/interview-queues/:sessionId/entries/:entryId/delete`：后台可编辑权限；`POST /api/public/interview-queues/share/entries/:entryId/delete`：有效 HR Bearer JWT。两者 body 为 `{updatedAt:date-time,deletionKey:string,confirmed:true}`，成功 `{ok:true}`。一次一人，可删除四阶段人员；只影响当前队列记录和级联建议，不删除 Candidate、CampusApplicant 或其他队列记录。
+- `POST /api/interview-queues/:sessionId/entries/:entryId/delete`：后台可编辑权限；`POST /api/public/interview-queues/share/entries/:entryId/delete`：有效 HR Bearer JWT。两者 body 为 `{updatedAt:date-time,deletionKey:string,confirmed:true}`，成功 `{ok:true}`。一次一人，可删除面试四阶段及内推人员；只影响当前队列记录和级联建议，不删除 Candidate、CampusApplicant 或其他队列记录。
 - 删除在队列事务锁内复核分享有效性、当前哈希、人员版本和所属队列，成功递增 revision；失败回滚，不部分删除。未设置 403 `queue_deletion_key_not_configured`，密钥错误 403 `queue_deletion_key_invalid`，非 HR／只读 403，旧人员版本／记录不存在或跨队列 409 `queue_conflict`，分享失效仍沿用 410／401。每分钟每后台账号／HR 分享链接最多 10 次，多个 viewerId 共用链接额度。
 - 后台列表各专场及后台／HR data 的 `queue` 返回 `deletionEnabled:boolean`。所有读取 API 均不返回明文密钥或哈希。学生查询删除后无该条记录；其他页面由刷新获取最新版本。新增迁移 `20261016020000_interview_queue_deletion_key`。

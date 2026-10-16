@@ -85,7 +85,7 @@ export default function CampusJobDetail() {
           <div className="bg-white rounded-card shadow-card p-5">
             <div className="flex items-start gap-2">
               <h1 className="text-lg font-bold flex-1">{job.title}</h1>
-              <KindTag kind={job.kind} />
+              <KindTag kind={job.kind} />{job.kind === "onsite" && <span className="shrink-0 rounded-md bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600">优先招聘</span>}
             </div>
             <p className="text-xs text-gray-600 mt-1">{[job.dept, job.location, job.employment].filter(Boolean).join(" · ")}</p>
             <div className="flex flex-wrap gap-2 mt-3 text-[11px]">
