@@ -459,19 +459,14 @@ export default async function campusRoutes(app, { generateJobModel = buildCampus
     const where = await catalogWhere(req, { id: { in: ids } });
     try {
       await catalogTransaction(app.prisma, async (tx) => {
-        const selected = await tx.job.findMany({ where, select: { id: true, title: true } });
+        const selected = await tx.job.findMany({ where, select: { id: true } });
         if (selected.length !== ids.length) throw Object.assign(new Error("所选岗位已变化或不可访问，请刷新后重试"), { code: "campus_jobs_changed" });
-        const applied = await tx.campusApplication.groupBy({ by: ["jobId"], where: { jobId: { in: ids } }, _count: { _all: true } });
-        if (applied.length) {
-          const blocked = selected.filter((job) => applied.some((row) => row.jobId === job.id));
-          throw Object.assign(new Error(`「${blocked.map((job) => job.title).join("、")}」已有投递，不能删除；本次未删除任何岗位，请刷新后重新选择`), { code: "campus_job_has_applications" });
-        }
         const result = await tx.job.updateMany({ where, data: { campusActive: false } });
         if (result.count !== ids.length) throw Object.assign(new Error("所选岗位已变化，请刷新后重试"), { code: "campus_jobs_changed" });
       });
       return true;
     } catch (err) {
-      if (["campus_jobs_changed", "campus_job_has_applications"].includes(err.code)) {
+      if (err.code === "campus_jobs_changed") {
         reply.code(409).send({ error: err.code, message: err.message });
         return false;
       }

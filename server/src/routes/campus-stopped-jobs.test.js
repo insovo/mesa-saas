@@ -56,9 +56,12 @@ test("历史智能匹配结果不再泄露已停止岗位，恢复后按当前�
   assert.equal(response.json().run.results.length,2);
 });
 
-test("停止招聘后旧页面发起的新投递被后端拒绝",async t=>{
-  const {app}=await fixture(t);
-  const response=await app.inject({method:"POST",url:"/api/campus/public/applications",headers:{authorization:"Bearer local-student"},payload:{jobId,source:"direct"}});
-  assert.equal(response.statusCode,404,response.body);
-  assert.equal(response.json().error,"campus_job_not_in_session");
+test("停止招聘或移除后旧页面发起的新投递被后端拒绝",async t=>{
+  const {app,jobs}=await fixture(t);
+  for (const state of [{campusKind:"stopped",campusActive:true},{campusKind:"onsite",campusActive:false}]) {
+    Object.assign(jobs[0],state);
+    const response=await app.inject({method:"POST",url:"/api/campus/public/applications",headers:{authorization:"Bearer local-student"},payload:{jobId,source:"direct"}});
+    assert.equal(response.statusCode,404,response.body);
+    assert.equal(response.json().error,"campus_job_not_in_session");
+  }
 });
