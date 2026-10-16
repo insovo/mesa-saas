@@ -101,6 +101,12 @@ export default async function interviewQueueRoutes(app) {
     const queue = await app.prisma.interviewQueue.upsert({ where: { sessionId: req.params.sessionId }, create: { sessionId: req.params.sessionId }, update: {} });
     return { queueId: queue.id };
   });
+  app.get("/:sessionId/revision", { schema: { params: sessionParams } }, async (req, reply) => {
+    if (!(await staff(req, reply))) return;
+    const queue = await app.prisma.interviewQueue.findUnique({ where: { sessionId: req.params.sessionId }, select: { revision: true } });
+    if (!queue) throw queueError("面试排队不存在", 404, "queue_not_found");
+    return { revision: queue.revision };
+  });
   app.get("/:sessionId", { schema: { params: sessionParams, querystring: revisionSchema } }, async (req, reply) => {
     if (!(await staff(req, reply))) return;
     const queue = await loadQueue(app.prisma, req.params.sessionId);
@@ -221,6 +227,10 @@ export async function publicInterviewQueueRoutes(app) {
     if (link.requireKey && (!req.body.accessKey || !(await bcrypt.compare(req.body.accessKey, link.keyHash)))) throw queueError("访问密钥不正确", 401, "access_key_invalid");
     const station = queueStation(link.queue, link.kind, req.body.stationId);
     return { token: app.jwt.sign({ ...(station ? { stationId: station.id } : {}), aud: "interview-queue-share", sub: link.id, viewerId: crypto.randomUUID(), kind: link.kind, queueId: link.queueId, tv: link.tokenVersion }, { expiresIn: "12h" }), kind: link.kind };
+  });
+  app.get("/share/revision", async (req) => {
+    const link = await shareActor(req);
+    return { revision: link.queue.revision };
   });
   app.get("/share/data", { schema: { querystring: revisionSchema } }, async (req) => {
     const link = await shareActor(req);

@@ -54,6 +54,8 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
+      - name: Queue sync regression tests
+        run: node --test src/lib/queueSync.test.js
       - run: npm run build
       - name: Upload web artifact
         uses: actions/upload-artifact@v4
