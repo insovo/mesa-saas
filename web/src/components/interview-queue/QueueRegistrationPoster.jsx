@@ -36,9 +36,9 @@ const POSTER_CONTENT = {
     ],
   },
   hr: {
-    title: "HR 定薪 · 操作指南", subtitle: "处理面试、定薪与内推登记，统一沟通安排", qrTitle: "HR 扫码进入定薪", guideTitle: "HR 可以做什么", focus: 4,
+    title: "HR 定薪 · 操作指南", subtitle: "处理面试、定薪与内推登记，统一沟通安排", qrTitle: "HR 扫码进入工作台", guideTitle: "HR 可以做什么", focus: 4,
     steps: [
-      ["名单自动同步，核对当前阶段", "名单与结果自动更新；可切换各阶段，网络异常可手动刷新。"],
+      ["查看汇总，核对阶段与分配状态", "汇总查看全部人员、当前阶段及分配状态；名单与结果自动更新，异常可手动刷新。"],
       ["查看全部定薪人员，单人或批量修改", "基础薪资默认 8700、基数 13.5；可点击「修改定薪」或多选后「批量修改定薪」。"],
       ["确认接受／放弃，逐人添加建议", "只应用勾选字段，二次确认后保存；接受保留定薪页，放弃进入待定，可添加建议。"],
       ["修改岗位方向，待定重新排队", "定薪／待定可搜索岗位并查看 JD；待定重排专业／文化队尾，清除重做结果及计时。"],
@@ -112,8 +112,8 @@ const QueueRegistrationPoster = forwardRef(function QueueRegistrationPoster({ se
   if (kind === "professional" && routingEnabled && cultureOnsite) content.steps[1][1] = "选择通过或待定并二次确认；通过后进入文化阶段，由 HR 分配文化面试官。";
   if (kind === "professional" && !cultureOnsite) content.steps[1][1] = "通过后等待 HR 联系线上文化面试；待定转入待定页，结果需二次确认。";
   if (kind === "hr") {
-    if (routingEnabled) content.steps[0] = ["手动分配面试官，名单自动同步", cultureOnsite ? "专业／文化可分配、转派或撤回席位；流转后重新分配，名单自动更新。" : "专业可多选分配或转派；通过后 HR 线上联系后续，名单自动更新。"];
-    else if (!cultureOnsite) content.steps[0] = ["名单自动同步，安排线上后续", "名单自动更新；无现场文化面，HR 线上联系后续。"];
+    if (routingEnabled) content.steps[0] = ["待分配页分配，汇总查看或转派", cultureOnsite ? "待分配页多选分配；汇总查看已分配、转派或撤回；流转后重新分配，名单自动更新。" : "待分配页分配专业席位；汇总查看或转派，专业通过后 HR 线上联系后续。"];
+    else if (!cultureOnsite) content.steps[0] = ["汇总核对名单，安排线上后续", "汇总查看全部阶段；名单自动更新，无现场文化面时由 HR 线上联系后续。"];
   }
   if (kind === "hr") content.steps[0][1] += " 内推 Tab 查看内推登记。";
   const flow = content.flow || QUEUE_RECRUITMENT_FLOW.map((label, index) => !cultureOnsite && index === 3 ? "线上文化面" : label);
