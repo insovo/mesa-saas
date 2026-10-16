@@ -911,6 +911,7 @@ model InterviewQueue {
   session   CampusSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
   revision  Int @default(0)
   setup     Json @default("{}")
+  deletionKeyHash String? @map("deletion_key_hash")
   entries   InterviewQueueEntry[]
   links     InterviewQueueLink[]
   createdAt DateTime @default(now()) @map("created_at")

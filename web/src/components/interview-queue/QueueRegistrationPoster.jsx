@@ -41,7 +41,7 @@ const POSTER_CONTENT = {
       ["查看全部待定薪人员", "定薪页展示本阶段全部人员，核对学校、岗位、毕业时间与邮箱。"],
       ["调整基础薪资与基数", "默认基础薪资 8700、基数 13.5；点击「修改定薪」，勾选字段后填写数值。"],
       ["多选或全选，统一修改", "勾选人员并点击「批量修改定薪」；只应用勾选字段，二次确认后保存。"],
-      ["确认接受或放弃，添加建议", "接受后保留并标记；放弃进入共用待定页。通过「添加建议」记录沟通建议。"],
+      ["确认结果、添加建议或密钥删除", "接受后保留，放弃转待定；可添加建议。删除人员须输入独立删除密钥并确认。"],
       ["修改岗位方向，待定重新排队", "定薪／待定可搜索岗位并查看 JD；待定人员可重新加入专业或文化面队尾。"],
     ],
   },
@@ -133,9 +133,10 @@ const QueueRegistrationPoster = forwardRef(function QueueRegistrationPoster({ se
   let addressSize = wide ? 26 : 28;
   while (addressSize > 16 && wrapText(address, panelWidth - 64, addressSize).length > (wide ? 4 : 3)) addressSize -= 1;
   const followUp = "只要交了纸质简历，如果本次线下没有面试到，后续 HR 会进行线上联系。";
+  const referralFollowUp = "内推岗位将安排内推，预计一周左右由相关部门人员联系。";
   return <svg ref={ref} xmlns="http://www.w3.org/2000/svg" width={width} height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet" className={className} role="img" aria-label={`${sessionName}${QUEUE_POSTER_LABELS[kind]}海报，${wide ? "iPad 横屏版" : "群聊竖版"}`} fontFamily="PingFang SC, Microsoft YaHei, Noto Sans SC, sans-serif" fill="#1B254B">
     <title>{sessionName} · {content.title}</title>
-    <desc>{content.steps.map(([title, text]) => `${title}：${text}`).join("；")}{registration ? `；${address}；${followUp}${dual ? "；附加校招群二维码，与登记二维码等大" : ""}` : ""}</desc>
+    <desc>{content.steps.map(([title, text]) => `${title}：${text}`).join("；")}{registration ? `；${address}；${followUp}；${referralFollowUp}${dual ? "；附加校招群二维码，与登记二维码等大" : ""}` : ""}</desc>
     <defs><linearGradient id={`poster-bg-${id}`} x1="0" y1="0" x2="1" y2="1"><stop stopColor="#F4F1FF" /><stop offset="1" stopColor="#F6FAFF" /></linearGradient><linearGradient id={`poster-brand-${id}`}><stop stopColor="#7666FF" /><stop offset="1" stopColor="#422AFB" /></linearGradient></defs>
     <rect width={width} height={height} fill={`url(#poster-bg-${id})`} />
     <circle cx={width - 40} cy="-100" r="400" fill="#E7E2FF" opacity="0.7" />
@@ -157,17 +158,17 @@ const QueueRegistrationPoster = forwardRef(function QueueRegistrationPoster({ se
       const x = guideX; const y = (wide ? 485 : registration ? 1144 : 1090) + index * (wide ? 133 : registration ? 96 : 116);
       return <g key={title}><circle cx={x + 24} cy={y - 10} r="24" fill={`url(#poster-brand-${id})`} /><text x={x + 24} y={y - 1} textAnchor="middle" fill="#FFFFFF" fontSize="27" fontWeight="700">{index + 1}</text><text x={x + 66} y={y} fontSize={registration ? 30 : wide ? 36 : 34} fontWeight="700">{title}</text><TextLines text={text} x={x + 66} y={y + (registration ? 40 : 44)} width={wide && registration ? 800 : wide ? 1210 : 1220} fontSize={registration ? wide ? 27 : 24 : wide ? 29 : 27} lineHeight={registration ? 32 : 38} fill="#536187" /></g>;
     })}
-    {registration && <g><rect x={margin} y={wide ? 1162 : 1618} width={width - margin * 2} height={wide ? 48 : 58} rx="14" fill="#E7E2FF" /><TextLines text={followUp} x={margin + 20} y={wide ? 1195 : 1655} width={width - margin * 2 - 40} fontSize={wide ? 26 : 25} lineHeight="32" fontWeight="600" fill="#493B8B" /></g>}
-    <text x={margin} y={wide ? registration ? 1260 : 1220 : 1712} fontSize="29" fontWeight="700">{content.flow ? "页面操作流程" : "完整招聘流程"}</text>
+    {registration && <g><rect x={margin} y={wide ? 1162 : 1618} width={width - margin * 2} height={wide ? 80 : 78} rx="14" fill="#E7E2FF" /><TextLines text={followUp} x={margin + 20} y={wide ? 1192 : 1647} width={width - margin * 2 - 40} fontSize={wide ? 26 : 24} lineHeight="32" fontWeight="600" fill="#493B8B" /><TextLines text={referralFollowUp} x={margin + 20} y={wide ? 1224 : 1679} width={width - margin * 2 - 40} fontSize={wide ? 26 : 24} lineHeight="32" fontWeight="600" fill="#493B8B" /></g>}
+    <text x={margin} y={wide ? registration ? 1280 : 1220 : registration ? 1726 : 1712} fontSize="29" fontWeight="700">{content.flow ? "页面操作流程" : "完整招聘流程"}</text>
     {flow.map((label, index) => {
       const columns = wide ? 8 : 4; const gap = wide ? 26 : 28;
       const boxWidth = (width - margin * 2 - gap * (columns - 1)) / columns;
       const column = index % columns; const row = Math.floor(index / columns);
-      const x = margin + column * (boxWidth + gap); const y = (wide ? registration ? 1290 : 1250 : 1726) + row * 78;
+      const x = margin + column * (boxWidth + gap); const y = (wide ? registration ? 1310 : 1250 : registration ? 1744 : 1726) + row * (registration ? 70 : 78);
       const highlighted = kind === "registration" ? index === 2 || index === 3 : index === content.focus;
       return <g key={label}><rect x={x} y={y} width={boxWidth} height={wide ? 60 : 54} rx="16" fill={highlighted ? "#422AFB" : "#FFFFFF"} /><text x={x + boxWidth / 2} y={y + (wide ? 39 : 36)} textAnchor="middle" fontSize="26" fontWeight="600" fill={highlighted ? "#FFFFFF" : "#536187"}>{index + 1} {label}</text>{column < columns - 1 && <text x={x + boxWidth + gap / 2} y={y + (wide ? 39 : 36)} textAnchor="middle" fontSize="25" fill="#8D82D9">›</text>}</g>;
     })}
-    <text x={margin} y={wide ? 1382 : 1896} fontSize={wide ? 25 : 23} fill="#707EAE">{content.footer || "心理综合测评、Offer 与三方协议，由 HR 通知后续安排。"}</text>
+    <text x={margin} y={wide ? registration ? 1407 : 1382 : 1896} fontSize={wide ? 25 : 23} fill="#707EAE">{content.footer || "心理综合测评、Offer 与三方协议，由 HR 通知后续安排。"}</text>
   </svg>;
 });
 

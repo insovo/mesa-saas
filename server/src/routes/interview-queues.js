@@ -4,12 +4,17 @@ import { assertPage } from "../lib/permissions.js";
 import { encrypt, decrypt } from "../lib/secrets.js";
 import { issueCode, consumeCode } from "../lib/verificationCodes.js";
 import { isEmailConfigured } from "../lib/email.js";
-import { assertQueueLink, queueError, queueEntryView, mutateQueue, queueSetup, queueStation, QUEUE_LINK_KINDS } from "../lib/interviewQueue.js";
+import { assertQueueLink, queueError, queueEntryView, mutateQueue, deleteQueueEntry, queueSetup, queueStation, QUEUE_LINK_KINDS } from "../lib/interviewQueue.js";
 
 const uuid = { type: "string", format: "uuid" };
 const text = (maxLength) => ({ type: "string", minLength: 1, maxLength, pattern: "\\S" });
 const sessionParams = { type: "object", required: ["sessionId"], properties: { sessionId: uuid } };
 const jobParams = { type: "object", required: ["jobId"], properties: { jobId: uuid } };
+const entryParams = { type: "object", required: ["entryId"], properties: { entryId: uuid } };
+const deletionKeySchema = { type: "string", minLength: 6, maxLength: 64, pattern: "^[A-Za-z0-9]+$" };
+const deletionSchema = { type: "object", additionalProperties: false, required: ["updatedAt", "deletionKey", "confirmed"], properties: {
+  updatedAt: { type: "string", format: "date-time" }, deletionKey: deletionKeySchema, confirmed: { const: true },
+} };
 const actionSchema = { type: "object", additionalProperties: false, required: ["items", "action"], properties: {
   items: { type: "array", minItems: 1, maxItems: 500, items: { type: "object", additionalProperties: false, required: ["id", "updatedAt"], properties: { id: uuid, updatedAt: { type: "string", format: "date-time" } } } },
   action: { enum: ["professional-result", "professional-timer", "culture-result", "culture-timer", "direction", "salary", "suggestion", "requeue", "assign"] },
@@ -22,6 +27,10 @@ const actionSchema = { type: "object", additionalProperties: false, required: ["
 const revisionSchema = { type: "object", properties: { revision: { type: "integer", minimum: 0 } } };
 const linkHeaders = { type: "object", required: ["x-queue-link"], properties: { "x-queue-link": { type: "string", minLength: 24, maxLength: 64 } } };
 const limited = { rateLimit: { max: 10, timeWindow: "1 minute" } };
+const deletionLimited = { rateLimit: { max: 10, timeWindow: "1 minute", keyGenerator: (req) => {
+  try { return `queue-delete:${req.server.jwt.verify(req.headers.authorization?.replace(/^Bearer /, "")).sub}`; }
+  catch { return `queue-delete:${req.ip}`; }
+} } };
 
 async function staff(req, reply, write = false) {
   const access = await assertPage(req, reply, "interviews");
@@ -56,10 +65,10 @@ async function queueData(prisma, queueId, role, revision, stationId = null) {
     if (!queue) throw queueError("面试排队不存在", 404);
     if (revision === queue.revision) return { unchanged: true, revision };
     const station = queueStation(queue, role, stationId);
-    const where = role === "staff" || (role === "hr" && queueSetup(queue).stations.length) ? {} : { OR: [{ stage: role === "hr" ? "salary" : role, ...(station ? { stationId: station.id } : {}) }, { stage: "pending" }] };
+    const where = ["staff", "hr"].includes(role) ? {} : { OR: [{ stage: role, ...(station ? { stationId: station.id } : {}) }, { stage: "pending" }] };
     const rows = await tx.interviewQueueEntry.findMany({ where: { queueId, ...where }, include: { suggestions: { orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, authorRole: true, content: true, createdAt: true } } }, orderBy: [{ phaseEnteredAt: "asc" }, { createdAt: "asc" }, { id: "asc" }] });
     const jobs = await tx.job.findMany({ where: { recruitmentType: "campus", campusActive: true }, select: { id: true, title: true, location: true, employment: true, educationRequirement: true, campusKind: true }, orderBy: [{ campusSortOrder: "asc" }, { createdAt: "asc" }] });
-    return { queue: { id: queue.id, session: queue.session, setup: queueSetup(queue), station }, revision: queue.revision, entries: rows.map((row) => queueEntryView(row, role)), jobs: jobs.map(({ campusKind, ...job }) => ({ ...job, kind: campusKind })) };
+    return { queue: { id: queue.id, session: queue.session, setup: queueSetup(queue), station, ...(["staff", "hr"].includes(role) ? { deletionEnabled: Boolean(queue.deletionKeyHash) } : {}) }, revision: queue.revision, entries: rows.map((row) => queueEntryView(row, role)), jobs: jobs.map(({ campusKind, ...job }) => ({ ...job, kind: campusKind })) };
   }, { isolationLevel: "RepeatableRead" });
 }
 
@@ -83,7 +92,7 @@ export default async function interviewQueueRoutes(app) {
     const access = await staff(req, reply);
     if (!access) return;
     const sessions = await app.prisma.campusSession.findMany({ select: { id: true, name: true, school: true, location: true, status: true, interviewQueue: { include: { links: true, _count: { select: { entries: true } } } } }, orderBy: { createdAt: "asc" } });
-    return { sessions: sessions.map(({ interviewQueue, ...session }) => ({ ...session, queueId: interviewQueue?.id || null, count: interviewQueue?._count.entries || 0, setup: queueSetup(interviewQueue || {}), links: access.role === "VIEWER" ? [] : (interviewQueue?.links || []).map(linkView) })) };
+    return { sessions: sessions.map(({ interviewQueue, ...session }) => ({ ...session, queueId: interviewQueue?.id || null, count: interviewQueue?._count.entries || 0, setup: queueSetup(interviewQueue || {}), deletionEnabled: Boolean(interviewQueue?.deletionKeyHash), links: access.role === "VIEWER" ? [] : (interviewQueue?.links || []).map(linkView) })) };
   });
   app.post("/:sessionId", { schema: { params: sessionParams } }, async (req, reply) => {
     if (!(await staff(req, reply, true))) return;
@@ -100,6 +109,18 @@ export default async function interviewQueueRoutes(app) {
     if (!(await staff(req, reply, true))) return;
     const queue = await loadQueue(app.prisma, req.params.sessionId);
     return mutateQueue(app.prisma, queue.id, req.body, "staff");
+  });
+  app.patch("/:sessionId/deletion-key", { config: limited, schema: { params: sessionParams, body: { type: "object", additionalProperties: false, required: ["deletionKey"], properties: { deletionKey: deletionKeySchema } } } }, async (req, reply) => {
+    if (!(await staff(req, reply, true))) return;
+    const queue = await loadQueue(app.prisma, req.params.sessionId);
+    const deletionKeyHash = await bcrypt.hash(req.body.deletionKey, 10);
+    await app.prisma.interviewQueue.update({ where: { id: queue.id }, data: { deletionKeyHash, revision: { increment: 1 } } });
+    return { deletionEnabled: true };
+  });
+  app.post("/:sessionId/entries/:entryId/delete", { config: deletionLimited, schema: { params: { ...sessionParams, required: ["sessionId", "entryId"], properties: { ...sessionParams.properties, ...entryParams.properties } }, body: deletionSchema } }, async (req, reply) => {
+    if (!(await staff(req, reply, true))) return;
+    const queue = await loadQueue(app.prisma, req.params.sessionId);
+    return deleteQueueEntry(app.prisma, queue.id, req.params.entryId, req.body, "staff");
   });
   app.get("/:sessionId/jobs/:jobId", { schema: { params: { type: "object", required: ["sessionId", "jobId"], properties: { ...sessionParams.properties, ...jobParams.properties } } } }, async (req, reply) => {
     if (!(await staff(req, reply))) return;
@@ -207,6 +228,10 @@ export async function publicInterviewQueueRoutes(app) {
   app.post("/share/actions", { schema: { body: actionSchema } }, async (req) => {
     const link = await shareActor(req);
     return mutateQueue(app.prisma, link.queueId, req.body, link.kind, (tx) => shareActor(req, tx), link.stationId);
+  });
+  app.post("/share/entries/:entryId/delete", { config: deletionLimited, schema: { params: entryParams, body: deletionSchema } }, async (req) => {
+    const link = await shareActor(req);
+    return deleteQueueEntry(app.prisma, link.queueId, req.params.entryId, req.body, link.kind, (tx) => shareActor(req, tx));
   });
   app.post("/register", { config: { rateLimit: { max: 120, timeWindow: "1 minute" } }, schema: { headers: linkHeaders, body: { type: "object", additionalProperties: false,
     required: ["name", "school", "major", "degree", "gradYear", "languageAbility", "phone", "jobDirection", "email"], properties: {
