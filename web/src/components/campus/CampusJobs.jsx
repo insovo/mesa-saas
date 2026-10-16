@@ -146,9 +146,9 @@ export default function CampusJobs({ sessions, canManage, onChanged }) {
                 </button>
               </div>
               <div className="flex items-center gap-2 flex-wrap justify-end w-full xl:w-auto xl:max-w-[420px]">
-                <Select small aria-label={`${j.title}岗位类型`} value={sj.kind} disabled={!canManage || loading || mutating || busy[sj.id]} onChange={(e) => patch(sj, { kind: e.target.value })}><option value="onsite">现场面试</option><option value="referral">内推</option></Select>
+                <Select small aria-label={`${j.title}岗位类型`} value={sj.kind} disabled={!canManage || loading || mutating || busy[sj.id]} onChange={(e) => patch(sj, { kind: e.target.value })}><option value="onsite">现场面试</option><option value="referral">内推</option><option value="stopped">停止招聘</option></Select>
                 <label className={`inline-flex items-center gap-1.5 text-xs text-navy-700 ${!j.hasEvaluationModel ? "opacity-50" : ""}`} title={!j.hasEvaluationModel ? "尚无评价模型，生成后按参与匹配设置生效" : ""}>
-                  <input type="checkbox" className="accent-brand" disabled={!canManage || loading || mutating || busy[sj.id] || !j.hasEvaluationModel} checked={sj.matchEnabled} onChange={(e) => patch(sj, { matchEnabled: e.target.checked })} />参与匹配
+                  <input type="checkbox" className="accent-brand" disabled={!canManage || loading || mutating || busy[sj.id] || !j.hasEvaluationModel || sj.kind === "stopped"} checked={sj.matchEnabled} onChange={(e) => patch(sj, { matchEnabled: e.target.checked })} />参与匹配
                 </label>
                 {canManage && <Button size="sm" variant="ghost" icon={<I name="pencil" size={14} />} disabled={loading || mutating || busy[sj.id]} onClick={() => setForm({ sj })}>编辑 JD</Button>}
                 {canManage && (
@@ -156,7 +156,7 @@ export default function CampusJobs({ sessions, canManage, onChanged }) {
                     {busy[sj.id] ? "生成中…" : j.hasEvaluationModel ? "重新生成评价模型" : "生成评价模型"}
                   </Button>
                 )}
-                {session?.status === "live" && j.id && (
+                {session?.status === "live" && j.id && sj.kind !== "stopped" && (
                   <a href={`/campus/${session.slug}/jobs/${j.id}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 h-9 px-3 rounded-xl text-xs font-medium text-navy-700 border border-gray-200 hover:border-brand/40 hover:bg-lightPrimary" title="以学生视角打开 JD 页">
                     <I name="external-link" size={13} />学生端预览
                   </a>
@@ -172,7 +172,7 @@ export default function CampusJobs({ sessions, canManage, onChanged }) {
         <Card className="p-4 !flex-row items-center gap-2 flex-wrap">
           <span className="text-xs text-gray-600 inline-flex items-center gap-1"><I name="corner-down-right" size={12} />恢复已移除校招岗位</span>
           <Select small aria-label="选择已有校招岗位" disabled={loading || mutating} value={addId} onChange={(e) => setAddId(e.target.value)} className="flex-1 min-w-[240px]"><option value="">选择要恢复的校招岗位…</option>{available.map((x) => <option key={x.id} value={x.id}>{x.title}{x.dept ? ` · ${x.dept}` : ""}</option>)}</Select>
-          <Select small aria-label="加入岗位类型" disabled={loading || mutating} value={addKind} onChange={(e) => setAddKind(e.target.value)}><option value="onsite">现场面试</option><option value="referral">内推</option></Select>
+          <Select small aria-label="加入岗位类型" disabled={loading || mutating} value={addKind} onChange={(e) => setAddKind(e.target.value)}><option value="onsite">现场面试</option><option value="referral">内推</option><option value="stopped">停止招聘</option></Select>
           <Button size="sm" variant="secondary" disabled={!addId || loading || mutating} onClick={onAdd} icon={<I name="plus" size={14} />}>恢复</Button>
         </Card>
       )}

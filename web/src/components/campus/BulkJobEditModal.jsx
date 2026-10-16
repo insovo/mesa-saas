@@ -33,7 +33,7 @@ function initialForm(selected) {
 function currentSummary(selected, key) {
   const values = selected.map((sj) => fieldValue(sj, key));
   const labels = [...new Set(values.map((value) => {
-    if (key === "kind") return value === "onsite" ? "现场面试" : "内推";
+    if (key === "kind") return value === "stopped" ? "停止招聘" : value === "onsite" ? "现场面试" : "内推";
     if (key === "matchEnabled") return value ? "参与匹配" : "不参与匹配";
     if (key === "openings") return value === 0 ? "不限制" : `${value} 人`;
     if (Array.isArray(value)) return value.length ? value.join("、") : "无";
@@ -102,7 +102,7 @@ export default function BulkJobEditModal({ selected, onClose, onSave }) {
             <div key={key} className="space-y-2">
               <div className="flex items-baseline gap-2 flex-wrap"><label htmlFor={`bulk-job-${key}`} className="text-sm font-bold text-navy-700">{label}</label><span className="text-[11px] text-red-500 break-all" title={current}>{current.length > 75 ? `${current.slice(0, 75)}…` : current}</span></div>
               {key === "kind" ? (
-                <Select id="bulk-job-kind" aria-label="批量岗位类型" disabled={saving} value={form.kind} onChange={set(key)}><option value="" disabled>请选择岗位类型</option><option value="onsite">现场面试</option><option value="referral">内推</option></Select>
+                <Select id="bulk-job-kind" aria-label="批量岗位类型" disabled={saving} value={form.kind} onChange={set(key)}><option value="" disabled>请选择岗位类型</option><option value="onsite">现场面试</option><option value="referral">内推</option><option value="stopped">停止招聘</option></Select>
               ) : key === "matchEnabled" ? (
                 <div><Select id="bulk-job-matchEnabled" aria-label="批量参与匹配" disabled={saving} value={form.matchEnabled} onChange={set(key)}><option value="" disabled>请选择是否参与匹配</option><option value="true">参与匹配</option><option value="false">不参与匹配</option></Select>{form.matchEnabled === "true" && selected.some((sj) => !sj.job?.hasEvaluationModel) && <p className="text-[11px] text-gray-600 mt-1">尚未生成评价模型的岗位，生成后开始参与匹配。</p>}</div>
               ) : key === "employment" ? (

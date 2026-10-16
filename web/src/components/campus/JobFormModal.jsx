@@ -107,7 +107,7 @@ export default function JobFormModal({ open, onClose, sessionJob, onSaved }) {
           {!job && (
             <div className="md:col-span-2 flex items-end gap-6 flex-wrap">
               <Field label="岗位类型" className="min-w-[200px]">
-                <Select aria-label="岗位类型" value={form.kind} onChange={set("kind")}><option value="onsite">现场面试</option><option value="referral">内推</option></Select>
+                <Select aria-label="岗位类型" value={form.kind} onChange={set("kind")}><option value="onsite">现场面试</option><option value="referral">内推</option><option value="stopped">停止招聘</option></Select>
               </Field>
               <div className="pb-3"><Toggle checked={form.matchEnabled} onChange={(v) => setForm({ ...form, matchEnabled: v })} label="参与智能匹配(需先生成评价模型)" /></div>
             </div>

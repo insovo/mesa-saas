@@ -94,6 +94,19 @@ test("批量标记原子校验分享范围并同步所有专场，JD和匹配配
   assert.equal(state().jobs[0].campusMatchEnabled, false);
 });
 
+test("HR 分享管理页可停止招聘并恢复，停止后仍能查看 JD", async (t) => {
+  const { app, share, state } = await fixture(t);
+  const { headers } = await share();
+  for (const kind of ["stopped", "referral"]) {
+    const saved = await app.inject({ method: "PATCH", url: `${publicBase}/kind`, headers, payload: { ids: [ids[0]], kind } });
+    assert.equal(saved.statusCode, 200, saved.body);
+    const shown = await app.inject({ url: `${publicBase}/`, headers });
+    assert.equal(shown.json().jobs[0].kind, kind);
+    assert.deepEqual(shown.json().jobs[0].responsibilities, ["原职责"]);
+    assert.equal(state().links.filter(row=>row.jobId===ids[0]).every(row=>row.kind===kind), true);
+  }
+});
+
 test("停止、过期、停用和权限收回均禁止读取及写入", async (t) => {
   const { app, share, user, state } = await fixture(t);
   const { link, headers } = await share();

@@ -11,6 +11,7 @@ import { issueCode, consumeCode } from "../lib/verificationCodes.js";
 import { isEmailConfigured } from "../lib/email.js";
 import { startExtraction, cancelExtraction } from "../lib/campus/extract.js";
 import { startMatchRun, cancelMatchRun, runShape, buildStrengthReasons } from "../lib/campus/match.js";
+import { recruitingCampusJob } from "../lib/campus/catalog.js";
 import { getTask } from "../lib/parseTaskStore.js";
 import { ensureCandidate, createVersionTx, createApplicationTx, findSessionForPublic, httpError } from "../lib/campus/service.js";
 import { reconcileCampusAutoEvaluation } from "../lib/campus/autoEvaluation.js";
@@ -104,7 +105,11 @@ export default async function campusPublicRoutes(app) {
   async function studentRunShape(run, task, candidateId) {
     const shaped = runShape(run, task);
     if (run.status !== "done") return shaped;
-    const results = Array.isArray(run.results) ? run.results : [];
+    const source = Array.isArray(run.results) ? run.results : [];
+    const jobs = source.length ? await app.prisma.job.findMany({ where: { ...recruitingCampusJob, id: { in: source.map((result) => result.jobId) } }, select: { id: true, campusKind: true } }) : [];
+    const recruiting = new Map(jobs.map((job) => [job.id, job.campusKind]));
+    shaped.results = shaped.results.filter((result) => recruiting.has(result.jobId)).map((result) => ({ ...result, kind: recruiting.get(result.jobId) }));
+    const results = source.filter((result) => recruiting.has(result.jobId));
     const legacy = results.filter((result) => result.excluded && result.evaluationId && !shaped.results.find((item) => item.jobId === result.jobId)?.reasons.length);
     if (!legacy.length) return shaped;
     const evaluations = await app.prisma.candidateEvaluation.findMany({ where: { id: { in: legacy.map((result) => result.evaluationId) }, candidateId }, select: { id: true, items: true } });
@@ -147,7 +152,7 @@ export default async function campusPublicRoutes(app) {
     if (!s) return reply.code(404).send({ error: "campus_session_not_found", message: "没有进行中的专场" });
     const me = await optionalStudent(req);
     const appliedSet = me && me.sessionId === s.id ? new Set(me.applications.filter((x) => x.status !== "withdrawn").map((x) => x.jobId)) : null;
-    const sjs = await app.prisma.campusSessionJob.findMany({ where: { sessionId: s.id, job: { recruitmentType: "campus", campusActive: true } }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }], include: { job: true } });
+    const sjs = await app.prisma.campusSessionJob.findMany({ where: { sessionId: s.id, job: recruitingCampusJob }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }], include: { job: true } });
     const cards = sjs.map((sj) => jobCard(sj, s, appliedSet));
     return { onsite: cards.filter((c) => c.kind === "onsite"), referral: cards.filter((c) => c.kind === "referral") };
   });
@@ -156,7 +161,7 @@ export default async function campusPublicRoutes(app) {
     const s = await findSessionForPublic(app.prisma, req.query.slug);
     if (!s) return reply.code(404).send({ error: "campus_session_not_found" });
     const sj = await app.prisma.campusSessionJob.findUnique({ where: { sessionId_jobId: { sessionId: s.id, jobId: req.params.id } }, include: { job: true } });
-    if (!sj || !sj.job.campusActive) return reply.code(404).send({ error: "campus_job_not_in_session", message: "校招岗位已移除或不存在" });
+    if (!sj || !sj.job.campusActive || sj.job.recruitmentType !== "campus" || sj.job.campusKind === "stopped") return reply.code(404).send({ error: "campus_job_not_in_session", message: "校招岗位已停止招聘、移除或不存在" });
     const me = await optionalStudent(req);
     const appliedSet = me && me.sessionId === s.id ? new Set(me.applications.filter((x) => x.status !== "withdrawn").map((x) => x.jobId)) : null;
     return { job: jobDetail(sj, s, appliedSet) };
@@ -396,7 +401,7 @@ export default async function campusPublicRoutes(app) {
     const run = await app.prisma.campusMatchRun.findFirst({ where: { id: req.params.id, applicantId: a.id } });
     if (!run) return reply.code(404).send({ error: "not_found" });
     const u = await cancelMatchRun(app, run);
-    return { run: runShape(u, null) };
+    return { run: await studentRunShape(u, null, a.candidateId) };
   });
 
   // ─── 投递 ───────────────────────────────────────────────────

@@ -27,7 +27,7 @@ async function setup(t, { role = "ADMIN", pages = ["interviews"], kind = "cultur
     { id: "20000000-0000-4000-8000-000000000003", title: "已移除岗位", recruitmentType: "campus", campusActive: false, campusKind: "onsite" },
     { id: "20000000-0000-4000-8000-000000000004", title: "社招岗位", recruitmentType: "social", campusActive: true, campusKind: "onsite" },
   ];
-  const matches = (job, where) => Object.entries(where).every(([key, value]) => job[key] === value);
+  const matches = (job, where) => Object.entries(where).every(([key, value]) => value?.not !== undefined ? job[key] !== value.not : job[key] === value);
   const pick = (job, select) => job ? Object.fromEntries(Object.keys(select).map((key) => [key, job[key] ?? null])) : null;
   app.setErrorHandler((err, _req, reply) => reply.code(err.statusCode || 500).send({ error: err.code || "request_error", message: err.message }));
   app.decorate("prisma", {
@@ -157,6 +157,17 @@ test("登记可查看现场与内推 JD，仅返回公开字段并遵循薪资�
   }
   link.active = false;
   assert.equal((await app.inject({ url: `/api/public/interview-queues/registration/jobs/${jobs[0].id}`, headers })).statusCode, 410);
+});
+
+test("停止招聘的岗位从排队选岗和 JD 隐藏，恢复后重新可见", async (t) => {
+  const { app, link, jobs } = await setup(t, { kind: "registration" });
+  const headers = { "x-queue-link": link.token };
+  jobs[0].campusKind = "stopped";
+  const list = await app.inject({ url: "/api/public/interview-queues/link", headers });
+  assert.deepEqual(list.json().jobs.map(job=>job.id), [jobs[1].id]);
+  assert.equal((await app.inject({ url: `/api/public/interview-queues/registration/jobs/${jobs[0].id}`, headers })).statusCode, 404);
+  jobs[0].campusKind = "onsite";
+  assert.equal((await app.inject({ url: `/api/public/interview-queues/registration/jobs/${jobs[0].id}`, headers })).statusCode, 200);
 });
 
 test("岗位 JD 必须使用登记链接；登记后台拒绝内推、已移除和自行输入岗位", async (t) => {

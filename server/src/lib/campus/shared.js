@@ -1,7 +1,7 @@
 // 校招模块共用常量与小工具(后台路由 Phase 0;学生端公开路由 Phase 1 复用)
 
 export const SESSION_STATUS = ["draft", "live", "closed"];
-export const JOB_KINDS = ["onsite", "referral"];
+export const JOB_KINDS = ["onsite", "referral", "stopped"];
 export const APP_SOURCES = ["direct", "match", "hr"];
 export const APP_STATUS = ["applied", "screening", "onsite_interview", "referred", "passed", "rejected", "withdrawn"];
 // 占用投递额度的状态(撤回 / 未通过不占)

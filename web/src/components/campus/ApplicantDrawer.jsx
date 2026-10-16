@@ -43,7 +43,7 @@ export default function ApplicantDrawer({ applicantId, open, initialEdit = false
   const session = data?.session;
   const activeApps = useMemo(() => (a?.applications || []).filter((x) => x.status !== "withdrawn"), [a]);
   const quotaLeft = session ? Math.max(0, session.maxApplyJobs - activeApps.filter((x) => x.status !== "rejected").length) : 0;
-  const availableJobs = useMemo(() => sessionJobs.filter((sj) => !(a?.applications || []).some((x) => x.jobId === sj.jobId && x.status !== "withdrawn")), [sessionJobs, a]);
+  const availableJobs = useMemo(() => sessionJobs.filter((sj) => sj.kind !== "stopped" && !(a?.applications || []).some((x) => x.jobId === sj.jobId && x.status !== "withdrawn")), [sessionJobs, a]);
 
   function startEdit() {
     setForm({ name: a.name || "", phone: a.phone || "", email: a.email || "", wechat: a.wechat || "", school: a.school || "", major: a.major || "", degree: a.degree || "", gradYear: a.gradYear || "", extraUploads: a.extraUploads || 0, contactConfirmed: !!a.contactConfirmedAt });
