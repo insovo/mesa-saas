@@ -57,6 +57,7 @@ function SharePage() {
     }
     return () => { active = false; };
   }, [info, validStation, stationId, linkToken, cacheKey]);
+  const readRevision = useMemo(() => () => publicQueueApi.revision(token), [token]);
   const read = useMemo(() => (revision) => publicQueueApi.data(token, revision), [token]);
   const write = useMemo(() => (body) => publicQueueApi.action(token, body), [token]);
   const remove = useMemo(() => (entryId, body) => publicQueueApi.remove(token, entryId, body), [token]);
@@ -71,7 +72,7 @@ function SharePage() {
     catch (err) { setError(queueErrorMessage(err)); if (err.response?.status === 410) setFatal(true); }
     finally { setBusy(false); }
   }
-  if (token && info && !fatal) return <QueueBoard key={token} read={read} write={write} remove={remove} loadJob={loadJob} role={info.kind} onFatal={onFatal} />;
+  if (token && info && !fatal) return <QueueBoard key={token} read={read} readRevision={readRevision} write={write} remove={remove} loadJob={loadJob} role={info.kind} onFatal={onFatal} />;
   if (!info && !error) return <LoadingBlock height="h-60" />;
   return <Card className="p-6 max-w-md mx-auto gap-4"><h1 className="font-bold text-xl">{info?.session.name || "面试排队分享"}</h1>{info && <p className="text-sm text-gray-600">{QUEUE_ROLE_LABELS[info.kind]} · 无需登录</p>}{error && <p className="text-sm text-red-500">{error}</p>}{info && !fatal && <form onSubmit={open} className="space-y-4">{requiresStation && <label className="block text-sm font-bold">选择你的面试官席位<select aria-label="面试官席位" required className="block mt-2 w-full border border-gray-200 rounded-xl p-3" value={stationId} onChange={(e) => { setStationId(e.target.value); setToken(""); setError(""); }}><option value="">请选择 HR 指定的席位</option>{stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select><span className="block mt-2 text-xs text-gray-600 font-normal">{stations.length ? "仅查看与操作 HR 分配给该席位的候选人；请使用自己的席位。" : "尚未配置此阶段的面试官，请联系 HR 安排。"}</span></label>}{info.requireKey && <Input type="password" label="访问密钥" aria-label="访问密钥" value={key} autoComplete="off" required onChange={(e) => setKey(e.target.value)} />}<Button type="submit" disabled={busy || !validStation} className="w-full">{busy ? "验证中…" : "进入面试排队"}</Button></form>}</Card>;
 }

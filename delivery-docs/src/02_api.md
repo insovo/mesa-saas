@@ -1276,6 +1276,7 @@ AuthGuard 外,学生**不注册不登录**。会话:首次上传前 `POST /auth/
 | --- | --- | --- |
 | GET | `/` | 全部大学专场（含 draft/live/closed）、队列人数和可管理者的分享信息 |
 | POST | `/:sessionId` | 幂等创建排队 |
+| GET | `/:sessionId/revision` | 工作台页面权限；仅返回 `{revision}`，不读取人员／岗位，供跨页面自动同步 |
 | GET | `/:sessionId?revision=` | 面试四阶段及内推人员和岗位；版本一致仅返回 unchanged/revision |
 | POST | `/:sessionId/actions` | 计时、结果、方向、批量定薪、逐人建议和待定重排，见下文 |
 | GET | `/:sessionId/jobs/:jobId` | 面试排队权限；有效校招 JD 公开字段，薪资遵循专场展示设置 |
@@ -1292,6 +1293,7 @@ AuthGuard 外,学生**不注册不登录**。会话:首次上传前 `POST /auth/
 | GET | `/link` | `X-Queue-Link` 传链接 token，返回专场、角色、是否需要密钥和期限；登记还返回全部有效校招岗位选项及 kind，现场优先展示并标注优先招聘，onsite/referral 均可登记 |
 | GET | `/registration/jobs/:jobId` | 有效登记 X-Queue-Link；UUID 岗位；返回有效校招 JD 公开字段（含内推），薪资按专场设置隐藏。不返回评价模型、人员、权限和内部字段 |
 | POST | `/share/open` | `X-Queue-Link` + `{accessKey?}` → 12h 角色 JWT；每次使用仍检查分享状态 |
+| GET | `/share/revision` | 角色 Bearer JWT；每次检查链接、版本及席位，仅返回 `{revision}`，不读取人员／岗位 |
 | GET | `/share/data?revision=` | 角色 Bearer JWT，专业／文化返回本角色当前阶段和专场全部待定记录，HR 返回面试四阶段及 referral；pendingFrom 标明 professional/culture/salary；人员含内部 suggestions（id/authorRole/content/createdAt），专业/文化不返回邮箱/薪资 |
 | GET | `/share/jobs/:jobId` | 专业／HR Bearer JWT；有效校招 JD 公开字段（含内推），薪资按专场设置；每次检查分享状态和版本 |
 | POST | `/share/actions` | 角色 Bearer JWT；HR 可对待定执行方向修改／重新排队，其余操作限对应阶段 |

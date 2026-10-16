@@ -4,6 +4,7 @@ import SummaryColumnFilter from "../campus/SummaryColumnFilter.jsx";
 import QueueTimer from "./QueueTimer.jsx";
 import QueueDirectionModal from "./QueueDirectionModal.jsx";
 import { QUEUE_STAGE_LABELS, QUEUE_ROLE_LABELS, queueResult, queueErrorMessage } from "../../lib/interviewQueueApi.js";
+import { watchQueueChanges } from "../../lib/queueSync.js";
 
 const identityColumns = [
   ["name", "姓名"], ["school", "学校"], ["major", "专业"], ["degree", "学历"],
@@ -26,7 +27,7 @@ function valueOf(row, key) {
 }
 const snapshots = (rows) => rows.map(({ id, updatedAt }) => ({ id, updatedAt }));
 
-export default function QueueBoard({ read, write, remove, loadJob, role = "staff", canWrite = true, screen = false, onFatal }) {
+export default function QueueBoard({ read, readRevision, write, remove, loadJob, role = "staff", canWrite = true, screen = false, onFatal }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [tab, setTab] = useState(role === "hr" ? "salary" : role === "staff" ? "professional" : role);
@@ -51,8 +52,14 @@ export default function QueueBoard({ read, write, remove, loadJob, role = "staff
   const revision = useRef(undefined);
   const pendingRead = useRef(false);
   const alive = useRef(true);
-  const refresh = useCallback(async (force = false) => {
-    if (pendingRead.current) return;
+  const refreshQueued = useRef(false);
+  const readError = useCallback((err) => {
+    if (!alive.current) return;
+    setError(queueErrorMessage(err));
+    if ([401, 403, 410].includes(err.response?.status)) onFatal?.(err);
+  }, [onFatal]);
+  const refresh = useCallback(async (force = false, background = false) => {
+    if (pendingRead.current) { if (force) refreshQueued.current = true; return; }
     pendingRead.current = true;
     try {
       const result = await read(force ? undefined : revision.current);
@@ -61,14 +68,29 @@ export default function QueueBoard({ read, write, remove, loadJob, role = "staff
       setError("");
     } catch (err) {
       if (!alive.current) return;
-      setError(queueErrorMessage(err));
-      if ([401, 403, 410].includes(err.response?.status)) onFatal?.(err);
-    } finally { pendingRead.current = false; }
-  }, [read, onFatal]);
+      if (background) throw err;
+      readError(err);
+    } finally {
+      pendingRead.current = false;
+      if (refreshQueued.current && alive.current) { refreshQueued.current = false; void refresh(true); }
+    }
+  }, [read, readError]);
   useEffect(() => {
     alive.current = true; revision.current = undefined; refresh(true);
     return () => { alive.current = false; };
   }, [refresh]);
+  useEffect(() => {
+    if (!readRevision) return;
+    return watchQueueChanges({
+      check: async () => {
+        const result = await readRevision();
+        if (!alive.current) return;
+        if (result.revision !== revision.current) await refresh(false, true);
+        else setError("");
+      },
+      onError: readError,
+    });
+  }, [readRevision, refresh, readError]);
   useEffect(() => { const timer = setInterval(() => setClock(new Date()), 1000); return () => clearInterval(timer); }, []);
   const stations = data?.queue.setup?.stations || [];
   const routing = stations.length > 0;
@@ -137,12 +159,12 @@ export default function QueueBoard({ read, write, remove, loadJob, role = "staff
   if (!data) return error ? <Card className="p-6"><p className="text-red-500">{error}</p><Button className="mt-3" onClick={() => refresh(true)}>重试</Button></Card> : <LoadingBlock height="h-64" label="加载面试排队…" />;
   const shell = screen ? "min-h-screen bg-[#081326] text-slate-100 p-4 md:p-8" : "space-y-5 text-navy-700";
   return <div className={shell}>
-    <header className={`flex flex-wrap items-start justify-between gap-3 ${screen ? "mb-6" : ""}`}><div><p className={`text-xs ${screen ? "text-cyan-300" : "text-gray-600"}`}>MESA · 大学专场面试排队{role !== "staff" ? ` · ${{ professional: "专业面试官", culture: "文化面试官", hr: "HR" }[role]}` : ""}</p><h1 className={`${screen ? "text-3xl md:text-4xl" : "text-2xl"} font-bold mt-1`}>{data.queue.session.name}{data.queue.station ? ` · ${data.queue.station.name}` : ""}</h1><p className={`text-sm mt-2 ${error ? "text-red-400" : screen ? "text-gray-300" : "text-gray-600"}`}>{error || "手动刷新查看最新排队状态"}</p></div><div className="flex items-center gap-3"><time className="font-mono tabular-nums">{clock.toLocaleTimeString("zh-CN", { hour12: false })}</time>{screen && <Button size="sm" variant="secondary" onClick={() => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen().catch(() => toast("当前浏览器不支持全屏", "error"))}>全屏</Button>}<Button size="sm" variant="secondary" onClick={() => refresh(true)}>刷新</Button></div></header>
+    <header className={`flex flex-wrap items-start justify-between gap-3 ${screen ? "mb-6" : ""}`}><div><p className={`text-xs ${screen ? "text-cyan-300" : "text-gray-600"}`}>MESA · 大学专场面试排队{role !== "staff" ? ` · ${{ professional: "专业面试官", culture: "文化面试官", hr: "HR" }[role]}` : ""}</p><h1 className={`${screen ? "text-3xl md:text-4xl" : "text-2xl"} font-bold mt-1`}>{data.queue.session.name}{data.queue.station ? ` · ${data.queue.station.name}` : ""}</h1><p className={`text-sm mt-2 ${error ? "text-red-400" : screen ? "text-gray-300" : "text-gray-600"}`}>{error || "自动同步名单 · 变更后自动更新"}</p></div><div className="flex items-center gap-3"><time className="font-mono tabular-nums">{clock.toLocaleTimeString("zh-CN", { hour12: false })}</time>{screen && <Button size="sm" variant="secondary" onClick={() => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen().catch(() => toast("当前浏览器不支持全屏", "error"))}>全屏</Button>}<Button size="sm" variant="secondary" onClick={() => refresh(true)}>刷新</Button></div></header>
     <div className={`flex flex-wrap gap-2 ${screen ? "mb-5" : ""}`}>
       {Object.entries(QUEUE_STAGE_LABELS).filter(([key]) => (["staff", "hr"].includes(role)) || key === "pending" || key === (role === "hr" ? "salary" : role)).map(([key, label]) => <button key={key} onClick={() => { setTab(key); setSelected(new Set()); setFilterColumn(null); }} className={`rounded-xl px-4 py-3 font-bold ${tab === key ? screen ? "bg-cyan-500 text-slate-950" : "bg-brand text-white shadow-button" : screen ? "bg-slate-800 text-slate-300" : "bg-white text-gray-700"}`}>{label} <span className="ml-2 opacity-75">{entries.filter((row) => row.stage === key).length}</span></button>)}
     </div>
     {tab !== "referral" && data.queue.setup?.cultureOnsite === false && <p className="rounded-xl bg-amber-50 text-amber-800 p-4 text-sm">本专场无现场文化面试：专业面通过后，等待 HR 联系线上文化面试，后续定薪等流程由 HR 线上通知。</p>}
-    {tab !== "referral" && routing && !screen && <p className="text-sm text-gray-600">{["professional", "culture"].includes(role) ? "仅展示 HR 分配给本席位的人员；按顺序叫号，点击刷新查看最新状态。未收到人员时请联系 HR。" : "专业／文化 Tab 可多选或全选分配、转派面试官；各席位独立排队，进入下一阶段后等待 HR 重新分配。"}</p>}
+    {tab !== "referral" && routing && !screen && <p className="text-sm text-gray-600">{["professional", "culture"].includes(role) ? "仅展示 HR 分配给本席位的人员；按顺序叫号，名单变更后自动更新。未收到人员时请联系 HR。" : "专业／文化 Tab 可多选或全选分配、转派面试官；各席位独立排队，进入下一阶段后等待 HR 重新分配。"}</p>}
     {tab === "referral" && <p className={`rounded-xl p-4 text-sm ${screen ? "bg-slate-800 text-amber-200" : "bg-amber-50 text-amber-800"}`}>内推登记不参加现场面试排队、不显示排名；预计一周左右由相关部门人员联系。</p>}
     {canDelete && !data.queue.deletionEnabled && <p className="rounded-xl bg-lightPrimary p-3 text-sm text-gray-600">尚未设置删除密钥，暂不能删除人员。请由分享人在大学专场的「分享给 HR」中设置，再点击刷新。</p>}
     {currentInterview && <Card className="p-5 gap-4"><div className="flex flex-col sm:flex-row sm:flex-wrap justify-between gap-5"><div className="min-w-0 flex-1"><div className="flex flex-wrap justify-between items-center gap-3 mb-2"><p className="text-sm text-gray-600">当前待面试人员</p>{tab === "culture" && permitted && <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="accent-brand" checked={selected.has(currentInterview.id)} onChange={() => toggle(currentInterview.id)} aria-label={`选择${currentInterview.name}`} />选择此人参加群面</label>}</div><h2 className="text-2xl font-bold">{currentInterview.name}</h2><div className="grid sm:grid-cols-2 gap-x-6 gap-y-2 text-sm mt-3">{identityColumns.slice(1).map(([key, label]) => <p key={key} className="break-words"><span className="text-gray-600">{label}：</span>{currentInterview[key]}{key === "jobDirection" && tab === "professional" && permitted && <button className="text-brand ml-2" onClick={() => { setDirectionRow(currentInterview); }}>修改</button>}</p>)}</div></div><QueueTimer startedAt={currentInterview[`${tab}StartedAt`]} disabled={!permitted || busy} onStart={() => submit({ action: `${tab}-timer`, items: snapshots([currentInterview]) })} /></div><div className="border-t border-gray-100 pt-4 flex flex-wrap items-center gap-4">{permitted && <><strong className="text-sm">{QUEUE_STAGE_LABELS[tab]}结果</strong>{resultButtons(currentInterview)}</>}{suggestionButton(currentInterview)}{deletionButton(currentInterview)}</div></Card>}

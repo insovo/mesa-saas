@@ -462,3 +462,25 @@ test("内推仅下发 HR 和后台，不混入专业或文化面试官名单", a
     assert.equal(staff.statusCode, 200); assert.equal(staff.json().entries.some((row) => row.stage === "referral"), true);
   }
 });
+
+test("轻量版本检查不读取人员或岗位，后台及分享均保留权限和撤销校验", async (t) => {
+  const { app, headers, link } = await setup(t, { kind: "hr" });
+  app.prisma.interviewQueueEntry = { findMany: async () => assert.fail("版本检查不能读取人员") };
+  app.prisma.job.findMany = async () => assert.fail("版本检查不能读取岗位");
+  app.prisma.interviewQueue.findUnique = async ({ select }) => { assert.deepEqual(select, { revision: true }); return { revision: link.queue.revision }; };
+  const auth = { authorization: `Bearer ${app.jwt.sign({ aud: "interview-queue-share", sub: link.id, kind: "hr", queueId, tv: 0 })}` };
+  for (const revision of [0, 7]) {
+    link.queue.revision = revision;
+    for (const [url, requestHeaders] of [[`/api/interview-queues/${sessionId}/revision`, headers], ["/api/public/interview-queues/share/revision", auth]]) {
+      const response = await app.inject({ url, headers: requestHeaders });
+      assert.equal(response.statusCode, 200); assert.deepEqual(response.json(), { revision });
+    }
+  }
+  assert.equal((await app.inject({ url: `/api/interview-queues/${sessionId}/revision`, headers: auth })).statusCode, 401);
+  link.tokenVersion++;
+  assert.equal((await app.inject({ url: "/api/public/interview-queues/share/revision", headers: auth })).statusCode, 401);
+  link.active = false;
+  assert.equal((await app.inject({ url: "/api/public/interview-queues/share/revision", headers: auth })).statusCode, 410);
+  const denied = await setup(t, { role: "RECRUITER", pages: ["candidates"] });
+  assert.equal((await denied.app.inject({ url: `/api/interview-queues/${sessionId}/revision`, headers: denied.headers })).statusCode, 403);
+});
