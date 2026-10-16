@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 
-export const QUEUE_STAGES = ["professional", "culture", "salary", "pending"];
+export const QUEUE_STAGES = ["professional", "culture", "salary", "pending", "referral"];
 export const QUEUE_LINK_KINDS = ["registration", "professional", "culture", "hr"];
 
 export function queueSetup(queue = {}) {

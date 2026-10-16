@@ -157,7 +157,7 @@ export default function CampusMatch() {
                     <div className="flex items-center gap-3">
                       {r.scoreShown == null ? <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-400">—</span> : <LiquidLoader size={56} level={r.scoreShown} label={r.scoreShown} instant />}
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2"><Link to={`${base(slug)}/jobs/${r.jobId}`} className="font-bold text-sm truncate">{r.title}</Link><KindTag kind={r.kind} /></div>
+                        <div className="flex items-center gap-2"><Link to={`${base(slug)}/jobs/${r.jobId}`} className="font-bold text-sm truncate">{r.title}</Link><KindTag kind={r.kind} />{r.kind === "onsite" && <span className="shrink-0 rounded-md bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600">优先招聘</span>}</div>
                         <p className="text-[11px] text-gray-500 mt-0.5 truncate">{[r.dept, r.location].filter(Boolean).join(" · ")}</p>
                       </div>
                       <Button size="sm" className="!h-9 shrink-0" disabled={applied || applying === r.jobId || quotaLeft === 0} onClick={() => apply(r)}>{applied ? "已投递" : applying === r.jobId ? "投递中…" : "投递"}</Button>

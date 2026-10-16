@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { queueMutation, queueSuggestion, queueEntryView, assertQueueLink, mutateQueue } from "./interviewQueue.js";
+import { queueMutation, queueSuggestion, queueEntryView, assertQueueLink, mutateQueue, queueAssignment } from "./interviewQueue.js";
 
 const stamp = "2026-10-15T01:00:00.000Z";
 const row = (id, stage = "professional") => ({ id, stage, updatedAt: stamp, salaryBase: "8700.00", salaryFactor: "13.50", email: "student@example.com" });
@@ -196,4 +196,13 @@ test("HR 手动分配限当前专业／文化阶段、正确席位及最新人�
   assert.throws(() => queueStation(queue, "professional", "c1"), { statusCode: 401 });
   assert.throws(() => queueStation(queue, "professional"), { statusCode: 401 });
   assert.equal(queueStation({}, "professional"), null);
+});
+
+
+test("内推登记不能被现场面试计时、结果、定薪或分配操作意外推进", () => {
+  const entry = row("referral", "referral");
+  assert.throws(() => queueAssignment([entry], body([entry], "assign", { targetStationId: null }), "hr", { setup: { stations: [] } }), (err) => err.statusCode === 409);
+  for (const [role, action] of [["professional", "professional-timer"], ["professional", "professional-result"], ["culture", "culture-timer"], ["culture", "culture-result"], ["hr", "salary"], ["hr", "requeue"]]) {
+    assert.throws(() => queueMutation([entry], body([entry], action, { result: "passed", salaryStatus: "accepted", targetStage: "professional" }), role), (err) => err.statusCode === 409);
+  }
 });

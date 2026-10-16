@@ -37,6 +37,7 @@ async function setup(t, { role = "ADMIN", pages = ["interviews"], kind = "cultur
     interviewQueueLink: { findUnique: async ({ where }) => where.token === link.token || where.id === link.id ? link : null },
     job: { findMany: async ({ where, select }) => jobs.filter((job) => matches(job, where)).map((job) => pick(job, select)), findFirst: async ({ where, select }) => pick(jobs.find((job) => matches(job, where)), select) },
   });
+  app.prisma.$executeRaw = async () => {};
   app.prisma.$transaction = async (run) => run(app.prisma);
   await app.register(jwtPlugin);
   if (rateLimited) await app.register(rateLimit);
@@ -72,7 +73,7 @@ test("删除密钥只允许后台可编辑者设置，只存哈希且任何读�
   }
 });
 
-test("HR 删除逐次校验独立密钥，支持四阶段且仅删除同专场最新记录", async (t) => {
+test("HR 删除逐次校验独立密钥，支持面试及内推阶段且仅删除同专场最新记录", async (t) => {
   const { app, headers: staffHeaders, link, accessKey } = await setup(t, { kind: "hr" });
   const key = crypto.randomBytes(8).toString("hex");
   const updatedAt = new Date().toISOString();
@@ -91,13 +92,13 @@ test("HR 删除逐次校验独立密钥，支持四阶段且仅删除同专场�
   const wrong = await app.inject({ method: "POST", url, headers: auth, payload: { ...payload, deletionKey: accessKey } });
   assert.equal(wrong.statusCode, 403); assert.equal(wrong.json().error, "queue_deletion_key_invalid"); assert.equal(deleted, 0);
   for (const extra of [{ confirmed: false }, { deletionKey: undefined }, { updatedAt: "invalid" }]) assert.equal((await app.inject({ method: "POST", url, headers: auth, payload: { ...payload, ...extra } })).statusCode, 400);
-  for (const stage of ["professional", "culture", "salary", "pending"]) {
+  for (const stage of ["professional", "culture", "salary", "pending", "referral"]) {
     row.stage = stage;
     assert.equal((await app.inject({ method: "POST", url, headers: auth, payload })).statusCode, 200);
   }
-  assert.equal(deleted, 4);
+  assert.equal(deleted, 5);
   for (const [path, body] of [[url.replace(userId, sessionId), payload], [url, { ...payload, updatedAt: new Date(0).toISOString() }]]) assert.equal((await app.inject({ method: "POST", url: path, headers: auth, payload: body })).statusCode, 409);
-  assert.equal(deleted, 4);
+  assert.equal(deleted, 5);
   const newKey = crypto.randomBytes(8).toString("hex");
   link.queue.deletionKeyHash = await bcrypt.hash(newKey, 4);
   assert.equal((await app.inject({ method: "POST", url, headers: auth, payload })).statusCode, 403);
@@ -106,7 +107,7 @@ test("HR 删除逐次校验独立密钥，支持四阶段且仅删除同专场�
     link.active = active; link.tokenVersion++;
     assert.equal((await app.inject({ method: "POST", url, headers: auth, payload: { ...payload, deletionKey: newKey } })).statusCode, active ? 401 : 410);
   }
-  assert.equal(deleted, 5);
+  assert.equal(deleted, 6);
 });
 
 test("专业、文化、学生和只读账号不能绕过 HR 删除权限", async (t) => {
@@ -170,13 +171,14 @@ test("停止招聘的岗位从排队选岗和 JD 隐藏，恢复后重新可见"
   assert.equal((await app.inject({ url: `/api/public/interview-queues/registration/jobs/${jobs[0].id}`, headers })).statusCode, 200);
 });
 
-test("岗位 JD 必须使用登记链接；登记后台拒绝内推、已移除和自行输入岗位", async (t) => {
+test("岗位 JD 必须使用登记链接；登记后台拒绝停止、已移除和自行输入岗位", async (t) => {
   const { app, link, jobs } = await setup(t, { kind: "registration" });
   const headers = { "x-queue-link": link.token };
   const form = { name: "测试学生", school: "测试大学", major: "机械", degree: "本科", gradYear: 2027, languageAbility: "CET-6", phone: "13900000000", email: "student@example.com" };
-  for (const jobDirection of [jobs[1].title, jobs[2].title, jobs[3].title, "自由输入"]) {
+  jobs[0].campusKind = "stopped";
+  for (const jobDirection of [jobs[0].title, jobs[2].title, jobs[3].title, "自由输入"]) {
     const response = await app.inject({ method: "POST", url: "/api/public/interview-queues/register", headers, payload: { ...form, jobDirection } });
-    assert.equal(response.statusCode, 422); assert.equal(response.json().error, "queue_job_not_onsite");
+    assert.equal(response.statusCode, 422); assert.equal(response.json().error, "queue_job_unavailable");
   }
   link.kind = "professional";
   assert.equal((await app.inject({ url: `/api/public/interview-queues/registration/jobs/${jobs[0].id}`, headers })).statusCode, 403);
@@ -409,4 +411,54 @@ test("配置席位后分享会话绑定席位，同阶段其他席位人员不�
   assert.equal(data.json().queue.station.name, "甲席位");
   const denied = await app.inject({ method: "POST", url: "/api/public/interview-queues/share/actions", headers, payload: { action: "professional-result", result: "passed", confirmed: true, items: [{ id: rows[1].id, updatedAt: rows[1].updatedAt.toISOString() }] } });
   assert.equal(denied.statusCode, 403); assert.equal(writes, 0);
+});
+
+
+test("登记按当前岗位类型分流，内推学生无排名，邮箱重复登记不覆盖", async (t) => {
+  const { app, link, jobs } = await setup(t, { kind: "registration" });
+  const entries = [];
+  app.prisma.interviewQueueEntry = {
+    create: async ({ data }) => {
+      if (entries.some((row) => row.email === data.email && row.queueId === data.queueId)) throw Object.assign(new Error("duplicate"), { code: "P2002" });
+      const row = { id: crypto.randomUUID(), ...data, suggestions: [{ content: "内部建议" }] };
+      entries.push(row); return row;
+    },
+    findMany: async ({ where }) => entries.filter((row) => where.id === row.id || where.email === row.email).map((row) => ({ ...row, queue: link.queue })),
+    count: async () => 2,
+  };
+  const form = { name: "测试学生", school: "测试大学", major: "机械", degree: "本科", gradYear: 2027, languageAbility: "CET-6", phone: "13900000000" };
+  for (const [index, stage] of [[0, "professional"], [1, "referral"]]) {
+    const payload = { ...form, jobDirection: jobs[index].title, email: `student${index}@example.com` };
+    const response = await app.inject({ method: "POST", url: "/api/public/interview-queues/register", headers: { "x-queue-link": link.token }, payload });
+    assert.equal(response.statusCode, 200); assert.equal(response.json().entry.stage, stage);
+    assert.equal(response.json().entry.suggestions, undefined);
+    const mine = await app.inject({ url: "/api/public/interview-queues/mine", headers: { authorization: `Bearer ${response.json().token}` } });
+    assert.equal(mine.statusCode, 200); assert.equal(mine.json().entries.length, 1);
+    assert.equal(mine.json().entries[0].stage, stage);
+    assert.equal(mine.json().entries[0].ahead, stage === "referral" ? null : 2);
+    assert.equal(mine.json().entries[0].suggestions, undefined);
+    const duplicate = await app.inject({ method: "POST", url: "/api/public/interview-queues/register", headers: { "x-queue-link": link.token }, payload: { ...payload, jobDirection: jobs[1 - index].title } });
+    assert.equal(duplicate.statusCode, 409); assert.equal(duplicate.json().error, "queue_already_registered");
+    assert.equal(entries[index].stage, stage);
+  }
+  // Classification follows the current catalog when HR changes a job before submission.
+  jobs[0].campusKind = "referral";
+  const updated = await app.inject({ method: "POST", url: "/api/public/interview-queues/register", headers: { "x-queue-link": link.token }, payload: { ...form, email: "changed@example.com", jobDirection: jobs[0].title } });
+  assert.equal(updated.json().entry.stage, "referral");
+});
+
+test("内推仅下发 HR 和后台，不混入专业或文化面试官名单", async (t) => {
+  for (const role of ["hr", "professional", "culture"]) {
+    const { app, headers, link } = await setup(t, { kind: role });
+    app.prisma.interviewQueueEntry = { findMany: async ({ where }) => {
+      const rows = ["professional", "culture", "salary", "pending", "referral"].map((stage) => ({ id: crypto.randomUUID(), stage, queueId }));
+      return rows.filter((row) => !where.OR || where.OR.some((condition) => row.stage === condition.stage));
+    } };
+    const auth = { authorization: `Bearer ${app.jwt.sign({ aud: "interview-queue-share", sub: link.id, kind: role, queueId, tv: 0 })}` };
+    const shared = await app.inject({ url: "/api/public/interview-queues/share/data", headers: auth });
+    assert.equal(shared.statusCode, 200);
+    assert.equal(shared.json().entries.some((row) => row.stage === "referral"), role === "hr");
+    const staff = await app.inject({ url: `/api/interview-queues/${sessionId}`, headers });
+    assert.equal(staff.statusCode, 200); assert.equal(staff.json().entries.some((row) => row.stage === "referral"), true);
+  }
 });

@@ -16,7 +16,7 @@ function Section({ title, desc, items, slug }) {
           <Link key={j.id} to={`${base(slug)}/jobs/${j.id}`} className="block bg-white rounded-card shadow-card p-4 active:scale-[0.99] transition-transform">
             <div className="flex items-center gap-2">
               <p className="font-bold text-sm flex-1 min-w-0 truncate">{j.title}</p>
-              <KindTag kind={j.kind} />
+              <KindTag kind={j.kind} />{j.kind === "onsite" && <span className="shrink-0 rounded-md bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600">优先招聘</span>}
               {j.applied && <span className="text-[10px] font-bold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">已投递</span>}
             </div>
             <p className="text-xs text-gray-600 mt-1 truncate">{[j.dept, j.location, j.employment, j.salary].filter(Boolean).join(" · ") || "—"}</p>

@@ -40,7 +40,7 @@ export const publicQueueApi = {
   recover: (email, code) => publicApi.post("/recover/verify", { email, code }).then((r) => r.data),
   mine: (token) => publicApi.get("/mine", bearer(token)).then((r) => r.data),
 };
-export const QUEUE_STAGE_LABELS = { professional: "专业面试", culture: "文化面试", salary: "定薪", pending: "待定" };
+export const QUEUE_STAGE_LABELS = { professional: "专业面试", culture: "文化面试", salary: "定薪", pending: "待定", referral: "内推" };
 export const QUEUE_ROLE_LABELS = { professional: "专业面试官", culture: "文化面试官", hr: "HR", registration: "排队登记" };
 export const queueResult = (value) => ({ passed: "通过", pending: "待定", accepted: "接受", abandoned: "放弃" }[value] || "—");
 export const queueErrorMessage = (err) => err.response?.data?.message || "请求失败，请稍后重试";

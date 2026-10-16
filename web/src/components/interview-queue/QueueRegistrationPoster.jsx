@@ -8,21 +8,21 @@ const CONTACT_STEP = ["确认手机号、邮箱与毕业年份", "毕业年份�
 const UPLOAD_STEP = ["上传电子简历", "选择 PDF 或 Word（DOC／DOCX），文件不超过 20MB；按页面提示确认后上传。"];
 const STEPS = [
   ["先将纸质简历交给 HR", "请将纸质简历统一投递到现场 HR 手中。"],
-  ["扫码登记，选择意向岗位并排队", "填写面试信息、查看岗位 JD，选择意向岗位后提交；可用登记邮箱找回记录。"],
-  ["轮到你时，找 HR 领回简历", "由 HR 指派专业面试官，再携带自己的简历前往面试。"],
+  ["浏览 JD，选择意向岗位登记", "选择现场面试或内推岗位后提交；现场岗位登记排队，内推岗位由相关部门后续联系。"],
+  ["现场岗位轮到时，找 HR 领回简历", "由 HR 指派专业面试官，再携带自己的简历前往面试。"],
   ["专业面通过，自动排文化面", "登记后的排队页面可查看：文化面试排队，或待定。"],
-  ["文化面通过，等待 HR 联系定薪", "通过后会进入定薪阶段，请保持联系方式畅通。"],
+  ["文化面通过，等待 HR 联系定薪", "通过后进入定薪阶段；点击「刷新状态」查看进展，请保持联系方式畅通。"],
 ];
 const POSTER_CONTENT = {
-  registration: { title: "校园招聘 · 面试排队", subtitle: "先交纸质简历，再扫码登记", qrTitle: "扫码登记 · 选择意向岗位", guideTitle: "现场面试怎么走", steps: STEPS },
+  registration: { title: "校园招聘 · 面试排队", subtitle: "先交纸质简历，再扫码登记", qrTitle: "扫码登记 · 选择意向岗位", guideTitle: "登记后怎么走", steps: STEPS },
   professional: {
     title: "专业面试 · 操作指南", subtitle: "扫码进入专业面试工作台", qrTitle: "专业面试官扫码进入", guideTitle: "专业面试官可以做什么", focus: 2,
     steps: [
       ["查看当前人员，开始计时", "每人建议 10 分钟；点击「开始计时」，刷新后继续，满 10 分钟波浪球变红。"],
       ["二次确认专业面试结果", "选择「通过」或「待定」并确认；通过自动进入文化面排队。"],
       ["添加对候选人的建议", "逐人填写并保存建议，后续文化面试官及 HR 可查看已保存的记录。"],
-      ["修改候选人的岗位方向", "在人员资料中点击「修改」，填写或选择岗位方向，二次确认后保存。"],
-      ["同步查看全部待定及来源", "待定页同步专业、文化和定薪环节的待定人员，可按「待定环节」筛选。"],
+      ["搜索岗位、查看 JD 后修改方向", "点击「修改」可搜索、展开岗位菜单或浏览 JD；选择岗位方向后需二次确认。"],
+      ["刷新名单，查看全部待定及来源", "点击「刷新」查看最新人员和待定来源；待定页汇总专业、文化和定薪环节。"],
     ],
   },
   culture: {
@@ -32,17 +32,17 @@ const POSTER_CONTENT = {
       ["多选或全选，切换群面", "勾选本组人员后共用计时，群面建议 5–10 分钟；可逐人或批量确认结果。"],
       ["二次确认文化面试结果", "通过自动进入定薪；待定自动进入专业、文化、HR 共用的待定页。"],
       ["逐人添加面试建议", "群面时在人员表格中逐人添加建议；保存后保留勾选，后续 HR 可查看。"],
-      ["查看待定来源和历史建议", "待定页可按环节筛选，查看真实面试结果和此前保存的建议。"],
+      ["刷新名单，查看待定与历史建议", "点击「刷新」获取最新人员；待定页可筛选来源，查看历史结果和建议。"],
     ],
   },
   hr: {
-    title: "HR 定薪 · 操作指南", subtitle: "扫码进入定薪工作台，统一沟通安排", qrTitle: "HR 扫码进入定薪", guideTitle: "HR 可以做什么", focus: 4,
+    title: "HR 定薪 · 操作指南", subtitle: "处理面试、定薪与内推登记，统一沟通安排", qrTitle: "HR 扫码进入定薪", guideTitle: "HR 可以做什么", focus: 4,
     steps: [
-      ["查看全部待定薪人员", "定薪页展示本阶段全部人员，核对学校、岗位、毕业时间与邮箱。"],
-      ["调整基础薪资与基数", "默认基础薪资 8700、基数 13.5；点击「修改定薪」，勾选字段后填写数值。"],
-      ["多选或全选，统一修改", "勾选人员并点击「批量修改定薪」；只应用勾选字段，二次确认后保存。"],
-      ["确认结果、添加建议或密钥删除", "接受后保留，放弃转待定；可添加建议。删除人员须输入独立删除密钥并确认。"],
-      ["修改岗位方向，待定重新排队", "定薪／待定可搜索岗位并查看 JD；待定人员可重新加入专业或文化面队尾。"],
+      ["刷新名单，核对当前阶段", "点击「刷新」查看最新人员与结果；可切换专业、文化、定薪和待定。"],
+      ["查看全部定薪人员，单人或批量修改", "基础薪资默认 8700、基数 13.5；可点击「修改定薪」或多选后「批量修改定薪」。"],
+      ["确认接受／放弃，逐人添加建议", "只应用勾选字段，二次确认后保存；接受保留定薪页，放弃进入待定，可添加建议。"],
+      ["修改岗位方向，待定重新排队", "定薪／待定可搜索岗位并查看 JD；待定重排专业／文化队尾，清除重做结果及计时。"],
+      ["按需删除人员，保留校招档案", "须分享人先设置独立删除密钥；每次输入并确认，永久删除本专场排队记录、结果及建议。"],
     ],
   },
   "job-review": {
@@ -50,8 +50,8 @@ const POSTER_CONTENT = {
     steps: [
       ["查看分享范围内的岗位 JD", "点击岗位名称或「查看 JD 详细要求」，阅读职责、要求与完整福利。"],
       ["搜索岗位，多选或全选", "可逐项勾选岗位，也可全选当前搜索结果；确认已选范围后再操作。"],
-      ["确认现场面试或内推类型", "点击对应标记，核对确认窗口中的全部岗位名称，二次确认后保存。"],
-      ["新建 JD，并选择岗位类型", "填写岗位名称、职责、任职要求，选择现场面试或内推；其他信息自动填入。"],
+      ["确认现场／内推或停止招聘", "核对所选岗位名称后确认类型；停止招聘后不对学生展示，重新标记现场或内推即可恢复。"],
+      ["新建 JD，并选择岗位类型", "填写岗位名称、职责、任职要求，选择岗位类型（含停止招聘）；其他信息自动填入。"],
       ["保存后同步全部大学专场", "新岗位加入当前分享范围；链接到期或停止分享后，页面将不能继续操作。"],
     ],
   },
@@ -104,17 +104,18 @@ const QueueRegistrationPoster = forwardRef(function QueueRegistrationPoster({ se
   const wide = format === "landscape";
   const content = { ...POSTER_CONTENT[kind], steps: POSTER_CONTENT[kind].steps.map((step) => [...step]) };
   if (kind === "registration") {
-    if (routingEnabled) content.steps[2] = ["等待 HR 分配面试官并叫号", "按 HR 指定的面试官席位排队；轮到你时领回纸质简历，前往对应席位面试。"];
-    content.steps[3] = cultureOnsite ? ["专业面通过，进入文化阶段", routingEnabled ? "由 HR 分配文化面试官；可在登记后的页面查看席位、排队与结果。" : "登记后的排队页面可查看：文化面试排队，或待定。"] : ["专业面通过，等待线上文化面", "本专场无现场文化面试官；请等待 HR 联系安排线上文化面试及后续流程。"];
-    if (!cultureOnsite) content.steps[4] = ["保持联系方式畅通，留意 HR 通知", "文化面试、定薪及后续流程由 HR 线上联系；无需在现场排文化面。"];
+    if (routingEnabled) content.steps[2] = ["现场岗位：等 HR 分配并叫号", "按 HR 指定的面试官席位排队；轮到你时领回纸质简历，前往对应席位面试。"];
+    content.steps[3] = cultureOnsite ? ["专业面通过，进入文化阶段", routingEnabled ? "由 HR 分配文化席位；点击「刷新状态」查看席位、排队与结果。" : "点击「刷新状态」查看文化面试排队，或待定及其来源。"] : ["专业面通过，等待线上文化面", "本专场无现场文化面试官；等待 HR 联系线上文化面，点击「刷新状态」查看结果。"];
+    if (!cultureOnsite) content.steps[4] = ["保持联系方式畅通，留意 HR 通知", "文化面试、定薪及后续流程由 HR 线上联系；换设备可用登记邮箱找回记录。"];
   }
   if (routingEnabled && ["professional", "culture"].includes(kind)) content.steps[0][1] = "仅面试 HR 分配给本席位的人员，按顺序叫号、开始计时；十分钟波浪球满红。";
   if (kind === "professional" && routingEnabled && cultureOnsite) content.steps[1][1] = "选择通过或待定并二次确认；通过后进入文化阶段，由 HR 分配文化面试官。";
   if (kind === "professional" && !cultureOnsite) content.steps[1][1] = "通过后等待 HR 联系线上文化面试；待定转入待定页，结果需二次确认。";
-  if (kind === "hr" && routingEnabled) {
-    content.steps[0] = ["按阶段多选人员，手动分配面试官", "专业／文化 Tab 可多选、全选分配或转派席位；同一人员只分配一个席位。"];
-    content.steps[4] = ["流转后重新分配下一阶段席位", cultureOnsite ? "专业面通过后，由 HR 分配文化席位；转派加入队尾，清除本轮计时。" : "无现场文化面，专业通过后由 HR 线上联系安排文化面及后续流程。"];
+  if (kind === "hr") {
+    if (routingEnabled) content.steps[0] = ["手动分配面试官，刷新最新名单", cultureOnsite ? "专业／文化可分配、转派或撤回席位；流转后重新分配，点击刷新。" : "专业可多选分配或转派；通过后 HR 线上联系后续，点击刷新。"];
+    else if (!cultureOnsite) content.steps[0] = ["刷新名单，安排线上后续", "刷新名单；无现场文化面，HR 线上联系后续。"];
   }
+  if (kind === "hr") content.steps[0][1] += " 内推 Tab 查看内推登记。";
   const flow = content.flow || QUEUE_RECRUITMENT_FLOW.map((label, index) => !cultureOnsite && index === 3 ? "线上文化面" : label);
   const { width, height } = QUEUE_POSTER_SIZES[format];
   const margin = wide ? 84 : 72;
@@ -144,13 +145,13 @@ const QueueRegistrationPoster = forwardRef(function QueueRegistrationPoster({ se
     <text x={margin + 24} y="71" fontSize="23" fontWeight="700" fill="#6251D8" letterSpacing="3">CAMPUS RECRUITMENT · 校园招聘</text>
     <TextLines text={stationName ? `${sessionName} · ${stationName}` : sessionName} x={margin} y={wide ? 130 : 120} width={width - margin * 2} fontSize={schoolSize} lineHeight={schoolSize + 10} fontWeight="600" fill="#6251D8" />
     <text x={margin} y={wide ? 280 : 255} fontSize={wide ? 86 : 76} fontWeight="800" letterSpacing="1">{content.title}</text>
-    <text x={margin} y={wide ? 350 : 318} fontSize="36" fill="#6251D8">{content.subtitle}</text>
+    <text x={margin} y={wide ? 350 : 318} fontSize="36" fill="#6251D8">{registration ? <>先交<tspan fontSize="48" fontWeight="900" fill="#422AFB" textDecoration="underline">纸质简历</tspan>，再扫码登记</> : content.subtitle}</text>
     <rect x={margin} y={wide ? 398 : 340} width={panelWidth} height={wide ? 750 : registration ? 710 : 620} rx="36" fill="#FFFFFF" />
     <g transform={`translate(${qr.x} ${qr.y})`}><QRCodeSVG value={url} size={qr.size} level="M" marginSize={4} bgColor="#FFFFFF" fgColor="#121827" /></g>
     {dual && <image href={groupQr} x={groupX} y={qr.y} width={qr.size} height={qr.size} preserveAspectRatio="xMidYMid meet" />}
-    <text x={qrCenter} y={registration ? wide ? 930 : 848 : wide ? 982 : 862} textAnchor="middle" fontSize={dual ? 30 : 35} fontWeight="700">{dual ? "扫码登记面试排队" : content.qrTitle}</text>
+    <text x={qrCenter} y={registration ? wide ? 930 : 848 : wide ? 982 : 862} textAnchor="middle" fontSize={dual ? 30 : 35} fontWeight="700">{dual ? "扫码登记 · 选择意向岗位" : content.qrTitle}</text>
     {dual && <text x={groupX + qr.size / 2} y={wide ? 930 : 848} textAnchor="middle" fontSize="30" fontWeight="700">扫码加入校招群</text>}
-    <text x={panelCenter} y={registration ? wide ? 977 : 892 : wide ? 1032 : 909} textAnchor="middle" fontSize="26" fill="#707EAE">{registration ? "无需登录 · 登记后可随时查看排队进度" : kind.startsWith("campus-") ? "学生扫码直达 · 无需工作台登录" : requireKey ? "需访问密钥 · 请向分享人获取" : "无需工作台登录 · 请按当前专场操作"}</text>
+    <text x={panelCenter} y={registration ? wide ? 977 : 892 : wide ? 1032 : 909} textAnchor="middle" fontSize="26" fill="#707EAE">{registration ? "无需登录 · 登记后查看面试进度或内推状态" : kind.startsWith("campus-") ? "学生扫码直达 · 无需工作台登录" : requireKey ? "需访问密钥 · 请向分享人获取" : "无需工作台登录 · 请按当前专场操作"}</text>
     <text x={panelCenter} y={registration ? wide ? 1016 : 931 : wide ? 1083 : 944} textAnchor="middle" fontSize={wide ? 21 : 23} fill="#707EAE">{queuePosterExpiry(expiresAt, kind)}</text>
     {registration && <TextLines text={address} x={margin + 32} y={wide ? 1058 : 973} width={panelWidth - 64} fontSize={addressSize} lineHeight={wide ? 26 : 30} fontWeight="600" fill="#422AFB" />}
     <text x={guideX} y={wide ? 430 : registration ? 1095 : 1033} fontSize={wide ? 34 : 40} fontWeight="700">{content.guideTitle}</text>
@@ -159,7 +160,7 @@ const QueueRegistrationPoster = forwardRef(function QueueRegistrationPoster({ se
       return <g key={title}><circle cx={x + 24} cy={y - 10} r="24" fill={`url(#poster-brand-${id})`} /><text x={x + 24} y={y - 1} textAnchor="middle" fill="#FFFFFF" fontSize="27" fontWeight="700">{index + 1}</text><text x={x + 66} y={y} fontSize={registration ? 30 : wide ? 36 : 34} fontWeight="700">{title}</text><TextLines text={text} x={x + 66} y={y + (registration ? 40 : 44)} width={wide && registration ? 800 : wide ? 1210 : 1220} fontSize={registration ? wide ? 27 : 24 : wide ? 29 : 27} lineHeight={registration ? 32 : 38} fill="#536187" /></g>;
     })}
     {registration && <g><rect x={margin} y={wide ? 1162 : 1618} width={width - margin * 2} height={wide ? 80 : 78} rx="14" fill="#E7E2FF" /><TextLines text={followUp} x={margin + 20} y={wide ? 1192 : 1647} width={width - margin * 2 - 40} fontSize={wide ? 26 : 24} lineHeight="32" fontWeight="600" fill="#493B8B" /><TextLines text={referralFollowUp} x={margin + 20} y={wide ? 1224 : 1679} width={width - margin * 2 - 40} fontSize={wide ? 26 : 24} lineHeight="32" fontWeight="600" fill="#493B8B" /></g>}
-    <text x={margin} y={wide ? registration ? 1280 : 1220 : registration ? 1726 : 1712} fontSize="29" fontWeight="700">{content.flow ? "页面操作流程" : "完整招聘流程"}</text>
+    <text x={margin} y={wide ? registration ? 1280 : 1220 : registration ? 1726 : 1712} fontSize="29" fontWeight="700">{content.flow ? "页面操作流程" : registration ? "现场面试完整招聘流程" : "完整招聘流程"}</text>
     {flow.map((label, index) => {
       const columns = wide ? 8 : 4; const gap = wide ? 26 : 28;
       const boxWidth = (width - margin * 2 - gap * (columns - 1)) / columns;
