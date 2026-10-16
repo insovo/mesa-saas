@@ -1287,7 +1287,7 @@ AuthGuard 外,学生**不注册不登录**。会话:首次上传前 `POST /auth/
 | GET | `/link` | `X-Queue-Link` 传链接 token，返回专场、角色、是否需要密钥和期限；登记还返回全部有效校招岗位选项及 kind，前端仅允许选择 onsite |
 | GET | `/registration/jobs/:jobId` | 有效登记 X-Queue-Link；UUID 岗位；返回有效校招 JD 公开字段（含内推），薪资按专场设置隐藏。不返回评价模型、人员、权限和内部字段 |
 | POST | `/share/open` | `X-Queue-Link` + `{accessKey?}` → 12h 角色 JWT；每次使用仍检查分享状态 |
-| GET | `/share/data?revision=` | 角色 Bearer JWT，返回该角色本阶段和专场全部待定记录；pendingFrom 标明 professional/culture/salary；人员含内部 suggestions（id/authorRole/content/createdAt），专业/文化不返回邮箱/薪资 |
+| GET | `/share/data?revision=` | 角色 Bearer JWT，专业／文化返回本角色当前阶段和专场全部待定记录，HR 返回四阶段；pendingFrom 标明 professional/culture/salary；人员含内部 suggestions（id/authorRole/content/createdAt），专业/文化不返回邮箱/薪资 |
 | GET | `/share/jobs/:jobId` | 专业／HR Bearer JWT；有效校招 JD 公开字段（含内推），薪资按专场设置；每次检查分享状态和版本 |
 | POST | `/share/actions` | 角色 Bearer JWT；HR 可对待定执行方向修改／重新排队，其余操作限对应阶段 |
 | POST | `/register` | 登记 X-Queue-Link + `{name,school,major,degree,gradYear,languageAbility,phone,jobDirection,email}` → 本记录查询 JWT（30d）；同专场邮箱重复 409；事务内按名称校验当前有效 onsite 校招岗位，不符 422 queue_job_not_onsite |
@@ -1305,6 +1305,14 @@ AuthGuard 外,学生**不注册不登录**。会话:首次上传前 `POST /auth/
 
 - `PATCH /api/interview-queues/:sessionId/setup`：后台可编辑 interviews 权限；`{ setup, previousSetup }`，两者为 `{ cultureOnsite:boolean, stations:[{id:uuid,name:string(1–40),role:professional|culture}] }`。至少一个专业席位，现场文化开启时至少一个文化席位，最多合计40个；配置冲突或删除占用席位返回409。
 - `POST /api/interview-queues/:sessionId/actions` 或 HR 的 `POST /api/public/interview-queues/share/actions`：新增 `action=assign`，`items` 沿用人员版本快照，`targetStationId=uuid|null` 指定席位／撤回，`confirmed=true` 二次确认。仅当前专业／文化阶段可分配，转派加入队尾并清除本阶段计时。专业／文化角色拒绝分配。
-- `GET /api/interview-queues/` 增加每专场 `setup`；后台及 HR 的队列 data 在配置席位后返回全部阶段，专业／文化只返回本席位当前阶段及全专场待定。`queue.setup`、`queue.station` 提供显示信息。
+- `GET /api/interview-queues/` 增加每专场 `setup`；后台及 HR 的队列 data 返回全部阶段，专业／文化只返回本席位当前阶段及全专场待定。`queue.setup`、`queue.station` 提供显示信息。
 - 公开 `/link` 返回 `setup.cultureOnsite`、`setup.routingEnabled` 和当前分享角色的席位；登记链接不返回席位名单。`POST /share/open` 可带 `stationId`，配置启用后专业／文化必须指定有效本角色席位。JWT绑定席位，后续 data/actions 在队列锁内再次校验当前配置与分配。原角色停止分享和期限规则保持有效。
 - 学生 `/mine` 增加 `cultureOnsite`、`routingEnabled`、`stationName`；`ahead` 按当前席位与阶段计算，无分配显示待 HR 安排；无现场文化面时保留 culture 阶段并提示 HR 线上联系。
+
+
+### 20.9 HR 人员删除密钥及逐人删除（2026-10-16）
+
+- `PATCH /api/interview-queues/:sessionId/deletion-key`：需要后台可编辑 `interviews` 权限，body `{deletionKey:string}`，6–64 位字母数字。bcrypt 哈希存 `InterviewQueue.deletionKeyHash`，返回 `{deletionEnabled:true}`；更新立即生效，保持分享链接、访问密钥与期限。未设置默认禁止删除，保存后不回显。
+- `POST /api/interview-queues/:sessionId/entries/:entryId/delete`：后台可编辑权限；`POST /api/public/interview-queues/share/entries/:entryId/delete`：有效 HR Bearer JWT。两者 body 为 `{updatedAt:date-time,deletionKey:string,confirmed:true}`，成功 `{ok:true}`。一次一人，可删除四阶段人员；只影响当前队列记录和级联建议，不删除 Candidate、CampusApplicant 或其他队列记录。
+- 删除在队列事务锁内复核分享有效性、当前哈希、人员版本和所属队列，成功递增 revision；失败回滚，不部分删除。未设置 403 `queue_deletion_key_not_configured`，密钥错误 403 `queue_deletion_key_invalid`，非 HR／只读 403，旧人员版本／记录不存在或跨队列 409 `queue_conflict`，分享失效仍沿用 410／401。每分钟每后台账号／HR 分享链接最多 10 次，多个 viewerId 共用链接额度。
+- 后台列表各专场及后台／HR data 的 `queue` 返回 `deletionEnabled:boolean`。所有读取 API 均不返回明文密钥或哈希。学生查询删除后无该条记录；其他页面由刷新获取最新版本。新增迁移 `20261016020000_interview_queue_deletion_key`。

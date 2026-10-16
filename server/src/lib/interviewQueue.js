@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import bcrypt from "bcryptjs";
 
 export const QUEUE_STAGES = ["professional", "culture", "salary", "pending"];
 export const QUEUE_LINK_KINDS = ["registration", "professional", "culture", "hr"];
@@ -154,6 +155,20 @@ export async function mutateQueue(prisma, queueId, body, role, validateActor = a
     }
     const updatedAt = new Date(Math.max(Date.now(), ...rows.map((row) => new Date(row.updatedAt).getTime() + 1)));
     await tx.interviewQueueEntry.updateMany({ where: { queueId, id: { in: rows.map((row) => row.id) } }, data: { ...data, updatedAt } });
+    return { ok: true };
+  });
+}
+
+export async function deleteQueueEntry(prisma, queueId, entryId, body, role, validateActor = async () => {}) {
+  if (!["staff", "hr"].includes(role)) throw queueError("只有 HR 可以删除排队人员", 403, "queue_role_forbidden");
+  if (body.confirmed !== true) throw queueError("请确认删除后提交", 400, "queue_confirmation_required");
+  return prisma.$transaction(async (tx) => {
+    const queue = await tx.interviewQueue.update({ where: { id: queueId }, data: { revision: { increment: 1 } } });
+    await validateActor(tx);
+    if (!queue.deletionKeyHash) throw queueError("请先在分享给 HR 中设置删除密钥", 403, "queue_deletion_key_not_configured");
+    if (!body.deletionKey || !(await bcrypt.compare(body.deletionKey, queue.deletionKeyHash))) throw queueError("删除密钥不正确", 403, "queue_deletion_key_invalid");
+    const removed = await tx.interviewQueueEntry.deleteMany({ where: { id: entryId, queueId, updatedAt: new Date(body.updatedAt) } });
+    if (removed.count !== 1) throw queueError("人员已更新或已删除，请刷新后重试", 409, "queue_conflict");
     return { ok: true };
   });
 }

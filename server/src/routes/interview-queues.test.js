@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import Fastify from "fastify";
+import rateLimit from "@fastify/rate-limit";
 import jwtPlugin from "../plugins/jwt.js";
 import routes, { publicInterviewQueueRoutes } from "./interview-queues.js";
 import { encrypt } from "../lib/secrets.js";
@@ -12,7 +13,7 @@ const sessionId = "10000000-0000-4000-8000-000000000001";
 const userId = "10000000-0000-4000-8000-000000000002";
 const queueId = "10000000-0000-4000-8000-000000000003";
 const linkId = "10000000-0000-4000-8000-000000000004";
-async function setup(t, { role = "ADMIN", pages = ["interviews"], kind = "culture" } = {}) {
+async function setup(t, { role = "ADMIN", pages = ["interviews"], kind = "culture", rateLimited = false } = {}) {
   process.env.JWT_SECRET = crypto.randomBytes(32).toString("hex");
   const accessKey = crypto.randomBytes(6).toString("hex");
   const link = { id: linkId, queueId, kind, token: crypto.randomBytes(24).toString("base64url"), tokenVersion: 0, active: true, expiresAt: null, requireKey: kind !== "registration", keyEnc: encrypt(accessKey), keyHash: await bcrypt.hash(accessKey, 4) };
@@ -38,12 +39,99 @@ async function setup(t, { role = "ADMIN", pages = ["interviews"], kind = "cultur
   });
   app.prisma.$transaction = async (run) => run(app.prisma);
   await app.register(jwtPlugin);
+  if (rateLimited) await app.register(rateLimit);
   await app.register(routes, { prefix: "/api/interview-queues" });
   await app.register(publicInterviewQueueRoutes, { prefix: "/api/public/interview-queues" });
   t.after(() => app.close());
   const headers = { authorization: `Bearer ${app.jwt.sign({ sub: userId, tv: 0 })}` };
   return { app, headers, link, accessKey, jobs };
 }
+
+test("删除密钥只允许后台可编辑者设置，只存哈希且任何读取接口都不泄露", async (t) => {
+  const { app, headers, link } = await setup(t, { kind: "hr" });
+  const queue = link.queue;
+  const key = crypto.randomBytes(8).toString("hex");
+  app.prisma.interviewQueue.update = async ({ data }) => { if (data.deletionKeyHash) queue.deletionKeyHash = data.deletionKeyHash; return queue; };
+  const url = `/api/interview-queues/${sessionId}/deletion-key`;
+  const response = await app.inject({ method: "PATCH", url, headers, payload: { deletionKey: key } });
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.json(), { deletionEnabled: true });
+  assert.notEqual(queue.deletionKeyHash, key); assert.ok(await bcrypt.compare(key, queue.deletionKeyHash));
+  app.prisma.interviewQueueEntry = { findMany: async () => [] };
+  const auth = { authorization: `Bearer ${app.jwt.sign({ aud: "interview-queue-share", sub: link.id, kind: "hr", queueId, tv: 0 })}` };
+  for (const [path, requestHeaders] of [["/api/interview-queues/", headers], [`/api/interview-queues/${sessionId}`, headers], ["/api/public/interview-queues/share/data", auth], ["/api/public/interview-queues/link", { "x-queue-link": link.token }]]) {
+    const result = await app.inject({ url: path, headers: requestHeaders });
+    assert.equal(result.statusCode, 200);
+    assert.equal(result.body.includes(key), false); assert.equal(result.body.includes(queue.deletionKeyHash), false);
+  }
+  assert.equal((await app.inject({ method: "PATCH", url, headers: auth, payload: { deletionKey: key } })).statusCode, 401);
+  for (const deletionKey of ["", "12345", "a".repeat(65), "含空格 abc"]) assert.equal((await app.inject({ method: "PATCH", url, headers, payload: { deletionKey } })).statusCode, 400);
+  for (const options of [{ role: "VIEWER" }, { role: "RECRUITER", pages: ["candidates"] }]) {
+    const denied = await setup(t, options);
+    assert.equal((await denied.app.inject({ method: "PATCH", url, headers: denied.headers, payload: { deletionKey: key } })).statusCode, 403);
+  }
+});
+
+test("HR 删除逐次校验独立密钥，支持四阶段且仅删除同专场最新记录", async (t) => {
+  const { app, headers: staffHeaders, link, accessKey } = await setup(t, { kind: "hr" });
+  const key = crypto.randomBytes(8).toString("hex");
+  const updatedAt = new Date().toISOString();
+  const row = { id: userId, queueId, updatedAt };
+  let deleted = 0;
+  app.prisma.interviewQueueEntry = { deleteMany: async ({ where }) => {
+    assert.equal(where.queueId, queueId);
+    if (where.id !== row.id || where.updatedAt.getTime() !== new Date(updatedAt).getTime()) return { count: 0 };
+    deleted++; return { count: 1 };
+  } };
+  const auth = { authorization: `Bearer ${app.jwt.sign({ aud: "interview-queue-share", sub: link.id, kind: "hr", queueId, tv: 0 })}` };
+  const url = `/api/public/interview-queues/share/entries/${userId}/delete`;
+  const payload = { updatedAt, deletionKey: key, confirmed: true };
+  assert.equal((await app.inject({ method: "POST", url, headers: auth, payload })).json().error, "queue_deletion_key_not_configured");
+  link.queue.deletionKeyHash = await bcrypt.hash(key, 4);
+  const wrong = await app.inject({ method: "POST", url, headers: auth, payload: { ...payload, deletionKey: accessKey } });
+  assert.equal(wrong.statusCode, 403); assert.equal(wrong.json().error, "queue_deletion_key_invalid"); assert.equal(deleted, 0);
+  for (const extra of [{ confirmed: false }, { deletionKey: undefined }, { updatedAt: "invalid" }]) assert.equal((await app.inject({ method: "POST", url, headers: auth, payload: { ...payload, ...extra } })).statusCode, 400);
+  for (const stage of ["professional", "culture", "salary", "pending"]) {
+    row.stage = stage;
+    assert.equal((await app.inject({ method: "POST", url, headers: auth, payload })).statusCode, 200);
+  }
+  assert.equal(deleted, 4);
+  for (const [path, body] of [[url.replace(userId, sessionId), payload], [url, { ...payload, updatedAt: new Date(0).toISOString() }]]) assert.equal((await app.inject({ method: "POST", url: path, headers: auth, payload: body })).statusCode, 409);
+  assert.equal(deleted, 4);
+  const newKey = crypto.randomBytes(8).toString("hex");
+  link.queue.deletionKeyHash = await bcrypt.hash(newKey, 4);
+  assert.equal((await app.inject({ method: "POST", url, headers: auth, payload })).statusCode, 403);
+  assert.equal((await app.inject({ method: "POST", url: `/api/interview-queues/${sessionId}/entries/${userId}/delete`, headers: staffHeaders, payload: { ...payload, deletionKey: newKey } })).statusCode, 200);
+  for (const active of [false, true]) {
+    link.active = active; link.tokenVersion++;
+    assert.equal((await app.inject({ method: "POST", url, headers: auth, payload: { ...payload, deletionKey: newKey } })).statusCode, active ? 401 : 410);
+  }
+  assert.equal(deleted, 5);
+});
+
+test("专业、文化、学生和只读账号不能绕过 HR 删除权限", async (t) => {
+  for (const kind of ["professional", "culture"]) {
+    const { app, link } = await setup(t, { kind });
+    const payload = { updatedAt: new Date().toISOString(), deletionKey: crypto.randomBytes(8).toString("hex"), confirmed: true };
+    const headers = { authorization: `Bearer ${app.jwt.sign({ aud: "interview-queue-share", sub: link.id, kind, queueId, tv: 0 })}` };
+    assert.equal((await app.inject({ method: "POST", url: `/api/public/interview-queues/share/entries/${userId}/delete`, headers, payload })).statusCode, 403);
+    const student = { authorization: `Bearer ${app.jwt.sign({ aud: "interview-queue-student", sub: userId })}` };
+    assert.equal((await app.inject({ method: "POST", url: `/api/public/interview-queues/share/entries/${userId}/delete`, headers: student, payload })).statusCode, 403);
+  }
+  const { app, headers } = await setup(t, { role: "VIEWER" });
+  assert.equal((await app.inject({ method: "POST", url: `/api/interview-queues/${sessionId}/entries/${userId}/delete`, headers, payload: { updatedAt: new Date().toISOString(), deletionKey: crypto.randomBytes(8).toString("hex"), confirmed: true } })).statusCode, 403);
+});
+
+test("删除密钥尝试按分享链接限流，换 HR 页面会话不能重置计数", async (t) => {
+  const { app, link } = await setup(t, { kind: "hr", rateLimited: true });
+  const key = crypto.randomBytes(8).toString("hex");
+  link.queue.deletionKeyHash = await bcrypt.hash(crypto.randomBytes(8).toString("hex"), 4);
+  for (let i = 0; i < 11; i++) {
+    const headers = { authorization: `Bearer ${app.jwt.sign({ aud: "interview-queue-share", sub: link.id, viewerId: crypto.randomUUID(), kind: "hr", queueId, tv: 0 })}` };
+    const response = await app.inject({ method: "POST", url: `/api/public/interview-queues/share/entries/${userId}/delete`, headers, payload: { updatedAt: new Date().toISOString(), deletionKey: key, confirmed: true } });
+    assert.equal(response.statusCode, i < 10 ? 403 : 429);
+  }
+});
 
 test("只读用户可以查看大学专场，但拿不到分享凭证且不能创建或修改排队", async (t) => {
   const { app, headers } = await setup(t, { role: "VIEWER" });
@@ -189,8 +277,8 @@ test("三个分享角色同步看到专场全部待定及来源，专业文化�
     const response = await app.inject({ url: "/api/public/interview-queues/share/data", headers: { authorization: `Bearer ${app.jwt.sign({ aud: "interview-queue-share", sub: link.id, kind, queueId, tv: 0 })}` } });
     assert.equal(response.statusCode, 200);
     assert.deepEqual(response.json().entries.filter((row) => row.stage === "pending").map((row) => [row.id, row.pendingFrom]), [["p", "professional"], ["c", "culture"], ["s", "salary"]]);
-    assert.equal(response.json().entries.filter((row) => row.stage !== "pending")[0].stage, kind === "hr" ? "salary" : kind);
-    assert.equal(response.json().entries.length, 4);
+    assert.deepEqual(response.json().entries.filter((row) => row.stage !== "pending").map((row) => row.stage), kind === "hr" ? ["professional", "culture", "salary"] : [kind]);
+    assert.equal(response.json().entries.length, kind === "hr" ? 6 : 4);
     if (kind !== "hr") for (const row of response.json().entries) { assert.equal(row.email, undefined); assert.equal(row.salaryBase, undefined); assert.equal(row.salaryStatus, undefined); }
   }
 });
