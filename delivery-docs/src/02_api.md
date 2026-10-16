@@ -1141,8 +1141,8 @@ Header 必填:`X-Perf-Access-Key: <明文密钥>`
 | GET | `/jobs` | 当前账号岗位范围内的统一目录，返回 `{ items, available }`；`available` 为已移除、可恢复的校招 JD。`items[].id` 和 `jobId` 均为 Job UUID，投递数汇总所有专场。 |
 | POST | `/jobs/new` | 新建共享 Job；`title` 必填，另收 JD 字段与 `kind / matchEnabled`；创建后所有现有及新建专场均可用。返回 201 `{ item }`。无需先建专场。 |
 | POST | `/jobs` | 恢复已移除岗位 `{ jobId, kind?, matchEnabled? }`，重新关联全部专场，并排到统一目录末尾。 |
-| PATCH / DELETE | `/jobs/:jobId` | 同步修改 `kind / matchEnabled`；删除只将岗位从全部学生端目录移除，保留 Job 和关联记录。任何专场已有投递时返回 409 `campus_job_has_applications`。 |
-| POST | `/jobs/bulk-delete` | `{ ids: [jobId], confirmed: true }`；1–1000 个唯一 UUID。事务内校验全部岗位处于有效校招目录且在账号范围内，整批设置 `campusActive=false`，返回 `{ removed }`。任一岗位已有投递返回 409 `campus_job_has_applications`，失效或不可访问返回 409 `campus_jobs_changed`，均不删除任何岗位；保留 JD、评价模型和专场关联，可通过恢复接口重新加入。 |
+| PATCH / DELETE | `/jobs/:jobId` | 同步修改 `kind / matchEnabled`；删除只将岗位从全部学生端目录移除，已有投递的岗位同样可移除；保留 Job、评价模型、候选人、投递与面试记录及专场关联，可恢复。 |
+| POST | `/jobs/bulk-delete` | `{ ids: [jobId], confirmed: true }`；1–1000 个唯一 UUID。事务内校验全部岗位处于有效校招目录且在账号范围内，整批设置 `campusActive=false`，返回 `{ removed }`。已有投递的岗位同样可移除；失效或不可访问返回 409 `campus_jobs_changed`，整批不修改；保留 JD、评价模型、候选人、投递与面试记录及专场关联，可通过恢复接口重新加入。 |
 | PATCH | `/jobs/bulk` | `{ ids: [jobId], changes: { kind?, matchEnabled?, dept?, location?, employment?, salary?, educationRequirement?, languageRequirement?, openings?, deadline?, niceAdd?, benefitsAdd? } }`。1–200 个唯一 ID；事务内校验有效校招岗位及账号范围。仅更新传入字段，类型和布尔匹配开关同步全部专场；追加分别保留各岗位原条目并去重，加分项超 20 条则整批拒绝；福利待遇无条数上限，每条最多 200 字。返回 `{ updated }`。未生成评价模型的岗位保存匹配配置，模型生成后才实际参与匹配。 |
 | POST | `/jobs/reorder` | `{ ids: [jobId] }` 更新统一顺序，所有专场同步；保留账号范围外岗位的顺序位置。 |
 | PATCH | `/jobs/:jobId/job` | 编辑共享 JD 字段，所有专场同步，返回 `{ item }`。 |
@@ -1151,7 +1151,7 @@ Header 必填:`X-Perf-Access-Key: <明文密钥>`
 
 写接口需页面 `campus`、模块 `campus.manage` 和岗位数据范围；校招面试官须授予 `campus.jobs`。新建给非管理员创建者补岗位范围。JD 字段、条目长度、`openings=0`、模型生成与乐观锁沿用原约定。岗位 tab 不再选择专场；专场 tab 仅查看统一岗位，学生端仍按现场面试 / 内推分组。
 
-岗位 tab 多选／全选后可批量删除，确认框列出将删除及已有投递需保留的岗位名称，仅提交可删除项。若确认期间新增投递，后端整批拒绝，刷新名单后再确认。单个／批量移除与后台／学生端投递共用目录事务锁，避免刚收到投递的岗位被并发移除。
+岗位 tab 单个移除及多选／全选批量删除均支持已有投递的岗位，页面内确认框列出全部所选名称与已有投递数量，并说明保留记录。单个／批量移除与后台／学生端投递共用目录事务锁：移除前已完成的投递保留，移除后发起的新投递拒绝；恢复后原投递记录和数量继续可见。
 
 上线自动执行新增迁移 `20261014000000_shared_campus_jobs`：合并全部已有专场岗位，以当前上线专场配置优先，无上线配置则取最早关联；已移除的旧岗位保持可恢复状态。保留现有关联 ID 和所有投递，补齐现有专场缺失关联。回滚应用可保留新增列与关联数据。
 

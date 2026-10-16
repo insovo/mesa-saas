@@ -2,7 +2,7 @@ export const activeCampusJob = { recruitmentType: "campus", campusActive: true }
 export const recruitingCampusJob = { ...activeCampusJob, campusKind: { not: "stopped" } };
 
 export async function lockCampusCatalog(tx) {
-  // 目录变更和投递串行处理，避免移除刚收到投递的岗位。
+  // 目录变更和投递串行处理，避免移除后仍接收新投递。
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(68421014)`;
 }
 

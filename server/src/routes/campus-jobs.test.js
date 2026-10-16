@@ -204,20 +204,28 @@ test("模型生成保存到共用 JD；并发修改及上游失败不覆盖已�
   assert.equal(failed.writes.length, 0);
 });
 
-test("有投递的岗位不能移除；无投递岗位可移除并恢复到全部专场", async (t) => {
-  const applied = await fixture(t, { applications: 1 });
-  assert.equal((await applied.app.inject({ method: "DELETE", url: `${base}/${jobId}` })).statusCode, 409);
-  const empty = await fixture(t);
-  assert.equal((await empty.app.inject({ method: "DELETE", url: `${base}/${jobId}` })).statusCode, 204);
-  const removed = await empty.app.inject({ url: base });
-  assert.equal(removed.json().items.length, 0);
-  assert.equal(removed.json().available.length, 1);
-  assert.equal((await empty.app.inject({ method: "POST", url: base, payload: { jobId, kind: "referral" } })).statusCode, 201);
-  assert.equal(empty.links.every((row) => row.kind === "referral"), true);
+test("有无投递的岗位均可移除并恢复，保留 JD、投递数量和全部专场关联", async (t) => {
+  for (const applications of [0, 1]) {
+    const { app, job, links } = await fixture(t, { applications });
+    const before = structuredClone(links);
+    job.evaluationModel = { schemaVersion: "eval.v1" };
+    assert.equal((await app.inject({ method: "DELETE", url: `${base}/${jobId}` })).statusCode, 204);
+    const removed = (await app.inject({ url: base })).json();
+    assert.equal(removed.items.length, 0);
+    assert.equal(removed.available.length, 1);
+    assert.equal(job.title, "校招工程师");
+    assert.deepEqual(job.evaluationModel, { schemaVersion: "eval.v1" });
+    assert.deepEqual(links, before);
+    assert.equal((await app.inject({ method: "POST", url: base, payload: { jobId, kind: "referral" } })).statusCode, 201);
+    assert.equal(links.length, before.length);
+    assert.equal(links.every((row) => row.kind === "referral"), true);
+    const restored = (await app.inject({ url: base })).json();
+    assert.equal(restored.items[0].applications, applications);
+  }
 });
 
-test("批量删除统一目录中的多个岗位，保留 JD 和全部专场关联并支持恢复", async (t) => {
-  const { app, job, job2, links } = await fixture(t, { twoJobs: true });
+test("批量删除可包含已有投递的岗位，保留 JD 和全部专场关联并支持恢复", async (t) => {
+  const { app, job, job2, links } = await fixture(t, { twoJobs: true, applications: 1 });
   const before = structuredClone(links);
   const response = await app.inject({ method: "POST", url: `${base}/bulk-delete`, payload: { ids: [jobId, jobId2], confirmed: true } });
   assert.equal(response.statusCode, 200, response.body);
@@ -229,20 +237,16 @@ test("批量删除统一目录中的多个岗位，保留 JD 和全部专场关�
   assert.equal(removed.items.length, 0); assert.equal(removed.available.length, 2);
   assert.equal((await app.inject({ method: "POST", url: base, payload: { jobId, kind: "onsite" } })).statusCode, 201);
   assert.equal(job.campusActive, true); assert.equal(links.length, before.length);
+  assert.equal((await app.inject({ url: base })).json().items[0].applications, 1);
 });
 
-test("批量删除遇到已有投递、已移除或不存在的岗位时整批拒绝", async (t) => {
+test("批量删除遇到已移除或不存在的岗位时整批拒绝，保留其余已有投递岗位", async (t) => {
   const applied = await fixture(t, { twoJobs: true, applications: 1 });
-  const blocked = await applied.app.inject({ method: "POST", url: `${base}/bulk-delete`, payload: { ids: [jobId, jobId2], confirmed: true } });
-  assert.equal(blocked.statusCode, 409, blocked.body);
-  assert.equal(blocked.json().error, "campus_job_has_applications");
-  assert.match(blocked.json().message, /校招工程师/);
-  assert.equal(applied.writes.length, 0); assert.equal(applied.job2.campusActive, true);
-  const eligible = await applied.app.inject({ method: "POST", url: `${base}/bulk-delete`, payload: { ids: [jobId2], confirmed: true } });
-  assert.equal(eligible.statusCode, 200, eligible.body);
-  assert.equal(applied.job.campusActive, true);
+  applied.job2.campusActive = false;
   const changed = await applied.app.inject({ method: "POST", url: `${base}/bulk-delete`, payload: { ids: [jobId, jobId2], confirmed: true } });
+  assert.equal(changed.statusCode, 409, changed.body);
   assert.equal(changed.json().error, "campus_jobs_changed");
+  assert.equal(applied.writes.length, 0); assert.equal(applied.job.campusActive, true);
   const missing = await fixture(t);
   assert.equal((await missing.app.inject({ method: "POST", url: `${base}/bulk-delete`, payload: { ids: [jobId, jobId2], confirmed: true } })).statusCode, 409);
   assert.equal(missing.writes.length, 0);

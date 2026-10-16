@@ -24,7 +24,7 @@ function Chip({ icon, children }) {
 
 export default function CampusJobs({ sessions, canManage, onChanged }) {
   const session = sessions.find((item) => item.status === "live") || null;
-  const { items, available, loading, error, busy, mutating, bulkProgress, modelNotice, dismissModelNotice, load, add, patch, bulkPatch, remove, bulkRemove, move, generateModel, bulkGenerateModels } = useCampusJobs(onChanged);
+  const { items, available, loading, error, busy, mutating, bulkProgress, modelNotice, dismissModelNotice, load, add, patch, bulkPatch, bulkRemove, move, generateModel, bulkGenerateModels } = useCampusJobs(onChanged);
   const [form, setForm] = useState(null); // { sj: null } 新建 | { sj } 编辑
   const [addId, setAddId] = useState("");
   const [addKind, setAddKind] = useState("onsite");
@@ -39,8 +39,6 @@ export default function CampusJobs({ sessions, canManage, onChanged }) {
   const toggleExpand = (id) => setExpanded((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const selected = items.filter((sj) => selectedIds.has(sj.id));
   const allSelected = items.length > 0 && selected.length === items.length;
-  const deletable = selected.filter((sj) => !sj.applications);
-  const retained = selected.filter((sj) => sj.applications > 0);
   const modelBusy = Object.values(busy).some(Boolean);
   const selectionBusy = loading || mutating || modelBusy;
   const toggleSelected = (id) => setSelectedIds((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
@@ -59,16 +57,17 @@ export default function CampusJobs({ sessions, canManage, onChanged }) {
     if (await add(addId, addKind)) setAddId("");
   }
   async function onBulkRemove() {
-    if (!deletable.length || selectionBusy) return;
-    const count = deletable.length;
+    if (!selected.length || selectionBusy) return;
+    const count = selected.length;
     setDeleteError("");
-    if (await bulkRemove(deletable.map((sj) => sj.id))) {
+    if (await bulkRemove(selected.map((sj) => sj.id))) {
       setDeleteOpen(false); toast(`已删除 ${count} 个校招岗位，可在下方恢复`, "success");
     } else setDeleteError("删除未完成，请查看错误提示，核对最新岗位后重试。");
   }
   function onRemove(sj) {
-    if (!confirm(`移除校招岗位「${sj.job?.title}」?所有专场的学生端都会同步移除，可在下方恢复。`)) return;
-    remove(sj);
+    setSelectedIds(new Set([sj.id]));
+    setDeleteError("");
+    setDeleteOpen(true);
   }
   const hasJdDetail = (j) => j.responsibilities?.length || j.requirements?.length || j.nice?.length || j.benefits?.length || j.description;
 
@@ -161,7 +160,7 @@ export default function CampusJobs({ sessions, canManage, onChanged }) {
                     <I name="external-link" size={13} />学生端预览
                   </a>
                 )}
-                {canManage && <button type="button" disabled={loading || mutating || busy[sj.id] || sj.applications > 0} onClick={() => onRemove(sj)} className="disabled:opacity-40 disabled:cursor-not-allowed p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-lightPrimary" aria-label={`移除${j.title}`} title={sj.applications > 0 ? "已有投递,不能移除;可关闭参与匹配" : "从所有专场移除"}><I name="trash-2" size={14} /></button>}
+                {canManage && <button type="button" disabled={selectionBusy} onClick={() => onRemove(sj)} className="disabled:opacity-40 disabled:cursor-not-allowed p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-lightPrimary" aria-label={`移除${j.title}`} title="从所有专场移除，保留已有投递记录"><I name="trash-2" size={14} /></button>}
               </div>
             </div>
           </Card>
@@ -182,26 +181,20 @@ export default function CampusJobs({ sessions, canManage, onChanged }) {
       {deleteOpen && (
         <Modal open onClose={() => !mutating && setDeleteOpen(false)} maxWidth="max-w-lg">
           <div className="p-5 sm:p-6 space-y-4 text-navy-700">
-            <h2 className="text-xl font-bold">确认批量删除岗位</h2>
-            <p className="text-sm text-gray-600">已选 {selected.length} 个岗位，可删除 {deletable.length} 个。删除后所有大学专场同步移除，可在列表下方的「恢复已移除校招岗位」中恢复。</p>
+            <h2 className="text-xl font-bold">{selected.length > 1 ? "确认批量删除岗位" : "确认移除岗位"}</h2>
+            <p className="text-sm text-gray-600">将移除所选 {selected.length} 个岗位，所有大学专场同步生效。已有投递、候选人资料和面试记录保留，可在列表下方的「恢复已移除校招岗位」中恢复。</p>
             <section>
-              <h3 className="text-sm font-bold mb-2">将删除的岗位（{deletable.length}）</h3>
+              <h3 className="text-sm font-bold mb-2">将移除的岗位（{selected.length}）</h3>
               <ul className="max-h-52 overflow-y-auto rounded-xl bg-lightPrimary p-3 space-y-2 text-sm">
-                {deletable.map((sj) => <li key={sj.id} className="break-words">{sj.job?.title || "岗位已删除"}</li>)}
-                {!deletable.length && <li>没有可删除的岗位。</li>}
+                {selected.map((sj) => <li key={sj.id} className="break-words">{sj.job?.title || "岗位已删除"}{sj.applications > 0 ? ` · ${sj.applications} 条投递（保留记录）` : ""}</li>)}
+                {!selected.length && <li>没有可移除的岗位。</li>}
               </ul>
             </section>
-            {retained.length > 0 && <section>
-              <h3 className="text-sm font-bold text-amber-700 mb-2">已有投递，将保留（{retained.length}）</h3>
-              <ul className="max-h-32 overflow-y-auto rounded-xl bg-amber-50 p-3 space-y-2 text-sm text-amber-800">
-                {retained.map((sj) => <li key={sj.id} className="break-words">{sj.job?.title} · {sj.applications} 条投递</li>)}
-              </ul>
-            </section>}
-            {deletable.length > 1000 && <p className="text-sm text-red-500">每次最多删除 1000 个岗位，请分批选择。</p>}
+            {selected.length > 1000 && <p className="text-sm text-red-500">每次最多删除 1000 个岗位，请分批选择。</p>}
             {deleteError && <p role="alert" className="text-sm text-red-500">{deleteError}</p>}
             <div className="flex justify-end gap-3">
               <Button variant="ghost" disabled={mutating} onClick={() => setDeleteOpen(false)}>取消</Button>
-              <Button variant="danger" disabled={selectionBusy || !deletable.length || deletable.length > 1000} onClick={onBulkRemove}>{mutating ? "删除中…" : `确认删除 ${deletable.length} 个岗位`}</Button>
+              <Button variant="danger" disabled={selectionBusy || !selected.length || selected.length > 1000} onClick={onBulkRemove}>{mutating ? "删除中…" : `确认删除 ${selected.length} 个岗位`}</Button>
             </div>
           </div>
         </Modal>
