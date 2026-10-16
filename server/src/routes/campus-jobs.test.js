@@ -99,6 +99,21 @@ test("岗位类型、参与匹配和排序同步所有专场", async (t) => {
   assert.equal(links.filter((row) => row.jobId === jobId2).every((row) => row.sortOrder === 4), true);
 });
 
+test("停止招聘对已有投递岗位生效，后台保留 JD、匹配配置及恢复入口", async (t) => {
+  const { app, job, links } = await fixture(t, { applications: 1 });
+  for (const kind of ["stopped", "onsite", "stopped", "referral"]) {
+    const response = await app.inject({ method: "PATCH", url: `${base}/${jobId}`, payload: { kind } });
+    assert.equal(response.statusCode, 200, response.body);
+    assert.equal(response.json().item.kind, kind);
+    assert.equal(job.campusActive, true); assert.equal(job.campusMatchEnabled, true);
+    assert.equal(job.title, "校招工程师"); assert.equal(links.every(row => row.kind === kind), true);
+    const list = (await app.inject({ url: base })).json();
+    assert.equal(list.items.length, 1); assert.equal(list.items[0].applications, 1);
+  }
+  const bulk = await app.inject({ method: "PATCH", url: `${base}/bulk`, payload: { ids: [jobId], changes: { kind: "stopped" } } });
+  assert.equal(bulk.statusCode, 200, bulk.body); assert.equal(job.campusKind, "stopped");
+});
+
 test("编辑 JD 和批量资料应用到统一岗位且保留未选择字段", async (t) => {
   const { app, job, links } = await fixture(t);
   const edit = await app.inject({ method: "PATCH", url: `${base}/${jobId}/job`, payload: { title: "更新名称", responsibilities: ["测试"], openings: 0 } });

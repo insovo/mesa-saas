@@ -1134,6 +1134,8 @@ Header 必填:`X-Perf-Access-Key: <明文密钥>`
 
 所有专场共用一份校招岗位目录。`Job.campusActive / campusKind / campusMatchEnabled / campusSortOrder` 保存统一发布状态、类型、匹配开关和顺序；`CampusSessionJob` 仅保留专场投递关联，配置同步自 Job。新建岗位自动关联所有专场，新建专场自动带入全部有效岗位，两种创建使用同一事务锁避免并发漏关联。
 
+`kind` 支持 `onsite`（现场面试）、`referral`（内推）、`stopped`（停止招聘）。后台岗位下拉、批量编辑、新建和 HR 分享管理页均可设置；同步所有专场，保留 JD、评价模型、投递和匹配开关配置。停止后的岗位仍在 HR 管理目录中，可重新选择现场面试或内推恢复；学生列表、旧 JD 链接、排队选岗及 JD、新匹配任务和历史匹配结果均隐藏，新投递由后端拒绝。已有投递和排队历史保留。使用原有字符串字段，无新增迁移。
+
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/jobs` | 当前账号岗位范围内的统一目录，返回 `{ items, available }`；`available` 为已移除、可恢复的校招 JD。`items[].id` 和 `jobId` 均为 Job UUID，投递数汇总所有专场。 |

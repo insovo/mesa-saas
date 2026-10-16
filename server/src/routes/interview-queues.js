@@ -4,6 +4,7 @@ import { assertPage } from "../lib/permissions.js";
 import { encrypt, decrypt } from "../lib/secrets.js";
 import { issueCode, consumeCode } from "../lib/verificationCodes.js";
 import { isEmailConfigured } from "../lib/email.js";
+import { recruitingCampusJob } from "../lib/campus/catalog.js";
 import { assertQueueLink, queueError, queueEntryView, mutateQueue, deleteQueueEntry, queueSetup, queueStation, QUEUE_LINK_KINDS } from "../lib/interviewQueue.js";
 
 const uuid = { type: "string", format: "uuid" };
@@ -49,7 +50,7 @@ async function loadQueue(prisma, sessionId) {
 }
 
 async function queueJob(prisma, jobId, session) {
-  const job = await prisma.job.findFirst({ where: { id: jobId, recruitmentType: "campus", campusActive: true }, select: {
+  const job = await prisma.job.findFirst({ where: { id: jobId, ...recruitingCampusJob }, select: {
     id: true, title: true, dept: true, location: true, employment: true, educationRequirement: true, languageRequirement: true,
     description: true, responsibilities: true, requirements: true, nice: true, benefits: true, salary: true, campusKind: true,
   } });
@@ -67,7 +68,7 @@ async function queueData(prisma, queueId, role, revision, stationId = null) {
     const station = queueStation(queue, role, stationId);
     const where = ["staff", "hr"].includes(role) ? {} : { OR: [{ stage: role, ...(station ? { stationId: station.id } : {}) }, { stage: "pending" }] };
     const rows = await tx.interviewQueueEntry.findMany({ where: { queueId, ...where }, include: { suggestions: { orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, authorRole: true, content: true, createdAt: true } } }, orderBy: [{ phaseEnteredAt: "asc" }, { createdAt: "asc" }, { id: "asc" }] });
-    const jobs = await tx.job.findMany({ where: { recruitmentType: "campus", campusActive: true }, select: { id: true, title: true, location: true, employment: true, educationRequirement: true, campusKind: true }, orderBy: [{ campusSortOrder: "asc" }, { createdAt: "asc" }] });
+    const jobs = await tx.job.findMany({ where: recruitingCampusJob, select: { id: true, title: true, location: true, employment: true, educationRequirement: true, campusKind: true }, orderBy: [{ campusSortOrder: "asc" }, { createdAt: "asc" }] });
     return { queue: { id: queue.id, session: queue.session, setup: queueSetup(queue), station, ...(["staff", "hr"].includes(role) ? { deletionEnabled: Boolean(queue.deletionKeyHash) } : {}) }, revision: queue.revision, entries: rows.map((row) => queueEntryView(row, role)), jobs: jobs.map(({ campusKind, ...job }) => ({ ...job, kind: campusKind })) };
   }, { isolationLevel: "RepeatableRead" });
 }
@@ -200,7 +201,7 @@ export async function publicInterviewQueueRoutes(app) {
   }
   app.get("/link", { schema: { headers: linkHeaders } }, async (req) => {
     const link = await fromLink(req);
-    const jobs = link.kind === "registration" ? await app.prisma.job.findMany({ where: { recruitmentType: "campus", campusActive: true }, select: { id: true, title: true, location: true, employment: true, educationRequirement: true, campusKind: true }, orderBy: [{ campusSortOrder: "asc" }, { createdAt: "asc" }] }) : [];
+    const jobs = link.kind === "registration" ? await app.prisma.job.findMany({ where: recruitingCampusJob, select: { id: true, title: true, location: true, employment: true, educationRequirement: true, campusKind: true }, orderBy: [{ campusSortOrder: "asc" }, { createdAt: "asc" }] }) : [];
     const { id, name, school } = link.queue.session;
     return { kind: link.kind, requireKey: link.requireKey, expiresAt: link.expiresAt, session: { id, name, school }, queueId: link.queueId, setup: { ...queueSetup(link.queue), routingEnabled: queueSetup(link.queue).stations.length > 0, stations: queueSetup(link.queue).stations.filter((s) => link.kind === "registration" ? false : s.role === link.kind) }, jobs: jobs.map(({ campusKind, ...job }) => ({ ...job, kind: campusKind })) };
   });

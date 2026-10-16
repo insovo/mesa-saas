@@ -87,10 +87,11 @@ export const CAMPUS_APP_STATUS_TONE = {
   rejected: { bg: "#FEE2E2", fg: "#B91C1C", dot: "#F53939" },
   withdrawn: { bg: "#F8F9FA", fg: "#A3AED0", dot: "#CBD5E0" },
 };
-export const CAMPUS_JOB_KIND_LABEL = { onsite: "现场面试", referral: "内推" };
+export const CAMPUS_JOB_KIND_LABEL = { onsite: "现场面试", referral: "内推", stopped: "停止招聘" };
 export const CAMPUS_JOB_KIND_TONE = {
   onsite: { bg: "#E9E3FF", fg: "#2111A5" },
   referral: { bg: "#FEF3C7", fg: "#854D0E" },
+  stopped: { bg: "#F1F5F9", fg: "#64748B" },
 };
 export const CAMPUS_SOURCE_LABEL = { direct: "直投", match: "智能匹配", hr: "HR 登记" };
 export const CAMPUS_SESSION_STATUS_LABEL = { draft: "草稿", live: "上线中", closed: "已结束" };

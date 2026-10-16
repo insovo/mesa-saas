@@ -1,10 +1,10 @@
 // JD 详情 + 投递(门禁:登录 → 简历 → 联系方式;?apply=1 回跳后自动投递)
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { campus } from "../../../lib/campusApi.js";
+import { campus, campusErr } from "../../../lib/campusApi.js";
 import { Button, I, toast } from "../../../components/Primitives.jsx";
 import { KindTag } from "../../../components/campus/ui.jsx";
-import { Shell, useCampus, base, gatePath, Spinner, toastErr } from "./shell.jsx";
+import { Shell, useCampus, base, gatePath, Spinner, ErrorCard, toastErr } from "./shell.jsx";
 
 function Block({ title, items, text }) {
   if ((!items || !items.length) && !text) return null;
@@ -22,11 +22,17 @@ export default function CampusJobDetail() {
   const nav = useNavigate();
   const [sp, setSp] = useSearchParams();
   const [job, setJob] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(null); // { applied, maxApplyJobs }
   const autoRan = useRef(false);
 
-  useEffect(() => { campus.job(slug, id).then(setJob).catch((e) => toastErr(e, "加载岗位失败")); }, [slug, id]);
+  useEffect(() => {
+    setJob(null); setLoadError(null);
+    let current = true;
+    campus.job(slug, id).then((value) => { if (current) setJob(value); }).catch((e) => { if (current) setLoadError(campusErr(e, "加载岗位失败")); });
+    return () => { current = false; };
+  }, [slug, id]);
 
   async function apply() {
     const target = `${base(slug)}/jobs/${id}?apply=1`;
@@ -42,6 +48,7 @@ export default function CampusJobDetail() {
       const code = e.response?.data?.error;
       if (code === "campus_resume_required" || code === "campus_unauthorized") nav(gatePath(slug, null, target));
       else if (code === "campus_contact_unconfirmed") nav(gatePath(slug, { ...me, hasResume: true, contactConfirmed: false }, target));
+      else if (code === "campus_job_not_in_session") { setJob(null); setLoadError(campusErr(e, "该岗位已不可投递")); }
       else toastErr(e, "投递失败");
     } finally { setBusy(false); }
   }
@@ -61,7 +68,7 @@ export default function CampusJobDetail() {
 
   return (
     <Shell title="岗位详情" back={`${base(slug)}/jobs`}>
-      {!job ? <Spinner /> : done ? (
+      {loadError ? <div className="space-y-4"><ErrorCard title="岗位暂不可用" message={loadError} /><Button as={Link} to={`${base(slug)}/jobs`} className="w-full">返回岗位列表</Button></div> : !job ? <Spinner /> : done ? (
         <div className="bg-white rounded-card shadow-card p-8 text-center">
           <div className="w-16 h-16 rounded-full bg-green-50 text-green-600 mx-auto flex items-center justify-center mb-4"><I name="check-circle" size={32} /></div>
           <h2 className="text-lg font-bold">投递成功</h2>

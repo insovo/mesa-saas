@@ -18,6 +18,7 @@ test("学生看到硬筛岗位的正向理由且仍可查看该岗位,不收到�
     session: { id: "session-1", maxApplyJobs: 3, maxResumeUploads: 3 },
   };
   app.decorate("prisma", {
+    job: { findMany: async () => run.results.map((result) => ({ id: result.jobId, campusKind: result.kind })) },
     campusApplicant: { findUnique: async () => applicant },
     campusMatchRun: { findFirst: async () => run },
     candidateEvaluation: { findMany: async ({ where }) => {

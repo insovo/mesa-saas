@@ -4,7 +4,7 @@ import { campusRouteAllowed } from "../lib/campusTabAccess.js";
 import { activeCampusJob, catalogTransaction, attachJobToSessions } from "../lib/campus/catalog.js";
 import { CAMPUS_JOB_SHARE_DEFAULTS } from "../lib/campus/jobShareDefaults.js";
 import { reconcileCampusAutoEvaluation } from "../lib/campus/autoEvaluation.js";
-import { QUOTA_STATUS } from "../lib/campus/shared.js";
+import { JOB_KINDS, QUOTA_STATUS } from "../lib/campus/shared.js";
 import { writeLog } from "../lib/audit.js";
 
 const idsSchema = { type: "array", minItems: 1, maxItems: 500, uniqueItems: true, items: { type: "string", format: "uuid" } };
@@ -86,7 +86,7 @@ export async function publicCampusJobShareRoutes(app) {
     return { expiresAt: link.expiresAt, jobs: jobs.map(publicJob), defaults: CAMPUS_JOB_SHARE_DEFAULTS };
   });
 
-  app.patch("/kind", { schema: { body: { type: "object", required: ["ids", "kind"], additionalProperties: false, properties: { ids: idsSchema, kind: { type: "string", enum: ["onsite", "referral"] } } } } }, async (req) => {
+  app.patch("/kind", { schema: { body: { type: "object", required: ["ids", "kind"], additionalProperties: false, properties: { ids: idsSchema, kind: { type: "string", enum: JOB_KINDS } } } } }, async (req) => {
     const { ids, kind } = req.body;
     const link = await catalogTransaction(app.prisma, async (tx) => {
       const { link, where } = await sharedContext(req, tx, true);
@@ -104,7 +104,7 @@ export async function publicCampusJobShareRoutes(app) {
   });
 
   const lines = { type: "array", minItems: 1, maxItems: 100, items: { type: "string", minLength: 1, maxLength: 1000 } };
-  app.post("/jobs", { schema: { body: { type: "object", required: ["title", "responsibilities", "requirements"], additionalProperties: false, properties: { title: { type: "string", minLength: 1, maxLength: 200 }, responsibilities: lines, requirements: lines, kind: { type: "string", enum: ["onsite", "referral"], default: "referral" } } } } }, async (req, reply) => {
+  app.post("/jobs", { schema: { body: { type: "object", required: ["title", "responsibilities", "requirements"], additionalProperties: false, properties: { title: { type: "string", minLength: 1, maxLength: 200 }, responsibilities: lines, requirements: lines, kind: { type: "string", enum: JOB_KINDS, default: "referral" } } } } }, async (req, reply) => {
     const title = req.body.title.trim();
     const responsibilities = req.body.responsibilities.map((line) => line.trim()).filter(Boolean);
     const requirements = req.body.requirements.map((line) => line.trim()).filter(Boolean);
