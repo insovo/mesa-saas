@@ -180,6 +180,7 @@ export const resources = {
     updateJobConfig: (id, body) => api.patch(`/campus/jobs/${id}`, body).then((r) => r.data.item),
     bulkUpdateJobs: (ids, changes) => api.patch("/campus/jobs/bulk", { ids, changes }).then((r) => r.data),
     removeJob: (id) => api.delete(`/campus/jobs/${id}`),
+    bulkRemoveJobs: (ids) => api.post("/campus/jobs/bulk-delete", { ids, confirmed: true }).then((r) => r.data),
     reorderJobs: (ids) => api.post("/campus/jobs/reorder", { ids }).then((r) => r.data),
     updateJobJd: (id, body) => api.patch(`/campus/jobs/${id}/job`, body).then((r) => r.data.item),
     generateJobModel: (id) => api.post(`/campus/jobs/${id}/evaluation-model`, {}, { timeout: LONG_TIMEOUT }).then((r) => r.data.item),

@@ -1,6 +1,6 @@
 // 校招岗位统一目录:所有专场共用岗位、匹配配置与顺序
 import { useEffect, useState } from "react";
-import { Card, Button, I, Empty, LoadingBlock, toast } from "../Primitives.jsx";
+import { Card, Button, I, Empty, LoadingBlock, Modal, toast } from "../Primitives.jsx";
 import { Select, KindTag, fmtDate, fmtDateTime } from "./ui.jsx";
 import { useCampusJobs } from "./useSessionJobs.js";
 import JobFormModal from "./JobFormModal.jsx";
@@ -24,7 +24,7 @@ function Chip({ icon, children }) {
 
 export default function CampusJobs({ sessions, canManage, onChanged }) {
   const session = sessions.find((item) => item.status === "live") || null;
-  const { items, available, loading, error, busy, mutating, bulkProgress, modelNotice, dismissModelNotice, load, add, patch, bulkPatch, remove, move, generateModel, bulkGenerateModels } = useCampusJobs(onChanged);
+  const { items, available, loading, error, busy, mutating, bulkProgress, modelNotice, dismissModelNotice, load, add, patch, bulkPatch, remove, bulkRemove, move, generateModel, bulkGenerateModels } = useCampusJobs(onChanged);
   const [form, setForm] = useState(null); // { sj: null } 新建 | { sj } 编辑
   const [addId, setAddId] = useState("");
   const [addKind, setAddKind] = useState("onsite");
@@ -32,11 +32,15 @@ export default function CampusJobs({ sessions, canManage, onChanged }) {
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [bulkOpen, setBulkOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   useEffect(() => { setSelectedIds((prev) => new Set([...prev].filter((id) => items.some((sj) => sj.id === id)))); }, [items]);
 
   const toggleExpand = (id) => setExpanded((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const selected = items.filter((sj) => selectedIds.has(sj.id));
   const allSelected = items.length > 0 && selected.length === items.length;
+  const deletable = selected.filter((sj) => !sj.applications);
+  const retained = selected.filter((sj) => sj.applications > 0);
   const modelBusy = Object.values(busy).some(Boolean);
   const selectionBusy = loading || mutating || modelBusy;
   const toggleSelected = (id) => setSelectedIds((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
@@ -53,6 +57,14 @@ export default function CampusJobs({ sessions, canManage, onChanged }) {
   async function onAdd() {
     if (!addId) return;
     if (await add(addId, addKind)) setAddId("");
+  }
+  async function onBulkRemove() {
+    if (!deletable.length || selectionBusy) return;
+    const count = deletable.length;
+    setDeleteError("");
+    if (await bulkRemove(deletable.map((sj) => sj.id))) {
+      setDeleteOpen(false); toast(`已删除 ${count} 个校招岗位，可在下方恢复`, "success");
+    } else setDeleteError("删除未完成，请查看错误提示，核对最新岗位后重试。");
   }
   function onRemove(sj) {
     if (!confirm(`移除校招岗位「${sj.job?.title}」?所有专场的学生端都会同步移除，可在下方恢复。`)) return;
@@ -82,6 +94,7 @@ export default function CampusJobs({ sessions, canManage, onChanged }) {
           <div className="sm:ml-auto flex items-center gap-2 flex-wrap">
             <Button size="sm" variant="secondary" disabled={!selected.length || selectionBusy} onClick={() => setShareOpen(true)} icon={<I name="share-2" size={13} />}>分享给 HR</Button>
             <Button size="sm" variant="secondary" disabled={!selected.length || selectionBusy} onClick={() => setBulkOpen(true)} icon={<I name="pencil" size={13} />}>批量编辑</Button>
+            <Button size="sm" variant="danger" disabled={!selected.length || selectionBusy} onClick={() => { setDeleteError(""); setDeleteOpen(true); }} icon={<I name="trash-2" size={13} />}>批量删除</Button>
             <Button size="sm" disabled={!selected.length || selectionBusy} onClick={onBulkGenerate} icon={<I name="sparkles" size={13} />}>批量生成评价模型</Button>
           </div>
         </Card>
@@ -166,6 +179,33 @@ export default function CampusJobs({ sessions, canManage, onChanged }) {
 
       <JobFormModal key={form?.sj?.id || "new"} open={!!form} onClose={() => setForm(null)} sessionJob={form?.sj || null} onSaved={() => { load(); onChanged?.(); }} />
       {bulkOpen && <BulkJobEditModal selected={selected} onClose={() => setBulkOpen(false)} onSave={onBulkSave} />}
+      {deleteOpen && (
+        <Modal open onClose={() => !mutating && setDeleteOpen(false)} maxWidth="max-w-lg">
+          <div className="p-5 sm:p-6 space-y-4 text-navy-700">
+            <h2 className="text-xl font-bold">确认批量删除岗位</h2>
+            <p className="text-sm text-gray-600">已选 {selected.length} 个岗位，可删除 {deletable.length} 个。删除后所有大学专场同步移除，可在列表下方的「恢复已移除校招岗位」中恢复。</p>
+            <section>
+              <h3 className="text-sm font-bold mb-2">将删除的岗位（{deletable.length}）</h3>
+              <ul className="max-h-52 overflow-y-auto rounded-xl bg-lightPrimary p-3 space-y-2 text-sm">
+                {deletable.map((sj) => <li key={sj.id} className="break-words">{sj.job?.title || "岗位已删除"}</li>)}
+                {!deletable.length && <li>没有可删除的岗位。</li>}
+              </ul>
+            </section>
+            {retained.length > 0 && <section>
+              <h3 className="text-sm font-bold text-amber-700 mb-2">已有投递，将保留（{retained.length}）</h3>
+              <ul className="max-h-32 overflow-y-auto rounded-xl bg-amber-50 p-3 space-y-2 text-sm text-amber-800">
+                {retained.map((sj) => <li key={sj.id} className="break-words">{sj.job?.title} · {sj.applications} 条投递</li>)}
+              </ul>
+            </section>}
+            {deletable.length > 1000 && <p className="text-sm text-red-500">每次最多删除 1000 个岗位，请分批选择。</p>}
+            {deleteError && <p role="alert" className="text-sm text-red-500">{deleteError}</p>}
+            <div className="flex justify-end gap-3">
+              <Button variant="ghost" disabled={mutating} onClick={() => setDeleteOpen(false)}>取消</Button>
+              <Button variant="danger" disabled={selectionBusy || !deletable.length || deletable.length > 1000} onClick={onBulkRemove}>{mutating ? "删除中…" : `确认删除 ${deletable.length} 个岗位`}</Button>
+            </div>
+          </div>
+        </Modal>
+      )}
       {shareOpen && <CampusJobShareModal ids={selected.map((sj) => sj.jobId)} onClose={() => setShareOpen(false)} />}
       <ModelGenerationNotice notice={modelNotice} onDismiss={dismissModelNotice} />
     </div>
