@@ -152,8 +152,10 @@ test("隔离PG/Redis：群消息→签名API→真实队列→独立定薪→回
   await waitFor(async () => (await prisma.salaryEvaluation.findUnique({ where: { id: batch[0].evaluationId } })).deliveryStatus === "sent");
   const newestReply = sent.findIndex((message) => message.messageId === newest.message_id);
   assert.ok(newestReply >= 0);
-  // 身份尚未解析时可能先回复旧文件；身份归并后不得在最新版之后重发旧结果。
-  assert.ok(!sent.slice(newestReply + 1).some((message) => [older.message_id, middle.message_id].includes(message.messageId)), "旧文件不得在新文件之后回显旧结果");
+  // 关联证明尚未解析时，同名而联系方式不同的记录仍独立回复，并必须提示身份待核。
+  for (const message of sent.slice(newestReply + 1).filter((message) => [older.message_id, middle.message_id].includes(message.messageId))) {
+    assert.match(JSON.stringify(message.card), /存在同名但身份依据不同的简历，未自动合并/);
+  }
   const sentCount = sent.length;
   for (const old of batch.slice(1, 3)) await deliverSalaryEvaluation(app, old.evaluationId, dependencies.reply);
   assert.equal(sent.length, sentCount, "已归并的历史简历不得重新发送");
