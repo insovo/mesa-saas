@@ -41,7 +41,7 @@ export async function requestSalaryEvaluation(app, submissionId, { revision, con
   const schools = await dictionary(app);
   const evaluation = await app.prisma.$transaction(async (tx) => {
     const row = await tx.salarySubmission.findUnique({ where: { id: submissionId }, include: { group: true } });
-    if (!row || !row.group.enabled) throw salaryError("记录不存在或群已停用", 404, "not_found");
+    if (!row || row.status === "deleted" || !row.group.enabled) throw salaryError("记录不存在或群已停用", 404, "not_found");
     if (row.supersededById) throw salaryError("此简历已有更新，请打开最新简历的定薪记录", 409, "salary_resume_superseded");
     const initial = revision == null;
     if (initial && row.latestEvaluationId) return tx.salaryEvaluation.findUnique({ where: { id: row.latestEvaluationId } });
@@ -51,13 +51,30 @@ export async function requestSalaryEvaluation(app, submissionId, { revision, con
     const overrides = { ...row.overrides, ...(confirmed || {}) };
     const changed = await tx.salarySubmission.updateMany({ where: { id: row.id, revision: row.revision, latestEvaluationId: row.latestEvaluationId }, data: { revision: nextRevision, context: nextContext, overrides, status: "queued" } });
     if (!changed.count) throw salaryError("记录已更新，请刷新后重试", 409, "salary_revision_conflict");
-    const created = await tx.salaryEvaluation.create({ data: { submissionId, revision: nextRevision, requestedBy: requestedBy || "feishu-service", reason: reason || "群内简历自动定薪", input: { policyVersion: POLICY_VERSION, policyHash: POLICY_HASH, engineVersion: "salary-engine.v2", facts: row.facts, confirmed: overrides, context: nextContext, schools, groupRevision: row.group.revision } } });
+    const created = await tx.salaryEvaluation.create({ data: { submissionId, revision: nextRevision, requestedBy: requestedBy || "feishu-service", reason: reason || "群内简历自动定薪", input: { policyVersion: POLICY_VERSION, policyHash: POLICY_HASH, engineVersion: "salary-engine.v3", facts: row.facts, confirmed: overrides, context: nextContext, schools, groupRevision: row.group.revision } } });
     await tx.salarySubmission.update({ where: { id: row.id }, data: { latestEvaluationId: created.id } });
     return created;
   });
   // 数据库记录充当待投递箱；入队失败由worker定期补偿，不能把持久化成功误报为简历丢失。
   void enqueueSalaryEvaluation(app, evaluation.id).catch(() => app.log.warn({ evaluationId: evaluation.id }, "salary enqueue deferred"));
   return evaluation;
+}
+
+export async function deleteSalarySubmission(app, submissionId, { revision, latestId }) {
+  return app.prisma.$transaction(async (tx) => {
+    const initial = await tx.salarySubmission.findUniqueOrThrow({ where: { id: submissionId } });
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${initial.groupId}))::text`;
+    const row = await tx.salarySubmission.findUniqueOrThrow({ where: { id: submissionId } });
+    if (row.status === "deleted") throw salaryError("记录已删除", 404, "not_found");
+    if (row.revision !== revision || (row.supersededById || row.id) !== latestId) throw salaryError("记录已有更新，请刷新后再删除", 409, "salary_revision_conflict");
+    const family = { groupId: row.groupId, status: { not: "deleted" }, OR: [{ id: latestId }, { supersededById: latestId }] };
+    const rows = await tx.salarySubmission.findMany({ where: family, select: { id: true } });
+    const ids = rows.map((item) => item.id);
+    await tx.salarySubmission.updateMany({ where: { id: { in: ids } }, data: { status: "deleted", revision: { increment: 1 } } });
+    await tx.salaryEvaluation.updateMany({ where: { submissionId: { in: ids }, status: { in: ["queued", "running"] } }, data: { status: "cancelled", finishedAt: new Date() } });
+    await tx.salaryEvaluation.updateMany({ where: { submissionId: { in: ids }, deliveryStatus: { not: "sent" } }, data: { deliveryStatus: "superseded", deliveryNextAt: null } });
+    return { deletedCount: ids.length };
+  });
 }
 
 export async function acceptSalaryResume(app, { tenantKey, chatId, messageId, senderOpenId, messageCreatedAt, filename, contentType, data }) {
@@ -78,9 +95,9 @@ export async function acceptSalaryResume(app, { tenantKey, chatId, messageId, se
     }
   }
   if (row.fileHash !== fileHash) throw salaryError("同一消息关联的文件发生变化", 409, "salary_file_conflict");
-  if (row.latestEvaluationId) return { submissionId: row.id, evaluationId: row.latestEvaluationId, duplicate: true };
+  if (row.status === "deleted" || row.latestEvaluationId) return { submissionId: row.id, evaluationId: row.latestEvaluationId, duplicate: true };
   try { await app.r2.putObjectBuffer(row.fileKey, buffer, contentType); }
-  catch { await app.prisma.salarySubmission.updateMany({ where: { id: row.id, latestEvaluationId: null }, data: { status: "failed" } }); throw salaryError("简历存储失败，请重新发送", 503, "salary_upload_failed"); }
+  catch { await app.prisma.salarySubmission.updateMany({ where: { id: row.id, latestEvaluationId: null, status: { not: "deleted" } }, data: { status: "failed" } }); throw salaryError("简历存储失败，请重新发送", 503, "salary_upload_failed"); }
   await app.prisma.salarySubmission.updateMany({ where: { id: row.id, status: { in: ["accepted", "failed"] } }, data: { status: "uploaded" } });
   let evaluation;
   try { evaluation = await requestSalaryEvaluation(app, row.id); }
@@ -95,12 +112,13 @@ export async function acceptSalaryResume(app, { tenantKey, chatId, messageId, se
 
 export async function runSalaryEvaluation(app, evaluationId, dependencies = {}) {
   const evaluation = await app.prisma.salaryEvaluation.findUnique({ where: { id: evaluationId }, include: { submission: { include: { group: true } } } });
-  if (!evaluation || evaluation.status === "done" || evaluation.status === "failed") return;
-  if (!evaluation.submission.group.enabled || evaluation.submission.supersededById || evaluation.submission.latestEvaluationId !== evaluationId) {
+  if (!evaluation || ["done", "failed", "cancelled", "superseded"].includes(evaluation.status)) return;
+  if (evaluation.submission.status === "deleted" || !evaluation.submission.group.enabled || evaluation.submission.supersededById || evaluation.submission.latestEvaluationId !== evaluationId) {
     await app.prisma.salaryEvaluation.update({ where: { id: evaluationId }, data: { status: "superseded", deliveryStatus: "superseded" } });
     return;
   }
-  await app.prisma.salaryEvaluation.update({ where: { id: evaluationId }, data: { status: "running", error: null } });
+  const claimed = await app.prisma.salaryEvaluation.updateMany({ where: { id: evaluationId, status: { in: ["queued", "running"] } }, data: { status: "running", error: null } });
+  if (!claimed.count) return;
   const input = evaluation.input;
   let facts = input.facts || evaluation.submission.facts;
   if (!facts && input.confirmed.education?.length) facts = { name: null, education: [], evidence: [], confirmed: {}, extraction: { provider: "manual" } };
@@ -134,9 +152,9 @@ export async function runSalaryEvaluation(app, evaluationId, dependencies = {}) 
     }
     await app.prisma.$transaction(async (tx) => {
       const latest = await tx.salarySubmission.findUnique({ where: { id: evaluation.submissionId } });
-      const current = !latest.supersededById && latest.latestEvaluationId === evaluationId;
+      const current = latest.status !== "deleted" && !latest.supersededById && latest.latestEvaluationId === evaluationId;
       await tx.salaryEvaluation.update({ where: { id: evaluationId }, data: { status: current ? "done" : "superseded", ...(!current ? { deliveryStatus: "superseded" } : {}), input: { ...input, facts }, result, semantic, finishedAt: new Date() } });
-      await tx.salarySubmission.updateMany({ where: { id: evaluation.submissionId, latestEvaluationId: evaluationId, supersededById: null }, data: { status: "done" } });
+      await tx.salarySubmission.updateMany({ where: { id: evaluation.submissionId, status: { not: "deleted" }, latestEvaluationId: evaluationId, supersededById: null }, data: { status: "done" } });
     });
   } catch (err) {
     app.log.warn({ evaluationId, code: err.code || "salary_processing_failed" }, "salary processing failed");
@@ -148,7 +166,7 @@ export async function runSalaryEvaluation(app, evaluationId, dependencies = {}) 
 export async function deliverSalaryEvaluation(app, evaluationId, send = replySalaryCard) {
   const row = await app.prisma.salaryEvaluation.findUnique({ where: { id: evaluationId }, include: { submission: { include: { group: true } } } });
   if (!row?.result || row.deliveryStatus === "sent" || row.deliveryStatus === "superseded") return;
-  if (!row.submission.group.enabled || row.submission.supersededById || row.submission.latestEvaluationId !== evaluationId) {
+  if (row.submission.status === "deleted" || !row.submission.group.enabled || row.submission.supersededById || row.submission.latestEvaluationId !== evaluationId) {
     await app.prisma.salaryEvaluation.update({ where: { id: evaluationId }, data: { deliveryStatus: "superseded" } }); return;
   }
   const now = new Date();
@@ -164,10 +182,11 @@ export async function deliverSalaryEvaluation(app, evaluationId, send = replySal
 
 export async function failSalaryEvaluation(app, evaluationId, { reply } = {}) {
   const evaluation = await app.prisma.salaryEvaluation.findUnique({ where: { id: evaluationId } });
-  if (!evaluation || ["done", "failed", "superseded"].includes(evaluation.status)) return;
+  if (!evaluation || ["done", "failed", "superseded", "cancelled"].includes(evaluation.status)) return;
   const result = { policyVersion: evaluation.input.policyVersion, salary: { status: "pending", min: null, max: null }, bonus: { status: "pending", conditions: "奖金需按政策条件核验", reason: "简历未完成识别" }, rules: [], scenarios: [], restrictions: [], benefits: {}, facts: { education: evaluation.input.facts?.education || [], context: evaluation.input.context }, missingFields: [{ field: "resume", reason: "简历识别或处理失败，未生成金额", materials: ["可识别的简历文件，或在记录页补充教育及录用信息后重试"] }] };
-  await app.prisma.salaryEvaluation.update({ where: { id: evaluation.id }, data: { status: "failed", error: "简历处理失败，请补充信息或重试", result, finishedAt: new Date() } });
-  await app.prisma.salarySubmission.updateMany({ where: { id: evaluation.submissionId, latestEvaluationId: evaluation.id, supersededById: null }, data: { status: "failed" } });
+  const failed = await app.prisma.salaryEvaluation.updateMany({ where: { id: evaluation.id, status: { in: ["queued", "running"] } }, data: { status: "failed", error: "简历处理失败，请补充信息或重试", result, finishedAt: new Date() } });
+  if (!failed.count) return;
+  await app.prisma.salarySubmission.updateMany({ where: { id: evaluation.submissionId, status: { not: "deleted" }, latestEvaluationId: evaluation.id, supersededById: null }, data: { status: "failed" } });
   if (reply) await deliverSalaryEvaluation(app, evaluation.id, reply);
 }
 

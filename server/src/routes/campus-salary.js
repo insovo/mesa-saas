@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { assertPage } from "../lib/permissions.js";
-import { acceptSalaryResume, requestSalaryEvaluation, salaryError, MAX_RESUME_SIZE, MIME } from "../lib/campusSalary/service.js";
+import { acceptSalaryResume, requestSalaryEvaluation, deleteSalarySubmission, salaryError, MAX_RESUME_SIZE, MIME } from "../lib/campusSalary/service.js";
 import { BUILTIN_SCHOOLS, POLICY_VERSION, POLICY_HASH, CATEGORIES, ROLE_LABELS } from "../lib/campusSalary/policy.js";
 
 const string = (maxLength = 200) => ({ type: "string", maxLength, pattern: "^[^\\u0000]*$" });
@@ -53,7 +53,7 @@ const scope = (access) => access.isAdmin ? {} : { OR: [{ ownerId: access.userId 
 export async function assertSalarySubmission(req, reply, id) {
   const access = await assertPage(req, reply, "campus");
   if (!access) return null;
-  const row = await req.server.prisma.salarySubmission.findFirst({ where: { id, group: scope(access) }, include: { group: true, evaluations: { orderBy: { revision: "desc" } } } });
+  const row = await req.server.prisma.salarySubmission.findFirst({ where: { id, status: { not: "deleted" }, group: scope(access) }, include: { group: true, evaluations: { orderBy: { revision: "desc" } } } });
   if (!row) { reply.code(404).send({ error: "not_found" }); return null; }
   return row;
 }
@@ -117,7 +117,7 @@ export default async function salaryRoutes(app) {
   app.get("/submissions", { schema: { querystring: { type: "object", properties: { take: { type: "integer", minimum: 1, maximum: 100, default: 30 }, skip: { type: "integer", minimum: 0, default: 0 }, includeSuperseded: { type: "boolean", default: false } }, additionalProperties: false } } }, async (req, reply) => {
     const access = await assertPage(req, reply, "campus");
     if (!access) return;
-    const where = { group: scope(access), ...(!req.query.includeSuperseded ? { supersededById: null } : {}) };
+    const where = { group: scope(access), status: { not: "deleted" }, ...(!req.query.includeSuperseded ? { supersededById: null } : {}) };
     const [items, total] = await Promise.all([app.prisma.salarySubmission.findMany({ where, take: req.query.take, skip: req.query.skip, orderBy: { createdAt: "desc" }, include: { group: { select: { name: true } }, evaluations: { orderBy: { revision: "desc" }, take: 1, select: { id: true, result: true, status: true, deliveryStatus: true, error: true } } } }), app.prisma.salarySubmission.count({ where })]);
     return { total, items: items.map(({ facts, fileKey, fileHash, identityKeys, overrides, ...row }) => ({ ...row, name: facts?.name || row.filename })) };
   });
@@ -126,7 +126,7 @@ export default async function salaryRoutes(app) {
     if (!row) return;
     const { fileKey, identityKeys, ...item } = row;
     const latestId = row.supersededById || row.id;
-    const resumeHistory = await app.prisma.salarySubmission.findMany({ where: { groupId: row.groupId, OR: [{ id: latestId }, { supersededById: latestId }] }, select: { id: true, filename: true, messageCreatedAt: true, status: true, supersededById: true }, orderBy: [{ messageCreatedAt: "desc" }, { createdAt: "desc" }] });
+    const resumeHistory = await app.prisma.salarySubmission.findMany({ where: { groupId: row.groupId, status: { not: "deleted" }, OR: [{ id: latestId }, { supersededById: latestId }] }, select: { id: true, filename: true, messageCreatedAt: true, status: true, supersededById: true }, orderBy: [{ messageCreatedAt: "desc" }, { createdAt: "desc" }] });
     return { item: { ...item, resumeHistory } };
   });
   app.patch("/submissions/:id", { schema: { params, body: CORRECTION_SCHEMA } }, async (req, reply) => {
@@ -134,5 +134,10 @@ export default async function salaryRoutes(app) {
     if (!row) return;
     const evaluation = await requestSalaryEvaluation(app, row.id, { ...req.body, requestedBy: req.user.sub });
     return reply.code(202).send({ evaluationId: evaluation.id, revision: evaluation.revision });
+  });
+  app.delete("/submissions/:id", { schema: { params, body: { type: "object", additionalProperties: false, required: ["revision", "latestId", "confirm"], properties: { revision: { type: "integer", minimum: 1 }, latestId: uuid, confirm: { type: "boolean", enum: [true] } } } } }, async (req, reply) => {
+    const row = await assertSalarySubmission(req, reply, req.params.id);
+    if (!row) return;
+    return deleteSalarySubmission(app, row.id, req.body);
   });
 }

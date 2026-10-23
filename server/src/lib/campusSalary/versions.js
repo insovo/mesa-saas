@@ -11,8 +11,9 @@ export async function reconcileResumeVersion(app, submissionId, facts) {
     // 同群的并行识别在短事务中串行归并，防止较慢的旧简历覆盖较新的消息。
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${initial.groupId}))::text`;
     const row = await tx.salarySubmission.findUniqueOrThrow({ where: { id: submissionId } });
+    if (row.status === "deleted") return { isCurrent: false, latestId: row.id };
     if (row.supersededById) return { isCurrent: false, latestId: row.supersededById };
-    const alternatives = (await tx.salarySubmission.findMany({ where: { groupId: row.groupId, id: { not: row.id }, OR: [
+    const alternatives = (await tx.salarySubmission.findMany({ where: { groupId: row.groupId, status: { not: "deleted" }, id: { not: row.id }, OR: [
       ...(keys.length ? [{ identityKeys: { hasSome: keys } }] : []), { fileHash: row.fileHash }, ...(facts.name ? [{ facts: { path: ["name"], equals: facts.name } }] : []),
     ] } })).filter((other) => other.facts);
     const matches = alternatives.filter((other) => other.fileHash === row.fileHash || keys.some((key) => other.identityKeys.includes(key)));
@@ -23,7 +24,7 @@ export async function reconcileResumeVersion(app, submissionId, facts) {
     const duplicateState = conflict ? "conflict" : !keys.length && !matches.length ? "unverified" : alternatives.some((other) => !matches.includes(other)) ? "possible" : "verified";
     await tx.salarySubmission.update({ where: { id: row.id }, data: { identityKeys: keys, duplicateState } });
     if (!safe || !matches.length) return { isCurrent: true, latestId: row.id, identityStatus: duplicateState, supersedes: 0 };
-    const linked = await tx.salarySubmission.findMany({ where: { groupId: row.groupId, OR: [{ id: { in: [...roots] } }, { supersededById: { in: [...roots] } }] } });
+    const linked = await tx.salarySubmission.findMany({ where: { groupId: row.groupId, status: { not: "deleted" }, OR: [{ id: { in: [...roots] } }, { supersededById: { in: [...roots] } }] } });
     const candidates = [...new Map([row, ...matches, ...linked].map((item) => [item.id, item])).values()];
     candidates.sort((a, b) => b.messageCreatedAt - a.messageCreatedAt || b.createdAt - a.createdAt || b.id.localeCompare(a.id));
     const latest = candidates[0];
