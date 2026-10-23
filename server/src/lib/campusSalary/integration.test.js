@@ -59,7 +59,7 @@ test("隔离PG/Redis：群消息→签名API→真实队列→独立定薪→回
     for (const [key, value] of [["JWT_SECRET", previous.jwt], ["LARK_APP_SECRET", previous.bot], ["FEISHU_VERIFICATION_TOKEN", previous.verification]]) value == null ? delete process.env[key] : process.env[key] = value;
   });
   assert.equal((await app.inject({ url: "/api/campus-salary/submissions" })).statusCode, 401);
-  const groupResponse = await app.inject({ method: "POST", url: "/api/campus-salary/groups", headers: auth, payload: { name: "本地定薪测试群", tenantKey: "default", chatId: "salary-local-group", enabled: true, memberUserIds: [], operators: { "salary-local-hr": owner.id }, context: { contractCity: "芜湖", cityType: "nonfirst", roleType: "general" } } });
+  const groupResponse = await app.inject({ method: "POST", url: "/api/campus-salary/groups", headers: auth, payload: { name: "本地定薪测试群", tenantKey: "default", chatId: "salary-local-group", enabled: true, memberUserIds: [], operators: { "salary-local-hr": owner.id }, context: { contractCity: "芜湖", cityType: "nonfirst", roleType: "general", salaryFactor: 12.5 } } });
   assert.equal(groupResponse.statusCode, 200, groupResponse.body);
   const group = groupResponse.json().item;
   const beforeCandidates = await prisma.candidate.count(); const beforeJobs = await prisma.job.count(); const beforeLinks = await prisma.shareLink.count();
@@ -89,6 +89,8 @@ test("隔离PG/Redis：群消息→签名API→真实队列→独立定薪→回
   assert.ok(ack.submissionId);
   const completed = await waitFor(async () => { const e = await prisma.salaryEvaluation.findUnique({ where: { id: ack.evaluationId } }); return e.status === "done" && e.deliveryStatus === "sent" ? e : null; });
   assert.equal(completed.result.salary.min, MONTHLY.nonfirst.硕士["985"][3]); assert.equal(completed.result.bonus.monthlyStandard, null);
+  assert.equal(completed.result.compensation.salaryFactor, 12.5);
+  assert.equal(completed.result.compensation.annualMin, completed.result.salary.min * 12.5);
   assert.ok(JSON.stringify(sent[0].card).includes(String(BONUS_VALUES.middle))); assert.equal(sent[0].messageId, event.message_id);
   assert.equal(extractions, 1); assert.equal(replies.length, 1);
   const duplicate = await handle(event); assert.equal(duplicate.duplicate, true);
@@ -97,9 +99,12 @@ test("隔离PG/Redis：群消息→签名API→真实队列→独立定薪→回
   assert.equal((await app.inject({ url: `/api/campus-salary/submissions/${ack.submissionId}`, headers: strangerAuth })).statusCode, 404);
   assert.equal((await app.inject({ url: "/api/campus-salary/submissions", headers: strangerAuth })).json().total, 0);
   assert.equal((await app.inject({ url: "/api/internal/campus-salary/groups" })).statusCode, 401);
-  assert.equal((await app.inject({ method: "PATCH", url: `/api/campus-salary/submissions/${ack.submissionId}`, headers: auth, payload: { revision: 1, reason: "确认上海合同", context: { contractCity: "上海", cityType: "first" } } })).statusCode, 202);
+  for (const salaryFactor of [-1, 0, 1001, "无效"]) assert.equal((await app.inject({ method: "PATCH", url: `/api/campus-salary/submissions/${ack.submissionId}`, headers: auth, payload: { revision: 1, reason: "无效薪数", context: { salaryFactor } } })).statusCode, 400);
+  assert.equal((await app.inject({ method: "PATCH", url: `/api/campus-salary/submissions/${ack.submissionId}`, headers: auth, payload: { revision: 1, reason: "确认上海合同及薪数", context: { contractCity: "上海", cityType: "first", salaryFactor: 10.5 } } })).statusCode, 202);
   const second = await waitFor(async () => { const e = await prisma.salaryEvaluation.findFirst({ where: { submissionId: ack.submissionId, revision: 2 } }); return e?.status === "done" && e.deliveryStatus === "sent" ? e : null; });
   assert.equal(second.result.salary.min, MONTHLY.first.硕士["985"][3]); assert.equal(extractions, 1);
+  assert.equal(second.result.compensation.salaryFactor, 10.5);
+  assert.equal((await prisma.salaryEvaluation.findUnique({ where: { id: completed.id } })).result.compensation.salaryFactor, 12.5);
   assert.equal((await prisma.salaryEvaluation.findUnique({ where: { id: completed.id } })).result.salary.min, MONTHLY.nonfirst.硕士["985"][3]);
   assert.equal((await app.inject({ method: "PATCH", url: `/api/campus-salary/submissions/${ack.submissionId}`, headers: auth, payload: { revision: 1, reason: "过期修改" } })).statusCode, 409);
   await prisma.salaryEvaluation.update({ where: { id: second.id }, data: { deliveryStatus: "retry", deliveryNextAt: null } });
@@ -144,7 +149,14 @@ test("隔离PG/Redis：群消息→签名API→真实队列→独立定薪→回
   assert.equal(versions.filter((v) => !v.supersededById).length, 1);
   assert.equal(versions.find((v) => !v.supersededById).messageId, newest.message_id);
   assert.ok(versions.filter((v) => v.supersededById).every((v) => v.supersededById === batch[0].submissionId));
-  assert.ok(!sent.some((message) => [older.message_id, middle.message_id].includes(message.messageId)), "旧文件不得在新文件之后回显旧结果");
+  await waitFor(async () => (await prisma.salaryEvaluation.findUnique({ where: { id: batch[0].evaluationId } })).deliveryStatus === "sent");
+  const newestReply = sent.findIndex((message) => message.messageId === newest.message_id);
+  assert.ok(newestReply >= 0);
+  // 身份尚未解析时可能先回复旧文件；身份归并后不得在最新版之后重发旧结果。
+  assert.ok(!sent.slice(newestReply + 1).some((message) => [older.message_id, middle.message_id].includes(message.messageId)), "旧文件不得在新文件之后回显旧结果");
+  const sentCount = sent.length;
+  for (const old of batch.slice(1, 3)) await deliverSalaryEvaluation(app, old.evaluationId, dependencies.reply);
+  assert.equal(sent.length, sentCount, "已归并的历史简历不得重新发送");
   const detail = (await app.inject({ url: `/api/campus-salary/submissions/${batch[0].submissionId}`, headers: auth })).json().item;
   assert.equal(detail.resumeHistory.length, 3);
   assert.equal((await app.inject({ method: "PATCH", url: `/api/campus-salary/submissions/${batch[1].submissionId}`, headers: auth, payload: { revision: 1, reason: "不能修改旧简历" } })).statusCode, 409);

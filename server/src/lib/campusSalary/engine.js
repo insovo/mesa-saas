@@ -1,10 +1,12 @@
 import { POLICY_CONFIGURED, BONUS_VALUES, BENEFITS, MONTHLY, DOCTOR, CATEGORIES, CATEGORY_LABELS, FIELD_LABELS, POLICY_VERSION, POLICY_HASH, TIER_LABELS, SPECIAL_RULES, SPECIAL_BONUS_SCHOOLS, BUILTIN_SCHOOLS, classifyMajor, salaryRange } from "./policy.js";
+import { scopeEducationEvidence } from "./facts.js";
 
 const degreeOrder = { 本科: 1, 硕士: 2, 博士: 3 };
 const missing = (field, reason, materials) => ({ field, reason, materials });
 const pendingSalary = () => ({ status: "pending", min: null, max: null });
 const rule = (id, page, basis) => ({ id, page, basis });
 const qsTier = (rank) => rank <= 100 ? "C9" : rank <= 300 ? "985" : rank <= 500 ? "211" : rank <= 1500 ? "ordinary" : null;
+const salaryPackage = (salary, factor) => ({ salaryFactor: factor, status: factor && ["fixed", "range"].includes(salary.status) ? salary.status : salary.status === "negotiated" ? "negotiated" : "pending", annualMin: factor && salary.min != null ? Math.round(salary.min * factor * 100) / 100 : null, annualMax: factor && salary.max != null ? Math.round(salary.max * factor * 100) / 100 : null });
 
 function cityType(context) {
   const city = context.contractCity?.trim().replace(/市$/, "");
@@ -15,13 +17,15 @@ function cityType(context) {
 
 export function evaluateSalary(facts = {}, context = {}, { schools = [] } = {}) {
   const confirmed = facts.confirmed || {};
-  const education = confirmed.education || facts.education || [];
+  const education = confirmed.education || scopeEducationEvidence(facts.education || [], facts.evidence);
   const sorted = education.filter((e) => degreeOrder[e.degree]).sort((a, b) => degreeOrder[b.degree] - degreeOrder[a.degree]);
   const edu = sorted[0];
   const definitions = new Map([...BUILTIN_SCHOOLS, ...schools].map((s) => [s.name, s]));
   const getSchool = (e) => definitions.get(e?.school);
+  const factor = Number.isFinite(context.salaryFactor) && context.salaryFactor > 0 && context.salaryFactor <= 1000 ? context.salaryFactor : null;
   const result = {
     policyVersion: POLICY_VERSION, policyHash: POLICY_HASH, salary: pendingSalary(),
+    compensation: salaryPackage(pendingSalary(), factor),
     bonus: { status: "pending", monthlyStandard: null, conditions: "入职后前三年（不含实习），按当年在职月数年度兑现；年终考核胜任及以上，发放日须在职。" },
     missingFields: [], rules: [], scenarios: [], restrictions: [], benefits: {}, facts: { name: facts.name || null, education, context },
   };
@@ -54,6 +58,7 @@ export function evaluateSalary(facts = {}, context = {}, { schools = [] } = {}) 
   else if (!(overseas ? [2026, 2027].includes(edu.graduationYear) : edu.graduationYear === 2027)) need("graduationYear", "毕业年份不在本次政策明确范围，需确认适用届别", ["适用届别及政策说明"]);
   if (overseas && edu.graduationYear === 2026) need("policyYear", "海外2026年毕业适用当年度薪资，当前仅有2027版金额，须补当年度执行口径", ["适用年度薪资政策"]);
   if (!city) need("contractCity", "需确认劳动合同签署城市及城市类别，不能使用现居地替代", ["拟录用劳动合同签署地"]);
+  if (!factor) need("salaryFactor", "薪数尚未确认；不影响已可确定的政策月薪，完整定薪结果待补薪数", ["HR确认的薪数或Offer薪酬口径"]);
 
   const candidates = edu.degree === "博士" ? [] : SPECIAL_RULES.filter((r) => r.schools.includes(edu.school) && r.majors.includes(edu.major));
   if (candidates.length && !context.roleType) {
@@ -112,6 +117,7 @@ export function evaluateSalary(facts = {}, context = {}, { schools = [] } = {}) 
   } else {
     const categoryValue = special?.category || category;
     result.facts.category = categoryValue;
+    if (categoryValue) result.rules.push(rule("major-category", 1, `采用最高学历${edu.degree}对应专业“${edu.major}”，${Object.hasOwn(confirmed, "majorCategory") ? "按人工确认" : "按已核对专业映射及政策特殊专业范围"}归入${CATEGORY_LABELS[categoryValue]}`));
     if (!categoryValue) need("majorCategory", "专业到定薪列的归属未明确，不能默认普通专业或择高", ["学位/专业名称及学科归属说明", "适用岗位说明"]);
     if (ready && city && categoryValue && MONTHLY[city][edu.degree]?.[tier]) {
       result.salary = special?.negotiated ? salaryRange(null) : salaryRange(MONTHLY[city][edu.degree][tier][CATEGORIES.indexOf(categoryValue)]);
@@ -154,6 +160,9 @@ export function evaluateSalary(facts = {}, context = {}, { schools = [] } = {}) 
     need("bonusEligibility", result.bonus.reason, ["院校/专业资格及奖金适用口径"]);
   }
   if (city) result.benefits = { internshipMonthly: (BENEFITS.internship || {})[edu.degree]?.[city === "first" ? 1 : 0], settlingAllowance: BENEFITS.settling, condition: "实习标准与正式月薪分开；安家费入职当月兑现且发放日在岗", page: city === "first" ? 5 : 4 };
+  result.compensation = salaryPackage(result.salary, factor);
+  for (const scenario of result.scenarios) if (scenario.kind === "salary") scenario.compensation = salaryPackage(scenario.salary, factor);
+  if (factor) result.rules.push(rule("salary-factor", null, `薪数${factor}来自HR确认的录用上下文，按政策月薪×薪数测算；专项奖金另列`));
   result.scenarios = result.scenarios.slice(0, 12);
   const ranking = /(?:前\s*)?(\d+(?:\.\d+)?)\s*[%％]/.exec(edu.rankingRaw || "");
   if (ranking && Number(ranking[1]) > 0 && Number(ranking[1]) <= 100) for (const scenario of result.scenarios) {
