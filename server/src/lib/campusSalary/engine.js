@@ -1,5 +1,6 @@
 import { POLICY_CONFIGURED, BONUS_VALUES, BENEFITS, MONTHLY, DOCTOR, CATEGORIES, CATEGORY_LABELS, FIELD_LABELS, POLICY_VERSION, POLICY_HASH, TIER_LABELS, SPECIAL_RULES, SPECIAL_BONUS_SCHOOLS, BUILTIN_SCHOOLS, MAJOR_OVERRIDES, classifyMajor, salaryRange } from "./policy.js";
 import { scopeEducationEvidence } from "./facts.js";
+import { resolveMajor } from "./majors.js";
 
 const degreeOrder = { 本科: 1, 硕士: 2, 博士: 3 };
 const missing = (field, reason, materials) => ({ field, reason, materials });
@@ -41,7 +42,8 @@ export function evaluateSalary(facts = {}, context = {}, { schools = [] } = {}) 
   }
   const school = getSchool(edu);
   const city = cityType(context);
-  const category = Object.hasOwn(confirmed, "majorCategory") ? confirmed.majorCategory : classifyMajor(edu.major, context.roleType);
+  const majorClassification = resolveMajor(edu.major, { degree: edu.degree, roleType: context.roleType, jobRelevance: confirmed.jobRelevance });
+  const category = Object.hasOwn(confirmed, "majorCategory") ? confirmed.majorCategory : classifyMajor(edu.major, context.roleType, edu.degree, confirmed.jobRelevance);
   const field = confirmed.doctorField || null;
   let tier = school?.tier || null;
   let special = null;
@@ -53,6 +55,7 @@ export function evaluateSalary(facts = {}, context = {}, { schools = [] } = {}) 
   result.facts.qualifyingEducation = edu;
   result.facts.school = school ? { ...school } : null;
   result.facts.category = category;
+  result.facts.majorClassification = majorClassification;
   result.facts.cityType = city;
   if (!edu.graduationYear) need("graduationYear", "毕业年份未明确", ["毕业/预计毕业证明"]);
   else if (!(overseas ? [2026, 2027].includes(edu.graduationYear) : edu.graduationYear === 2027)) need("graduationYear", "毕业年份不在本次政策明确范围，需确认适用届别", ["适用届别及政策说明"]);
@@ -119,21 +122,22 @@ export function evaluateSalary(facts = {}, context = {}, { schools = [] } = {}) 
     const standardReference = !categoryValue && Boolean(edu.major) && !special;
     const lookupCategory = categoryValue || (standardReference ? "standard" : null);
     result.facts.category = categoryValue;
+    result.rules.push(rule("major-classification", null, majorClassification.basis));
     if (categoryValue) {
       const override = !Object.hasOwn(confirmed, "majorCategory") && !special && MAJOR_OVERRIDES[edu.major];
       result.rules.push(rule("major-category", override ? null : 1, `采用最高学历${edu.degree}对应专业“${edu.major}”，${override ? override.basis : Object.hasOwn(confirmed, "majorCategory") ? "按人工确认" : "按明确专业名称及政策范围"}归入${CATEGORY_LABELS[categoryValue]}`));
     }
-    if (!categoryValue) need("majorCategory", "需确认最高学历专业是否属于政策特殊专业；当前仅按院校标准提供基础建议，特殊档须确认后适用", ["最高学历专业及学科归属证明", "HR确认的特殊专业类别与岗位适用依据"]);
+    if (!categoryValue) need("majorCategory", `${majorClassification.basis}；当前仅按院校标准提供基础建议，特殊档须确认后适用`, majorClassification.materials.length ? majorClassification.materials : ["最高学历专业及学科归属证明", "HR确认的特殊专业类别与岗位适用依据"]);
     if (ready && city && lookupCategory && MONTHLY[city][edu.degree]?.[tier]) {
       result.salary = special?.negotiated ? salaryRange(null) : salaryRange(MONTHLY[city][edu.degree][tier][CATEGORIES.indexOf(lookupCategory)]);
       if (standardReference) result.salaryBasis = "school_standard_reference";
       result.rules.push(rule(`monthly-${city}-${edu.degree}-${tier}-${lookupCategory}`, city === "first" ? 5 : 1, `${city === "first" ? "一线" : "非一线"}、${edu.degree}、${TIER_LABELS[tier]}、${CATEGORY_LABELS[lookupCategory]}${standardReference ? "基础建议；特殊专业资格未确认，不视为已满足升档条件" : ""}`));
     }
     if (ready && !special) {
-      for (const c of city ? [city] : ["nonfirst", "first"]) for (const cat of category ? [category] : CATEGORIES) {
+      for (const c of city ? [city] : ["nonfirst", "first"]) for (const cat of category ? [category] : majorClassification.possibleCategories.length ? ["standard", ...majorClassification.possibleCategories] : CATEGORIES) {
         if (city && (category || (standardReference && cat === "standard"))) continue;
         const amount = MONTHLY[c][edu.degree]?.[tier]?.[CATEGORIES.indexOf(cat)];
-        if (amount != null) result.scenarios.push({ kind: "salary", majorCategory: cat, label: `若合同签署地为${c === "first" ? "一线" : "非一线"}，专业归入${CATEGORY_LABELS[cat]}`, condition: "须经HR确认该专业类别及该分支全部适用条件；并非当前已确定报价", salary: salaryRange(amount), page: c === "first" ? 5 : 1, materials: [...(!city ? ["合同签署地"] : []), ...(!category ? ["专业/学科归属证明及岗位适用说明"] : [])] });
+        if (amount != null) result.scenarios.push({ kind: "salary", majorCategory: cat, label: `若合同签署地为${c === "first" ? "一线" : "非一线"}，专业归入${CATEGORY_LABELS[cat]}`, condition: `须经HR确认该专业类别及该分支全部适用条件；并非当前已确定报价${majorClassification.materials.length ? `；${majorClassification.basis}` : ""}`, salary: salaryRange(amount), page: c === "first" ? 5 : 1, materials: [...(!city ? ["合同签署地"] : []), ...(!category ? majorClassification.materials.length ? majorClassification.materials : ["专业/学科归属证明及岗位适用说明"] : [])] });
       }
     }
   }
