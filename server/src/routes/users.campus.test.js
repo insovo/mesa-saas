@@ -28,7 +28,8 @@ test("管理员可用账户名创建校招面试官，且策略接口不能提�
   });
   await app.register(usersRoutes, { prefix: "/api/users" });
   t.after(() => app.close());
-  const password = `${randomBytes(16).toString("hex")}aZ9`;
+  // 分隔随机字节，避免账号权限测试偶然生成重复或递增字符而被密码策略拒绝。
+  const password = `${randomBytes(16).toString("hex").match(/.{2}/g).join("-")}aZ9`;
   const created = await app.inject({ method: "POST", url: "/api/users", payload: { role: "CAMPUS_INTERVIEWER", username: "Reviewer.One", password } });
   assert.equal(created.statusCode, 201);
   assert.equal(created.json().user.username, "reviewer.one");

@@ -1,6 +1,6 @@
 # MESA Recruit
 
-AI 原生招聘 SaaS — 简历自动解析、候选人全生命周期、岗位/部门/员工组织视图、面试评价、**员工绩效评价**、飞书自动入库、AI 标签与 JD 匹配。
+AI 原生招聘 SaaS — 简历自动解析、候选人全生命周期、岗位/部门/员工组织视图、面试评价、**员工绩效评价**、AI 标签与 JD 匹配；新增飞书校招自动定薪。
 
 > 详细架构、API、部署与运维手册见 [`delivery-docs/`](./delivery-docs)。  
 > **权威源**为 `delivery-docs/src/*.md`;正式 `.docx` 由 Markdown 生成交付。规划稿在 `delivery-docs/dev-plans/`(根目录同名 `.md` 为历史副本,以 `dev-plans/` 为准)。
@@ -83,20 +83,20 @@ mesa/
 ├── server/                  # Fastify + Prisma 后端
 │   └── src/worker.js        # Redis 持久化 AI 队列执行进程
 ├── web/                     # Vite + React + Tailwind 生产前端
-├── tools/lark-ingest/       # 飞书简历自动入库(第 6 容器)
+├── tools/lark-ingest/       # 复用飞书机器人自动定薪（自动定薪）
 ├── docker-compose.dev.yml   # 本地 PG + Redis
 ├── docker-compose.yml       # 生产编排(含独立 ai-worker)
 ├── .github/workflows/       # CI + Deploy
 ├── ops/                     # backup / restore / Cloudflare runbook
 └── delivery-docs/
-    ├── src/                 # Markdown 权威源(01–07)
+    ├── src/                 # Markdown 权威源(01–09)
     ├── dev-plans/           # 设计规划稿
     └── *.docx               # 由 src 生成的正式交付件
 ```
 
 业务页面的排队状态、校招进度和候选人列表改为手动刷新；上传后的单个 AI 任务仍会低频查询完成状态，并在无变化或请求失败时放慢。生产环境需要同时运行 `backend` 和 `ai-worker`，任务由 Redis AOF 保存；队列满或 Redis 不可用时创建任务返回 503，不会假装任务已开始。
 
-「校招定薪」已预留独立页面 `/campus-salary`，侧栏位于「候选人」之后，沿用 `campus` 页面权限。目前仅包含入口与空态页面，定薪业务功能后续补充。
+「校招定薪」页面 `/campus-salary` 位于「候选人」与「面试排队」之间，沿用 `campus` 页面权限并按群负责人/成员校验数据范围。表格汇总当前有效简历，点击候选人打开详情：原文信息、定薪依据、条件情景、待补材料和历史版本。复用飞书机器人处理指定群的多份简历，同人可靠匹配后以最新发送文件为准；旧机器人入库、JD评分与自动分享已在新实现中停用。发布通过既有CI/CD流程执行，详见定薪说明。
 
 ## 交付文档索引
 
@@ -106,10 +106,11 @@ mesa/
 | [`src/02_api.md`](./delivery-docs/src/02_api.md) | API 手册(含 §18 绩效评价) |
 | [`src/03_deploy.md`](./delivery-docs/src/03_deploy.md) | 部署与 CI/CD · worktree |
 | [`src/04_ops.md`](./delivery-docs/src/04_ops.md) | 运维与灾备 |
-| [`src/05_feishu_resume_ingest.md`](./delivery-docs/src/05_feishu_resume_ingest.md) | 飞书入库(**已生产化**) |
+| [`src/05_feishu_resume_ingest.md`](./delivery-docs/src/05_feishu_resume_ingest.md) | 旧飞书入库退役与自动定薪切换说明 |
 | [`src/06_performance_evaluation.md`](./delivery-docs/src/06_performance_evaluation.md) | **员工绩效评价** as-built |
 | [`src/07_interview_queue.md`](./delivery-docs/src/07_interview_queue.md) | 大学专场面试排队、登记海报与 iPad 横屏、角色分享、群面计时、定薪和实时大屏 |
 | [`src/08_campus_job_sharing.md`](./delivery-docs/src/08_campus_job_sharing.md) | 多选岗位分享给 HR、三项新建 JD、现场面试标记与全专场同步 |
+| [`src/09_campus_salary.md`](./delivery-docs/src/09_campus_salary.md) | 飞书自动定薪、10份批量处理、最新简历、汇总表与本地验证 |
 | [`textin+kimi+jev架构/*.html`](./textin+kimi+jev架构/) | **TextIn + Kimi + Jev 三层解析评估**:00 方案评估 · 02 Jev 接入 · 03 简历/JD 抽取协议 · 04 实施记录与验收(单文件 HTML,源在 `src/`,生成器 `tools/md2html`) |
 
 设计规划稿(迭代前)见 [`delivery-docs/dev-plans/`](./delivery-docs/dev-plans/README.md)。

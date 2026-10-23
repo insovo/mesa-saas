@@ -3,8 +3,9 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "飞书群/私聊简历自动入库 MESA 的本地最小原型(监听 → 下载 → 公开上传通道)",
+  "description": "飞书指定群简历自动定薪：复用机器人长连接，独立任务及依据回显",
   "scripts": {
-    "start": "node ingest.mjs"
+    "start": "node ingest.mjs",
+    "test": "node --test"
   }
 }

@@ -85,10 +85,12 @@ services:
       # 飞书卡片回调(card.action.trigger)校验:Verification Token 必填,Encrypt Key 可选(配了才解密)
       FEISHU_VERIFICATION_TOKEN: ${FEISHU_VERIFICATION_TOKEN:-}
       FEISHU_ENCRYPT_KEY: ${FEISHU_ENCRYPT_KEY:-}
-      # 解析完成后由 backend 以 bot 身份发候选人详情卡片回群(Phase 4),复用 lark-ingest 同一应用凭证
+      # 定薪worker使用同一机器人凭证回复原简历消息；旧JD评分与公开分享通知已停用。
       LARK_APP_ID: ${LARK_APP_ID:-}
       LARK_APP_SECRET: ${LARK_APP_SECRET:-}
       LARK_BRAND: ${LARK_BRAND:-feishu}
+      # 内部定薪政策只保存在服务器环境，不进入公开仓库或镜像。
+      SALARY_POLICY_B64: ${SALARY_POLICY_B64:-}
     # 故意不映射端口 — 仅在 bridge 网络内通过服务名 backend:3001 访问
     expose:
       - "3001"
@@ -179,8 +181,8 @@ services:
       retries: 3
       start_period: 60s
 
-  # === 飞书简历自动入库 · lark-ingest ===
-  # 长连接监听飞书群/私聊的简历文件 → 下载 → 喂进 backend 公开上传通道(/api/public/upload)。
+  # === 飞书校招自动定薪 · 复用lark-ingest ===
+  # 仅指定群文件 → 下载 → 专用签名定薪API；不创建旧Candidate，不跑JD评分。
   # 纯出站连接,不暴露任何端口;凭证经 .env 注入,绝不入镜像。
   lark-ingest:
     image: ${LARK_INGEST_IMAGE:-ghcr.io/insovo/mesa-lark-ingest:latest}
@@ -199,14 +201,13 @@ services:
       LARK_APP_ID: ${LARK_APP_ID:-}
       LARK_APP_SECRET: ${LARK_APP_SECRET:-}
       LARK_BRAND: ${LARK_BRAND:-feishu}
-      # 入库走 backend 内网直连(免走 Cloudflare,规避 100s 上限)
+      # 使用现有App Secret签名内部定薪请求，不需要公开上传token。
       MESA_BASE_URL: ${LARK_MESA_BASE_URL:-http://backend:3001}
-      # MESA 长期公开上传链接 token(决定入库候选人归属人 ownerId)
-      UPLOAD_TOKEN: ${LARK_UPLOAD_TOKEN:-}
+      LARK_TENANT_KEY: ${LARK_TENANT_KEY:-default}
       # 群内回执开关(机器人回复上传结果);需飞书应用已开发送消息权限,未开可设 false
       REPLY_ENABLED: ${LARK_REPLY_ENABLED:-true}
     volumes:
-      - mesa_lark_ingest_data:/app/data   # 去重状态持久化,扛重启
+      - mesa_lark_ingest_data:/app/data   # 保留既有卷；新幂等状态在数据库，不读旧全局hash。
     networks:
       - mesa-net
 

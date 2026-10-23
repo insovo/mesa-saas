@@ -1,13 +1,132 @@
-import { Card, Empty } from "../components/Primitives.jsx";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { api } from "../lib/api.js";
+import { Card, Button, Empty, Modal, RequiredMark } from "../components/Primitives.jsx";
+
+const CATEGORIES = { standard: "院校标准", hot: "稀缺/热门", design: "设计", computer: "计算机及AI相关" };
+const FIELDS = { regular: "常规工程", key: "重点技术", scarce: "稀缺竞争" };
+const ROLES = { general: "一般岗位", battery: "电池岗", language: "高度对口外语岗", design: "造型设计中心", law: "全球法务中心", audit: "审计中心", finance: "全球财经中心", algorithm: "算法岗" };
+const TIERS = { C9: "C9", "985": "985", "211": "211", first: "一本", second: "二本", ordinary: "普通院校" };
+const inputClass = "w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-navy-700 focus:border-brand focus:outline-none";
+const statusLabel = { accepted: "已接收", uploaded: "待排队", queued: "排队中", running: "处理中", done: "测算完成", failed: "处理失败", superseded: "历史简历" };
+const salaryText = (s) => !s || s.status === "pending" ? "待补充" : s.status === "negotiated" ? "一人一议" : s.min === s.max ? `${s.min.toLocaleString()} 元/月` : `${s.min.toLocaleString()}—${s.max.toLocaleString()} 元/月`;
+const request = (method, path, body) => api.request({ method, url: `/campus-salary${path}`, data: body }).then((r) => r.data);
+const errorMessage = (e) => e.response?.data?.message || (e.response?.status === 403 ? "无此功能或记录的访问权限" : "请求未完成，请稍后重试");
+function Select({ label, value, onChange, options, unknown = "待确认", ...props }) {
+  return <label className="grid gap-1 text-sm text-navy-700"><span>{label}{props.required && <RequiredMark />}</span><select aria-label={label} className={inputClass} value={value || ""} onChange={(e) => onChange(e.target.value)} {...props}><option value="">{unknown}</option>{Object.entries(options).map(([key, text]) => <option key={key} value={key}>{text}</option>)}</select></label>;
+}
+function Field({ label, value, onChange, ...props }) {
+  return <label className="grid gap-1 text-sm text-navy-700"><span>{label}{props.required && <RequiredMark />}</span><input aria-label={label} className={inputClass} value={value ?? ""} onChange={(e) => onChange(e.target.value)} {...props} /></label>;
+}
+function educationFields(facts, overrides) {
+  return (overrides.education || facts?.education || []).map((e) => ({ degree: e.degree || "", school: e.school || "", major: e.major || "", graduationYear: e.graduationYear || null, rankingRaw: e.rankingRaw || "" }));
+}
 
 export default function CampusSalary() {
-  return (
-    <Card className="px-5 md:px-8">
-      <Empty
-        icon="calculator"
-        title="校招定薪"
-        desc="后续在此管理校招候选人的定薪信息。"
-      />
+  const [params, setParams] = useSearchParams();
+  const selectedId = params.get("id");
+  const [metadata, setMetadata] = useState(null), [items, setItems] = useState([]), [total, setTotal] = useState(0), [skip, setSkip] = useState(0);
+  const [groups, setGroups] = useState([]), [schools, setSchools] = useState([]), [row, setRow] = useState(null), [tab, setTab] = useState("records");
+  const [error, setError] = useState(""), [notice, setNotice] = useState(""), [busy, setBusy] = useState(false), [refresh, setRefresh] = useState(0), [history, setHistory] = useState("latest");
+  const [editing, setEditing] = useState(false), [correction, setCorrection] = useState({ context: {}, confirmed: {}, reason: "" });
+  const [groupForm, setGroupForm] = useState(null), [schoolForm, setSchoolForm] = useState(null);
+  const [operatorText, setOperatorText] = useState(""), [memberText, setMemberText] = useState("");
+  const [includeSuperseded, setIncludeSuperseded] = useState(false);
+  const initializedEducation = useRef("[]");
+  const load = useCallback(async () => {
+    const [meta, list, groupList, schoolList] = await Promise.all([request("get", "/metadata"), request("get", `/submissions?take=30&skip=${skip}&includeSuperseded=${includeSuperseded}`), request("get", "/groups"), request("get", "/schools")]);
+    setMetadata(meta); setItems(list.items); setTotal(list.total); setGroups(groupList.items); setSchools(schoolList.items);
+  }, [skip, includeSuperseded]);
+  useEffect(() => { let alive = true; load().catch((e) => alive && setError(errorMessage(e))); return () => { alive = false; }; }, [load, refresh]);
+  useEffect(() => {
+    if (!selectedId) { setRow(null); return; }
+    const controller = new AbortController();
+    api.get(`/campus-salary/submissions/${selectedId}`, { signal: controller.signal }).then((r) => setRow(r.data.item)).catch((e) => { if (!controller.signal.aborted) setError(errorMessage(e)); });
+    return () => controller.abort();
+  }, [selectedId, refresh]);
+  useEffect(() => {
+    const running = items.some((item) => ["accepted", "uploaded", "queued", "running"].includes(item.status)) || row?.evaluations?.some((e) => ["queued", "running"].includes(e.status));
+    if (!running) return;
+    const timer = setInterval(() => { if (!document.hidden) setRefresh((v) => v + 1); }, 5000);
+    return () => clearInterval(timer);
+  }, [items, row]);
+  useEffect(() => {
+    if (!row) return;
+    const education = educationFields(row.facts, row.overrides);
+    initializedEducation.current = JSON.stringify(education);
+    setCorrection({ context: { ...row.context }, confirmed: { ...row.overrides, education }, reason: "" });
+    setEditing(false);
+  }, [row?.id, row?.revision]);
+  const updateContext = (key, value) => setCorrection((p) => ({ ...p, context: { ...p.context, [key]: value } }));
+  const updateConfirmed = (key, value) => setCorrection((p) => ({ ...p, confirmed: { ...p.confirmed, [key]: value } }));
+  const run = async (fn, message) => {
+    setError(""); setNotice(""); setBusy(true);
+    try { await fn(); setNotice(message); setRefresh((v) => v + 1); }
+    catch (e) { setError(errorMessage(e)); }
+    finally { setBusy(false); }
+  };
+  const saveCorrection = (event) => {
+    event.preventDefault();
+    const confirmed = { ...correction.confirmed };
+    if (JSON.stringify(confirmed.education) === initializedEducation.current) delete confirmed.education;
+    return run(async () => { await request("patch", `/submissions/${row.id}`, { ...correction, confirmed, revision: row.revision }); setEditing(false); setHistory("latest"); }, "已保存补充信息，正在生成新版本；历史结果保留。");
+  };
+  const evaluation = history === "latest" ? row?.evaluations?.[0] : row?.evaluations?.find((e) => String(e.revision) === history);
+  const result = evaluation?.result;
+  const changeGroup = (key, value) => setGroupForm((p) => ({ ...p, [key]: value }));
+  const startGroup = (group) => { setOperatorText(Object.entries(group?.operators || {}).map(([a, b]) => `${a}=${b}`).join("\n")); setMemberText((group?.memberUserIds || []).join(",")); setGroupForm(group ? { ...group } : { name: "", tenantKey: "default", chatId: "", enabled: false, memberUserIds: [], operators: {}, context: {}, ownerId: metadata.userId }); };
+  const saveGroup = (event) => {
+    event.preventDefault();
+    const { id, createdAt, updatedAt, ...body } = groupForm;
+    body.memberUserIds = memberText.split(",").map((s) => s.trim()).filter(Boolean);
+    body.operators = Object.fromEntries(operatorText.split("\n").filter((s) => s.trim()).map((line) => line.split("=").map((s) => s.trim())));
+    return run(async () => { await request(id ? "put" : "post", id ? `/groups/${id}` : "/groups", body); setGroupForm(null); }, "群配置已保存；只影响后续新简历，历史测算保留原上下文。");
+  };
+  const saveSchool = (event) => {
+    event.preventDefault();
+    return run(async () => { await request("post", "/schools", { ...schoolForm, qsRank: schoolForm.qsRank ? Number(schoolForm.qsRank) : null, tier: schoolForm.tier || null }); setSchoolForm(null); }, "院校依据已保存；已有记录可通过补充重算使用新字典。");
+  };
+
+  return <div className="space-y-5">
+    <Card className="p-5 md:p-7">
+      <div className="flex flex-wrap items-start justify-between gap-4"><div><h1 className="text-2xl font-bold text-navy-700">校招定薪</h1><p className="mt-2 text-sm text-gray-600">群内发送简历，先看当前建议，再看条件情景、政策依据与所需材料。专项奖金单列，未知条件不猜金额。</p></div><Button variant="secondary" size="sm" onClick={() => setRefresh((v) => v + 1)}>刷新</Button></div>
+      <div className="mt-5 flex flex-wrap gap-2">{[["records", "定薪记录"], ["groups", "飞书群配置"], ["schools", "院校依据"]].filter(([key]) => metadata?.isAdmin || key === "records").map(([key, label]) => <Button key={key} size="sm" variant={tab === key ? "primary" : "ghost"} onClick={() => setTab(key)}>{label}</Button>)}</div>
+      <p className="mt-3 text-xs text-gray-500">政策：{metadata?.policyVersion || "加载中"} · 旧简历入库与JD评分机器人流程已停用</p>
     </Card>
-  );
+    {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}<button className="ml-4 underline" onClick={() => setError("")}>关闭</button></div>}
+    {notice && <div role="status" className="rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800">{notice}</div>}
+    {tab === "records" && <>
+      <Card className="min-w-0 p-5"><div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold text-navy-700">定薪结果汇总 · {total}份</h2><p className="mt-1 text-xs text-gray-500">默认显示每人当前有效简历；点击姓名查看完整依据与补充情景。</p></div><div className="flex flex-wrap items-center gap-3 text-sm"><label><input type="checkbox" checked={includeSuperseded} onChange={(e) => { setIncludeSuperseded(e.target.checked); setSkip(0); }} /> 包含历史简历</label><Button size="sm" variant="ghost" disabled={skip === 0} onClick={() => setSkip((v) => Math.max(0, v - 30))}>上一页</Button><span className="text-xs text-gray-500">第{Math.floor(skip / 30) + 1}页</span><Button size="sm" variant="ghost" disabled={skip + 30 >= total} onClick={() => setSkip((v) => v + 30)}>下一页</Button></div></div>
+        {!items.length ? <Empty icon="calculator" title="暂无定薪记录" desc="由管理员配置飞书群后，发送单人简历即可自动测算；可一次发送多份文件。" /> : <div className="overflow-x-auto"><table className="w-full min-w-[1080px] text-left text-sm"><thead className="border-b bg-gray-50 text-gray-600"><tr>{["候选人", "学历 / 院校", "专业 / 薪资档", "合同签署地", "当前月薪建议", "专项奖金", "状态 / 身份核对", "群 / 上传时间"].map((label) => <th key={label} className="whitespace-nowrap px-3 py-3 font-medium">{label}</th>)}</tr></thead><tbody>{items.map((item) => {
+          const r = item.evaluations?.[0]?.result, edu = r?.facts?.qualifyingEducation || r?.facts?.education?.[0];
+          const open = () => { setParams({ id: item.id }); setHistory("latest"); };
+          return <tr key={item.id} onClick={open} className={`cursor-pointer border-b transition hover:bg-lightPrimary ${item.supersededById ? "text-gray-500" : "text-navy-700"}`}><td className="px-3 py-4"><button className="font-semibold text-brand hover:underline" onClick={(e) => { e.stopPropagation(); open(); }}>{item.name}</button><p className="mt-1 max-w-[160px] truncate text-xs text-gray-500" title={item.filename}>{item.filename}</p></td><td className="px-3 py-4">{edu?.degree || "待补充"}<p className="mt-1">{edu?.school || "待识别"}</p></td><td className="px-3 py-4">{edu?.major || "待补充"}<p className="mt-1 text-xs text-gray-500">{TIERS[r?.facts?.salaryTier] || "档次待确认"}</p></td><td className="px-3 py-4">{item.context?.contractCity || "待补充"}</td><td className="whitespace-nowrap px-3 py-4 font-semibold text-brand">{salaryText(r?.salary)}</td><td className="px-3 py-4">{r?.bonus?.status === "ineligible" ? "一般路径不适用" : "附条件，见详情"}</td><td className="px-3 py-4">{statusLabel[item.status]}<p className="mt-1 text-xs text-amber-700">{({ unverified: "身份待核实", possible: "同名待核实", conflict: "身份冲突待确认" })[item.duplicateState] || ""}</p></td><td className="px-3 py-4">{item.group.name}<p className="mt-1 whitespace-nowrap text-xs text-gray-500">{new Date(item.messageCreatedAt || item.createdAt).toLocaleString("zh-CN")}</p></td></tr>;
+        })}</tbody></table></div>}
+      </Card>
+      <Modal open={!!selectedId} onClose={() => setParams({})} maxWidth="max-w-6xl"><div role="dialog" aria-modal="true" aria-label="定薪详情" className="p-5 md:p-7"><div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-semibold text-navy-700">定薪详情</h2><Button variant="ghost" size="sm" onClick={() => setParams({})}>关闭详情</Button></div>{!row || row.id !== selectedId ? <p className="py-12 text-center text-gray-500">正在加载定薪详情…</p> : <div><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-bold text-navy-700">{row.facts?.name || row.filename}</h2><p className="mt-1 text-xs text-gray-500">{row.group.name} · {statusLabel[row.status]} · 记录{row.id}</p></div><div className="flex flex-wrap gap-2"><select aria-label="结果版本" className={inputClass} value={history} onChange={(e) => setHistory(e.target.value)}><option value="latest">最新结果</option>{row.evaluations.map((e) => <option key={e.id} value={e.revision}>R{e.revision} · {statusLabel[e.status]}</option>)}</select><Button size="sm" disabled={!!row.supersededById} onClick={() => setEditing((v) => !v)}>{editing ? "收起编辑" : "补充或纠正信息"}</Button></div></div>
+        {row.supersededById && <p className="mt-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">这份简历已有更新，仅保留历史。<button className="ml-2 underline" onClick={() => { setParams({ id: row.supersededById }); setHistory("latest"); }}>打开最新简历结果</button></p>}
+        {row.resumeHistory?.length > 1 && <details className="mt-4 rounded-xl border p-3"><summary className="cursor-pointer text-sm font-semibold">同一候选人的简历上传历史 · {row.resumeHistory.length}份</summary><div className="mt-2 grid gap-2">{row.resumeHistory.map((v) => <button key={v.id} className="text-left text-sm text-brand hover:underline" onClick={() => { setParams({ id: v.id }); setHistory("latest"); }}>{v.supersededById ? "历史" : "当前"} · {v.filename} · {new Date(v.messageCreatedAt).toLocaleString("zh-CN")}</button>)}</div></details>}
+        {evaluation && <p className="mt-3 text-xs text-gray-500">本版：R{evaluation.revision} · {evaluation.reason} · {new Date(evaluation.createdAt).toLocaleString("zh-CN")} · 回显{({ sent: "已发送", pending: "待发送", retry: "等待重试", sending: "发送中", superseded: "已有新版本" })[evaluation.deliveryStatus] || evaluation.deliveryStatus}</p>}
+        {editing && <form className="my-5 space-y-4 rounded-xl border border-brand/30 bg-lightPrimary p-4" onSubmit={saveCorrection}><h3 className="font-semibold text-navy-700">补充信息后生成新版本</h3><div className="grid gap-3 sm:grid-cols-2"><Field label="合同签署城市" value={correction.context.contractCity} onChange={(v) => updateContext("contractCity", v)} /><Select label="合同城市类别" value={correction.context.cityType} onChange={(v) => updateContext("cityType", v)} options={{ first: "一线（北京/上海/广州/深圳）", nonfirst: "非一线" }} /><Select label="录用岗位/组织类别" value={correction.context.roleType} onChange={(v) => updateContext("roleType", v)} options={ROLES} /><Select label="已确认的专业薪资类别" value={correction.confirmed.majorCategory} onChange={(v) => updateConfirmed("majorCategory", v || null)} options={CATEGORIES} /><Select label="已确认的博士方向" value={correction.confirmed.doctorField} onChange={(v) => updateConfirmed("doctorField", v || null)} options={FIELDS} /></div>
+          <div className="flex flex-wrap gap-4 text-sm"><label><input type="checkbox" checked={!!correction.confirmed.jobRelevance} onChange={(e) => updateConfirmed("jobRelevance", e.target.checked)} /> 已核对海外专业与录用岗位的相关性</label><label><input type="checkbox" checked={!!correction.confirmed.overseasCertification} onChange={(e) => updateConfirmed("overseasCertification", e.target.checked)} /> 已核对留服认证及专业适用范围</label></div>
+          <p className="text-sm text-gray-600">教育经历按实际证明补充。本科与硕士信息都保留，海外硕士不能只填QS档。</p>
+          {correction.confirmed.education.map((edu, i) => <fieldset key={i} className="grid gap-3 rounded-xl border border-gray-200 bg-white p-3 sm:grid-cols-2"><legend className="px-1 text-sm">教育经历{i + 1}</legend>{[["school", "学校"], ["major", "专业"], ["graduationYear", "毕业年份"], ["rankingRaw", "排名自述（仍需证明）"]].map(([key, label]) => <Field key={key} label={label} value={edu[key]} required={key !== "rankingRaw"} type={key === "graduationYear" ? "number" : "text"} onChange={(value) => updateConfirmed("education", correction.confirmed.education.map((e, j) => j === i ? { ...e, [key]: key === "graduationYear" ? (value ? Number(value) : null) : value } : e))} />)}<Select label="学历" value={edu.degree} onChange={(v) => updateConfirmed("education", correction.confirmed.education.map((e, j) => j === i ? { ...e, degree: v } : e))} options={{ 本科: "本科", 硕士: "硕士", 博士: "博士" }} required /><Button type="button" size="sm" variant="ghost" onClick={() => updateConfirmed("education", correction.confirmed.education.filter((_, j) => j !== i))}>移除此段</Button></fieldset>)}
+          <Button type="button" size="sm" variant="secondary" disabled={correction.confirmed.education.length >= 5} onClick={() => updateConfirmed("education", [...correction.confirmed.education, { degree: "本科", school: "", major: "", graduationYear: null, rankingRaw: "" }])}>添加教育经历</Button><Field label="信息来源或更正依据" value={correction.reason} required onChange={(reason) => setCorrection((p) => ({ ...p, reason }))} maxLength={1000} /><Button type="submit" disabled={busy}>保存并重新测算</Button>
+        </form>}
+        {!result ? <p className="mt-6 rounded-xl bg-amber-50 p-4 text-sm text-amber-800">{evaluation?.error || "正在提取和测算，页面会低频刷新；不会先填一个猜测金额。"}</p> : <div className="mt-6 space-y-6">
+          <section><h3 className="font-semibold text-navy-700">一、候选人的定薪相关信息</h3><div className="mt-3 grid gap-3 md:grid-cols-2">{result.facts.education.map((e, i) => <div key={i} className="rounded-xl bg-gray-50 p-4 text-sm"><p>{e.school || "学校待补充"} · {e.degree || "学历待确认"}</p><p className="mt-1">{e.major || "专业待补充"} · {e.graduationYear || "年份待补"}</p><p className="mt-1 text-gray-500">排名：{e.rankingRaw || "未提供，不能据此认定不达标"}</p></div>)}</div><p className="mt-3 text-sm">合同签署地：{result.facts.context.contractCity || "待补充"}；院校薪资档：{TIERS[result.facts.salaryTier] || "待确认"}；专业类别：{CATEGORIES[result.facts.category] || "待确认"}</p></section>
+          <section className="rounded-xl border border-brand/20 bg-lightPrimary p-5"><h3 className="font-semibold text-navy-700">二、当前定薪建议及依据</h3><p className="my-3 text-2xl font-bold text-brand">{salaryText(result.salary)}</p><p className="text-sm">专项奖金：{result.bonus.reason || "待确认"}</p><ul className="mt-3 list-inside list-disc space-y-1 text-sm">{result.rules.map((rule) => <li key={rule.id}>政策P{rule.page}：{rule.basis}</li>)}</ul>{result.restrictions.map((v) => <p key={v} className="mt-2 text-sm text-amber-800">{v}</p>)}{result.benefits.internshipMonthly && <p className="mt-3 text-sm">实习参考{result.benefits.internshipMonthly}元/月；安家费{result.benefits.settlingAllowance}元/人，入职当月兑现且发放日在岗。</p>}</section>
+          <section><h3 className="font-semibold text-navy-700">三、满足条件后的测算情景</h3><p className="mt-2 text-sm text-gray-500">条件情景不代表已满足。专项奖金月度标准按年度条件兑现，固定月薪不因此增加。</p><div className="mt-3 grid gap-3 xl:grid-cols-2">{result.scenarios.map((s, i) => <article key={i} className="rounded-xl border border-gray-200 p-4"><h4 className="font-semibold text-navy-700">{s.label}</h4><p className="mt-2 text-lg font-bold text-brand">{s.kind === "salary" ? salaryText(s.salary) : `专项奖金月度标准 ${s.monthlyStandard ?? `${s.bonusRange[0]}—${s.bonusRange[1]}`} 元`}</p><p className="mt-2 text-sm">{s.condition}（P{s.page}）</p>{s.resumeHint && <p className="mt-2 text-sm text-amber-800">{s.resumeHint}</p>}<p className="mt-2 text-sm text-gray-600">需提供：{s.materials.join("；")}</p></article>)}</div>{!result.scenarios.length && <p className="mt-3 text-sm text-gray-500">当前没有可可靠计算的额外情景；先补齐下列关键资料。</p>}</section>
+          <section><h3 className="font-semibold text-navy-700">四、待确认与所需材料</h3><ul className="mt-3 space-y-3">{result.missingFields.map((m, i) => <li key={i} className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900"><p>{m.reason}</p><p className="mt-1">需要：{m.materials.join("；")}</p></li>)}</ul><p className="mt-3 text-sm">奖金兑现条件：{result.bonus.conditions}</p></section>
+          <details className="rounded-xl border border-gray-200 p-4"><summary className="cursor-pointer font-semibold text-navy-700">查看原文证据与判断状态</summary><p className="mt-3 text-sm text-gray-600">{evaluation.semantic?.reason}</p>{(evaluation.input.facts?.evidence || []).filter((e) => new Set(result.facts.education.flatMap((v) => v.evidenceRefs || [])).has(e.id)).map((e) => <p key={e.id} className="mt-2 whitespace-pre-wrap rounded-lg bg-gray-50 p-3 text-sm">{e.id}：{e.text}</p>)}<p className="mt-3 text-xs text-gray-500">政策{result.policyVersion} · 本版事实和上下文已保存；人工修正不覆盖原始抽取。</p></details>
+        </div>}
+      </div>}</div></Modal>
+    </>}
+    {tab === "groups" && metadata?.isAdmin && <Card className="space-y-4 p-5"><div className="flex justify-between"><h2 className="font-semibold text-navy-700">复用现有机器人：指定群与录用上下文</h2><Button size="sm" onClick={() => startGroup()}>添加群</Button></div><p className="text-sm text-gray-600">未配置或未启用的群不会处理简历。合同签署地不取候选人现居地；操作人映射决定谁能在群里修改信息。</p>{groups.map((g) => <button key={g.id} className="flex w-full flex-wrap justify-between gap-2 rounded-xl border p-4 text-left" onClick={() => startGroup(g)}><span>{g.name} · {g.enabled ? "已启用" : "已停用"}</span><span className="text-sm text-gray-500">{g.context.contractCity || "合同地待补"} · 编辑</span></button>)}
+      {groupForm && <form onSubmit={saveGroup} className="space-y-4 rounded-xl bg-gray-50 p-4"><div className="grid gap-3 md:grid-cols-2">{[["name", "群名称"], ["tenantKey", "飞书租户标识（事件未含租户时用default）"], ["chatId", "飞书群ID"], ["ownerId", "群负责人MESA账号ID"]].map(([key, label]) => <Field key={key} label={label} value={groupForm[key]} required onChange={(v) => changeGroup(key, v)} disabled={!!groupForm.id && ["tenantKey", "chatId"].includes(key)} />)}<Field label="合同签署城市" value={groupForm.context.contractCity} onChange={(v) => changeGroup("context", { ...groupForm.context, contractCity: v })} /><Select label="合同城市类别" value={groupForm.context.cityType} onChange={(v) => changeGroup("context", { ...groupForm.context, cityType: v })} options={{ first: "一线", nonfirst: "非一线" }} /><Select label="录用岗位/组织类别" value={groupForm.context.roleType} onChange={(v) => changeGroup("context", { ...groupForm.context, roleType: v })} options={ROLES} /></div>
+        <Field label="授权查看/修改的MESA账号ID（逗号分隔）" value={memberText} onChange={setMemberText} />
+        <label className="grid gap-1 text-sm">飞书操作人映射（每行：飞书OpenID=MESA账号ID）<textarea className={inputClass} rows={4} value={operatorText} onChange={(e) => setOperatorText(e.target.value)} /></label><label className="block text-sm"><input type="checkbox" checked={groupForm.enabled} onChange={(e) => changeGroup("enabled", e.target.checked)} /> 启用该群自动定薪</label><div className="flex gap-2"><Button disabled={busy}>保存群配置</Button><Button type="button" variant="ghost" onClick={() => setGroupForm(null)}>取消</Button></div></form>}
+    </Card>}
+    {tab === "schools" && metadata?.isAdmin && <Card className="space-y-4 p-5"><div className="flex justify-between"><h2 className="font-semibold text-navy-700">院校层次与QS依据</h2><Button size="sm" onClick={() => setSchoolForm({ name: "", tier: "", overseas: false, source: "", qsRank: null, qsVersion: "", revision: 0 })}>补充院校依据</Button></div><p className="text-sm text-gray-600">内置教育部名单和C9精确校名共{metadata.builtinSchools.length}条。更名、分校、一本/二本和海外QS须提供依据；未匹配不让模型猜。</p>{schools.map((s) => <button className="w-full rounded-xl border p-3 text-left text-sm" key={s.id} onClick={() => setSchoolForm({ ...s.definition, name: s.name, revision: s.revision })}>{s.name} · {TIERS[s.definition.tier] || "QS映射"} · 编辑</button>)}{schoolForm && <form onSubmit={saveSchool} className="space-y-3 rounded-xl bg-gray-50 p-4"><div className="grid gap-3 sm:grid-cols-2"><Field label="完整学校名称（精确匹配）" required value={schoolForm.name} onChange={(v) => setSchoolForm((p) => ({ ...p, name: v }))} /><Select label="已核对的国内层次" value={schoolForm.tier} onChange={(v) => setSchoolForm((p) => ({ ...p, tier: v || null }))} options={TIERS} /><Field label="QS排名（海外）" type="number" min="1" value={schoolForm.qsRank} onChange={(v) => setSchoolForm((p) => ({ ...p, qsRank: v }))} /><Field label="QS榜单年份与类别" value={schoolForm.qsVersion} onChange={(v) => setSchoolForm((p) => ({ ...p, qsVersion: v }))} /></div><label className="block text-sm"><input type="checkbox" checked={schoolForm.overseas} onChange={(e) => setSchoolForm((p) => ({ ...p, overseas: e.target.checked }))} /> 海外院校</label><Field label="层次/榜单证明来源" required value={schoolForm.source} onChange={(v) => setSchoolForm((p) => ({ ...p, source: v }))} /><div className="flex gap-2"><Button disabled={busy}>保存院校依据</Button><Button type="button" variant="ghost" onClick={() => setSchoolForm(null)}>取消</Button></div></form>}</Card>}
+  </div>;
 }

@@ -1,86 +1,44 @@
-# lark-ingest(飞书简历自动入库 · 已上线)
+# 飞书校招自动定薪
 
-飞书群 / 私聊里发来的简历文件(pdf/doc/docx)→ 自动进 MESA「待解析」候选人池,并发交互卡片(关联 JD / 解析 / 解析完自动分享详情)。
+复用现有飞书自建应用、lark-cli长连接和卡片回调。指定群发送单人简历后，独立创建定薪任务，回复：
 
-> **已生产化**:docker-compose 第 6 容器(`mesa-lark-ingest`),VPS 常驻。本 README 下方"前置准备/运行"为本地调试用法;生产凭证在 VPS `.env`,部署随主流水线。方案见 `delivery-docs/src/05_feishu_resume_ingest.md`。
-> 容器只负责①入库②发卡片;卡片按钮交互(②关联JD ③解析 ④分享)的回调逻辑在 **backend `/api/feishu/card-callback`**。
-> 脚本本体零运行时依赖(Node 20 内置 fetch/child_process)。
+1. 从简历读出的教育、专业、毕业、排名及原文依据。
+2. 当前信息能够确定的月薪建议或政策区间。
+3. 满足排名/科研/其他明确政策条件后的测算情景和所需证明。
+4. 待确认资料及政策口径。专项奖金单列，不并入固定月薪。
 
-## 链路
+旧公开上传、Candidate入库、关联/新建JD、JD综合评分、自动ShareLink流程已停用。网页招聘上传及历史招聘数据保留。旧卡片按钮返回停用提示。
 
-```
-lark-cli event consume im.message.receive_v1   (长连接,出站)
-   → 过滤 message_type=file + 后缀白名单
-   → lark-cli api GET 原始消息拿 file_key
-   → lark-cli +messages-resources-download 下载
-   → MESA: presigned-url → PUT R2 → submit(降级入库 tags=待解析)
-```
+## 配置与运行
 
-## 前置准备
-
-### 1. 配置 lark-cli 凭证(App Secret 不经第三方,自己执行)
-
-```bash
-# App Secret 用 stdin 传入,避免出现在进程列表 / shell history
-printf '%s' '<你的 App Secret>' | lark-cli config init --app-id <你的 App ID> --app-secret-stdin --brand feishu
-lark-cli config show          # 确认已写入
-```
-
-### 2. 在 MESA 建一个长期上传链接
-
-MESA 后台新建一个 **UploadShareLink**(建议 `有效期=永久`、`次数上限=不限`、来源可留空),
-复制它的 **token** 串。该链接的创建者 = 自动入库候选人的归属人(ownerId)。
-
-### 3. 配置本目录 .env
+- 沿用现有应用的群消息、文件资源、机器人发消息及卡片回调权限。
+- 后端与监听器使用相同的LARK_APP_SECRET，内部请求按时间、方法、路径和正文做HMAC签名，不再使用UPLOAD_TOKEN。
+- 管理员在MESA「校招定薪→飞书群配置」登记租户/群、合同签署地、组织/岗位、MESA授权账号及飞书操作人映射，然后启用。
+- 若CLI消息没有tenant_key，LARK_TENANT_KEY须与群配置一致；卡片回调的真实租户也须一致。默认default仅适合两端都没有租户字段的测试环境。
+- 院校字典先使用带来源的教育部名单和C9精确校名；更名、分校、一本/二本、海外QS需在院校依据页核对补充。
 
 ```bash
 cp .env.example .env
-# 编辑 .env,填 MESA_BASE_URL 与 UPLOAD_TOKEN
+# 在.env填现有应用凭证和本地MESA_BASE_URL，不输出凭证。
+node ingest.mjs
 ```
 
-## 运行
+容器仍名为lark-ingest；镜像须包含salary-client.mjs。发布时执行数据库迁移并更新backend/worker/lark-ingest。
+
+## 输入与幂等
+
+只处理已启用群中的file消息，支持PDF/DOC/DOCX/JPG/JPEG/PNG文件，最大20MB；不处理私聊、合并转发、ZIP或原生图片消息。下载后清理本地临时文件。
+
+连续发送10份独立文件时，监听器最多3份并行下载并提交，其余等待；后端按已有AI_WORKER_CONCURRENCY消费真实Redis队列，每份独立回显到原消息。单份失败不阻塞其他文件，消息回显失败单独重试，不重新跑模型。
+
+事件重投按群＋message_id数据库幂等；同一群内，姓名与原文中完整手机号/邮箱可靠匹配，或同姓名且文件指纹一致时，自动以飞书消息发送时间最新的一份为准。旧文件和旧测算保留历史，尚未发送的旧回显停止；仅同名、联系方式冲突或掩码号码不自动合并，标记身份待核实。新文件重新抽取，不继承旧人工值。不同群有独立录用上下文，分别测算。身份索引用现有应用密钥做HMAC，轮换密钥后历史联系方式索引需重新识别才可匹配；同文件指纹匹配不受影响。
+
+旧state.json全局hash不参与新定薪。重连、SIGINT/SIGTERM均复用CLI优雅退出方式。尚未提交后端的事件在监听器内排队；进程被强制终止时，需要飞书重投或重新发送。已提交的任务由数据库与Redis恢复机制继续处理。
+
+## 本地验证
 
 ```bash
-node ingest.mjs
-# 或 npm start
+npm test
 ```
 
-然后在飞书里:把机器人拉进「简历收集群」,或直接私聊机器人 → 发一份 pdf/doc/docx 简历。
-几秒后该候选人应出现在 MESA Upload 列表(`source=飞书群自动入库` / `飞书私聊自动入库`,`tags` 含「待解析」)。
-admin 在列表点「解析」即触发 LLM 联评。
-
-## 行为说明
-
-- **群内回执(Phase 1)**:入库后机器人回复到那条简历消息下面 —— ✅ 成功 / ℹ️ 已入库过 / ⚠️ 超大 / ❌ 失败。非简历(后缀不符)静默跳过不刷屏。**需飞书应用已开「发送消息」权限**(`im:message` / 发送 as bot),否则回执发不出(仅日志告警 `[warn] 回执失败`,不影响入库);也可设 `REPLY_ENABLED=false` 关掉。
-- **覆盖来源**:内部群 / 外部群 / 私聊转发(`chat_type` p2p 与 group 都收)。
-- **只收文件**:`message_type=file` 且后缀 ∈ {pdf,doc,docx};文本/图片/表情忽略;`merge_forward`(合并转发)暂不拆解(日志提示)。
-- **去重**:`event_id` 幂等 + 文件 sha256 去重(持久化到 `state.json`,扛重启)。
-- **断线重连**:`event consume` 退出后指数退避重连(1s→30s 封顶)。
-- **fail-soft**:单条处理失败只记日志,主循环不中断;失败的事件不标记已处理,下次重投可重试。
-
-## 验收自检
-
-- [ ] 群里发 pdf/doc/docx → MESA 出现对应候选人
-- [ ] 发文本/图片 → 不入库
-- [ ] 同一文件转发两次 → 只入库一次(看到 `[dedup]`)
-- [ ] 私聊转发简历给机器人 → 也能入库
-
-## 安全
-
-- `.env` / `downloads/` / `state.json` 已被 `.gitignore` 排除,**切勿提交**。
-- App Secret 仅经 `lark-cli config`(stdin)落到 lark-cli 本地配置,不进本仓库。
-- `UPLOAD_TOKEN` 是公开上传凭证,泄露 = 任意人可灌库,勿外发。
-
-## 交互助手(已全部上线)
-
-- [x] **Phase 1 · 上传回执**:机器人发交互卡片(成功/已入库/超大/失败)
-- [x] **Phase 2 · 关联 JD**:卡片「关联 JD」按钮 → 飞书 `card.action.trigger` 回调 **backend `/api/feishu/card-callback`**(`server/src/routes/feishu.js`)→ 列 JD → 关联,卡片原地刷新
-- [x] **Phase 3 · 解析**:「🤖 解析」按钮 → 回调起异步 `runReparse` → 卡片「解析中」
-- [x] **Phase 4 · 分享详情**:解析完成 → backend(`lib/feishuNotify.js`)以 bot 身份建 ShareLink + 把候选人详情卡片发回原群
-
-> 注:卡片按钮回调走 **backend 公开端点**(lark-cli 长连接不支持 `card.action.trigger`),需飞书后台「回调配置」指向 `/api/feishu/card-callback` + 配 `FEISHU_VERIFICATION_TOKEN`。本容器只负责①入库②发卡片;②~④的交互逻辑在 backend。卡片须 schema 2.0(按钮直接作 element)。
-
-## 其它待办
-
-- `merge_forward` 合并转发拆解
-- 按发送人 open_id 映射不同招聘官(当前统一归 token 创建者)
+后端规则与隔离数据库/队列联调见delivery-docs/src/09_campus_salary.md。测试使用模拟飞书、OCR和模型，不向真实群发送消息，不调用生产接口。

@@ -13,6 +13,7 @@ import { executeExtraction } from "./lib/campus/extract.js";
 import { runMatch } from "./lib/campus/match.js";
 import { finishReport, reconcileCampusAutoEvaluation } from "./lib/campus/autoEvaluation.js";
 import { getEffectiveNumber, SETTING_KEYS } from "./lib/settings.js";
+import { runSalaryEvaluation, recoverSalaryWork, deliverSalaryEvaluation, failSalaryEvaluation } from "./lib/campusSalary/service.js";
 
 if (!process.env.DATABASE_URL || !process.env.REDIS_URL || !process.env.JWT_SECRET) {
   throw new Error("AI worker requires DATABASE_URL, REDIS_URL and JWT_SECRET");
@@ -44,6 +45,10 @@ async function withCampusLimit(fn) {
 }
 
 async function processJob(job) {
+  if (job.name === "campus-salary") {
+    await runSalaryEvaluation(app, job.data.evaluationId);
+    return;
+  }
   const { taskId } = job.data;
   const current = await getTask(app, taskId);
   if (!current || current.status === "done" || current.status === "cancelled") return;
@@ -83,9 +88,14 @@ async function processJob(job) {
 const worker = new Worker(AI_QUEUE_NAME, processJob, { connection, concurrency, lockDuration: 120000, maxStalledCount: 1 });
 worker.on("error", (err) => app.log.error({ err }, "AI worker error"));
 worker.on("failed", (job, err) => {
-  app.log.error({ err, taskId: job?.data?.taskId, type: job?.name }, "AI job failed");
+  app.log.error(job?.name === "campus-salary" ? { evaluationId: job.data.evaluationId, code: err.code || "salary_processing_failed", type: job.name } : { err, taskId: job?.data?.taskId, type: job?.name }, "AI job failed");
   void (async () => {
     if (!job || await job.getState() !== "failed") return;
+    if (job.name === "campus-salary") {
+      await failSalaryEvaluation(app, job.data.evaluationId);
+      await deliverSalaryEvaluation(app, job.data.evaluationId);
+      return;
+    }
     const task = await getTask(app, job.data.taskId);
     if (task && !["done", "failed", "cancelled"].includes(task.status)) await markFailed(app, job.data.taskId, err);
     if (job.name === "campus-extract") await app.prisma.campusResumeVersion.updateMany({ where: { id: job.data.versionId, parseStatus: { in: ["pending", "running"] } }, data: { parseStatus: "failed", parseError: "worker_failed" } });
@@ -116,11 +126,23 @@ async function recoverAutoEvaluations() {
   }
 }
 recoverAutoEvaluations().catch((err) => app.log.error({ err }, "AI recovery failed"));
+let recoveringSalary = false;
+async function recoverSalary() {
+  if (recoveringSalary) return;
+  recoveringSalary = true;
+  try { await recoverSalaryWork(app); }
+  catch { app.log.warn("salary recovery deferred"); }
+  finally { recoveringSalary = false; }
+}
+void recoverSalary();
+const salaryRecoveryTimer = setInterval(recoverSalary, 30000);
+salaryRecoveryTimer.unref();
 
 let closing = false;
 async function shutdown(signal) {
   if (closing) return;
   closing = true;
+  clearInterval(salaryRecoveryTimer);
   app.log.info({ signal }, "AI worker closing");
   try {
     await worker.close();

@@ -6,6 +6,93 @@ generator client {
   provider = "prisma-client-js"
 }
 
+model SalaryGroup {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantKey      String   @map("tenant_key")
+  chatId         String   @map("chat_id")
+  name           String
+  enabled        Boolean  @default(false)
+  ownerId        String   @map("owner_id") @db.Uuid
+  memberUserIds  String[] @default([]) @map("member_user_ids") @db.Uuid
+  operators      Json     @default("{}")
+  context        Json     @default("{}")
+  revision       Int      @default(1)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  submissions    SalarySubmission[]
+
+  @@unique([tenantKey, chatId])
+  @@map("salary_groups")
+}
+
+model SalarySchool {
+  id         String   @id @default(uuid()) @db.Uuid
+  name       String   @unique
+  definition Json
+  revision   Int      @default(1)
+  updatedBy  String   @map("updated_by") @db.Uuid
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@map("salary_schools")
+}
+
+model SalarySubmission {
+  id                 String   @id @default(uuid()) @db.Uuid
+  groupId            String   @map("group_id") @db.Uuid
+  group              SalaryGroup @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  messageId          String   @map("message_id")
+  senderOpenId       String?  @map("sender_open_id")
+  messageCreatedAt   DateTime @default(now()) @map("message_created_at")
+  identityKeys       String[] @default([]) @map("identity_keys")
+  duplicateState     String   @default("unresolved") @map("duplicate_state")
+  supersededById     String?  @map("superseded_by_id") @db.Uuid
+  filename           String
+  contentType        String   @map("content_type")
+  fileKey            String   @map("file_key")
+  fileHash           String   @map("file_hash")
+  fileSize           Int      @map("file_size")
+  facts              Json?
+  overrides          Json     @default("{}")
+  context            Json     @default("{}")
+  revision           Int      @default(1)
+  status             String   @default("accepted")
+  latestEvaluationId String?  @map("latest_evaluation_id") @db.Uuid
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+  evaluations        SalaryEvaluation[]
+
+  @@unique([groupId, messageId])
+  @@index([groupId, createdAt])
+  @@index([groupId, supersededById])
+  @@index([identityKeys], type: Gin)
+  @@map("salary_submissions")
+}
+
+model SalaryEvaluation {
+  id                 String   @id @default(uuid()) @db.Uuid
+  submissionId       String   @map("submission_id") @db.Uuid
+  submission         SalarySubmission @relation(fields: [submissionId], references: [id], onDelete: Restrict)
+  revision           Int
+  status             String   @default("queued")
+  input              Json
+  result             Json?
+  semantic           Json?
+  error              String?
+  requestedBy        String?  @map("requested_by")
+  reason             String?
+  deliveryStatus     String   @default("pending") @map("delivery_status")
+  deliveryMessageId  String?  @map("delivery_message_id")
+  deliveryAttempts   Int      @default(0) @map("delivery_attempts")
+  deliveryNextAt     DateTime? @map("delivery_next_at")
+  createdAt          DateTime @default(now()) @map("created_at")
+  finishedAt         DateTime? @map("finished_at")
+
+  @@unique([submissionId, revision])
+  @@index([status, createdAt])
+  @@index([deliveryStatus, deliveryNextAt])
+  @@map("salary_evaluations")
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
