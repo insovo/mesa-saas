@@ -10,7 +10,7 @@ import jwtPlugin from "../../plugins/jwt.js";
 import salaryRoutes, { internalSalaryRoutes } from "../../routes/campus-salary.js";
 import feishuRoutes from "../../routes/feishu.js";
 import { runSalaryEvaluation, deliverSalaryEvaluation, recoverSalaryWork } from "./service.js";
-import { MONTHLY, BONUS_VALUES } from "./policy.js";
+import { MONTHLY } from "./policy.js";
 import { notifyCandidateReady } from "../feishuNotify.js";
 import { createSalaryHandler, salaryRequest } from "../../../../tools/lark-ingest/salary-client.mjs";
 
@@ -91,7 +91,7 @@ test("隔离PG/Redis：群消息→签名API→真实队列→独立定薪→回
   assert.equal(completed.result.salary.min, MONTHLY.nonfirst.硕士["985"][3]); assert.equal(completed.result.bonus.monthlyStandard, null);
   assert.equal(completed.result.compensation.salaryFactor, 12.5);
   assert.equal(completed.result.compensation.annualMin, completed.result.salary.min * 12.5);
-  assert.ok(JSON.stringify(sent[0].card).includes(String(BONUS_VALUES.middle))); assert.equal(sent[0].messageId, event.message_id);
+  assert.ok(JSON.stringify(sent[0].card).includes("专项奖金待确认")); assert.equal(sent[0].messageId, event.message_id);
   assert.equal(extractions, 1); assert.equal(replies.length, 1);
   const duplicate = await handle(event); assert.equal(duplicate.duplicate, true);
   assert.equal(await prisma.salarySubmission.count({ where: { groupId: group.id } }), 1);
