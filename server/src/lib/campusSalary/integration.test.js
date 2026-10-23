@@ -202,4 +202,17 @@ test("隔离PG/Redis：群消息→签名API→真实队列→独立定薪→回
   await waitFor(async () => (await queue.getJob(inFlight.evaluationId))?.getState().then((state) => state === "completed"));
   assert.equal((await prisma.salarySubmission.findUnique({ where: { id: inFlightRow.id } })).status, "deleted");
   assert.ok(!sent.some((message) => message.messageId === inFlightRow.messageId));
+  const contactOld = await batchHandle(batchEvent("联系方式更新测试", "old-contact@example.invalid", 3000));
+  await waitFor(async () => (await prisma.salarySubmission.findUnique({ where: { id: contactOld.submissionId } })).status === "done");
+  const contactNew = await batchHandle(batchEvent("联系方式更新测试", "new-contact@example.invalid", 1000));
+  await waitFor(async () => (await prisma.salarySubmission.findUnique({ where: { id: contactNew.submissionId } })).status === "done");
+  const bridge = await batchHandle(batchEvent("联系方式更新测试", "old-contact@example.invalid", 2000, 0, "new-contact@example.invalid"));
+  await waitFor(async () => (await prisma.salarySubmission.findUnique({ where: { id: bridge.submissionId } })).status === "superseded");
+  const contactRows = await prisma.salarySubmission.findMany({ where: { id: { in: [contactOld.submissionId, contactNew.submissionId, bridge.submissionId] } } });
+  assert.equal(contactRows.filter((r) => !r.supersededById).length, 1);
+  assert.equal(contactRows.find((r) => !r.supersededById).id, contactNew.submissionId);
+  const conflictResume = await batchHandle(batchEvent("联系方式冲突测试", "new-contact@example.invalid", 0));
+  await waitFor(async () => (await prisma.salarySubmission.findUnique({ where: { id: conflictResume.submissionId } })).status === "done");
+  assert.equal((await prisma.salarySubmission.findUnique({ where: { id: conflictResume.submissionId } })).duplicateState, "conflict");
+  assert.equal((await prisma.salarySubmission.findUnique({ where: { id: contactNew.submissionId } })).supersededById, null);
 });
