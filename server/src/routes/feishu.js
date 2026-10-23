@@ -52,7 +52,7 @@ export default async function feishuRoutes(app) {
       const form = event.action.form_value || {};
       if (typeof form.reason !== "string" || !form.reason.trim() || form.reason.length > 1000) return toast("error", "请填写补充信息的依据");
       const context = {}, confirmed = {};
-      for (const key of ["contractCity", "cityType", "majorCategory", "doctorField", "roleType"]) {
+      for (const key of ["contractCity", "cityType", "salaryFactor", "majorCategory", "doctorField", "roleType"]) {
         if (form[key] == null || form[key] === "") continue;
         if (typeof form[key] !== "string" || form[key].length > 200) throw salaryError("表单字段无效");
         const val = form[key].trim();
@@ -60,7 +60,10 @@ export default async function feishuRoutes(app) {
         else if (key === "doctorField") confirmed.doctorField = fromLabel(val, FIELD_LABELS);
         else if (key === "roleType") context.roleType = fromLabel(val, ROLE_LABELS);
         else if (key === "cityType") context.cityType = fromLabel(val, { first: "一线", nonfirst: "非一线" });
-        else context.contractCity = val;
+        else if (key === "salaryFactor") {
+          if (!/^\d+(?:\.\d+)?$/.test(val) || Number(val) <= 0 || Number(val) > 1000) throw salaryError("薪数须为已确认的大于0且不超过1000的数字");
+          context.salaryFactor = Number(val);
+        } else context.contractCity = val;
       }
       await requestSalaryEvaluation(app, row.id, { revision: row.revision, context, confirmed, reason: form.reason.trim(), requestedBy: userId });
       return { ...toast("success", "已保存，正在重新测算，稍后回复到原简历消息"), card: { type: "raw", data: { schema: "2.0", body: { elements: [{ tag: "markdown", content: "定薪信息已补充，正在生成新版本；旧版本保留在MESA记录页。" }] } } } };

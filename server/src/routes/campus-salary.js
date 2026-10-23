@@ -9,13 +9,14 @@ const params = { type: "object", required: ["id"], properties: { id: uuid } };
 export const CONTEXT_SCHEMA = { type: "object", additionalProperties: false, properties: {
   contractCity: string(50), cityType: { type: "string", enum: ["first", "nonfirst", ""] },
   roleType: { type: "string", enum: [...Object.keys(ROLE_LABELS), ""] }, jobTitle: string(), department: string(),
+  salaryFactor: { type: ["number", "null"], exclusiveMinimum: 0, maximum: 1000 },
 } };
 export const CONFIRMED_SCHEMA = { type: "object", additionalProperties: false, properties: {
   majorCategory: { type: ["string", "null"], enum: [...CATEGORIES, null] },
   doctorField: { type: ["string", "null"], enum: ["regular", "key", "scarce", null] },
   jobRelevance: { type: "boolean" }, overseasCertification: { type: "boolean" },
   education: { type: "array", minItems: 1, maxItems: 5, items: { type: "object", additionalProperties: false, required: ["school", "degree", "major", "graduationYear"], properties: {
-    school: { ...string(), minLength: 1 }, degree: { type: "string", enum: ["本科", "硕士", "博士"] }, major: { ...string(), minLength: 1 }, graduationYear: { type: ["integer", "null"], minimum: 2000, maximum: 2100 }, rankingRaw: string(500),
+    school: { ...string(), minLength: 1 }, degree: { type: "string", enum: ["本科", "硕士", "博士"] }, major: { ...string(), minLength: 1 }, graduationYear: { type: ["integer", "null"], minimum: 2000, maximum: 2100 }, rankingRaw: string(500), gradeRaw: string(500),
   } } },
 } };
 export const CORRECTION_SCHEMA = { type: "object", additionalProperties: false, required: ["revision", "reason"], properties: {
