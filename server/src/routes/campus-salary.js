@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { assertPage } from "../lib/permissions.js";
 import { acceptSalaryResume, requestSalaryEvaluation, deleteSalarySubmission, salaryError, MAX_RESUME_SIZE, MIME } from "../lib/campusSalary/service.js";
 import { BUILTIN_SCHOOLS, POLICY_VERSION, POLICY_HASH, CATEGORIES, ROLE_LABELS } from "../lib/campusSalary/policy.js";
+import { MAJOR_CATALOG } from "../lib/campusSalary/majors.js";
 
 const string = (maxLength = 200) => ({ type: "string", maxLength, pattern: "^[^\\u0000]*$" });
 const uuid = { type: "string", format: "uuid" };
@@ -63,7 +64,7 @@ export default async function salaryRoutes(app) {
   app.get("/metadata", async (req, reply) => {
     const access = await assertPage(req, reply, "campus");
     if (!access) return;
-    return { policyVersion: POLICY_VERSION, policyHash: POLICY_HASH, isAdmin: access.isAdmin, userId: access.userId, builtinSchools: BUILTIN_SCHOOLS, roles: ROLE_LABELS, categories: CATEGORIES };
+    return { policyVersion: POLICY_VERSION, policyHash: POLICY_HASH, majorCatalog: MAJOR_CATALOG, isAdmin: access.isAdmin, userId: access.userId, builtinSchools: BUILTIN_SCHOOLS, roles: ROLE_LABELS, categories: CATEGORIES };
   });
   app.get("/groups", async (req, reply) => {
     const access = await assertPage(req, reply, "campus");

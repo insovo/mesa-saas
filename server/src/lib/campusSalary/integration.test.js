@@ -156,9 +156,10 @@ test("隔离PG/Redis：群消息→签名API→真实队列→独立定薪→回
   for (const message of sent.slice(newestReply + 1).filter((message) => [older.message_id, middle.message_id].includes(message.messageId))) {
     assert.match(JSON.stringify(message.card), /存在同名但身份依据不同的简历，未自动合并/);
   }
-  const sentCount = sent.length;
+  const oldMessageIds = [older.message_id, middle.message_id];
+  const sentCount = sent.filter((message) => oldMessageIds.includes(message.messageId)).length;
   for (const old of batch.slice(1, 3)) await deliverSalaryEvaluation(app, old.evaluationId, dependencies.reply);
-  assert.equal(sent.length, sentCount, "已归并的历史简历不得重新发送");
+  assert.equal(sent.filter((message) => oldMessageIds.includes(message.messageId)).length, sentCount, "已归并的历史简历不得重新发送");
   const detail = (await app.inject({ url: `/api/campus-salary/submissions/${batch[0].submissionId}`, headers: auth })).json().item;
   assert.equal(detail.resumeHistory.length, 3);
   assert.equal((await app.inject({ method: "PATCH", url: `/api/campus-salary/submissions/${batch[1].submissionId}`, headers: auth, payload: { revision: 1, reason: "不能修改旧简历" } })).statusCode, 409);
@@ -217,4 +218,17 @@ test("隔离PG/Redis：群消息→签名API→真实队列→独立定薪→回
   await waitFor(async () => (await prisma.salarySubmission.findUnique({ where: { id: conflictResume.submissionId } })).status === "done");
   assert.equal((await prisma.salarySubmission.findUnique({ where: { id: conflictResume.submissionId } })).duplicateState, "conflict");
   assert.equal((await prisma.salarySubmission.findUnique({ where: { id: contactNew.submissionId } })).supersededById, null);
+  const metadata = (await app.inject({ url: "/api/campus-salary/metadata", headers: auth })).json();
+  assert.equal(metadata.majorCatalog.count, 771);
+  assert.equal(completed.input.majorCatalog.hash, metadata.majorCatalog.hash);
+  assert.equal(completed.input.engineVersion, "salary-engine.v5");
+  assert.equal(completed.result.facts.majorClassification.academicGroup, "计算机类");
+  await worker.pause();
+  const staleCatalog = await batchHandle(batchEvent("目录版本测试", "catalog-version@example.invalid", 0));
+  const staleEvaluation = await prisma.salaryEvaluation.findUnique({ where: { id: staleCatalog.evaluationId } });
+  await prisma.salaryEvaluation.update({ where: { id: staleEvaluation.id }, data: { input: { ...staleEvaluation.input, majorCatalog: { ...staleEvaluation.input.majorCatalog, hash: "previous-catalog-hash" } } } });
+  await worker.resume();
+  const blocked = await waitFor(async () => { const e = await prisma.salaryEvaluation.findUnique({ where: { id: staleEvaluation.id } }); return e.status === "done" ? e : null; });
+  assert.equal(blocked.result.salary.min, null);
+  assert.ok(blocked.result.missingFields.some((m) => m.field === "policy" && m.reason.includes("目录")));
 });

@@ -8,6 +8,7 @@ import { POLICY_HASH, POLICY_VERSION, BUILTIN_SCHOOLS } from "./policy.js";
 import { buildSalaryCard } from "./cards.js";
 import { replySalaryCard } from "../feishuNotify.js";
 import { reconcileResumeVersion } from "./versions.js";
+import { MAJOR_CATALOG } from "./majors.js";
 
 export const MAX_RESUME_SIZE = 20 * 1024 * 1024;
 export const MIME = { pdf: "application/pdf", doc: "application/msword", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png" };
@@ -51,7 +52,7 @@ export async function requestSalaryEvaluation(app, submissionId, { revision, con
     const overrides = { ...row.overrides, ...(confirmed || {}) };
     const changed = await tx.salarySubmission.updateMany({ where: { id: row.id, revision: row.revision, latestEvaluationId: row.latestEvaluationId }, data: { revision: nextRevision, context: nextContext, overrides, status: "queued" } });
     if (!changed.count) throw salaryError("记录已更新，请刷新后重试", 409, "salary_revision_conflict");
-    const created = await tx.salaryEvaluation.create({ data: { submissionId, revision: nextRevision, requestedBy: requestedBy || "feishu-service", reason: reason || "群内简历自动定薪", input: { policyVersion: POLICY_VERSION, policyHash: POLICY_HASH, engineVersion: "salary-engine.v4", facts: row.facts, confirmed: overrides, context: nextContext, schools, groupRevision: row.group.revision } } });
+    const created = await tx.salaryEvaluation.create({ data: { submissionId, revision: nextRevision, requestedBy: requestedBy || "feishu-service", reason: reason || "群内简历自动定薪", input: { policyVersion: POLICY_VERSION, policyHash: POLICY_HASH, engineVersion: "salary-engine.v5", majorCatalog: MAJOR_CATALOG, facts: row.facts, confirmed: overrides, context: nextContext, schools, groupRevision: row.group.revision } } });
     await tx.salarySubmission.update({ where: { id: row.id }, data: { latestEvaluationId: created.id } });
     return created;
   });
@@ -141,14 +142,14 @@ export async function runSalaryEvaluation(app, evaluationId, dependencies = {}) 
     if (["conflict", "possible", "unverified"].includes(version.identityStatus)) result.missingFields.push({ field: "identity", reason: version.identityStatus === "conflict" ? "联系方式或姓名存在冲突，未自动合并简历" : version.identityStatus === "possible" ? "存在同名但身份依据不同的简历，未自动合并" : "缺少可核实的完整联系方式，同名新文件不能自动认定为同一人", materials: ["候选人本人姓名及完整手机号或邮箱核对信息"] });
     const semantic = result.missingFields.some((m) => ["majorCategory", "doctorField"].includes(m.field)) ? await (dependencies.suggest || suggestSalaryClassification)(app, { ...facts, confirmed: input.confirmed }) : { status: "not_needed", reason: "本次不需要额外语义判断，已使用明确规则或等待政策口径" };
     result.contextSource = evaluation.revision === 1 ? "发送简历时的群配置" : evaluation.reason;
-    if (input.policyHash !== POLICY_HASH) {
+    if (input.policyHash !== POLICY_HASH || input.majorCatalog?.hash !== MAJOR_CATALOG.hash) {
       result.salary = { status: "pending", min: null, max: null };
       result.compensation = { status: "pending", salaryFactor: input.context.salaryFactor || null, annualMin: null, annualMax: null };
       result.scenarios = [];
       result.rules = [];
       result.benefits = {};
-      result.bonus = { status: "pending", conditions: "政策版本变化，须重新测算", reason: "本版规则未执行" };
-      result.missingFields.push({ field: "policy", reason: "任务政策版本已变化，请按当前版本重新测算", materials: ["当前政策版本确认"] });
+      result.bonus = { status: "pending", conditions: "政策或专业目录版本变化，须重新测算", reason: "本版规则未执行" };
+      result.missingFields.push({ field: "policy", reason: "任务政策或专业目录版本已变化，请按当前版本重新测算", materials: ["当前政策及专业目录版本确认"] });
     }
     await app.prisma.$transaction(async (tx) => {
       const latest = await tx.salarySubmission.findUnique({ where: { id: evaluation.submissionId } });
