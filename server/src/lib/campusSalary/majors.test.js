@@ -46,6 +46,13 @@ test("本科目录不充当研究生目录；控制工程保留已确认归属�
   assert.equal(resolve("工业设计", { degree: "硕士" }).category, null);
   assert.equal(resolve("自动化", { degree: "本科" }).code, "080801");
   assert.equal(resolve("自动化", { degree: "硕士" }).code, null);
+  for (const name of ["机械制造及其自动化", "车辆工程", "机械工程", "机械电子工程", "机械设计及理论"]) {
+    const r = resolve(name, { degree: "硕士" });
+    assert.equal(r.category, "standard", name); assert.equal(r.academicGroup, "机械工程");
+    assert.equal(r.code, null); assert.ok(r.academicSource.urls.every((u) => u.startsWith("https://gs.njust.edu.cn/")));
+  }
+  assert.equal(resolve("车辆工程").code, "080207");
+  assert.equal(resolve("机械制造及其自动化", { degree: "硕士" }).code, null);
   const f = facts("控制工程", "硕士"); f.education.push(facts("计算机科学与技术").education[0]);
   const r = evaluateSalary(f, context);
   assert.equal(r.facts.category, "hot"); assert.equal(r.facts.majorClassification.academicGroup, "控制科学与工程类");

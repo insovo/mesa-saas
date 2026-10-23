@@ -21,23 +21,27 @@ const graduateGroups = [
   ["数学类", "数学"], ["光学工程类", "光学工程"],
 ];
 const graduate = new Map(graduateGroups.flatMap(([group, ...names]) => names.map((name) => [name, group])));
+const graduateMechanical = new Set(["机械工程", "机械制造及其自动化", "机械电子工程", "机械设计及理论", "车辆工程"]);
+const mechanicalSource = { title: "南京理工大学研究生学科及硕士招生目录核对", checkedAt: "2026-10-23", urls: ["https://gs.njust.edu.cn/wbsxwsqxkwzyw/list.htm", "https://gs.njust.edu.cn/_upload/article/files/3b/87/915cebc1477da92b96e4b9a1805e/c9951c98-8cb1-4c20-b026-edfd04fd03bd.pdf"] };
 const categoryFor = (group) => groupCategories[group] || (["控制科学与工程类", "光学工程类"].includes(group) ? "hot" : null);
 
 export function resolveMajor(major, { degree, roleType, jobRelevance } = {}) {
   const name = normalize(major).replace(/^徳语$/, "德语");
   const entry = degree === "本科" ? byName.get(name === "德语" ? "徳语" : name) : null;
-  const group = entry?.group || (degree !== "本科" ? graduate.get(name) : null);
+  const group = entry?.group || (degree !== "本科" ? graduateMechanical.has(name) ? "机械工程" : graduate.get(name) : null);
   const result = { name: entry?.name || major || null, code: entry?.code || null, discipline: entry?.discipline || null, academicGroup: group || null, category: null, status: "unresolved",
     catalogVersion: MAJOR_CATALOG.version, catalogHash: MAJOR_CATALOG.hash,
     source: entry ? { ...catalog.source, range: `C${entry.row}:G${entry.row}` } : null,
     basis: entry ? `本科目录：${entry.code} ${entry.name}属于${entry.discipline}／${entry.group}${name === "德语" ? "（原表徳语，按教育部050203德语核对字形）" : ""}` : group ? `已核对的研究生学科映射：${major}属于${group}；不套用本科专业代码` : "未匹配当前学历的已核对专业归属", possibleCategories: [], materials: [] };
   if (entry && name === "德语") result.nameSource = "https://www.moe.gov.cn/srcsite/A08/moe_1034/s3882/202604/W020260427440749576927.pdf";
+  if (!entry && group === "机械工程") result.academicSource = mechanicalSource;
   const decide = (category, basis) => ({ ...result, category, status: "resolved", basis: `${result.basis}；${basis}` });
   const pending = (basis, materials) => ({ ...result, basis: `${result.basis}；${basis}`, possibleCategories: ["hot"], materials });
   if (!name) return result;
   if (name === "人工智能") return decide("computer", "沿用已确认的计算机及AI相关专业口径");
   if (group && categoryFor(group)) return decide(categoryFor(group), `政策P1常规岗特殊专业覆盖${group}`);
   if (Object.hasOwn(listed, name)) return decide(listed[name], "政策P1明确列举的特殊专业");
+  if (group === "机械工程") return decide("standard", "已核对的机械工程研究生专业不在政策P1特殊范围；不凭名称中的自动化或研究方向升档");
   // 政策写“器械”，本科目录写“器件”，保留差异供HR确认，不静默改写政策。
   if (["新能源材料与器件", "新能源材料与器械"].includes(name)) return pending("政策与目录专业名称存在器械/器件差异，特殊资格待确认", ["学位/在读专业证明", "HR确认政策名称差异及适用口径"]);
   if (battery.has(name)) {
