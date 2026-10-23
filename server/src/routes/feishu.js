@@ -41,7 +41,7 @@ export default async function feishuRoutes(app) {
     const event = body.event || {};
     const tenantKey = body.header.tenant_key || "default";
     const openId = event.operator?.open_id || event.operator?.operator_id?.open_id;
-    if (!row || !row.group.enabled || row.group.chatId !== event.context?.open_chat_id || row.group.tenantKey !== tenantKey) return toast("error", "记录不存在或不属于当前群");
+    if (!row || row.status === "deleted" || !row.group.enabled || row.group.chatId !== event.context?.open_chat_id || row.group.tenantKey !== tenantKey) return toast("error", "记录不存在或不属于当前群");
     const userId = row.group.operators?.[openId];
     const user = userId && await app.prisma.user.findUnique({ where: { id: userId }, select: { id: true, isActive: true } });
     if (!user?.isActive || (row.group.ownerId !== userId && !row.group.memberUserIds.includes(userId))) return toast("error", "请由群配置中已授权的HR补充信息");

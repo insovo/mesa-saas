@@ -10,14 +10,24 @@ import { POLICY_HASH, POLICY_VERSION } from "./policy.js";
 const context = { contractCity: "芜湖", cityType: "nonfirst", roleType: "general" };
 const facts = (changes = {}, confirmed = {}) => ({ name: "测试同学", education: [{ degree: "硕士", school: "武汉大学", major: "计算机科学与技术", graduationYear: 2027, ...changes }], confirmed });
 
-test("控制相关专业按明确特殊专业规则查表，不被AI研究方向抬为计算机档", () => {
-  for (const major of ["控制工程", "控制科学与工程", "自动化", "电子信息", "光学工程"]) {
+test("特殊专业只认明确名称，含糊学科对应和AI研究方向不能自动升档", () => {
+  for (const major of ["控制科学与工程", "自动化", "电子信息", "光学工程"]) {
     const r = evaluateSalary(facts({ school: "北京交通大学", major, researchDirection: "人工智能" }), context);
     assert.deepEqual(r.salary, { status: "fixed", min: 126, max: 126 });
     assert.equal(r.facts.category, "hot");
     assert.ok(!r.missingFields.some((m) => m.field === "majorCategory"));
     assert.match(r.rules.find((v) => v.id === "major-category").basis, /最高学历硕士/);
   }
+  for (const major of ["控制工程", "控制理论与控制工程", "系统工程", "软件工程", "网络空间安全", "工业设计", "电子科学与技术"]) {
+    const r = evaluateSalary(facts({ school: "北京交通大学", major, researchDirection: "人工智能" }), context);
+    assert.equal(r.salary.min, 124); assert.equal(r.facts.category, null);
+    assert.equal(r.salaryBasis, "school_standard_reference");
+    assert.ok(r.missingFields.some((m) => m.field === "majorCategory"));
+  }
+  const override = evaluateSalary(facts({ school: "北京交通大学", major: "合成确认专业" }), context);
+  assert.equal(override.salary.min, 124); assert.equal(override.bonus.status, "ineligible");
+  assert.equal(override.rules.find((v) => v.id === "major-category").page, null);
+  assert.match(override.rules.find((v) => v.id === "major-category").basis, /合成HR明确执行口径/);
 });
 
 test("定薪包按已确认薪数计算；缺薪数只缺完整包，不隐藏政策月薪", () => {
@@ -34,7 +44,7 @@ test("定薪包按已确认薪数计算；缺薪数只缺完整包，不隐藏�
   assert.equal(range.compensation.status, "range");
   assert.deepEqual([range.compensation.annualMin, range.compensation.annualMax], [1737.5, 1812.5]);
   const unknown = evaluateSalary(facts({ major: "交叉领域" }), { ...context, salaryFactor: 12.5 });
-  assert.equal(unknown.compensation.annualMin, null);
+  assert.equal(unknown.compensation.annualMin, 1587.5);
   assert.ok(unknown.scenarios.filter((s) => s.kind === "salary").every((s) => s.compensation.salaryFactor === 12.5));
 });
 
@@ -44,8 +54,8 @@ test("学校、专业、成绩和排名取同一最高学历，历史排名不�
     { school: "武汉大学", degree: "本科", major: "计算机科学与技术", endDate: "2024", ranking: "TOP 10%" },
     { school: "北京交通大学", degree: "硕士", major: "控制工程", endDate: "2027", ranking: "TOP 10%", researchDirection: "人工智能" },
   ] }, text);
-  const r = evaluateSalary(input, { ...context, salaryFactor: 12.5 });
-  assert.equal(r.facts.salaryTier, "211"); assert.equal(r.facts.category, "hot");
+  const r = evaluateSalary({ ...input, confirmed: { majorCategory: "standard" } }, { ...context, salaryFactor: 12.5 });
+  assert.equal(r.facts.salaryTier, "211"); assert.equal(r.facts.category, "standard");
   assert.equal(r.facts.qualifyingEducation.school, "北京交通大学");
   assert.equal(r.facts.qualifyingEducation.gradeRaw, "成绩：83.5/100");
   assert.equal(r.facts.qualifyingEducation.rankingRaw, null);
@@ -53,7 +63,7 @@ test("学校、专业、成绩和排名取同一最高学历，历史排名不�
   assert.ok(r.scenarios.every((s) => !s.resumeHint));
   assert.deepEqual(semanticState(input).education.map((e) => e.school), ["北京交通大学"]);
   const card = buildSalaryCard({ submission: { id: "test" }, input: { facts: input }, revision: 1, result: JSON.parse(JSON.stringify(r)) });
-  assert.ok(card.body.elements[0].content.includes("83.5/100") && card.body.elements[0].content.includes("126 × 12.5薪"));
+  assert.ok(card.body.elements[0].content.includes("83.5/100") && card.body.elements[0].content.includes("124 × 12.5薪"));
   assert.ok(!card.body.elements[0].content.includes("TOP 10%"));
   assert.match(card.body.elements[1].content, /控制工程.*本次定薪采用/);
   assert.match(card.body.elements[1].content, /TOP 10%.*历史教育经历/);
@@ -83,6 +93,7 @@ test("当前月薪与附条件奖金情景分开，每个情景带条件和材�
   for (const value of ["一、", "二、", "133", "102", "103", "奖金材料", "年度条件兑现", "点击打开定薪汇总页面"]) assert.ok(card.includes(value));
   assert.ok(card.indexOf("定薪建议") < card.indexOf("定薪相关信息"));
   assert.ok(!card.includes("简历原文依据") && !card.includes("情景1"));
+  assert.ok(card.includes("**985**") && card.includes("**计算机及AI相关**"));
   assert.ok(!card.includes("关联 JD") && !card.includes("jdMatch"));
 });
 
@@ -102,15 +113,18 @@ test("本硕80个政策单元格，包括合并列与一线不加价的一本/�
   }
 });
 
-test("缺合同地不猜金额，给出两个城市分支；未知专业不默认普通", () => {
+test("缺合同地保留城市分支，专业未确认先列院校基础建议与附条件升档", () => {
   const r = evaluateSalary(facts(), {});
   assert.equal(r.salary.min, null);
   assert.deepEqual(r.scenarios.filter((s) => s.kind === "salary").map((s) => s.salary.min), [133, 144]);
   const unknown = evaluateSalary(facts({ major: "交叉领域" }), context);
-  assert.equal(unknown.salary.min, null);
-  assert.equal(unknown.scenarios.filter((s) => s.kind === "salary").length, 4);
-  assert.equal(evaluateSalary(facts({}, { majorCategory: null }), context).salary.min, null);
+  assert.equal(unknown.salary.min, 127);
+  assert.equal(unknown.salaryBasis, "school_standard_reference");
+  assert.equal(unknown.scenarios.filter((s) => s.kind === "salary").length, 3);
+  assert.equal(evaluateSalary(facts({}, { majorCategory: null }), context).salary.min, 127);
   assert.equal(evaluateSalary(facts({ school: "未核对学校" }), context).scenarios.length, 0);
+  const card = JSON.stringify(buildSalaryCard({ submission: { id: "test" }, input: { facts: {} }, revision: 1, result: unknown }));
+  assert.ok(card.includes("院校标准基础建议") && card.includes("需确认专业是否为特殊专业") && card.includes("若经HR确认适用"));
 });
 
 test("未知、重复最高学历、届别和空毕业年份阻断自动金额", () => {

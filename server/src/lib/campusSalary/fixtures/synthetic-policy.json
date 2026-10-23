@@ -345,5 +345,11 @@
     },
     "settling": 101
   },
-  "description": "Fictional values for automated tests; never a salary policy."
+  "description": "Fictional values for automated tests; never a salary policy.",
+  "majorOverrides": {
+    "合成确认专业": {
+      "category": "standard",
+      "basis": "合成HR明确执行口径。"
+    }
+  }
 }
