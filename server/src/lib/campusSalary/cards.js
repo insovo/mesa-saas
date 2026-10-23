@@ -26,7 +26,7 @@ export function buildSalaryCard(evaluation) {
   const basis = [
     `学校：${schoolBasis || "最高学历信息待补充"}。${edu ? `本次采用${text(edu.degree)}院校薪资档${text(TIER_LABELS[r.facts.salaryTier])}。` : "用于定薪的最高学历待确认。"}`,
     ...r.rules.map((rule) => `${rule.page ? `P${rule.page}` : "执行口径"}：${text(rule.basis)}`),
-    edu ? `最高学历成绩：${text(edu.gradeRaw || "未提供")}；排名：${text(edu.rankingRaw || "未提及，不使用本科等历史排名替代")}。成绩分数不换算为排名。` : "",
+    edu ? `最高学历成绩：${text(edu.gradeRaw?.replace(/^(?:成绩|GPA|绩点)\s*[:：]?\s*/i, "") || "未提供")}；排名：${text(edu.rankingRaw || "未提及，不使用本科等历史排名替代")}。成绩分数不换算为排名。` : "",
     ...bonus,
     ...(bonus.length ? ["奖金材料：最高学历近一年本专业院/系排名证明；成果分支另需对应获奖、论文/专利等证明。完整条件见详情页。"] : [`专项奖金：${text(r.bonus.reason || "待确认")}`]),
     ...r.missingFields.filter((m) => m.field !== "bonusEvidence").map((m) => `待补充：${text(m.reason)}；需要${m.materials.map(text).join("、")}`),
