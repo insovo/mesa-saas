@@ -228,7 +228,7 @@ export default function StaggeredMenu({
               const isActive =
                 it.to === "/dashboard"
                   ? location.pathname === "/" || location.pathname.startsWith("/dashboard")
-                  : location.pathname.startsWith(it.to);
+                  : location.pathname === it.to || location.pathname.startsWith(`${it.to}/`);
               return (
                 <li className="sm-panel-itemWrap relative overflow-hidden leading-none" key={it.to}>
                   <NavLink
