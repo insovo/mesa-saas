@@ -1,4 +1,4 @@
-# lark-ingest · 飞书简历自动入库常驻容器
+# lark-ingest · 飞书校招自动定薪常驻容器
 # 内置官方 @larksuite/cli(长连接事件订阅 + 文件下载)+ 零依赖 Node 脚本。
 FROM node:20-slim
 
@@ -11,9 +11,9 @@ RUN apt-get update \
     && lark-cli --version
 
 WORKDIR /app
-COPY package.json ingest.mjs entrypoint.sh ./
+COPY package.json ingest.mjs salary-client.mjs entrypoint.sh ./
 
-# downloads 临时下载目录;DATA_DIR(/app/data)放去重状态,运行时挂卷持久化。
+# downloads 为临时下载目录；data保留兼容旧卷，新幂等状态在数据库。
 # 全部归 node 用户,容器以非 root 运行。
 RUN chmod +x entrypoint.sh \
     && mkdir -p downloads data \

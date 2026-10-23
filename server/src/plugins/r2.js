@@ -52,6 +52,10 @@ export default fp(async (app) => {
       return client.send(cmd);
     },
 
+    async putObjectBuffer(key, buffer, contentType) {
+      return client.send(new PutObjectCommand({ Bucket: process.env.R2_BUCKET, Key: key, Body: buffer, ContentType: contentType }), { abortSignal: AbortSignal.timeout(60000) });
+    },
+
     /** 服务端读取对象为 Buffer（导出嵌入签名等） */
     async getObjectBuffer(key, { timeoutMs } = {}) {
       const cmd = new GetObjectCommand({ Bucket: process.env.R2_BUCKET, Key: key });

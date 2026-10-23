@@ -10,10 +10,10 @@ export default function ShareSettings() {
       <div className="mb-4">
         <h1 className="text-xl font-bold text-[#1B254B] flex items-center gap-2">
           <I name="share-2" size={20} className="text-[#422AFB]" />
-          飞书 Bot 分享设置
+          飞书旧分享功能已停用
         </h1>
         <p className="text-sm text-[#707EAE] mt-1">
-          机器人解析完成后,自动分享候选人详情公开链接所用的默认设置。管理员设全局策略(默认 + 上限 + 模块关停),招聘官设自己的偏好(受全局约束)。
+          机器人已改为校招自动定薪。请前往「校招定薪」查看结果和管理指定群。
         </p>
       </div>
       <div className="bg-white rounded-card shadow-card p-6">

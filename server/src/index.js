@@ -28,6 +28,7 @@ import interviewEvalsRoutes from "./routes/interview-evals.js";
 import performanceRoutes from "./routes/performance.js";
 import feishuRoutes from "./routes/feishu.js";
 import feishuConfigRoutes from "./routes/feishu-config.js";
+import salaryRoutes, { internalSalaryRoutes } from "./routes/campus-salary.js";
 import campusRoutes from "./routes/campus.js";
 import campusPublicRoutes from "./routes/campus-public.js";
 import { publicCampusJobShareRoutes } from "./routes/campus-job-shares.js";
@@ -101,6 +102,8 @@ await app.register(performanceRoutes, { prefix: "/api" });
 await app.register(feishuRoutes, { prefix: "/api/feishu" });
 // feishu-config: bot 自动分享设置(登录态,全局仅 admin)
 await app.register(feishuConfigRoutes, { prefix: "/api/feishu-config" });
+await app.register(salaryRoutes, { prefix: "/api/campus-salary" });
+await app.register(internalSalaryRoutes, { prefix: "/api/internal/campus-salary" });
 // campus: 校招后台(登录态 + pageKey campus)+ 学生端公开路由(验证码会话,AuthGuard 外)
 await app.register(campusRoutes, { prefix: "/api/campus" });
 await app.register(campusPublicRoutes, { prefix: "/api/campus/public" });

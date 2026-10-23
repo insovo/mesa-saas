@@ -2,6 +2,7 @@ export function campusInterviewerApiAllowed(method, rawUrl) {
   const path = rawUrl.split("?")[0].replace(/\/$/, "") || "/";
   if (path.startsWith("/api/auth/")) return true;
   if (path.startsWith("/api/campus/")) return true;
+  if (path.startsWith("/api/campus-salary/")) return true;
   if (method === "GET" && /^\/api\/candidates(?:\/[^/]+(?:\/(?:profile|evaluations|notes|reviews|reviews-votes|reviews\/[^/]+\/voters))?)?$/.test(path)) return true;
   if (["GET", "POST"].includes(method) && /^\/api\/candidates\/[^/]+\/interview-evals$/.test(path)) return true;
   if (method === "GET" && /^\/api\/interview-evals\/[^/]+(?:\/export\.xlsx)?$/.test(path)) return true;

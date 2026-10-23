@@ -8,3 +8,5 @@ npm-debug.log
 *.log
 README.md
 .DS_Store
+
+.salary-private/
