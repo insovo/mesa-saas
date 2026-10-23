@@ -92,10 +92,11 @@ test("当前月薪与附条件奖金情景分开，每个情景带条件和材�
   assert.equal(r.bonus.monthlyStandard, null);
   assert.deepEqual(r.scenarios.map((s) => s.monthlyStandard), [101, 102, 103, 103]);
   assert.ok(r.scenarios.every((s) => s.materials.length && s.condition && s.page === 2));
-  assert.match(r.scenarios[2].resumeHint, /与简历自述排名相符/);
+  assert.ok(r.scenarios.every((s) => !s.resumeHint));
   assert.ok(r.scenarios.every((s) => s.unchangedBaseSalary.min === 133));
   const card = JSON.stringify(buildSalaryCard({ submission: { id: "test" }, input: { facts: {} }, revision: 1, result: r }));
-  for (const value of ["133", "定薪依据", "学历：", "学校：", "专业：", "成绩：", "其它", "专项奖金待确认", "点击打开定薪汇总页面", "查看本人的完整定薪详情"]) assert.ok(card.includes(value));
+  for (const value of ["133", "定薪依据", "学历：", "学校：", "专业：", "成绩/排名备注", "其它", "专项奖金：待核验事实材料", "点击打开定薪汇总页面", "查看本人的完整定薪详情"]) assert.ok(card.includes(value));
+  assert.ok(card.indexOf("成绩/排名备注") > card.indexOf("其它"));
   assert.ok(card.indexOf("定薪建议") < card.indexOf("定薪依据"));
   assert.ok(!card.includes("简历原文依据") && !card.includes("情景1"));
   assert.ok(card.includes("**985**") && card.includes("**特殊专业（计算机及AI相关）**"));
@@ -132,12 +133,37 @@ test("缺合同地保留城市分支，专业未确认先列院校基础建议�
   assert.ok(card.includes("院校标准基础建议") && card.includes("需确认是否为特殊专业") && card.includes("若确认适用"));
 });
 
-test("未知、重复最高学历、届别和空毕业年份阻断自动金额", () => {
-  for (const graduationYear of [null, 2026, 2028]) assert.equal(evaluateSalary(facts({ graduationYear }), context).salary.min, null);
+test("未知或重复最高学历仍阻断自动金额", () => {
   const input = facts(); input.education.push({ ...input.education[0], school: "另一学校" });
   assert.equal(evaluateSalary(input, context).salary.min, null);
   input.education = [{ ...facts().education[0], degree: "本科" }, { school: "未知学历院校", major: "未知专业", degree: null }];
   assert.equal(evaluateSalary(input, context).salary.min, null);
+});
+
+test("国内本硕档位明确即计算基础定薪，届别单列，不使用成绩自述或排名作依据", () => {
+  for (const degree of ["本科", "硕士"]) for (const graduationYear of [null, 2024, 2026, 2028]) {
+    const input = facts({ degree, school: "北京交通大学", major: "机械工程", graduationYear });
+    const ctx = { ...context, salaryFactor: 12.5 };
+    const baseline = evaluateSalary(input, ctx);
+    const selfReported = evaluateSalary({ ...input, education: input.education.map((e) => ({ ...e, gradeRaw: "89.76", rankingRaw: "前5%" })) }, ctx);
+    assert.equal(baseline.salary.min, degree === "硕士" ? 124 : 117);
+    assert.equal(baseline.salary.status, "fixed"); assert.equal(baseline.compensation.annualMin, baseline.salary.min * 12.5);
+    assert.ok(baseline.missingFields.some((m) => m.field === "graduationYear"));
+    assert.ok(baseline.rules.some((r) => r.id === "base-before-cohort-confirmation" && r.page === null));
+    for (const key of ["salary", "compensation", "bonus", "rules", "scenarios"]) assert.deepEqual(selfReported[key], baseline[key]);
+    const card = buildSalaryCard({ submission: { id: "base-test" }, input: {}, result: selfReported }).body.elements[0].content;
+    const basis = card.split("**定薪依据**")[1].split("**其它**")[0];
+    assert.ok(!basis.includes("89.76") && !basis.includes("前5%") && !basis.includes("成绩"));
+    assert.match(card, /成绩\/排名备注：89.76；前5%.*不作为定薪依据/);
+  }
+  const base = evaluateSalary(facts(), context);
+  for (const rankingRaw of ["前1%", "前99%", null]) {
+    const claimed = evaluateSalary(facts({ gradeRaw: "满绩点", rankingRaw }), context);
+    assert.deepEqual(claimed.scenarios, base.scenarios); assert.equal(claimed.bonus.monthlyStandard, null);
+  }
+  assert.equal(evaluateSalary(facts({ major: "未知交叉专业", graduationYear: null }), context).salary.min, null);
+  assert.equal(evaluateSalary(facts({ degree: "博士", graduationYear: null }, { doctorField: "regular" }), context).salary.min, null);
+  assert.equal(evaluateSalary(facts({ major: "工业设计", school: "合成设计院校", graduationYear: 2024 }), { ...context, roleType: "design" }).salary.min, null);
 });
 
 test("博士只报政策区间或一人一议，不从分数插值", () => {

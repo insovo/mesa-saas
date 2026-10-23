@@ -2,6 +2,7 @@ import { POLICY_CONFIGURED, BONUS_VALUES, BENEFITS, MONTHLY, DOCTOR, CATEGORIES,
 import { scopeEducationEvidence } from "./facts.js";
 import { resolveMajor } from "./majors.js";
 
+export const ENGINE_VERSION = "salary-engine.v6";
 const degreeOrder = { 本科: 1, 硕士: 2, 博士: 3 };
 const missing = (field, reason, materials) => ({ field, reason, materials });
 const pendingSalary = () => ({ status: "pending", min: null, max: null });
@@ -106,7 +107,8 @@ export function evaluateSalary(facts = {}, context = {}, { schools = [] } = {}) 
   if (edu.degree === "博士" && ["first", "second"].includes(tier)) tier = "ordinary";
   if (tier === "second") result.restrictions.push("二本：原则上不招；显示政策参考，不自动判断淘汰");
   result.facts.salaryTier = tier;
-  const ready = !blocked && edu.graduationYear === 2027;
+  const baseBeforeCohortConfirmation = !overseas && ["本科", "硕士"].includes(edu.degree) && !special && Boolean(category);
+  const ready = !blocked && (edu.graduationYear === 2027 || baseBeforeCohortConfirmation);
 
   if (edu.degree === "博士") {
     if (!field) need("doctorField", "需确认博士专业及研究课题所属领域", ["研究课题/论文摘要、个人项目贡献证明"]);
@@ -132,6 +134,7 @@ export function evaluateSalary(facts = {}, context = {}, { schools = [] } = {}) 
       result.salary = special?.negotiated ? salaryRange(null) : salaryRange(MONTHLY[city][edu.degree][tier][CATEGORIES.indexOf(lookupCategory)]);
       if (standardReference) result.salaryBasis = "school_standard_reference";
       result.rules.push(rule(`monthly-${city}-${edu.degree}-${tier}-${lookupCategory}`, city === "first" ? 5 : 1, `${city === "first" ? "一线" : "非一线"}、${edu.degree}、${TIER_LABELS[tier]}、${CATEGORY_LABELS[lookupCategory]}${standardReference ? "基础建议；特殊专业资格未确认，不视为已满足升档条件" : ""}`));
+      if (baseBeforeCohortConfirmation && edu.graduationYear !== 2027) result.rules.push(rule("base-before-cohort-confirmation", null, "HR确认：国内本硕学历、院校薪档、专业档位及合同地明确后，先按当前政策给出基础定薪；毕业届别资料单列待确认，未核验成绩或排名不作为升档依据"));
     }
     if (ready && !special) {
       for (const c of city ? [city] : ["nonfirst", "first"]) for (const cat of category ? [category] : majorClassification.possibleCategories.length ? ["standard", ...majorClassification.possibleCategories] : CATEGORIES) {
@@ -174,12 +177,5 @@ export function evaluateSalary(facts = {}, context = {}, { schools = [] } = {}) 
   for (const scenario of result.scenarios) if (scenario.kind === "salary") scenario.compensation = salaryPackage(scenario.salary, factor);
   if (factor) result.rules.push(rule("salary-factor", null, `薪数${factor}来自HR确认的录用上下文，按政策月薪×薪数测算；专项奖金另列`));
   result.scenarios = result.scenarios.slice(0, 12);
-  const ranking = /(?:前\s*)?(\d+(?:\.\d+)?)\s*[%％]/.exec(edu.rankingRaw || "");
-  if (ranking && Number(ranking[1]) > 0 && Number(ranking[1]) <= 100) for (const scenario of result.scenarios) {
-    if (scenario.kind === "bonus" && scenario.label.includes("排名前")) {
-      const threshold = scenario.label.includes("30%") ? 30 : 50;
-      scenario.resumeHint = Number(ranking[1]) < threshold ? "与简历自述排名相符；仍须核验统计范围、近一年时效及其他条件" : "简历自述排名尚未明确满足此分支，需另有材料支持";
-    }
-  }
   return result;
 }
