@@ -18,8 +18,8 @@ export async function reconcileResumeVersion(app, submissionId, facts) {
     ] } })).filter((other) => other.facts);
     const matches = alternatives.filter((other) => other.fileHash === row.fileHash || keys.some((key) => other.identityKeys.includes(key)));
     const roots = new Set(matches.map((other) => other.supersededById || other.id));
-    const sharedIdentity = matches.every((other) => other.fileHash === row.fileHash) || keys.some((key) => matches.every((other) => other.identityKeys.includes(key)));
-    const conflict = matches.some((other) => !facts.name || other.facts?.name !== facts.name) || (roots.size > 1 && !sharedIdentity) || !!facts.conflicts?.length;
+    // 同名简历明确提供新旧联系方式时允许连接已有档案，归并结果不能取决于谁先解析完。
+    const conflict = matches.some((other) => !facts.name || other.facts?.name !== facts.name) || !!facts.conflicts?.length;
     const safe = !conflict && facts.name;
     const duplicateState = conflict ? "conflict" : !keys.length && !matches.length ? "unverified" : alternatives.some((other) => !matches.includes(other)) ? "possible" : "verified";
     await tx.salarySubmission.update({ where: { id: row.id }, data: { identityKeys: keys, duplicateState } });

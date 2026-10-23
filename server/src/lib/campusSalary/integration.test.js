@@ -10,7 +10,7 @@ import jwtPlugin from "../../plugins/jwt.js";
 import salaryRoutes, { internalSalaryRoutes } from "../../routes/campus-salary.js";
 import feishuRoutes from "../../routes/feishu.js";
 import { runSalaryEvaluation, deliverSalaryEvaluation, recoverSalaryWork } from "./service.js";
-import { MONTHLY, BONUS_VALUES } from "./policy.js";
+import { MONTHLY } from "./policy.js";
 import { notifyCandidateReady } from "../feishuNotify.js";
 import { createSalaryHandler, salaryRequest } from "../../../../tools/lark-ingest/salary-client.mjs";
 
@@ -91,7 +91,7 @@ test("隔离PG/Redis：群消息→签名API→真实队列→独立定薪→回
   assert.equal(completed.result.salary.min, MONTHLY.nonfirst.硕士["985"][3]); assert.equal(completed.result.bonus.monthlyStandard, null);
   assert.equal(completed.result.compensation.salaryFactor, 12.5);
   assert.equal(completed.result.compensation.annualMin, completed.result.salary.min * 12.5);
-  assert.ok(JSON.stringify(sent[0].card).includes(String(BONUS_VALUES.middle))); assert.equal(sent[0].messageId, event.message_id);
+  assert.ok(JSON.stringify(sent[0].card).includes("专项奖金待确认")); assert.equal(sent[0].messageId, event.message_id);
   assert.equal(extractions, 1); assert.equal(replies.length, 1);
   const duplicate = await handle(event); assert.equal(duplicate.duplicate, true);
   assert.equal(await prisma.salarySubmission.count({ where: { groupId: group.id } }), 1);
@@ -152,8 +152,10 @@ test("隔离PG/Redis：群消息→签名API→真实队列→独立定薪→回
   await waitFor(async () => (await prisma.salaryEvaluation.findUnique({ where: { id: batch[0].evaluationId } })).deliveryStatus === "sent");
   const newestReply = sent.findIndex((message) => message.messageId === newest.message_id);
   assert.ok(newestReply >= 0);
-  // 身份尚未解析时可能先回复旧文件；身份归并后不得在最新版之后重发旧结果。
-  assert.ok(!sent.slice(newestReply + 1).some((message) => [older.message_id, middle.message_id].includes(message.messageId)), "旧文件不得在新文件之后回显旧结果");
+  // 关联证明尚未解析时，同名而联系方式不同的记录仍独立回复，并必须提示身份待核。
+  for (const message of sent.slice(newestReply + 1).filter((message) => [older.message_id, middle.message_id].includes(message.messageId))) {
+    assert.match(JSON.stringify(message.card), /存在同名但身份依据不同的简历，未自动合并/);
+  }
   const sentCount = sent.length;
   for (const old of batch.slice(1, 3)) await deliverSalaryEvaluation(app, old.evaluationId, dependencies.reply);
   assert.equal(sent.length, sentCount, "已归并的历史简历不得重新发送");
@@ -202,4 +204,17 @@ test("隔离PG/Redis：群消息→签名API→真实队列→独立定薪→回
   await waitFor(async () => (await queue.getJob(inFlight.evaluationId))?.getState().then((state) => state === "completed"));
   assert.equal((await prisma.salarySubmission.findUnique({ where: { id: inFlightRow.id } })).status, "deleted");
   assert.ok(!sent.some((message) => message.messageId === inFlightRow.messageId));
+  const contactOld = await batchHandle(batchEvent("联系方式更新测试", "old-contact@example.invalid", 3000));
+  await waitFor(async () => (await prisma.salarySubmission.findUnique({ where: { id: contactOld.submissionId } })).status === "done");
+  const contactNew = await batchHandle(batchEvent("联系方式更新测试", "new-contact@example.invalid", 1000));
+  await waitFor(async () => (await prisma.salarySubmission.findUnique({ where: { id: contactNew.submissionId } })).status === "done");
+  const bridge = await batchHandle(batchEvent("联系方式更新测试", "old-contact@example.invalid", 2000, 0, "new-contact@example.invalid"));
+  await waitFor(async () => (await prisma.salarySubmission.findUnique({ where: { id: bridge.submissionId } })).status === "superseded");
+  const contactRows = await prisma.salarySubmission.findMany({ where: { id: { in: [contactOld.submissionId, contactNew.submissionId, bridge.submissionId] } } });
+  assert.equal(contactRows.filter((r) => !r.supersededById).length, 1);
+  assert.equal(contactRows.find((r) => !r.supersededById).id, contactNew.submissionId);
+  const conflictResume = await batchHandle(batchEvent("联系方式冲突测试", "new-contact@example.invalid", 0));
+  await waitFor(async () => (await prisma.salarySubmission.findUnique({ where: { id: conflictResume.submissionId } })).status === "done");
+  assert.equal((await prisma.salarySubmission.findUnique({ where: { id: conflictResume.submissionId } })).duplicateState, "conflict");
+  assert.equal((await prisma.salarySubmission.findUnique({ where: { id: contactNew.submissionId } })).supersededById, null);
 });

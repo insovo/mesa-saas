@@ -51,7 +51,7 @@ export async function requestSalaryEvaluation(app, submissionId, { revision, con
     const overrides = { ...row.overrides, ...(confirmed || {}) };
     const changed = await tx.salarySubmission.updateMany({ where: { id: row.id, revision: row.revision, latestEvaluationId: row.latestEvaluationId }, data: { revision: nextRevision, context: nextContext, overrides, status: "queued" } });
     if (!changed.count) throw salaryError("记录已更新，请刷新后重试", 409, "salary_revision_conflict");
-    const created = await tx.salaryEvaluation.create({ data: { submissionId, revision: nextRevision, requestedBy: requestedBy || "feishu-service", reason: reason || "群内简历自动定薪", input: { policyVersion: POLICY_VERSION, policyHash: POLICY_HASH, engineVersion: "salary-engine.v3", facts: row.facts, confirmed: overrides, context: nextContext, schools, groupRevision: row.group.revision } } });
+    const created = await tx.salaryEvaluation.create({ data: { submissionId, revision: nextRevision, requestedBy: requestedBy || "feishu-service", reason: reason || "群内简历自动定薪", input: { policyVersion: POLICY_VERSION, policyHash: POLICY_HASH, engineVersion: "salary-engine.v4", facts: row.facts, confirmed: overrides, context: nextContext, schools, groupRevision: row.group.revision } } });
     await tx.salarySubmission.update({ where: { id: row.id }, data: { latestEvaluationId: created.id } });
     return created;
   });
