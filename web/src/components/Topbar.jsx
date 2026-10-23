@@ -23,6 +23,7 @@ import PasswordStrengthMeter from "./PasswordStrengthMeter.jsx";
 const PAGE_TITLES = {
   "/dashboard": "概览",
   "/candidates": "候选人",
+  "/campus-salary": "校招定薪",
   "/jobs": "社招岗位",
   "/upload": "简历收件箱",
   "/staff": "现有人员",

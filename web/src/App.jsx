@@ -34,6 +34,7 @@ const PublicInterviewEval = lazy(() => import("./pages/PublicInterviewEval.jsx")
 const PublicPerformanceEval = lazy(() => import("./pages/PublicPerformanceEval.jsx"));
 const ShareSettings = lazy(() => import("./pages/ShareSettings.jsx"));
 const Campus = lazy(() => import("./pages/Campus.jsx"));
+const CampusSalary = lazy(() => import("./pages/CampusSalary.jsx"));
 const CampusPublic = lazy(() => import("./pages/campus/public/index.jsx"));
 
 // 路由 → 所需 pageKey 映射
@@ -101,6 +102,7 @@ export default function App() {
         <Route path="/dashboard" element={<Page pageKey={PAGE.dashboard} element={<Dashboard />} />} />
         <Route path="/candidates" element={<Page pageKey={PAGE.candidates} element={<Candidates />} />} />
         <Route path="/candidates/:id" element={<Page pageKey={PAGE.candidateDetail} element={<CandidateDetail />} />} />
+        <Route path="/campus-salary" element={<Page pageKey={PAGE.campus} element={<CampusSalary />} />} />
         <Route path="/jobs" element={<Page pageKey={PAGE.jobs} element={<Jobs />} />} />
         <Route path="/upload" element={<Page pageKey={PAGE.upload} element={<Upload />} />} />
         <Route path="/staff" element={<Page pageKey={PAGE.staff} element={<Staff />} />} />
